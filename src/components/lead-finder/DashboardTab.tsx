@@ -71,26 +71,29 @@ export function DashboardTab({ onViewSearch, onNewSearch }: DashboardTabProps) {
           title="Fontes"
           value={stats.sourcesCount}
           icon={Database}
-          description="Fontes ativas"
+          change="Fontes ativas"
+          changeType="neutral"
         />
         <StatsCard
           title="Buscas"
           value={stats.searchesCount}
           icon={Search}
-          description="Total de buscas"
+          change="Total de buscas"
+          changeType="neutral"
         />
         <StatsCard
           title="Encontrados"
           value={stats.leadsFound}
           icon={Users}
-          description="Leads encontrados"
+          change="Leads encontrados"
+          changeType="neutral"
         />
         <StatsCard
           title="Novos"
           value={stats.newLeads}
           icon={UserPlus}
-          description="Leads novos"
-          trend={{ value: stats.newLeads, isPositive: true }}
+          change={`${stats.newLeads} leads novos`}
+          changeType="positive"
         />
       </div>
 
