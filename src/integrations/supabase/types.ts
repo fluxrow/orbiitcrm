@@ -1197,6 +1197,7 @@ export type Database = {
           id: string
           instance_id: string | null
           nome_instancia: string | null
+          notificar_enviadas_por_mim: boolean | null
           numero_origem: string | null
           token: string | null
           updated_at: string | null
@@ -1210,6 +1211,7 @@ export type Database = {
           id?: string
           instance_id?: string | null
           nome_instancia?: string | null
+          notificar_enviadas_por_mim?: boolean | null
           numero_origem?: string | null
           token?: string | null
           updated_at?: string | null
@@ -1223,6 +1225,7 @@ export type Database = {
           id?: string
           instance_id?: string | null
           nome_instancia?: string | null
+          notificar_enviadas_por_mim?: boolean | null
           numero_origem?: string | null
           token?: string | null
           updated_at?: string | null
