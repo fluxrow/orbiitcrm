@@ -546,6 +546,57 @@ export type Database = {
         }
         Relationships: []
       }
+      orbit_import_history: {
+        Row: {
+          arquivo_nome: string
+          created_at: string | null
+          detalhes_erros: Json | null
+          empresa_id: string | null
+          erros: number | null
+          id: string
+          importado_por: string | null
+          sucesso: number | null
+          total_registros: number | null
+        }
+        Insert: {
+          arquivo_nome: string
+          created_at?: string | null
+          detalhes_erros?: Json | null
+          empresa_id?: string | null
+          erros?: number | null
+          id?: string
+          importado_por?: string | null
+          sucesso?: number | null
+          total_registros?: number | null
+        }
+        Update: {
+          arquivo_nome?: string
+          created_at?: string | null
+          detalhes_erros?: Json | null
+          empresa_id?: string | null
+          erros?: number | null
+          id?: string
+          importado_por?: string | null
+          sucesso?: number | null
+          total_registros?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_import_history_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_import_history_importado_por_fkey"
+            columns: ["importado_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_integrations_config: {
         Row: {
           ativo: boolean | null
