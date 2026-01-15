@@ -15,7 +15,7 @@ export default function TemplatesPage() {
 
   return (
     <OrbitLayout>
-      <PageHeader title="Templates" description="Modelos de mensagem" actions={<><Button variant="outline" size="sm"><Sparkles className="h-4 w-4 mr-2" />Gerar IA</Button><Button size="sm"><Plus className="h-4 w-4 mr-2" />Novo</Button></>} />
+      <PageHeader title="Templates" description="Modelos de mensagem" action={<><Button variant="outline" size="sm"><Sparkles className="h-4 w-4 mr-2" />Gerar IA</Button><Button size="sm"><Plus className="h-4 w-4 mr-2" />Novo</Button></>} />
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-6"><TabsTrigger value="whatsapp"><MessageSquare className="h-4 w-4 mr-2" />WhatsApp</TabsTrigger><TabsTrigger value="email"><Mail className="h-4 w-4 mr-2" />Email</TabsTrigger></TabsList>
         <TabsContent value={tab}>

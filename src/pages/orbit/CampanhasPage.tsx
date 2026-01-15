@@ -20,7 +20,7 @@ export default function CampanhasPage() {
 
   return (
     <OrbitLayout>
-      <PageHeader title="Campanhas" description="Gerencie campanhas de email e WhatsApp" actions={<Button size="sm"><Plus className="h-4 w-4 mr-2" />Nova Campanha</Button>} />
+      <PageHeader title="Campanhas" description="Gerencie campanhas de email e WhatsApp" action={<Button size="sm"><Plus className="h-4 w-4 mr-2" />Nova Campanha</Button>} />
       <div className="flex gap-4 mb-6">
         <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-[180px]"><SelectValue placeholder="Status" /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem><SelectItem value="rascunho">Rascunho</SelectItem><SelectItem value="em_andamento">Em Andamento</SelectItem></SelectContent></Select>
       </div>
