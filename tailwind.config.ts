@@ -31,6 +31,14 @@ export default {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
         },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
         muted: {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
@@ -57,6 +65,20 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        channel: {
+          whatsapp: "hsl(var(--channel-whatsapp))",
+          instagram: "hsl(var(--channel-instagram))",
+          email: "hsl(var(--channel-email))",
+          phone: "hsl(var(--channel-phone))",
+        },
+        stage: {
+          qualification: "hsl(var(--stage-qualification))",
+          proposal: "hsl(var(--stage-proposal))",
+          negotiation: "hsl(var(--stage-negotiation))",
+          closing: "hsl(var(--stage-closing))",
+          won: "hsl(var(--stage-won))",
+          lost: "hsl(var(--stage-lost))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -65,20 +87,12 @@ export default {
       },
       keyframes: {
         "accordion-down": {
-          from: {
-            height: "0",
-          },
-          to: {
-            height: "var(--radix-accordion-content-height)",
-          },
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
         },
         "accordion-up": {
-          from: {
-            height: "var(--radix-accordion-content-height)",
-          },
-          to: {
-            height: "0",
-          },
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
         },
       },
       animation: {
