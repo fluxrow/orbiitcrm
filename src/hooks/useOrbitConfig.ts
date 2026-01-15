@@ -189,7 +189,7 @@ export function useOrbitResendConfig() {
         .select("*")
         .maybeSingle();
       if (error) throw error;
-      return data;
+      return data as ResendConfig & { api_key?: string; dominio_verificado?: string; email_teste?: string } | null;
     },
   });
 }
@@ -198,7 +198,7 @@ export function useUpdateResendConfig() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (updates: ResendConfigUpdate) => {
+    mutationFn: async (updates: ResendConfigUpdate & { api_key?: string; dominio_verificado?: string; email_teste?: string }) => {
       const { data: existing } = await supabase
         .from("orbit_resend_config")
         .select("id")
@@ -207,7 +207,7 @@ export function useUpdateResendConfig() {
       if (existing) {
         const { data, error } = await supabase
           .from("orbit_resend_config")
-          .update(updates)
+          .update(updates as any)
           .eq("id", existing.id)
           .select()
           .single();
@@ -225,6 +225,45 @@ export function useUpdateResendConfig() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orbit_resend_config"] });
+    },
+  });
+}
+
+// Test Resend Connection Hook
+export function useTestResendConnection() {
+  return useMutation({
+    mutationFn: async ({ email, empresa_id }: { email: string; empresa_id?: string }) => {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/orbit-send-email`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({
+            to: email,
+            subject: "Teste de Conexão - Orbit CRM",
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: #333;">Conexão Testada com Sucesso! ✅</h1>
+                <p style="color: #666;">Este é um email de teste do Orbit CRM.</p>
+                <p style="color: #666;">Se você recebeu este email, sua configuração do Resend está funcionando corretamente.</p>
+                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+                <p style="color: #999; font-size: 12px;">Enviado automaticamente pelo Orbit CRM</p>
+              </div>
+            `,
+            empresa_id,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Erro ao testar conexão");
+      }
+
+      return response.json();
     },
   });
 }

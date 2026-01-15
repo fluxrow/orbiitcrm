@@ -836,8 +836,11 @@ export type Database = {
       }
       orbit_resend_config: {
         Row: {
+          api_key: string | null
           ativo: boolean | null
           created_at: string | null
+          dominio_verificado: string | null
+          email_teste: string | null
           empresa_id: string | null
           from_email: string | null
           from_name: string | null
@@ -845,8 +848,11 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          api_key?: string | null
           ativo?: boolean | null
           created_at?: string | null
+          dominio_verificado?: string | null
+          email_teste?: string | null
           empresa_id?: string | null
           from_email?: string | null
           from_name?: string | null
@@ -854,8 +860,11 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          api_key?: string | null
           ativo?: boolean | null
           created_at?: string | null
+          dominio_verificado?: string | null
+          email_teste?: string | null
           empresa_id?: string | null
           from_email?: string | null
           from_name?: string | null
