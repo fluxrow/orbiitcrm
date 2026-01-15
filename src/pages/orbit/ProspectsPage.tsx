@@ -59,7 +59,7 @@ export default function ProspectsPage() {
       <PageHeader
         title="Prospects"
         description="Gerencie seus leads e prospects"
-        actions={<Button size="sm" onClick={() => { setSelectedProspect(null); setDialogOpen(true); }}><Plus className="h-4 w-4 mr-2" />Novo Prospect</Button>}
+        action={<Button size="sm" onClick={() => { setSelectedProspect(null); setDialogOpen(true); }}><Plus className="h-4 w-4 mr-2" />Novo Prospect</Button>}
       />
 
       <div className="flex gap-4 mb-6">
