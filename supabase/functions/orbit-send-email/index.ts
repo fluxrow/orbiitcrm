@@ -1,0 +1,100 @@
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+interface EmailRequest {
+  to: string;
+  subject: string;
+  html: string;
+  empresa_id?: string;
+}
+
+const handler = async (req: Request): Promise<Response> => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    if (!resendApiKey) {
+      return new Response(
+        JSON.stringify({ error: "RESEND_API_KEY não configurada. Configure nas variáveis de ambiente." }),
+        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const { to, subject, html, empresa_id }: EmailRequest = await req.json();
+
+    if (!to || !subject || !html) {
+      return new Response(
+        JSON.stringify({ error: "Campos obrigatórios: to, subject, html" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Buscar configuração do Resend da empresa
+    let fromEmail = "Orbit <onboarding@resend.dev>";
+    
+    if (empresa_id) {
+      const { data: resendConfig } = await supabase
+        .from("orbit_resend_config")
+        .select("*")
+        .eq("empresa_id", empresa_id)
+        .eq("ativo", true)
+        .maybeSingle();
+
+      if (resendConfig?.from_email) {
+        const fromName = resendConfig.from_name || "Orbit";
+        fromEmail = `${fromName} <${resendConfig.from_email}>`;
+      }
+    }
+
+    // Usar fetch diretamente para a API do Resend
+    const emailResponse = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [to],
+        subject,
+        html,
+      }),
+    });
+
+    const result = await emailResponse.json();
+
+    if (!emailResponse.ok) {
+      console.error("Erro Resend:", result);
+      return new Response(
+        JSON.stringify({ error: result.message || "Erro ao enviar email" }),
+        { status: emailResponse.status, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    console.log("Email enviado com sucesso:", result);
+
+    return new Response(JSON.stringify(result), {
+      status: 200,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+  } catch (error: any) {
+    console.error("Erro ao enviar email:", error);
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+    );
+  }
+};
+
+serve(handler);

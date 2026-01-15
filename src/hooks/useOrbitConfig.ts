@@ -4,6 +4,8 @@ import type { Tables, TablesUpdate } from "@/integrations/supabase/types";
 
 type AIConfig = Tables<"orbit_ai_config">;
 type AIConfigUpdate = TablesUpdate<"orbit_ai_config">;
+type ResendConfig = Tables<"orbit_resend_config">;
+type ResendConfigUpdate = TablesUpdate<"orbit_resend_config">;
 
 export function useOrbitAIConfig() {
   return useQuery({
@@ -173,6 +175,56 @@ export function useRemoveVendedorFromDistribuicao() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orbit_distribuicao_config"] });
+    },
+  });
+}
+
+// Resend Config Hooks
+export function useOrbitResendConfig() {
+  return useQuery({
+    queryKey: ["orbit_resend_config"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("orbit_resend_config")
+        .select("*")
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useUpdateResendConfig() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (updates: ResendConfigUpdate) => {
+      const { data: existing } = await supabase
+        .from("orbit_resend_config")
+        .select("id")
+        .maybeSingle();
+
+      if (existing) {
+        const { data, error } = await supabase
+          .from("orbit_resend_config")
+          .update(updates)
+          .eq("id", existing.id)
+          .select()
+          .single();
+        if (error) throw error;
+        return data;
+      } else {
+        const { data, error } = await supabase
+          .from("orbit_resend_config")
+          .insert(updates as any)
+          .select()
+          .single();
+        if (error) throw error;
+        return data;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orbit_resend_config"] });
     },
   });
 }
