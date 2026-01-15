@@ -17,25 +17,83 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const payload = await req.json();
-    console.log("[orbit-webhook] Payload recebido:", JSON.stringify(payload));
+    // Parse event type from query params
+    const url = new URL(req.url);
+    const eventType = url.searchParams.get("event") || "on-receive";
 
-    // Extrair dados da mensagem (formato Z-API)
+    const payload = await req.json();
+    console.log(`[orbit-webhook] Evento: ${eventType}, Payload:`, JSON.stringify(payload));
+
+    // Handle different event types
+    switch (eventType) {
+      case "on-connect":
+        console.log("[orbit-webhook] Instância conectada");
+        return new Response(JSON.stringify({ ok: true, event: "on-connect" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+
+      case "on-disconnect":
+        console.log("[orbit-webhook] Instância desconectada");
+        return new Response(JSON.stringify({ ok: true, event: "on-disconnect" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+
+      case "presence":
+        console.log("[orbit-webhook] Atualização de presença:", payload.status);
+        return new Response(JSON.stringify({ ok: true, event: "presence", status: payload.status }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+
+      case "message-status":
+        // Update message status in database
+        if (payload.messageId) {
+          await supabase
+            .from("orbit_mensagens")
+            .update({ status: payload.status || "delivered" })
+            .eq("provider_message_id", payload.messageId);
+        }
+        return new Response(JSON.stringify({ ok: true, event: "message-status" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+
+      case "on-send":
+        // Get config to check if should process own messages
+        const { data: zapiConfig } = await supabase
+          .from("orbit_zapi_config")
+          .select("notificar_enviadas_por_mim")
+          .maybeSingle();
+
+        if (!zapiConfig?.notificar_enviadas_por_mim) {
+          return new Response(JSON.stringify({ ok: true, skipped: true, reason: "own messages disabled" }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        // Process as sent message - fall through to on-receive logic with fromMe flag
+        break;
+
+      case "on-receive":
+      default:
+        // Process incoming message - continue with main logic below
+        break;
+    }
+
+    // Main message processing logic (for on-receive and on-send events)
     const phone = payload.phone?.replace(/\D/g, "") || payload.from?.replace(/\D/g, "");
     const messageText = payload.text?.message || payload.body || payload.caption || "";
     const messageId = payload.messageId || payload.id;
-    const fromMe = payload.fromMe || false;
+    const fromMe = payload.fromMe || eventType === "on-send";
 
-    if (!phone || fromMe) {
+    // Skip messages sent by us (unless it's on-send event with notificar enabled)
+    if (!phone || (fromMe && eventType !== "on-send")) {
       return new Response(JSON.stringify({ ok: true, skipped: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Normalizar telefone (formato brasileiro)
+    // Normalize phone (Brazilian format)
     const normalizedPhone = phone.startsWith("55") ? phone : `55${phone}`;
 
-    // 1. Buscar ou criar prospect
+    // 1. Find or create prospect
     let { data: prospect } = await supabase
       .from("orbit_prospects")
       .select("*")
@@ -61,7 +119,7 @@ serve(async (req) => {
       prospect = newProspect;
     }
 
-    // 2. Buscar ou criar conversa
+    // 2. Find or create conversation
     let { data: conversa } = await supabase
       .from("orbit_conversas")
       .select("*")
@@ -91,7 +149,7 @@ serve(async (req) => {
       conversa = newConversa;
     }
 
-    // 3. Verificar duplicata de mensagem
+    // 3. Check for duplicate message
     if (messageId) {
       const { data: existingMsg } = await supabase
         .from("orbit_mensagens")
@@ -107,35 +165,36 @@ serve(async (req) => {
       }
     }
 
-    // 4. Salvar mensagem
+    // 4. Save message
+    const direcao = fromMe ? "OUT" : "IN";
     await supabase.from("orbit_mensagens").insert({
       conversa_id: conversa.id,
-      direcao: "IN",
+      direcao,
       mensagem: messageText,
       provider_message_id: messageId,
       canal: "whatsapp",
-      status: "recebida",
+      status: fromMe ? "enviada" : "recebida",
     });
 
-    // 5. Atualizar conversa
+    // 5. Update conversation
     await supabase
       .from("orbit_conversas")
       .update({
         ultima_mensagem_at: new Date().toISOString(),
         ultima_mensagem_preview: messageText.substring(0, 100),
-        mensagens_nao_lidas: (conversa.mensagens_nao_lidas || 0) + 1,
+        mensagens_nao_lidas: fromMe ? 0 : (conversa.mensagens_nao_lidas || 0) + 1,
       })
       .eq("id", conversa.id);
 
-    // 6. Se IA ativa e human_talk = false, chamar agente IA
-    if (!conversa.human_talk) {
+    // 6. If AI active and human_talk = false and incoming message, call AI agent
+    if (!fromMe && !conversa.human_talk) {
       const { data: aiConfig } = await supabase
         .from("orbit_ai_config")
         .select("*")
         .maybeSingle();
 
       if (aiConfig?.modo_automatico) {
-        // Chamar edge function de IA (fire and forget via fetch)
+        // Call AI edge function (fire and forget via fetch)
         fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-ai-agent`, {
           method: "POST",
           headers: {
@@ -152,7 +211,7 @@ serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ ok: true, prospect_id: prospect.id, conversa_id: conversa.id }), {
+    return new Response(JSON.stringify({ ok: true, event: eventType, prospect_id: prospect.id, conversa_id: conversa.id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: unknown) {

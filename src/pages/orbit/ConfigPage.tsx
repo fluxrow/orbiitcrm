@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Bot, MessageSquare, Mail, Save, Loader2, Copy, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Send, Upload, Download, FileText, X, Settings2, Info } from "lucide-react";
+import { Bot, MessageSquare, Mail, Save, Loader2, Copy, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Send, Upload, Download, FileText, X, Settings2, Info, Link2, ClipboardList } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useOrbitAIConfig, useUpdateAIConfig, useOrbitZAPIConfig, useUpdateZAPIConfig, useOrbitResendConfig, useUpdateResendConfig, useTestResendConnection } from "@/hooks/useOrbitConfig";
 import { parseCSV, generateCSVTemplate, useImportProspects, useImportHistory } from "@/hooks/useImportProspects";
@@ -57,7 +57,7 @@ export default function ConfigPage() {
     prompt_orcamentos: "",
     campos_cadastro: ["nome_razao", "nome_fantasia", "email_principal", "cidade", "segmento"] as string[]
   });
-const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", token: "", client_token: "", numero_origem: "", ativo: false });
+const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", token: "", client_token: "", numero_origem: "", notificar_enviadas_por_mim: false, ativo: false });
   const [showZapiToken, setShowZapiToken] = useState(false);
   const [showZapiClientToken, setShowZapiClientToken] = useState(false);
   const [testingZapiConnection, setTestingZapiConnection] = useState(false);
@@ -104,6 +104,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
       token: zapiConfig.token || "", 
       client_token: zapiConfig.client_token || "", 
       numero_origem: (zapiConfig as any).numero_origem || "",
+      notificar_enviadas_por_mim: (zapiConfig as any).notificar_enviadas_por_mim ?? false,
       ativo: zapiConfig.ativo ?? false 
     }); 
   }, [zapiConfig]);
@@ -471,6 +472,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
         </TabsContent>
         <TabsContent value="zapi">
           {zapiLoading ? <Loader2 className="animate-spin" /> : (
+            <div className="space-y-6">
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-2">
@@ -676,6 +678,231 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                 </div>
               </CardContent>
             </Card>
+
+            {/* Card 2: Configure Webhooks */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Link2 className="h-5 w-5 text-primary" />
+                  <CardTitle>Configure webhooks</CardTitle>
+                </div>
+                <CardDescription>Configure estas URLs na seção "Webhooks" do painel Z-API para receber eventos automaticamente</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Webhooks Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Ao enviar */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <Send className="h-4 w-4" />
+                      Ao enviar
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input 
+                        value={`${webhookUrl}?event=on-send`} 
+                        readOnly 
+                        className="font-mono text-xs"
+                      />
+                      <Button 
+                        variant="outline" 
+                        size="icon" 
+                        onClick={() => { 
+                          navigator.clipboard.writeText(`${webhookUrl}?event=on-send`); 
+                          toast.success("URL copiada!"); 
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Notificação quando mensagem é enviada</p>
+                  </div>
+
+                  {/* Presença do chat */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <Eye className="h-4 w-4" />
+                      Presença do chat
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input 
+                        value={`${webhookUrl}?event=presence`} 
+                        readOnly 
+                        className="font-mono text-xs"
+                      />
+                      <Button 
+                        variant="outline" 
+                        size="icon" 
+                        onClick={() => { 
+                          navigator.clipboard.writeText(`${webhookUrl}?event=presence`); 
+                          toast.success("URL copiada!"); 
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Digitando, online, offline</p>
+                  </div>
+
+                  {/* Ao desconectar */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4" />
+                      Ao desconectar
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input 
+                        value={`${webhookUrl}?event=on-disconnect`} 
+                        readOnly 
+                        className="font-mono text-xs"
+                      />
+                      <Button 
+                        variant="outline" 
+                        size="icon" 
+                        onClick={() => { 
+                          navigator.clipboard.writeText(`${webhookUrl}?event=on-disconnect`); 
+                          toast.success("URL copiada!"); 
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Quando instância desconecta</p>
+                  </div>
+
+                  {/* Receber status mensagem */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Receber status mensagem
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input 
+                        value={`${webhookUrl}?event=message-status`} 
+                        readOnly 
+                        className="font-mono text-xs"
+                      />
+                      <Button 
+                        variant="outline" 
+                        size="icon" 
+                        onClick={() => { 
+                          navigator.clipboard.writeText(`${webhookUrl}?event=message-status`); 
+                          toast.success("URL copiada!"); 
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Entregue, lido, falhou</p>
+                  </div>
+
+                  {/* Ao receber */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <Download className="h-4 w-4" />
+                      Ao receber
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input 
+                        value={`${webhookUrl}?event=on-receive`} 
+                        readOnly 
+                        className="font-mono text-xs"
+                      />
+                      <Button 
+                        variant="outline" 
+                        size="icon" 
+                        onClick={() => { 
+                          navigator.clipboard.writeText(`${webhookUrl}?event=on-receive`); 
+                          toast.success("URL copiada!"); 
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Quando recebe mensagem</p>
+                  </div>
+
+                  {/* Ao conectar */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <Link2 className="h-4 w-4" />
+                      Ao conectar
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input 
+                        value={`${webhookUrl}?event=on-connect`} 
+                        readOnly 
+                        className="font-mono text-xs"
+                      />
+                      <Button 
+                        variant="outline" 
+                        size="icon" 
+                        onClick={() => { 
+                          navigator.clipboard.writeText(`${webhookUrl}?event=on-connect`); 
+                          toast.success("URL copiada!"); 
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Quando instância conecta</p>
+                  </div>
+                </div>
+
+                {/* Toggle: Notificar as enviadas por mim */}
+                <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+                  <div>
+                    <Label className="text-base font-medium">Notificar as enviadas por mim também</Label>
+                    <p className="text-sm text-muted-foreground">Receber webhook quando você mesmo envia mensagens</p>
+                  </div>
+                  <Switch 
+                    checked={zapiForm.notificar_enviadas_por_mim} 
+                    onCheckedChange={(v) => setZapiForm({ ...zapiForm, notificar_enviadas_por_mim: v })} 
+                  />
+                </div>
+
+                {/* Instruções de configuração */}
+                <div className="p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg space-y-3">
+                  <p className="text-sm font-medium flex items-center gap-2">
+                    <Info className="h-4 w-4 text-blue-600" />
+                    Como configurar na Z-API:
+                  </p>
+                  <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
+                    <li>Acesse sua instância no painel Z-API</li>
+                    <li>Vá em "Webhooks" no menu lateral</li>
+                    <li>Cole cada URL no campo correspondente</li>
+                    <li>Ative os webhooks que deseja receber</li>
+                    <li>Clique em "Salvar" na Z-API</li>
+                  </ol>
+                </div>
+
+                {/* Botões de ação */}
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      const webhooks = [
+                        `Ao enviar: ${webhookUrl}?event=on-send`,
+                        `Presença do chat: ${webhookUrl}?event=presence`,
+                        `Ao desconectar: ${webhookUrl}?event=on-disconnect`,
+                        `Receber status mensagem: ${webhookUrl}?event=message-status`,
+                        `Ao receber: ${webhookUrl}?event=on-receive`,
+                        `Ao conectar: ${webhookUrl}?event=on-connect`,
+                      ].join('\n');
+                      navigator.clipboard.writeText(webhooks);
+                      toast.success("Todas as URLs copiadas!");
+                    }}
+                  >
+                    <ClipboardList className="h-4 w-4 mr-2" />
+                    Copiar Todas as URLs
+                  </Button>
+                  <Button onClick={saveZAPI} disabled={updateZAPI.isPending}>
+                    {updateZAPI.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                    Salvar Configurações
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+            </div>
           )}
         </TabsContent>
         <TabsContent value="email">
