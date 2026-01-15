@@ -141,6 +141,109 @@ export type Database = {
           },
         ]
       }
+      orbit_audit_log: {
+        Row: {
+          acao: string
+          created_at: string | null
+          detalhes: Json | null
+          empresa_id: string | null
+          entidade: string
+          entidade_id: string | null
+          id: string
+          ip_address: string | null
+          user_id: string | null
+        }
+        Insert: {
+          acao: string
+          created_at?: string | null
+          detalhes?: Json | null
+          empresa_id?: string | null
+          entidade: string
+          entidade_id?: string | null
+          id?: string
+          ip_address?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          acao?: string
+          created_at?: string | null
+          detalhes?: Json | null
+          empresa_id?: string | null
+          entidade?: string
+          entidade_id?: string | null
+          id?: string
+          ip_address?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_audit_log_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_audit_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_campaign_approvals: {
+        Row: {
+          acao: string
+          campaign_id: string | null
+          created_at: string | null
+          empresa_id: string | null
+          id: string
+          motivo: string | null
+          user_id: string | null
+        }
+        Insert: {
+          acao: string
+          campaign_id?: string | null
+          created_at?: string | null
+          empresa_id?: string | null
+          id?: string
+          motivo?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          acao?: string
+          campaign_id?: string | null
+          created_at?: string | null
+          empresa_id?: string | null
+          id?: string
+          motivo?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_campaign_approvals_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_campaign_approvals_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_campaign_approvals_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_campaign_recipients: {
         Row: {
           campaign_id: string | null
@@ -748,6 +851,50 @@ export type Database = {
           },
         ]
       }
+      orbit_meta_config: {
+        Row: {
+          access_token: string | null
+          ativo: boolean | null
+          created_at: string | null
+          empresa_id: string | null
+          facebook_page_id: string | null
+          id: string
+          instagram_business_id: string | null
+          updated_at: string | null
+          webhook_verify_token: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          ativo?: boolean | null
+          created_at?: string | null
+          empresa_id?: string | null
+          facebook_page_id?: string | null
+          id?: string
+          instagram_business_id?: string | null
+          updated_at?: string | null
+          webhook_verify_token?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          ativo?: boolean | null
+          created_at?: string | null
+          empresa_id?: string | null
+          facebook_page_id?: string | null
+          id?: string
+          instagram_business_id?: string | null
+          updated_at?: string | null
+          webhook_verify_token?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_meta_config_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_pipeline_stages: {
         Row: {
           cor: string | null
@@ -990,6 +1137,41 @@ export type Database = {
             columns: ["prospect_id"]
             isOneToOne: false
             referencedRelation: "orbit_prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_whatsapp_daily_limits: {
+        Row: {
+          created_at: string | null
+          data: string
+          empresa_id: string | null
+          id: string
+          limite_diario: number | null
+          mensagens_enviadas: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          data?: string
+          empresa_id?: string | null
+          id?: string
+          limite_diario?: number | null
+          mensagens_enviadas?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          data?: string
+          empresa_id?: string | null
+          id?: string
+          limite_diario?: number | null
+          mensagens_enviadas?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_whatsapp_daily_limits_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
             referencedColumns: ["id"]
           },
         ]
