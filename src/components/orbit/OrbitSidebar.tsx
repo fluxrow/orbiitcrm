@@ -1,0 +1,78 @@
+import { Link, useLocation } from "react-router-dom";
+import {
+  Users,
+  MessageSquare,
+  Kanban,
+  Mail,
+  FileText,
+  Settings,
+  Search,
+  Rocket,
+  BarChart3,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const navigation = [
+  { name: "Prospects", href: "/orbit/prospects", icon: Users },
+  { name: "Conversas", href: "/orbit/conversas", icon: MessageSquare },
+  { name: "Funil", href: "/orbit/funil", icon: Kanban },
+  { name: "Campanhas", href: "/orbit/campanhas", icon: Mail },
+  { name: "Templates", href: "/orbit/templates", icon: FileText },
+  { name: "Lead Finder", href: "/orbit/lead-finder", icon: Search },
+  { name: "Analytics", href: "/orbit/analytics", icon: BarChart3 },
+  { name: "Configurações", href: "/orbit/config", icon: Settings },
+];
+
+export function OrbitSidebar() {
+  const location = useLocation();
+
+  return (
+    <aside className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col">
+      {/* Logo */}
+      <div className="p-6 border-b border-sidebar-border">
+        <Link to="/orbit" className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center">
+            <Rocket className="w-5 h-5 text-primary-foreground" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold gradient-text">ORBIT</h1>
+            <p className="text-xs text-muted-foreground">CRM Prospecção</p>
+          </div>
+        </Link>
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 p-4 space-y-1">
+        {navigation.map((item) => {
+          const isActive = location.pathname === item.href;
+          return (
+            <Link
+              key={item.name}
+              to={item.href}
+              className={cn(
+                "nav-link",
+                isActive && "nav-link-active"
+              )}
+            >
+              <item.icon className="w-5 h-5" />
+              <span>{item.name}</span>
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* User info */}
+      <div className="p-4 border-t border-sidebar-border">
+        <div className="flex items-center gap-3 px-3 py-2">
+          <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center">
+            <span className="text-sm font-medium text-primary">U</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">Usuário</p>
+            <p className="text-xs text-muted-foreground truncate">Admin</p>
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
