@@ -1,21 +1,55 @@
-import { useState } from "react";
-import { Navigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Rocket, Mail, Lock, User } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function AuthPage() {
+  const navigate = useNavigate();
   const { user, loading, signIn, signUp } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nome, setNome] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [checkingSetup, setCheckingSetup] = useState(true);
 
-  if (loading) {
+  useEffect(() => {
+    checkIfSetupNeeded();
+  }, []);
+
+  const checkIfSetupNeeded = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("user_roles")
+        .select("id")
+        .eq("role", "super_admin")
+        .limit(1);
+
+      if (error) {
+        console.error("Error checking super admin:", error);
+        setCheckingSetup(false);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        // No super admin exists, redirect to setup
+        navigate("/setup", { replace: true });
+        return;
+      }
+
+      setCheckingSetup(false);
+    } catch (err) {
+      console.error("Error:", err);
+      setCheckingSetup(false);
+    }
+  };
+
+  if (loading || checkingSetup) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />

@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useIsSuperAdmin } from "@/hooks/useUserRole";
 import NotFound from "./pages/NotFound";
 import AuthPage from "./pages/AuthPage";
+import SetupPage from "./pages/SetupPage";
 
 // Orbit CRM Pages
 import OrbitDashboard from "./pages/orbit/OrbitDashboard";
@@ -70,6 +71,7 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
 const AppRoutes = () => (
   <Routes>
     <Route path="/auth" element={<AuthPage />} />
+    <Route path="/setup" element={<SetupPage />} />
     <Route path="/" element={<Navigate to="/orbit" replace />} />
     
     {/* Protected Orbit CRM Routes */}

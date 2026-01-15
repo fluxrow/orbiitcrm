@@ -2,3 +2,6 @@ project_id = "oqsnzwkiwgqwopuaugxj"
 
 [functions.create-empresa]
 verify_jwt = false
+
+[functions.create-master-user]
+verify_jwt = false
