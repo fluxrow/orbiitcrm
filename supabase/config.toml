@@ -1,1 +1,4 @@
 project_id = "oqsnzwkiwgqwopuaugxj"
+
+[functions.create-empresa]
+verify_jwt = false
