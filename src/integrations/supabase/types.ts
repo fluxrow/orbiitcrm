@@ -14,7 +14,778 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      orbit_activities: {
+        Row: {
+          assunto: string
+          concluida: boolean | null
+          created_at: string | null
+          data_atividade: string | null
+          deal_id: string | null
+          descricao: string | null
+          id: string
+          prospect_id: string | null
+          responsavel_id: string | null
+          tipo: string
+        }
+        Insert: {
+          assunto: string
+          concluida?: boolean | null
+          created_at?: string | null
+          data_atividade?: string | null
+          deal_id?: string | null
+          descricao?: string | null
+          id?: string
+          prospect_id?: string | null
+          responsavel_id?: string | null
+          tipo: string
+        }
+        Update: {
+          assunto?: string
+          concluida?: boolean | null
+          created_at?: string | null
+          data_atividade?: string | null
+          deal_id?: string | null
+          descricao?: string | null
+          id?: string
+          prospect_id?: string | null
+          responsavel_id?: string | null
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_activities_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_activities_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_prospects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_activities_responsavel_id_fkey"
+            columns: ["responsavel_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_ai_config: {
+        Row: {
+          campos_cadastro: string[] | null
+          created_at: string | null
+          horario_fim: string | null
+          horario_inicio: string | null
+          id: string
+          mensagem_boas_vindas: string | null
+          mensagem_fora_horario: string | null
+          modo_automatico: boolean | null
+          prompt_treinamento: string | null
+          responder_fora_horario: boolean | null
+          tom_conversa: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          campos_cadastro?: string[] | null
+          created_at?: string | null
+          horario_fim?: string | null
+          horario_inicio?: string | null
+          id?: string
+          mensagem_boas_vindas?: string | null
+          mensagem_fora_horario?: string | null
+          modo_automatico?: boolean | null
+          prompt_treinamento?: string | null
+          responder_fora_horario?: boolean | null
+          tom_conversa?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          campos_cadastro?: string[] | null
+          created_at?: string | null
+          horario_fim?: string | null
+          horario_inicio?: string | null
+          id?: string
+          mensagem_boas_vindas?: string | null
+          mensagem_fora_horario?: string | null
+          modo_automatico?: boolean | null
+          prompt_treinamento?: string | null
+          responder_fora_horario?: boolean | null
+          tom_conversa?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      orbit_campaign_recipients: {
+        Row: {
+          campaign_id: string | null
+          created_at: string | null
+          email: string | null
+          enviado_em: string | null
+          erro: string | null
+          id: string
+          prospect_id: string | null
+          status: string | null
+          telefone: string | null
+        }
+        Insert: {
+          campaign_id?: string | null
+          created_at?: string | null
+          email?: string | null
+          enviado_em?: string | null
+          erro?: string | null
+          id?: string
+          prospect_id?: string | null
+          status?: string | null
+          telefone?: string | null
+        }
+        Update: {
+          campaign_id?: string | null
+          created_at?: string | null
+          email?: string | null
+          enviado_em?: string | null
+          erro?: string | null
+          id?: string
+          prospect_id?: string | null
+          status?: string | null
+          telefone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_campaign_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_campaign_recipients_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_campaigns: {
+        Row: {
+          aberturas: number | null
+          agendada_para: string | null
+          aprovacao_status: string | null
+          aprovado_em: string | null
+          aprovado_por: string | null
+          canal: string
+          cliques: number | null
+          created_at: string | null
+          created_by: string | null
+          enviados: number | null
+          falhas: number | null
+          filtros_json: Json | null
+          id: string
+          motivo_reprovacao: string | null
+          nome: string
+          publico_origem: string | null
+          respostas: number | null
+          status: string | null
+          template_id: string | null
+          total_destinatarios: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          aberturas?: number | null
+          agendada_para?: string | null
+          aprovacao_status?: string | null
+          aprovado_em?: string | null
+          aprovado_por?: string | null
+          canal: string
+          cliques?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          enviados?: number | null
+          falhas?: number | null
+          filtros_json?: Json | null
+          id?: string
+          motivo_reprovacao?: string | null
+          nome: string
+          publico_origem?: string | null
+          respostas?: number | null
+          status?: string | null
+          template_id?: string | null
+          total_destinatarios?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          aberturas?: number | null
+          agendada_para?: string | null
+          aprovacao_status?: string | null
+          aprovado_em?: string | null
+          aprovado_por?: string | null
+          canal?: string
+          cliques?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          enviados?: number | null
+          falhas?: number | null
+          filtros_json?: Json | null
+          id?: string
+          motivo_reprovacao?: string | null
+          nome?: string
+          publico_origem?: string | null
+          respostas?: number | null
+          status?: string | null
+          template_id?: string | null
+          total_destinatarios?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_campaigns_aprovado_por_fkey"
+            columns: ["aprovado_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_campaigns_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_campaigns_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_conversas: {
+        Row: {
+          ai_contexto: Json | null
+          canal: string | null
+          created_at: string | null
+          human_talk: boolean | null
+          human_user_id: string | null
+          id: string
+          mensagens_nao_lidas: number | null
+          prospect_id: string | null
+          status: string | null
+          telefone_whatsapp: string
+          ultima_mensagem_at: string | null
+          ultima_mensagem_preview: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          ai_contexto?: Json | null
+          canal?: string | null
+          created_at?: string | null
+          human_talk?: boolean | null
+          human_user_id?: string | null
+          id?: string
+          mensagens_nao_lidas?: number | null
+          prospect_id?: string | null
+          status?: string | null
+          telefone_whatsapp: string
+          ultima_mensagem_at?: string | null
+          ultima_mensagem_preview?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          ai_contexto?: Json | null
+          canal?: string | null
+          created_at?: string | null
+          human_talk?: boolean | null
+          human_user_id?: string | null
+          id?: string
+          mensagens_nao_lidas?: number | null
+          prospect_id?: string | null
+          status?: string | null
+          telefone_whatsapp?: string
+          ultima_mensagem_at?: string | null
+          ultima_mensagem_preview?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_conversas_human_user_id_fkey"
+            columns: ["human_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_conversas_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_deals: {
+        Row: {
+          created_at: string | null
+          data_prevista_fechamento: string | null
+          etapa_id: string | null
+          id: string
+          motivo_perda: string | null
+          probabilidade: number | null
+          prospect_id: string | null
+          responsavel_id: string | null
+          titulo: string
+          updated_at: string | null
+          valor_estimado: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          data_prevista_fechamento?: string | null
+          etapa_id?: string | null
+          id?: string
+          motivo_perda?: string | null
+          probabilidade?: number | null
+          prospect_id?: string | null
+          responsavel_id?: string | null
+          titulo: string
+          updated_at?: string | null
+          valor_estimado?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          data_prevista_fechamento?: string | null
+          etapa_id?: string | null
+          id?: string
+          motivo_perda?: string | null
+          probabilidade?: number | null
+          prospect_id?: string | null
+          responsavel_id?: string | null
+          titulo?: string
+          updated_at?: string | null
+          valor_estimado?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_deals_etapa_id_fkey"
+            columns: ["etapa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_pipeline_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_deals_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_prospects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_deals_responsavel_id_fkey"
+            columns: ["responsavel_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_distribuicao_config: {
+        Row: {
+          ativo: boolean | null
+          created_at: string | null
+          id: string
+          ordem_fila: number | null
+          total_atribuicoes: number | null
+          ultima_atribuicao: string | null
+          vendedor_id: string | null
+        }
+        Insert: {
+          ativo?: boolean | null
+          created_at?: string | null
+          id?: string
+          ordem_fila?: number | null
+          total_atribuicoes?: number | null
+          ultima_atribuicao?: string | null
+          vendedor_id?: string | null
+        }
+        Update: {
+          ativo?: boolean | null
+          created_at?: string | null
+          id?: string
+          ordem_fila?: number | null
+          total_atribuicoes?: number | null
+          ultima_atribuicao?: string | null
+          vendedor_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_distribuicao_config_vendedor_id_fkey"
+            columns: ["vendedor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_integrations_config: {
+        Row: {
+          ativo: boolean | null
+          config_json: Json | null
+          created_at: string | null
+          id: string
+          tipo: string
+          updated_at: string | null
+        }
+        Insert: {
+          ativo?: boolean | null
+          config_json?: Json | null
+          created_at?: string | null
+          id?: string
+          tipo: string
+          updated_at?: string | null
+        }
+        Update: {
+          ativo?: boolean | null
+          config_json?: Json | null
+          created_at?: string | null
+          id?: string
+          tipo?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      orbit_mensagens: {
+        Row: {
+          canal: string | null
+          conversa_id: string | null
+          direcao: string
+          erro: string | null
+          id: string
+          mensagem: string | null
+          provider_message_id: string | null
+          status: string | null
+          timestamp: string | null
+          tipo_midia: string | null
+          url_midia: string | null
+        }
+        Insert: {
+          canal?: string | null
+          conversa_id?: string | null
+          direcao: string
+          erro?: string | null
+          id?: string
+          mensagem?: string | null
+          provider_message_id?: string | null
+          status?: string | null
+          timestamp?: string | null
+          tipo_midia?: string | null
+          url_midia?: string | null
+        }
+        Update: {
+          canal?: string | null
+          conversa_id?: string | null
+          direcao?: string
+          erro?: string | null
+          id?: string
+          mensagem?: string | null
+          provider_message_id?: string | null
+          status?: string | null
+          timestamp?: string | null
+          tipo_midia?: string | null
+          url_midia?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_mensagens_conversa_id_fkey"
+            columns: ["conversa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_conversas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_message_templates: {
+        Row: {
+          assunto_email: string | null
+          ativo: boolean | null
+          canal: string
+          categoria: string | null
+          corpo_html: string | null
+          corpo_texto: string | null
+          created_at: string | null
+          id: string
+          nome: string
+          updated_at: string | null
+          variaveis: string[] | null
+        }
+        Insert: {
+          assunto_email?: string | null
+          ativo?: boolean | null
+          canal: string
+          categoria?: string | null
+          corpo_html?: string | null
+          corpo_texto?: string | null
+          created_at?: string | null
+          id?: string
+          nome: string
+          updated_at?: string | null
+          variaveis?: string[] | null
+        }
+        Update: {
+          assunto_email?: string | null
+          ativo?: boolean | null
+          canal?: string
+          categoria?: string | null
+          corpo_html?: string | null
+          corpo_texto?: string | null
+          created_at?: string | null
+          id?: string
+          nome?: string
+          updated_at?: string | null
+          variaveis?: string[] | null
+        }
+        Relationships: []
+      }
+      orbit_pipeline_stages: {
+        Row: {
+          cor: string | null
+          created_at: string | null
+          id: string
+          is_lost: boolean | null
+          is_won: boolean | null
+          nome: string
+          ordem: number
+        }
+        Insert: {
+          cor?: string | null
+          created_at?: string | null
+          id?: string
+          is_lost?: boolean | null
+          is_won?: boolean | null
+          nome: string
+          ordem: number
+        }
+        Update: {
+          cor?: string | null
+          created_at?: string | null
+          id?: string
+          is_lost?: boolean | null
+          is_won?: boolean | null
+          nome?: string
+          ordem?: number
+        }
+        Relationships: []
+      }
+      orbit_prospects: {
+        Row: {
+          cidade: string | null
+          cnpj_cpf: string | null
+          consentimento_email: boolean | null
+          consentimento_whatsapp: boolean | null
+          created_at: string | null
+          email_principal: string | null
+          estado: string | null
+          id: string
+          nome_fantasia: string | null
+          nome_razao: string
+          observacoes: string | null
+          optout_email: boolean | null
+          optout_whatsapp: boolean | null
+          origem_contato: string | null
+          origem_lead: string | null
+          responsavel_id: string | null
+          score: number | null
+          segmento: string | null
+          status_qualificacao: string | null
+          tags: string[] | null
+          telefone_whatsapp: string | null
+          tipo: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          cidade?: string | null
+          cnpj_cpf?: string | null
+          consentimento_email?: boolean | null
+          consentimento_whatsapp?: boolean | null
+          created_at?: string | null
+          email_principal?: string | null
+          estado?: string | null
+          id?: string
+          nome_fantasia?: string | null
+          nome_razao: string
+          observacoes?: string | null
+          optout_email?: boolean | null
+          optout_whatsapp?: boolean | null
+          origem_contato?: string | null
+          origem_lead?: string | null
+          responsavel_id?: string | null
+          score?: number | null
+          segmento?: string | null
+          status_qualificacao?: string | null
+          tags?: string[] | null
+          telefone_whatsapp?: string | null
+          tipo?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          cidade?: string | null
+          cnpj_cpf?: string | null
+          consentimento_email?: boolean | null
+          consentimento_whatsapp?: boolean | null
+          created_at?: string | null
+          email_principal?: string | null
+          estado?: string | null
+          id?: string
+          nome_fantasia?: string | null
+          nome_razao?: string
+          observacoes?: string | null
+          optout_email?: boolean | null
+          optout_whatsapp?: boolean | null
+          origem_contato?: string | null
+          origem_lead?: string | null
+          responsavel_id?: string | null
+          score?: number | null
+          segmento?: string | null
+          status_qualificacao?: string | null
+          tags?: string[] | null
+          telefone_whatsapp?: string | null
+          tipo?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_prospects_responsavel_id_fkey"
+            columns: ["responsavel_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_transferencias: {
+        Row: {
+          created_at: string | null
+          de_vendedor_id: string | null
+          id: string
+          motivo: string | null
+          notificacao_enviada: boolean | null
+          para_vendedor_id: string | null
+          prospect_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          de_vendedor_id?: string | null
+          id?: string
+          motivo?: string | null
+          notificacao_enviada?: boolean | null
+          para_vendedor_id?: string | null
+          prospect_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          de_vendedor_id?: string | null
+          id?: string
+          motivo?: string | null
+          notificacao_enviada?: boolean | null
+          para_vendedor_id?: string | null
+          prospect_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_transferencias_de_vendedor_id_fkey"
+            columns: ["de_vendedor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_transferencias_para_vendedor_id_fkey"
+            columns: ["para_vendedor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_transferencias_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_zapi_config: {
+        Row: {
+          ativo: boolean | null
+          client_token: string | null
+          created_at: string | null
+          id: string
+          instance_id: string | null
+          token: string | null
+          updated_at: string | null
+          webhook_url: string | null
+        }
+        Insert: {
+          ativo?: boolean | null
+          client_token?: string | null
+          created_at?: string | null
+          id?: string
+          instance_id?: string | null
+          token?: string | null
+          updated_at?: string | null
+          webhook_url?: string | null
+        }
+        Update: {
+          ativo?: boolean | null
+          client_token?: string | null
+          created_at?: string | null
+          id?: string
+          instance_id?: string | null
+          token?: string | null
+          updated_at?: string | null
+          webhook_url?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          ativo: boolean | null
+          avatar_url: string | null
+          cargo: string | null
+          created_at: string | null
+          email: string | null
+          id: string
+          nome: string | null
+          telefone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          ativo?: boolean | null
+          avatar_url?: string | null
+          cargo?: string | null
+          created_at?: string | null
+          email?: string | null
+          id: string
+          nome?: string | null
+          telefone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          ativo?: boolean | null
+          avatar_url?: string | null
+          cargo?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          nome?: string | null
+          telefone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

@@ -3,7 +3,9 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import NotFound from "./pages/NotFound";
+import AuthPage from "./pages/AuthPage";
 
 // Orbit CRM Pages
 import OrbitDashboard from "./pages/orbit/OrbitDashboard";
@@ -18,30 +20,53 @@ import AnalyticsPage from "./pages/orbit/AnalyticsPage";
 
 const queryClient = new QueryClient();
 
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/auth" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+const AppRoutes = () => (
+  <Routes>
+    <Route path="/auth" element={<AuthPage />} />
+    <Route path="/" element={<Navigate to="/orbit" replace />} />
+    
+    {/* Protected Orbit CRM Routes */}
+    <Route path="/orbit" element={<ProtectedRoute><OrbitDashboard /></ProtectedRoute>} />
+    <Route path="/orbit/prospects" element={<ProtectedRoute><ProspectsPage /></ProtectedRoute>} />
+    <Route path="/orbit/conversas" element={<ProtectedRoute><ConversasPage /></ProtectedRoute>} />
+    <Route path="/orbit/funil" element={<ProtectedRoute><FunilPage /></ProtectedRoute>} />
+    <Route path="/orbit/campanhas" element={<ProtectedRoute><CampanhasPage /></ProtectedRoute>} />
+    <Route path="/orbit/templates" element={<ProtectedRoute><TemplatesPage /></ProtectedRoute>} />
+    <Route path="/orbit/lead-finder" element={<ProtectedRoute><LeadFinderPage /></ProtectedRoute>} />
+    <Route path="/orbit/config" element={<ProtectedRoute><ConfigPage /></ProtectedRoute>} />
+    <Route path="/orbit/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
+    
+    <Route path="*" element={<NotFound />} />
+  </Routes>
+);
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          {/* Redirect root to Orbit dashboard */}
-          <Route path="/" element={<Navigate to="/orbit" replace />} />
-          
-          {/* Orbit CRM Routes */}
-          <Route path="/orbit" element={<OrbitDashboard />} />
-          <Route path="/orbit/prospects" element={<ProspectsPage />} />
-          <Route path="/orbit/conversas" element={<ConversasPage />} />
-          <Route path="/orbit/funil" element={<FunilPage />} />
-          <Route path="/orbit/campanhas" element={<CampanhasPage />} />
-          <Route path="/orbit/templates" element={<TemplatesPage />} />
-          <Route path="/orbit/lead-finder" element={<LeadFinderPage />} />
-          <Route path="/orbit/config" element={<ConfigPage />} />
-          <Route path="/orbit/analytics" element={<AnalyticsPage />} />
-          
-          {/* Catch-all */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthProvider>
+          <AppRoutes />
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

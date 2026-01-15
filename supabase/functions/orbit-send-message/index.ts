@@ -1,0 +1,120 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    // Verificar autenticação
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claims, error: claimsError } = await supabase.auth.getUser(token);
+    if (claimsError || !claims?.user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { conversa_id, mensagem, telefone, canal } = await req.json();
+
+    if (!conversa_id || !mensagem) {
+      return new Response(JSON.stringify({ error: "Missing required fields" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Buscar config Z-API
+    const { data: zapiConfig } = await supabase
+      .from("orbit_zapi_config")
+      .select("*")
+      .eq("ativo", true)
+      .maybeSingle();
+
+    let messageStatus = "pendente";
+    let providerId = null;
+
+    if (zapiConfig?.instance_id && zapiConfig?.token && telefone) {
+      try {
+        const response = await fetch(
+          `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-text`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Client-Token": zapiConfig.client_token || "",
+            },
+            body: JSON.stringify({
+              phone: telefone,
+              message: mensagem,
+            }),
+          }
+        );
+
+        const result = await response.json();
+        messageStatus = response.ok ? "enviada" : "falhou";
+        providerId = result.messageId;
+      } catch (error) {
+        console.error("[orbit-send-message] Erro Z-API:", error);
+        messageStatus = "falhou";
+      }
+    }
+
+    // Salvar mensagem
+    const { data: novaMensagem, error: msgError } = await supabase
+      .from("orbit_mensagens")
+      .insert({
+        conversa_id,
+        direcao: "OUT",
+        mensagem,
+        canal: canal || "whatsapp",
+        status: messageStatus,
+        provider_message_id: providerId,
+      })
+      .select()
+      .single();
+
+    if (msgError) throw msgError;
+
+    // Atualizar conversa
+    await supabase
+      .from("orbit_conversas")
+      .update({
+        ultima_mensagem_at: new Date().toISOString(),
+        ultima_mensagem_preview: mensagem.substring(0, 100),
+        mensagens_nao_lidas: 0,
+      })
+      .eq("id", conversa_id);
+
+    return new Response(JSON.stringify({ ok: true, mensagem: novaMensagem, status: messageStatus }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[orbit-send-message] Erro:", message);
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
