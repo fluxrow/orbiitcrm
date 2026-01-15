@@ -1,167 +1,36 @@
+import { useState } from "react";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Plus,
-  MessageCircle,
-  Mail,
-  Copy,
-  Pencil,
-  Trash2,
-  Sparkles,
-} from "lucide-react";
-
-const mockTemplates = {
-  whatsapp: [
-    {
-      id: "1",
-      nome: "Primeira Abordagem",
-      categoria: "prospecção",
-      conteudo:
-        "Olá {{nome}}! Vi que vocês trabalham com {{segmento}}. Temos soluções que podem ajudar a aumentar sua produtividade em até 40%. Podemos conversar?",
-      variaveis: ["nome", "segmento"],
-      uso: 156,
-    },
-    {
-      id: "2",
-      nome: "Follow-up 3 dias",
-      categoria: "follow-up",
-      conteudo:
-        "Oi {{nome}}, tudo bem? Vi que você demonstrou interesse anteriormente. Gostaria de agendar uma conversa rápida de 15 minutos essa semana?",
-      variaveis: ["nome"],
-      uso: 89,
-    },
-    {
-      id: "3",
-      nome: "Proposta Enviada",
-      categoria: "proposta",
-      conteudo:
-        "{{nome}}, acabei de enviar a proposta para seu email. Qualquer dúvida, estou à disposição! Quando podemos conversar sobre os próximos passos?",
-      variaveis: ["nome"],
-      uso: 45,
-    },
-  ],
-  email: [
-    {
-      id: "4",
-      nome: "Introdução Formal",
-      categoria: "prospecção",
-      conteudo:
-        "Prezado(a) {{nome}},\n\nMeu nome é {{remetente}} e trabalho na {{empresa}}. Gostaria de apresentar nossa solução que tem ajudado empresas como a {{empresa_prospect}} a...",
-      variaveis: ["nome", "remetente", "empresa", "empresa_prospect"],
-      uso: 234,
-    },
-    {
-      id: "5",
-      nome: "Case de Sucesso",
-      categoria: "nurturing",
-      conteudo:
-        "Olá {{nome}},\n\nQuero compartilhar um case que pode ser relevante para vocês. A empresa X aumentou suas vendas em 60% após implementar nossa solução...",
-      variaveis: ["nome"],
-      uso: 78,
-    },
-  ],
-};
-
-const categoriaColors: Record<string, string> = {
-  prospecção: "bg-primary/20 text-primary",
-  "follow-up": "bg-warning/20 text-warning",
-  proposta: "bg-success/20 text-success",
-  nurturing: "bg-accent/20 text-accent",
-};
+import { Plus, Sparkles, Copy, Trash2, MessageSquare, Mail, Loader2 } from "lucide-react";
+import { useOrbitTemplates, useDeleteTemplate } from "@/hooks/useOrbitTemplates";
+import { toast } from "sonner";
 
 export default function TemplatesPage() {
+  const [tab, setTab] = useState("whatsapp");
+  const { data: templates, isLoading } = useOrbitTemplates({ canal: tab });
+  const deleteTemplate = useDeleteTemplate();
+
   return (
     <OrbitLayout>
-      <PageHeader
-        title="Templates"
-        description="Gerencie seus modelos de mensagem"
-        action={
-          <div className="flex items-center gap-2">
-            <Button variant="secondary">
-              <Sparkles className="w-4 h-4 mr-2" />
-              Gerar com IA
-            </Button>
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              Novo Template
-            </Button>
-          </div>
-        }
-      />
-
-      <Tabs defaultValue="whatsapp">
-        <TabsList>
-          <TabsTrigger value="whatsapp" className="gap-2">
-            <MessageCircle className="w-4 h-4" />
-            WhatsApp
-          </TabsTrigger>
-          <TabsTrigger value="email" className="gap-2">
-            <Mail className="w-4 h-4" />
-            Email
-          </TabsTrigger>
-        </TabsList>
-
-        {["whatsapp", "email"].map((tipo) => (
-          <TabsContent key={tipo} value={tipo} className="mt-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {mockTemplates[tipo as keyof typeof mockTemplates].map(
-                (template) => (
-                  <div key={template.id} className="glass-card p-5">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h3 className="font-semibold">{template.nome}</h3>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge
-                            className={
-                              categoriaColors[template.categoria] ||
-                              "bg-muted text-muted-foreground"
-                            }
-                          >
-                            {template.categoria}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {template.uso} usos
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon">
-                          <Copy className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon">
-                          <Pencil className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon">
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="p-3 rounded-lg bg-secondary/50 text-sm">
-                      <p className="whitespace-pre-wrap line-clamp-4">
-                        {template.conteudo}
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap gap-1.5 mt-3">
-                      {template.variaveis.map((v) => (
-                        <span
-                          key={v}
-                          className="text-xs px-2 py-0.5 rounded bg-primary/10 text-primary"
-                        >
-                          {`{{${v}}}`}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )
-              )}
+      <PageHeader title="Templates" description="Modelos de mensagem" actions={<><Button variant="outline" size="sm"><Sparkles className="h-4 w-4 mr-2" />Gerar IA</Button><Button size="sm"><Plus className="h-4 w-4 mr-2" />Novo</Button></>} />
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList className="mb-6"><TabsTrigger value="whatsapp"><MessageSquare className="h-4 w-4 mr-2" />WhatsApp</TabsTrigger><TabsTrigger value="email"><Mail className="h-4 w-4 mr-2" />Email</TabsTrigger></TabsList>
+        <TabsContent value={tab}>
+          {isLoading ? <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin" /></div> : templates?.length === 0 ? <div className="text-center py-12 text-muted-foreground">Nenhum template</div> : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {templates?.map((t) => (
+                <div key={t.id} className="bg-card border rounded-lg p-4">
+                  <div className="flex justify-between mb-3"><h3 className="font-semibold">{t.nome}</h3><Badge variant="secondary">{t.categoria}</Badge></div>
+                  <div className="bg-muted/50 rounded p-3 mb-3"><p className="text-sm text-muted-foreground line-clamp-4">{t.corpo_texto || "Sem conteúdo"}</p></div>
+                  <div className="flex justify-end gap-2"><Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(t.corpo_texto || ""); toast.success("Copiado!"); }}><Copy className="h-4 w-4" /></Button><Button variant="ghost" size="sm" className="text-destructive" onClick={() => deleteTemplate.mutateAsync(t.id)}><Trash2 className="h-4 w-4" /></Button></div>
+                </div>
+              ))}
             </div>
-          </TabsContent>
-        ))}
+          )}
+        </TabsContent>
       </Tabs>
     </OrbitLayout>
   );
