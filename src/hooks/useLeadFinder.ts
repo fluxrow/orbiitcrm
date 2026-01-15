@@ -129,10 +129,15 @@ export function useLeadSources() {
 export function useCreateLeadSource() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (source: Partial<LeadSource>) => {
+    mutationFn: async (source: { nome: string; tipo: string; config?: Record<string, any>; ativo?: boolean }) => {
       const { data, error } = await supabase
         .from("orbit_lead_sources")
-        .insert(source)
+        .insert({
+          nome: source.nome,
+          tipo: source.tipo,
+          config: source.config || {},
+          ativo: source.ativo ?? true,
+        })
         .select()
         .single();
       if (error) throw error;
@@ -186,10 +191,13 @@ export function useICPs() {
 export function useCreateICP() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (icp: Partial<ICP>) => {
+    mutationFn: async (icp: { nome: string; filtros?: Record<string, any> }) => {
       const { data, error } = await supabase
         .from("orbit_icps")
-        .insert(icp)
+        .insert({
+          nome: icp.nome,
+          filtros: icp.filtros || {},
+        })
         .select()
         .single();
       if (error) throw error;
@@ -240,10 +248,24 @@ export function useLeadSearches() {
 export function useCreateLeadSearch() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (search: Partial<LeadSearch>) => {
+    mutationFn: async (search: { 
+      nome: string; 
+      source_id?: string | null; 
+      icp_id?: string | null; 
+      filtros?: Record<string, any>; 
+      observacoes?: string | null;
+      status?: string;
+    }) => {
       const { data, error } = await supabase
         .from("orbit_lead_searches")
-        .insert(search)
+        .insert({
+          nome: search.nome,
+          source_id: search.source_id || null,
+          icp_id: search.icp_id || null,
+          filtros: search.filtros || {},
+          observacoes: search.observacoes || null,
+          status: search.status || "pendente",
+        })
         .select()
         .single();
       if (error) throw error;
