@@ -1,134 +1,103 @@
 import { useState } from "react";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
-import { ProspectCard } from "@/components/orbit/ProspectCard";
-import { Button } from "@/components/ui/button";
+import { ProspectDialog } from "@/components/orbit/ProspectDialog";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Plus, Search, Filter, Upload } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Search, Plus, Filter, Loader2 } from "lucide-react";
+import { useOrbitProspects, useDeleteProspect } from "@/hooks/useOrbitProspects";
+import { toast } from "sonner";
+import type { Tables } from "@/integrations/supabase/types";
 
-// Mock data
-const mockProspects = [
-  {
-    id: "1",
-    nome_razao: "Tech Solutions Ltda",
-    nome_fantasia: "TechSol",
-    email_principal: "contato@techsol.com.br",
-    telefone: "+5511999999999",
-    cidade: "São Paulo",
-    segmento: "Tecnologia",
-    status: "novo" as const,
-    canal_origem: "whatsapp" as const,
-  },
-  {
-    id: "2",
-    nome_razao: "Indústria ABC S.A.",
-    nome_fantasia: "ABC Industries",
-    email_principal: "vendas@abc.com.br",
-    telefone: "+5511888888888",
-    cidade: "Campinas",
-    segmento: "Manufatura",
-    status: "em_contato" as const,
-    canal_origem: "email" as const,
-  },
-  {
-    id: "3",
-    nome_razao: "Consultoria XYZ",
-    email_principal: "info@xyz.com.br",
-    cidade: "Rio de Janeiro",
-    segmento: "Consultoria",
-    status: "qualificado" as const,
-    canal_origem: "instagram" as const,
-  },
-  {
-    id: "4",
-    nome_razao: "Logística Express",
-    nome_fantasia: "LogExpress",
-    email_principal: "contato@logexpress.com.br",
-    telefone: "+5521777777777",
-    cidade: "Curitiba",
-    segmento: "Logística",
-    status: "em_contato" as const,
-    canal_origem: "manual" as const,
-  },
+const STATUS_OPTIONS = [
+  { value: "all", label: "Todos os Status" },
+  { value: "novo", label: "Novo" },
+  { value: "em_qualificacao", label: "Em Qualificação" },
+  { value: "qualificado", label: "Qualificado" },
+  { value: "desqualificado", label: "Desqualificado" },
 ];
 
 export default function ProspectsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedProspect, setSelectedProspect] = useState<Tables<"orbit_prospects"> | null>(null);
 
-  const filteredProspects = mockProspects.filter((prospect) => {
-    const matchesSearch =
-      prospect.nome_razao.toLowerCase().includes(search.toLowerCase()) ||
-      prospect.nome_fantasia?.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus =
-      statusFilter === "all" || prospect.status === statusFilter;
-    return matchesSearch && matchesStatus;
+  const { data: prospects, isLoading } = useOrbitProspects({
+    search: search || undefined,
+    status_qualificacao: statusFilter,
   });
+  const deleteProspect = useDeleteProspect();
+
+  const handleEdit = (prospect: Tables<"orbit_prospects">) => {
+    setSelectedProspect(prospect);
+    setDialogOpen(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (confirm("Excluir este prospect?")) {
+      try {
+        await deleteProspect.mutateAsync(id);
+        toast.success("Prospect excluído!");
+      } catch { toast.error("Erro ao excluir"); }
+    }
+  };
+
+  const getStatusColor = (status: string | null) => {
+    const colors: Record<string, string> = {
+      novo: "bg-blue-500/20 text-blue-400",
+      em_qualificacao: "bg-yellow-500/20 text-yellow-400",
+      qualificado: "bg-green-500/20 text-green-400",
+      desqualificado: "bg-red-500/20 text-red-400",
+    };
+    return colors[status || ""] || "bg-muted text-muted-foreground";
+  };
 
   return (
     <OrbitLayout>
       <PageHeader
         title="Prospects"
-        description="Gerencie seus prospects e leads"
-        action={
-          <div className="flex items-center gap-2">
-            <Button variant="secondary">
-              <Upload className="w-4 h-4 mr-2" />
-              Importar
-            </Button>
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              Novo Prospect
-            </Button>
-          </div>
-        }
+        description="Gerencie seus leads e prospects"
+        actions={<Button size="sm" onClick={() => { setSelectedProspect(null); setDialogOpen(true); }}><Plus className="h-4 w-4 mr-2" />Novo Prospect</Button>}
       />
 
-      {/* Filters */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por nome..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
-          />
+      <div className="flex gap-4 mb-6">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input placeholder="Buscar..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px]">
-            <Filter className="w-4 h-4 mr-2" />
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos</SelectItem>
-            <SelectItem value="novo">Novos</SelectItem>
-            <SelectItem value="em_contato">Em Contato</SelectItem>
-            <SelectItem value="qualificado">Qualificados</SelectItem>
-            <SelectItem value="nao_qualificado">Não Qualificados</SelectItem>
-          </SelectContent>
+          <SelectTrigger className="w-[180px]"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectContent>{STATUS_OPTIONS.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
         </Select>
       </div>
 
-      {/* Prospects Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {filteredProspects.map((prospect) => (
-          <ProspectCard key={prospect.id} prospect={prospect} />
-        ))}
-      </div>
-
-      {filteredProspects.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">Nenhum prospect encontrado</p>
+      {isLoading ? (
+        <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+      ) : prospects?.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">Nenhum prospect encontrado.</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {prospects?.map((p) => (
+            <div key={p.id} className="bg-card border border-border rounded-lg p-4 hover:border-primary/50 cursor-pointer" onClick={() => handleEdit(p)}>
+              <div className="flex justify-between mb-2">
+                <h3 className="font-semibold truncate">{p.nome_razao}</h3>
+                <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(p.status_qualificacao)}`}>{p.status_qualificacao}</span>
+              </div>
+              <div className="text-sm text-muted-foreground space-y-1">
+                {p.email_principal && <p className="truncate">{p.email_principal}</p>}
+                {p.telefone_whatsapp && <p>{p.telefone_whatsapp}</p>}
+              </div>
+              <div className="flex justify-between mt-3 pt-2 border-t border-border">
+                <span className="text-xs text-muted-foreground">{p.origem_contato}</span>
+                <Button variant="ghost" size="sm" className="text-destructive" onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}>Excluir</Button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
+      <ProspectDialog open={dialogOpen} onOpenChange={setDialogOpen} prospect={selectedProspect} />
     </OrbitLayout>
   );
 }

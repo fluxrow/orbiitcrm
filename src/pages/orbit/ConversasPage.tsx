@@ -1,199 +1,67 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
-import { ConversationItem } from "@/components/orbit/ConversationItem";
-import { ChatMessage } from "@/components/orbit/ChatMessage";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Search,
-  Send,
-  Paperclip,
-  Smile,
-  Phone,
-  Video,
-  MoreVertical,
-  Sparkles,
-  MessageCircle,
-  Instagram,
-  Mail,
-} from "lucide-react";
-
-const mockConversations = [
-  {
-    id: "1",
-    nome: "João Silva",
-    ultimaMensagem: "Perfeito, vamos agendar a reunião",
-    data: "10:30",
-    naoLidas: 2,
-    canal: "whatsapp" as const,
-  },
-  {
-    id: "2",
-    nome: "Maria Santos",
-    ultimaMensagem: "Enviamos a proposta por email",
-    data: "Ontem",
-    naoLidas: 0,
-    canal: "email" as const,
-  },
-  {
-    id: "3",
-    nome: "Pedro Costa",
-    ultimaMensagem: "Vi seu perfil e gostaria de saber mais",
-    data: "Ontem",
-    naoLidas: 1,
-    canal: "instagram" as const,
-  },
-];
-
-const mockMessages = [
-  {
-    id: "1",
-    conteudo: "Olá! Vi que vocês trabalham com automação. Gostaria de saber mais sobre os serviços.",
-    tipo: "recebida" as const,
-    data: "2024-01-15T10:00:00",
-    canal: "whatsapp" as const,
-  },
-  {
-    id: "2",
-    conteudo: "Olá João! Sim, trabalhamos com automação de processos empresariais. Posso te explicar melhor?",
-    tipo: "enviada" as const,
-    data: "2024-01-15T10:05:00",
-    status: "lida" as const,
-    canal: "whatsapp" as const,
-  },
-  {
-    id: "3",
-    conteudo: "Claro! Vocês atendem empresas de médio porte? Temos cerca de 50 funcionários.",
-    tipo: "recebida" as const,
-    data: "2024-01-15T10:15:00",
-    canal: "whatsapp" as const,
-  },
-  {
-    id: "4",
-    conteudo: "Com certeza! Temos soluções específicas para empresas do seu porte. Podemos agendar uma demonstração?",
-    tipo: "enviada" as const,
-    data: "2024-01-15T10:20:00",
-    status: "entregue" as const,
-    canal: "whatsapp" as const,
-  },
-  {
-    id: "5",
-    conteudo: "Perfeito, vamos agendar a reunião",
-    tipo: "recebida" as const,
-    data: "2024-01-15T10:30:00",
-    canal: "whatsapp" as const,
-  },
-];
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Search, Send, Sparkles, MessageSquare, Bot, User, Loader2 } from "lucide-react";
+import { useOrbitConversas, useAssumeConversation, useReleaseConversation } from "@/hooks/useOrbitConversas";
+import { useOrbitMensagens, useSendMessage } from "@/hooks/useOrbitMensagens";
+import { toast } from "sonner";
+import { format } from "date-fns";
 
 export default function ConversasPage() {
-  const [activeConversation, setActiveConversation] = useState(mockConversations[0]);
-  const [messageInput, setMessageInput] = useState("");
-  const [activeTab, setActiveTab] = useState("all");
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [msg, setMsg] = useState("");
+  const [tab, setTab] = useState("all");
+  const [search, setSearch] = useState("");
+  const endRef = useRef<HTMLDivElement>(null);
+
+  const { data: conversas, isLoading } = useOrbitConversas();
+  const { data: mensagens } = useOrbitMensagens(activeId || undefined);
+  const sendMessage = useSendMessage();
+  const assume = useAssumeConversation();
+  const release = useReleaseConversation();
+
+  const filtered = conversas?.filter((c) => (tab === "all" || c.canal === tab) && (!search || c.telefone_whatsapp.includes(search)));
+  const active = conversas?.find((c) => c.id === activeId);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [mensagens]);
+
+  const handleSend = async () => {
+    if (!msg.trim() || !activeId) return;
+    try { await sendMessage.mutateAsync({ conversa_id: activeId, mensagem: msg }); setMsg(""); } catch { toast.error("Erro ao enviar"); }
+  };
 
   return (
     <OrbitLayout>
-      <div className="flex h-[calc(100vh-3rem)] -m-6">
-        {/* Conversations List */}
-        <div className="w-80 border-r border-border flex flex-col bg-card/50">
-          <div className="p-4 border-b border-border">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input placeholder="Buscar conversas..." className="pl-10" />
-            </div>
+      <div className="flex h-[calc(100vh-120px)] border rounded-lg overflow-hidden">
+        <div className="w-80 border-r flex flex-col">
+          <div className="p-4 border-b">
+            <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Buscar..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" /></div>
+            <Tabs value={tab} onValueChange={setTab} className="mt-2"><TabsList className="w-full"><TabsTrigger value="all" className="flex-1">Todas</TabsTrigger><TabsTrigger value="whatsapp" className="flex-1">WA</TabsTrigger></TabsList></Tabs>
           </div>
-
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="px-4 py-2">
-            <TabsList className="w-full">
-              <TabsTrigger value="all" className="flex-1">Todas</TabsTrigger>
-              <TabsTrigger value="whatsapp" className="flex-1">
-                <MessageCircle className="w-4 h-4" />
-              </TabsTrigger>
-              <TabsTrigger value="instagram" className="flex-1">
-                <Instagram className="w-4 h-4" />
-              </TabsTrigger>
-              <TabsTrigger value="email" className="flex-1">
-                <Mail className="w-4 h-4" />
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-
-          <div className="flex-1 overflow-auto p-2 space-y-1">
-            {mockConversations.map((conv) => (
-              <ConversationItem
-                key={conv.id}
-                conversation={conv}
-                isActive={activeConversation.id === conv.id}
-                onClick={() => setActiveConversation(conv)}
-              />
+          <ScrollArea className="flex-1">
+            {isLoading ? <div className="flex justify-center py-8"><Loader2 className="animate-spin" /></div> : filtered?.map((c) => (
+              <div key={c.id} onClick={() => setActiveId(c.id)} className={`p-4 border-b cursor-pointer hover:bg-muted/50 ${activeId === c.id ? "bg-muted" : ""}`}>
+                <div className="flex gap-3"><Avatar className="h-10 w-10"><AvatarFallback>{c.telefone_whatsapp[0]}</AvatarFallback></Avatar><div className="flex-1 min-w-0"><span className="font-medium truncate block">{(c.prospect as any)?.nome_razao || c.telefone_whatsapp}</span><p className="text-sm text-muted-foreground truncate">{c.ultima_mensagem_preview || "Sem mensagens"}</p></div></div>
+              </div>
             ))}
-          </div>
+          </ScrollArea>
         </div>
-
-        {/* Chat Area */}
         <div className="flex-1 flex flex-col">
-          {/* Chat Header */}
-          <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-card/50">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
-                <span className="font-medium">
-                  {activeConversation.nome.charAt(0)}
-                </span>
+          {active ? (
+            <>
+              <div className="p-4 border-b flex justify-between">
+                <div className="flex gap-3"><Avatar><AvatarFallback>{active.telefone_whatsapp[0]}</AvatarFallback></Avatar><div><h3 className="font-semibold">{(active.prospect as any)?.nome_razao || active.telefone_whatsapp}</h3><Badge variant="outline">{active.human_talk ? <><User className="h-3 w-3 mr-1" />Humano</> : <><Bot className="h-3 w-3 mr-1" />IA</>}</Badge></div></div>
+                <Button variant="outline" size="sm" onClick={() => active.human_talk ? release.mutateAsync(active.id) : assume.mutateAsync(active.id)}>{active.human_talk ? "Devolver IA" : "Assumir"}</Button>
               </div>
-              <div>
-                <h2 className="font-semibold">{activeConversation.nome}</h2>
-                <p className="text-xs text-muted-foreground">
-                  Online agora
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon">
-                <Phone className="w-4 h-4" />
-              </Button>
-              <Button variant="ghost" size="icon">
-                <Video className="w-4 h-4" />
-              </Button>
-              <Button variant="ghost" size="icon">
-                <MoreVertical className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-auto p-6 space-y-4">
-            {mockMessages.map((msg) => (
-              <ChatMessage key={msg.id} message={msg} />
-            ))}
-          </div>
-
-          {/* Message Input */}
-          <div className="p-4 border-t border-border bg-card/50">
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon">
-                <Paperclip className="w-5 h-5" />
-              </Button>
-              <Button variant="ghost" size="icon">
-                <Smile className="w-5 h-5" />
-              </Button>
-              <Input
-                placeholder="Digite sua mensagem..."
-                value={messageInput}
-                onChange={(e) => setMessageInput(e.target.value)}
-                className="flex-1"
-              />
-              <Button variant="ghost" size="icon" className="text-primary">
-                <Sparkles className="w-5 h-5" />
-              </Button>
-              <Button size="icon">
-                <Send className="w-4 h-4" />
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2 text-center">
-              <Sparkles className="w-3 h-3 inline mr-1" />
-              Pressione IA para gerar resposta automática
-            </p>
-          </div>
+              <ScrollArea className="flex-1 p-4"><div className="space-y-4">{mensagens?.map((m) => <div key={m.id} className={`flex ${m.direcao === "outbound" ? "justify-end" : "justify-start"}`}><div className={`max-w-[70%] rounded-lg p-3 ${m.direcao === "outbound" ? "bg-primary text-primary-foreground" : "bg-muted"}`}><p className="text-sm">{m.mensagem}</p><span className="text-xs opacity-70">{m.timestamp ? format(new Date(m.timestamp), "HH:mm") : ""}</span></div></div>)}<div ref={endRef} /></div></ScrollArea>
+              <div className="p-4 border-t flex gap-2"><Input placeholder="Mensagem..." value={msg} onChange={(e) => setMsg(e.target.value)} onKeyPress={(e) => e.key === "Enter" && handleSend()} className="flex-1" /><Button size="icon" onClick={handleSend} disabled={sendMessage.isPending}><Send className="h-4 w-4" /></Button></div>
+            </>
+          ) : <div className="flex items-center justify-center h-full text-muted-foreground"><MessageSquare className="h-12 w-12 opacity-50" /></div>}
         </div>
       </div>
     </OrbitLayout>

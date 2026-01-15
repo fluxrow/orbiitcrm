@@ -1,162 +1,61 @@
+import { useState } from "react";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
-import { FunnelColumn } from "@/components/orbit/FunnelColumn";
-import { OpportunityCard } from "@/components/orbit/OpportunityCard";
+import { DealDialog } from "@/components/orbit/DealDialog";
 import { Button } from "@/components/ui/button";
-import { Plus, Filter, DollarSign } from "lucide-react";
-
-const funnelStages = [
-  {
-    id: "qualification",
-    title: "Qualificação",
-    color: "bg-stage-qualification",
-    opportunities: [
-      {
-        id: "1",
-        titulo: "Implementação ERP",
-        empresa: "Tech Solutions Ltda",
-        valor: 50000,
-        responsavel: "Ana Silva",
-        data_previsao: "2024-02-15",
-      },
-      {
-        id: "2",
-        titulo: "Consultoria de Processos",
-        empresa: "Indústria ABC",
-        valor: 25000,
-        responsavel: "Carlos Santos",
-      },
-    ],
-  },
-  {
-    id: "proposal",
-    title: "Proposta",
-    color: "bg-stage-proposal",
-    opportunities: [
-      {
-        id: "3",
-        titulo: "Sistema de Automação",
-        empresa: "Logística Express",
-        valor: 80000,
-        responsavel: "Maria Costa",
-        data_previsao: "2024-02-28",
-      },
-    ],
-  },
-  {
-    id: "negotiation",
-    title: "Negociação",
-    color: "bg-stage-negotiation",
-    opportunities: [
-      {
-        id: "4",
-        titulo: "Plataforma E-commerce",
-        empresa: "Moda Fashion",
-        valor: 120000,
-        responsavel: "João Lima",
-        data_previsao: "2024-03-10",
-      },
-      {
-        id: "5",
-        titulo: "App Mobile",
-        empresa: "Fitness Pro",
-        valor: 45000,
-        responsavel: "Ana Silva",
-        data_previsao: "2024-03-05",
-      },
-    ],
-  },
-  {
-    id: "closing",
-    title: "Fechamento",
-    color: "bg-stage-closing",
-    opportunities: [
-      {
-        id: "6",
-        titulo: "Integração de Sistemas",
-        empresa: "Bank Secure",
-        valor: 200000,
-        responsavel: "Carlos Santos",
-        data_previsao: "2024-02-20",
-      },
-    ],
-  },
-];
-
-const totalPipeline = funnelStages.reduce(
-  (acc, stage) =>
-    acc + stage.opportunities.reduce((sum, opp) => sum + opp.valor, 0),
-  0
-);
+import { Plus, Loader2, GripVertical } from "lucide-react";
+import { useOrbitDealsGrouped, useMoveDealToStage, useOrbitPipelineStages } from "@/hooks/useOrbitDeals";
+import { toast } from "sonner";
+import type { Tables } from "@/integrations/supabase/types";
 
 export default function FunilPage() {
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-      notation: "compact",
-    }).format(value);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedDeal, setSelectedDeal] = useState<Tables<"orbit_deals"> | null>(null);
+  const [defaultEtapaId, setDefaultEtapaId] = useState<string>();
+  const [draggedDeal, setDraggedDeal] = useState<string | null>(null);
+
+  const { data: stages, isLoading: stagesLoading } = useOrbitPipelineStages();
+  const { data: dealsGrouped, isLoading: dealsLoading } = useOrbitDealsGrouped();
+  const moveDeal = useMoveDealToStage();
+
+  const formatCurrency = (v: number | null) => v ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0 }).format(v) : "R$ 0";
+  const totalPipeline = dealsGrouped ? Object.values(dealsGrouped).flat().reduce((s, d) => s + (Number(d.valor_estimado) || 0), 0) : 0;
+
+  const handleDrop = async (e: React.DragEvent, etapaId: string) => {
+    e.preventDefault();
+    if (draggedDeal) {
+      try { await moveDeal.mutateAsync({ dealId: draggedDeal, newEtapaId: etapaId }); toast.success("Movido!"); } catch { toast.error("Erro"); }
+    }
+    setDraggedDeal(null);
   };
+
+  if (stagesLoading || dealsLoading) return <OrbitLayout><div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin" /></div></OrbitLayout>;
 
   return (
     <OrbitLayout>
-      <PageHeader
-        title="Funil de Vendas"
-        description="Acompanhe suas oportunidades em cada etapa"
-        action={
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-success/10 text-success">
-              <DollarSign className="w-5 h-5" />
-              <span className="font-semibold">
-                Pipeline: {formatCurrency(totalPipeline)}
-              </span>
-            </div>
-            <Button variant="secondary">
-              <Filter className="w-4 h-4 mr-2" />
-              Filtrar
-            </Button>
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              Nova Oportunidade
-            </Button>
-          </div>
-        }
-      />
-
+      <PageHeader title="Funil de Vendas" description="Gerencie suas oportunidades" actions={<Button size="sm" onClick={() => { setSelectedDeal(null); setDialogOpen(true); }}><Plus className="h-4 w-4 mr-2" />Nova Oportunidade</Button>} />
+      <div className="mb-6 p-4 bg-card border rounded-lg"><p className="text-sm text-muted-foreground">Total Pipeline</p><p className="text-2xl font-bold">{formatCurrency(totalPipeline)}</p></div>
       <div className="flex gap-4 overflow-x-auto pb-4">
-        {funnelStages.map((stage) => {
-          const stageValue = stage.opportunities.reduce(
-            (sum, opp) => sum + opp.valor,
-            0
-          );
+        {stages?.map((stage) => {
+          const stageDeals = dealsGrouped?.[stage.id] || [];
           return (
-            <FunnelColumn
-              key={stage.id}
-              title={stage.title}
-              count={stage.opportunities.length}
-              value={formatCurrency(stageValue)}
-              color={stage.color}
-            >
-              {stage.opportunities.map((opp) => (
-                <OpportunityCard key={opp.id} opportunity={opp} />
-              ))}
-            </FunnelColumn>
+            <div key={stage.id} className="flex-shrink-0 w-80 bg-muted/30 rounded-lg" onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, stage.id)}>
+              <div className="p-4 border-b" style={{ borderTopColor: stage.cor || "#3b82f6", borderTopWidth: 3 }}>
+                <div className="flex justify-between"><h3 className="font-semibold">{stage.nome}</h3><span className="text-xs bg-muted px-2 py-1 rounded-full">{stageDeals.length}</span></div>
+              </div>
+              <div className="p-2 space-y-2 min-h-[200px]">
+                {stageDeals.map((deal) => (
+                  <div key={deal.id} draggable onDragStart={() => setDraggedDeal(deal.id)} onClick={() => { setSelectedDeal(deal); setDefaultEtapaId(deal.etapa_id || undefined); setDialogOpen(true); }} className={`bg-card border rounded-lg p-3 cursor-grab hover:border-primary/50 ${draggedDeal === deal.id ? "opacity-50" : ""}`}>
+                    <div className="flex gap-2"><GripVertical className="h-4 w-4 text-muted-foreground mt-1" /><div className="flex-1"><h4 className="font-medium truncate">{deal.titulo}</h4><span className="text-sm text-primary">{formatCurrency(Number(deal.valor_estimado))}</span></div></div>
+                  </div>
+                ))}
+                <Button variant="ghost" size="sm" className="w-full" onClick={() => { setSelectedDeal(null); setDefaultEtapaId(stage.id); setDialogOpen(true); }}><Plus className="h-4 w-4 mr-2" />Adicionar</Button>
+              </div>
+            </div>
           );
         })}
-
-        {/* Won/Lost columns */}
-        <FunnelColumn title="Ganho" count={0} color="bg-stage-won">
-          <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
-            Arraste cards aqui
-          </div>
-        </FunnelColumn>
-
-        <FunnelColumn title="Perdido" count={0} color="bg-stage-lost">
-          <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
-            Arraste cards aqui
-          </div>
-        </FunnelColumn>
       </div>
+      <DealDialog open={dialogOpen} onOpenChange={setDialogOpen} deal={selectedDeal} defaultEtapaId={defaultEtapaId} />
     </OrbitLayout>
   );
 }

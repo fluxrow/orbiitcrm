@@ -1,165 +1,42 @@
+import { useState } from "react";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Plus,
-  Play,
-  Pause,
-  BarChart3,
-  MessageCircle,
-  Mail,
-  Users,
-  Send,
-  Eye,
-  MousePointer,
-} from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Plus, MessageSquare, Mail, Loader2 } from "lucide-react";
+import { useOrbitCampaigns } from "@/hooks/useOrbitCampaigns";
+import { format } from "date-fns";
 
-const mockCampaigns = [
-  {
-    id: "1",
-    nome: "Prospecção Q1 2024",
-    tipo: "whatsapp",
-    status: "ativa",
-    leads: 250,
-    enviadas: 180,
-    abertas: 145,
-    cliques: 42,
-    respostas: 28,
-    dataInicio: "2024-01-10",
-  },
-  {
-    id: "2",
-    nome: "Newsletter Mensal",
-    tipo: "email",
-    status: "pausada",
-    leads: 1500,
-    enviadas: 1450,
-    abertas: 680,
-    cliques: 120,
-    respostas: 45,
-    dataInicio: "2024-01-01",
-  },
-  {
-    id: "3",
-    nome: "Follow-up Clientes",
-    tipo: "whatsapp",
-    status: "rascunho",
-    leads: 80,
-    enviadas: 0,
-    abertas: 0,
-    cliques: 0,
-    respostas: 0,
-    dataInicio: null,
-  },
-];
-
-const statusConfig = {
-  ativa: { label: "Ativa", className: "bg-success/20 text-success" },
-  pausada: { label: "Pausada", className: "bg-warning/20 text-warning" },
+const statusConfig: Record<string, { label: string; className: string }> = {
   rascunho: { label: "Rascunho", className: "bg-muted text-muted-foreground" },
-  finalizada: { label: "Finalizada", className: "bg-primary/20 text-primary" },
+  agendada: { label: "Agendada", className: "bg-blue-500/20 text-blue-400" },
+  em_andamento: { label: "Em Andamento", className: "bg-green-500/20 text-green-400" },
 };
 
 export default function CampanhasPage() {
+  const [statusFilter, setStatusFilter] = useState("all");
+  const { data: campaigns, isLoading } = useOrbitCampaigns({ status: statusFilter });
+
   return (
     <OrbitLayout>
-      <PageHeader
-        title="Campanhas"
-        description="Gerencie suas campanhas de email e WhatsApp"
-        action={
-          <Button>
-            <Plus className="w-4 h-4 mr-2" />
-            Nova Campanha
-          </Button>
-        }
-      />
-
-      <div className="space-y-4">
-        {mockCampaigns.map((campaign) => {
-          const status = statusConfig[campaign.status as keyof typeof statusConfig];
-          const taxaAbertura = campaign.enviadas > 0
-            ? ((campaign.abertas / campaign.enviadas) * 100).toFixed(1)
-            : 0;
-          const taxaResposta = campaign.enviadas > 0
-            ? ((campaign.respostas / campaign.enviadas) * 100).toFixed(1)
-            : 0;
-
-          return (
-            <div key={campaign.id} className="glass-card p-5">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`p-2.5 rounded-xl ${
-                      campaign.tipo === "whatsapp"
-                        ? "bg-channel-whatsapp/20 text-channel-whatsapp"
-                        : "bg-channel-email/20 text-channel-email"
-                    }`}
-                  >
-                    {campaign.tipo === "whatsapp" ? (
-                      <MessageCircle className="w-5 h-5" />
-                    ) : (
-                      <Mail className="w-5 h-5" />
-                    )}
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">{campaign.nome}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {campaign.dataInicio
-                        ? `Iniciada em ${new Date(campaign.dataInicio).toLocaleDateString("pt-BR")}`
-                        : "Não iniciada"}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge className={status.className}>{status.label}</Badge>
-                  {campaign.status === "ativa" && (
-                    <Button variant="ghost" size="icon">
-                      <Pause className="w-4 h-4" />
-                    </Button>
-                  )}
-                  {campaign.status === "pausada" && (
-                    <Button variant="ghost" size="icon">
-                      <Play className="w-4 h-4" />
-                    </Button>
-                  )}
-                  <Button variant="ghost" size="icon">
-                    <BarChart3 className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-5 gap-4">
-                <div className="text-center p-3 rounded-lg bg-secondary/50">
-                  <Users className="w-4 h-4 mx-auto mb-1 text-muted-foreground" />
-                  <p className="text-lg font-bold">{campaign.leads}</p>
-                  <p className="text-xs text-muted-foreground">Leads</p>
-                </div>
-                <div className="text-center p-3 rounded-lg bg-secondary/50">
-                  <Send className="w-4 h-4 mx-auto mb-1 text-muted-foreground" />
-                  <p className="text-lg font-bold">{campaign.enviadas}</p>
-                  <p className="text-xs text-muted-foreground">Enviadas</p>
-                </div>
-                <div className="text-center p-3 rounded-lg bg-secondary/50">
-                  <Eye className="w-4 h-4 mx-auto mb-1 text-muted-foreground" />
-                  <p className="text-lg font-bold">{taxaAbertura}%</p>
-                  <p className="text-xs text-muted-foreground">Abertura</p>
-                </div>
-                <div className="text-center p-3 rounded-lg bg-secondary/50">
-                  <MousePointer className="w-4 h-4 mx-auto mb-1 text-muted-foreground" />
-                  <p className="text-lg font-bold">{campaign.cliques}</p>
-                  <p className="text-xs text-muted-foreground">Cliques</p>
-                </div>
-                <div className="text-center p-3 rounded-lg bg-secondary/50">
-                  <MessageCircle className="w-4 h-4 mx-auto mb-1 text-muted-foreground" />
-                  <p className="text-lg font-bold">{taxaResposta}%</p>
-                  <p className="text-xs text-muted-foreground">Respostas</p>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+      <PageHeader title="Campanhas" description="Gerencie campanhas de email e WhatsApp" actions={<Button size="sm"><Plus className="h-4 w-4 mr-2" />Nova Campanha</Button>} />
+      <div className="flex gap-4 mb-6">
+        <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-[180px]"><SelectValue placeholder="Status" /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem><SelectItem value="rascunho">Rascunho</SelectItem><SelectItem value="em_andamento">Em Andamento</SelectItem></SelectContent></Select>
       </div>
+      {isLoading ? <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin" /></div> : campaigns?.length === 0 ? <div className="text-center py-12 text-muted-foreground">Nenhuma campanha</div> : (
+        <div className="space-y-4">
+          {campaigns?.map((c) => (
+            <div key={c.id} className="bg-card border rounded-lg p-6">
+              <div className="flex justify-between mb-4">
+                <div className="flex gap-3"><div className={`p-2 rounded-lg ${c.canal === "whatsapp" ? "bg-green-500/20" : "bg-blue-500/20"}`}>{c.canal === "whatsapp" ? <MessageSquare className="h-5 w-5 text-green-500" /> : <Mail className="h-5 w-5 text-blue-500" />}</div><div><h3 className="font-semibold">{c.nome}</h3><p className="text-sm text-muted-foreground">Criada em {c.created_at ? format(new Date(c.created_at), "dd/MM/yyyy") : "-"}</p></div></div>
+                <Badge className={statusConfig[c.status || "rascunho"]?.className}>{statusConfig[c.status || "rascunho"]?.label}</Badge>
+              </div>
+              <div className="grid grid-cols-5 gap-4">{[["Destinatários", c.total_destinatarios], ["Enviados", c.enviados], ["Aberturas", c.aberturas], ["Cliques", c.cliques], ["Respostas", c.respostas]].map(([l, v]) => <div key={String(l)} className="p-3 bg-muted/50 rounded-lg"><p className="text-xs text-muted-foreground">{l}</p><p className="text-lg font-semibold">{v || 0}</p></div>)}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </OrbitLayout>
   );
 }
