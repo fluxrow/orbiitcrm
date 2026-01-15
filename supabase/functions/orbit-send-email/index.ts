@@ -19,14 +19,6 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendApiKey) {
-      return new Response(
-        JSON.stringify({ error: "RESEND_API_KEY não configurada. Configure nas variáveis de ambiente." }),
-        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -40,7 +32,8 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Buscar configuração do Resend da empresa
+    // Buscar configuração do Resend da empresa (incluindo api_key)
+    let resendApiKey: string | null = null;
     let fromEmail = "Orbit <onboarding@resend.dev>";
     
     if (empresa_id) {
@@ -48,13 +41,34 @@ const handler = async (req: Request): Promise<Response> => {
         .from("orbit_resend_config")
         .select("*")
         .eq("empresa_id", empresa_id)
-        .eq("ativo", true)
         .maybeSingle();
 
-      if (resendConfig?.from_email) {
-        const fromName = resendConfig.from_name || "Orbit";
-        fromEmail = `${fromName} <${resendConfig.from_email}>`;
+      if (resendConfig) {
+        // Usar a API key da empresa se disponível
+        if (resendConfig.api_key) {
+          resendApiKey = resendConfig.api_key;
+        }
+
+        // Configurar o remetente se disponível e ativo
+        if (resendConfig.ativo && resendConfig.from_email) {
+          const fromName = resendConfig.from_name || "Orbit";
+          fromEmail = `${fromName} <${resendConfig.from_email}>`;
+        }
       }
+    }
+
+    // Fallback para variável de ambiente se não tiver API key da empresa
+    if (!resendApiKey) {
+      resendApiKey = Deno.env.get("RESEND_API_KEY") || null;
+    }
+
+    if (!resendApiKey) {
+      return new Response(
+        JSON.stringify({ 
+          error: "API Key do Resend não configurada. Configure a API Key nas configurações de email." 
+        }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
     }
 
     // Usar fetch diretamente para a API do Resend
