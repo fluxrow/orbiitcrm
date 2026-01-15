@@ -22,6 +22,7 @@ export type Database = {
           data_atividade: string | null
           deal_id: string | null
           descricao: string | null
+          empresa_id: string | null
           id: string
           prospect_id: string | null
           responsavel_id: string | null
@@ -34,6 +35,7 @@ export type Database = {
           data_atividade?: string | null
           deal_id?: string | null
           descricao?: string | null
+          empresa_id?: string | null
           id?: string
           prospect_id?: string | null
           responsavel_id?: string | null
@@ -46,6 +48,7 @@ export type Database = {
           data_atividade?: string | null
           deal_id?: string | null
           descricao?: string | null
+          empresa_id?: string | null
           id?: string
           prospect_id?: string | null
           responsavel_id?: string | null
@@ -57,6 +60,13 @@ export type Database = {
             columns: ["deal_id"]
             isOneToOne: false
             referencedRelation: "orbit_deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_activities_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
             referencedColumns: ["id"]
           },
           {
@@ -79,6 +89,7 @@ export type Database = {
         Row: {
           campos_cadastro: string[] | null
           created_at: string | null
+          empresa_id: string | null
           horario_fim: string | null
           horario_inicio: string | null
           id: string
@@ -93,6 +104,7 @@ export type Database = {
         Insert: {
           campos_cadastro?: string[] | null
           created_at?: string | null
+          empresa_id?: string | null
           horario_fim?: string | null
           horario_inicio?: string | null
           id?: string
@@ -107,6 +119,7 @@ export type Database = {
         Update: {
           campos_cadastro?: string[] | null
           created_at?: string | null
+          empresa_id?: string | null
           horario_fim?: string | null
           horario_inicio?: string | null
           id?: string
@@ -118,13 +131,22 @@ export type Database = {
           tom_conversa?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "orbit_ai_config_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       orbit_campaign_recipients: {
         Row: {
           campaign_id: string | null
           created_at: string | null
           email: string | null
+          empresa_id: string | null
           enviado_em: string | null
           erro: string | null
           id: string
@@ -136,6 +158,7 @@ export type Database = {
           campaign_id?: string | null
           created_at?: string | null
           email?: string | null
+          empresa_id?: string | null
           enviado_em?: string | null
           erro?: string | null
           id?: string
@@ -147,6 +170,7 @@ export type Database = {
           campaign_id?: string | null
           created_at?: string | null
           email?: string | null
+          empresa_id?: string | null
           enviado_em?: string | null
           erro?: string | null
           id?: string
@@ -160,6 +184,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "orbit_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_campaign_recipients_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
             referencedColumns: ["id"]
           },
           {
@@ -182,6 +213,7 @@ export type Database = {
           cliques: number | null
           created_at: string | null
           created_by: string | null
+          empresa_id: string | null
           enviados: number | null
           falhas: number | null
           filtros_json: Json | null
@@ -205,6 +237,7 @@ export type Database = {
           cliques?: number | null
           created_at?: string | null
           created_by?: string | null
+          empresa_id?: string | null
           enviados?: number | null
           falhas?: number | null
           filtros_json?: Json | null
@@ -228,6 +261,7 @@ export type Database = {
           cliques?: number | null
           created_at?: string | null
           created_by?: string | null
+          empresa_id?: string | null
           enviados?: number | null
           falhas?: number | null
           filtros_json?: Json | null
@@ -257,6 +291,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "orbit_campaigns_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "orbit_campaigns_template_id_fkey"
             columns: ["template_id"]
             isOneToOne: false
@@ -270,6 +311,7 @@ export type Database = {
           ai_contexto: Json | null
           canal: string | null
           created_at: string | null
+          empresa_id: string | null
           human_talk: boolean | null
           human_user_id: string | null
           id: string
@@ -285,6 +327,7 @@ export type Database = {
           ai_contexto?: Json | null
           canal?: string | null
           created_at?: string | null
+          empresa_id?: string | null
           human_talk?: boolean | null
           human_user_id?: string | null
           id?: string
@@ -300,6 +343,7 @@ export type Database = {
           ai_contexto?: Json | null
           canal?: string | null
           created_at?: string | null
+          empresa_id?: string | null
           human_talk?: boolean | null
           human_user_id?: string | null
           id?: string
@@ -312,6 +356,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "orbit_conversas_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "orbit_conversas_human_user_id_fkey"
             columns: ["human_user_id"]
@@ -332,6 +383,7 @@ export type Database = {
         Row: {
           created_at: string | null
           data_prevista_fechamento: string | null
+          empresa_id: string | null
           etapa_id: string | null
           id: string
           motivo_perda: string | null
@@ -345,6 +397,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           data_prevista_fechamento?: string | null
+          empresa_id?: string | null
           etapa_id?: string | null
           id?: string
           motivo_perda?: string | null
@@ -358,6 +411,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           data_prevista_fechamento?: string | null
+          empresa_id?: string | null
           etapa_id?: string | null
           id?: string
           motivo_perda?: string | null
@@ -369,6 +423,13 @@ export type Database = {
           valor_estimado?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "orbit_deals_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "orbit_deals_etapa_id_fkey"
             columns: ["etapa_id"]
@@ -396,6 +457,7 @@ export type Database = {
         Row: {
           ativo: boolean | null
           created_at: string | null
+          empresa_id: string | null
           id: string
           ordem_fila: number | null
           total_atribuicoes: number | null
@@ -405,6 +467,7 @@ export type Database = {
         Insert: {
           ativo?: boolean | null
           created_at?: string | null
+          empresa_id?: string | null
           id?: string
           ordem_fila?: number | null
           total_atribuicoes?: number | null
@@ -414,6 +477,7 @@ export type Database = {
         Update: {
           ativo?: boolean | null
           created_at?: string | null
+          empresa_id?: string | null
           id?: string
           ordem_fila?: number | null
           total_atribuicoes?: number | null
@@ -421,6 +485,13 @@ export type Database = {
           vendedor_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "orbit_distribuicao_config_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "orbit_distribuicao_config_vendedor_id_fkey"
             columns: ["vendedor_id"]
@@ -430,11 +501,57 @@ export type Database = {
           },
         ]
       }
+      orbit_empresas: {
+        Row: {
+          ativo: boolean | null
+          cnpj: string | null
+          created_at: string | null
+          data_expiracao: string | null
+          email_contato: string | null
+          id: string
+          logo_url: string | null
+          max_usuarios: number | null
+          nome: string
+          plano: string | null
+          telefone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          ativo?: boolean | null
+          cnpj?: string | null
+          created_at?: string | null
+          data_expiracao?: string | null
+          email_contato?: string | null
+          id?: string
+          logo_url?: string | null
+          max_usuarios?: number | null
+          nome: string
+          plano?: string | null
+          telefone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          ativo?: boolean | null
+          cnpj?: string | null
+          created_at?: string | null
+          data_expiracao?: string | null
+          email_contato?: string | null
+          id?: string
+          logo_url?: string | null
+          max_usuarios?: number | null
+          nome?: string
+          plano?: string | null
+          telefone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       orbit_integrations_config: {
         Row: {
           ativo: boolean | null
           config_json: Json | null
           created_at: string | null
+          empresa_id: string | null
           id: string
           tipo: string
           updated_at: string | null
@@ -443,6 +560,7 @@ export type Database = {
           ativo?: boolean | null
           config_json?: Json | null
           created_at?: string | null
+          empresa_id?: string | null
           id?: string
           tipo: string
           updated_at?: string | null
@@ -451,17 +569,27 @@ export type Database = {
           ativo?: boolean | null
           config_json?: Json | null
           created_at?: string | null
+          empresa_id?: string | null
           id?: string
           tipo?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "orbit_integrations_config_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       orbit_mensagens: {
         Row: {
           canal: string | null
           conversa_id: string | null
           direcao: string
+          empresa_id: string | null
           erro: string | null
           id: string
           mensagem: string | null
@@ -475,6 +603,7 @@ export type Database = {
           canal?: string | null
           conversa_id?: string | null
           direcao: string
+          empresa_id?: string | null
           erro?: string | null
           id?: string
           mensagem?: string | null
@@ -488,6 +617,7 @@ export type Database = {
           canal?: string | null
           conversa_id?: string | null
           direcao?: string
+          empresa_id?: string | null
           erro?: string | null
           id?: string
           mensagem?: string | null
@@ -505,6 +635,13 @@ export type Database = {
             referencedRelation: "orbit_conversas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "orbit_mensagens_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
         ]
       }
       orbit_message_templates: {
@@ -516,6 +653,7 @@ export type Database = {
           corpo_html: string | null
           corpo_texto: string | null
           created_at: string | null
+          empresa_id: string | null
           id: string
           nome: string
           updated_at: string | null
@@ -529,6 +667,7 @@ export type Database = {
           corpo_html?: string | null
           corpo_texto?: string | null
           created_at?: string | null
+          empresa_id?: string | null
           id?: string
           nome: string
           updated_at?: string | null
@@ -542,17 +681,27 @@ export type Database = {
           corpo_html?: string | null
           corpo_texto?: string | null
           created_at?: string | null
+          empresa_id?: string | null
           id?: string
           nome?: string
           updated_at?: string | null
           variaveis?: string[] | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "orbit_message_templates_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       orbit_pipeline_stages: {
         Row: {
           cor: string | null
           created_at: string | null
+          empresa_id: string | null
           id: string
           is_lost: boolean | null
           is_won: boolean | null
@@ -562,6 +711,7 @@ export type Database = {
         Insert: {
           cor?: string | null
           created_at?: string | null
+          empresa_id?: string | null
           id?: string
           is_lost?: boolean | null
           is_won?: boolean | null
@@ -571,13 +721,22 @@ export type Database = {
         Update: {
           cor?: string | null
           created_at?: string | null
+          empresa_id?: string | null
           id?: string
           is_lost?: boolean | null
           is_won?: boolean | null
           nome?: string
           ordem?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "orbit_pipeline_stages_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       orbit_prospects: {
         Row: {
@@ -587,6 +746,7 @@ export type Database = {
           consentimento_whatsapp: boolean | null
           created_at: string | null
           email_principal: string | null
+          empresa_id: string | null
           estado: string | null
           id: string
           nome_fantasia: string | null
@@ -612,6 +772,7 @@ export type Database = {
           consentimento_whatsapp?: boolean | null
           created_at?: string | null
           email_principal?: string | null
+          empresa_id?: string | null
           estado?: string | null
           id?: string
           nome_fantasia?: string | null
@@ -637,6 +798,7 @@ export type Database = {
           consentimento_whatsapp?: boolean | null
           created_at?: string | null
           email_principal?: string | null
+          empresa_id?: string | null
           estado?: string | null
           id?: string
           nome_fantasia?: string | null
@@ -657,6 +819,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "orbit_prospects_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "orbit_prospects_responsavel_id_fkey"
             columns: ["responsavel_id"]
             isOneToOne: false
@@ -669,6 +838,7 @@ export type Database = {
         Row: {
           created_at: string | null
           de_vendedor_id: string | null
+          empresa_id: string | null
           id: string
           motivo: string | null
           notificacao_enviada: boolean | null
@@ -678,6 +848,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           de_vendedor_id?: string | null
+          empresa_id?: string | null
           id?: string
           motivo?: string | null
           notificacao_enviada?: boolean | null
@@ -687,6 +858,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           de_vendedor_id?: string | null
+          empresa_id?: string | null
           id?: string
           motivo?: string | null
           notificacao_enviada?: boolean | null
@@ -699,6 +871,13 @@ export type Database = {
             columns: ["de_vendedor_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_transferencias_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
             referencedColumns: ["id"]
           },
           {
@@ -722,6 +901,7 @@ export type Database = {
           ativo: boolean | null
           client_token: string | null
           created_at: string | null
+          empresa_id: string | null
           id: string
           instance_id: string | null
           token: string | null
@@ -732,6 +912,7 @@ export type Database = {
           ativo?: boolean | null
           client_token?: string | null
           created_at?: string | null
+          empresa_id?: string | null
           id?: string
           instance_id?: string | null
           token?: string | null
@@ -742,13 +923,22 @@ export type Database = {
           ativo?: boolean | null
           client_token?: string | null
           created_at?: string | null
+          empresa_id?: string | null
           id?: string
           instance_id?: string | null
           token?: string | null
           updated_at?: string | null
           webhook_url?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "orbit_zapi_config_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -757,6 +947,7 @@ export type Database = {
           cargo: string | null
           created_at: string | null
           email: string | null
+          empresa_id: string | null
           id: string
           nome: string | null
           telefone: string | null
@@ -768,6 +959,7 @@ export type Database = {
           cargo?: string | null
           created_at?: string | null
           email?: string | null
+          empresa_id?: string | null
           id: string
           nome?: string | null
           telefone?: string | null
@@ -779,10 +971,40 @@ export type Database = {
           cargo?: string | null
           created_at?: string | null
           email?: string | null
+          empresa_id?: string | null
           id?: string
           nome?: string | null
           telefone?: string | null
           updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
         }
         Relationships: []
       }
@@ -791,10 +1013,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_user_empresa_id: { Args: { _user_id: string }; Returns: string }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "super_admin" | "admin" | "vendedor" | "visualizador"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -921,6 +1150,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["super_admin", "admin", "vendedor", "visualizador"],
+    },
   },
 } as const
