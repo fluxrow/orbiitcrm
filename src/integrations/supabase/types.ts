@@ -1184,6 +1184,8 @@ export type Database = {
           empresa_id: string | null
           id: string
           instance_id: string | null
+          nome_instancia: string | null
+          numero_origem: string | null
           token: string | null
           updated_at: string | null
           webhook_url: string | null
@@ -1195,6 +1197,8 @@ export type Database = {
           empresa_id?: string | null
           id?: string
           instance_id?: string | null
+          nome_instancia?: string | null
+          numero_origem?: string | null
           token?: string | null
           updated_at?: string | null
           webhook_url?: string | null
@@ -1206,6 +1210,8 @@ export type Database = {
           empresa_id?: string | null
           id?: string
           instance_id?: string | null
+          nome_instancia?: string | null
+          numero_origem?: string | null
           token?: string | null
           updated_at?: string | null
           webhook_url?: string | null

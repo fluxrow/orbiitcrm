@@ -45,7 +45,10 @@ export default function ConfigPage() {
   const importProspects = useImportProspects();
 
   const [aiForm, setAiForm] = useState({ modo_automatico: true, tom_conversa: "", prompt_treinamento: "", horario_inicio: "08:00", horario_fim: "18:00" });
-  const [zapiForm, setZapiForm] = useState({ instance_id: "", token: "", client_token: "", ativo: false });
+const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", token: "", client_token: "", numero_origem: "", ativo: false });
+  const [showZapiToken, setShowZapiToken] = useState(false);
+  const [showZapiClientToken, setShowZapiClientToken] = useState(false);
+  const [testingZapiConnection, setTestingZapiConnection] = useState(false);
   const [resendForm, setResendForm] = useState({ 
     api_key: "", 
     email_teste: "", 
@@ -69,7 +72,16 @@ export default function ConfigPage() {
   const emailWebhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/orbit-send-email`;
 
   useEffect(() => { if (aiConfig) setAiForm({ modo_automatico: aiConfig.modo_automatico ?? true, tom_conversa: aiConfig.tom_conversa || "", prompt_treinamento: aiConfig.prompt_treinamento || "", horario_inicio: aiConfig.horario_inicio || "08:00", horario_fim: aiConfig.horario_fim || "18:00" }); }, [aiConfig]);
-  useEffect(() => { if (zapiConfig) setZapiForm({ instance_id: zapiConfig.instance_id || "", token: zapiConfig.token || "", client_token: zapiConfig.client_token || "", ativo: zapiConfig.ativo ?? false }); }, [zapiConfig]);
+  useEffect(() => { 
+    if (zapiConfig) setZapiForm({ 
+      nome_instancia: (zapiConfig as any).nome_instancia || "", 
+      instance_id: zapiConfig.instance_id || "", 
+      token: zapiConfig.token || "", 
+      client_token: zapiConfig.client_token || "", 
+      numero_origem: (zapiConfig as any).numero_origem || "",
+      ativo: zapiConfig.ativo ?? false 
+    }); 
+  }, [zapiConfig]);
   useEffect(() => { 
     if (resendConfig) setResendForm({ 
       api_key: resendConfig.api_key || "", 
@@ -245,13 +257,211 @@ export default function ConfigPage() {
         </TabsContent>
         <TabsContent value="zapi">
           {zapiLoading ? <Loader2 className="animate-spin" /> : (
-            <Card><CardHeader><CardTitle>Z-API</CardTitle></CardHeader><CardContent className="space-y-4">
-              <div className="flex justify-between"><Label>Ativo</Label><Switch checked={zapiForm.ativo} onCheckedChange={(v) => setZapiForm({ ...zapiForm, ativo: v })} /></div>
-              <div><Label>Instance ID</Label><Input value={zapiForm.instance_id} onChange={(e) => setZapiForm({ ...zapiForm, instance_id: e.target.value })} /></div>
-              <div><Label>Token</Label><Input type="password" value={zapiForm.token} onChange={(e) => setZapiForm({ ...zapiForm, token: e.target.value })} /></div>
-              <div><Label>Webhook URL</Label><div className="flex gap-2"><Input value={webhookUrl} readOnly /><Button variant="outline" size="icon" onClick={() => { navigator.clipboard.writeText(webhookUrl); toast.success("Copiado!"); }}><Copy className="h-4 w-4" /></Button></div></div>
-              <Button onClick={saveZAPI} disabled={updateZAPI.isPending}><Save className="h-4 w-4 mr-2" />Salvar</Button>
-            </CardContent></Card>
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-primary" />
+                  <CardTitle>Integração Z-API</CardTitle>
+                </div>
+                <CardDescription>Configure sua instância Z-API para envio de mensagens WhatsApp</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Status Ativo */}
+                <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+                  <div>
+                    <Label className="text-base font-medium">Integração Ativa</Label>
+                    <p className="text-sm text-muted-foreground">Ative para habilitar o envio de mensagens via WhatsApp</p>
+                  </div>
+                  <Switch checked={zapiForm.ativo} onCheckedChange={(v) => setZapiForm({ ...zapiForm, ativo: v })} />
+                </div>
+
+                {/* Nome da instância */}
+                <div className="space-y-2">
+                  <Label>Nome da instância</Label>
+                  <Input 
+                    placeholder="Ex: Match-FluxRow" 
+                    value={zapiForm.nome_instancia} 
+                    onChange={(e) => setZapiForm({ ...zapiForm, nome_instancia: e.target.value })} 
+                  />
+                  <p className="text-xs text-muted-foreground">Nome para identificar sua instância (opcional)</p>
+                </div>
+
+                {/* ID e Token da instância */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>ID da instância *</Label>
+                    <Input 
+                      placeholder="3EBCAD9A3C0711696E74E6B9" 
+                      value={zapiForm.instance_id} 
+                      onChange={(e) => setZapiForm({ ...zapiForm, instance_id: e.target.value })} 
+                    />
+                    <p className="text-xs text-muted-foreground">Encontre em "Dados da instância" → "ID da instância" no painel Z-API</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Token da instância *</Label>
+                    <div className="relative">
+                      <Input 
+                        type={showZapiToken ? "text" : "password"}
+                        placeholder="Token da instância" 
+                        value={zapiForm.token} 
+                        onChange={(e) => setZapiForm({ ...zapiForm, token: e.target.value })} 
+                      />
+                      <Button 
+                        type="button"
+                        variant="ghost" 
+                        size="icon" 
+                        className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                        onClick={() => setShowZapiToken(!showZapiToken)}
+                      >
+                        {showZapiToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Encontre em "Dados da instância" → "Token da instância" no painel Z-API</p>
+                  </div>
+                </div>
+
+                {/* Client Token e Número de Origem */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Client Token *</Label>
+                    <div className="relative">
+                      <Input 
+                        type={showZapiClientToken ? "text" : "password"}
+                        placeholder="Client Token" 
+                        value={zapiForm.client_token} 
+                        onChange={(e) => setZapiForm({ ...zapiForm, client_token: e.target.value })} 
+                      />
+                      <Button 
+                        type="button"
+                        variant="ghost" 
+                        size="icon" 
+                        className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                        onClick={() => setShowZapiClientToken(!showZapiClientToken)}
+                      >
+                        {showZapiClientToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Configure em "Segurança" → "Client Token" no painel Z-API</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Número de Origem</Label>
+                    <Input 
+                      placeholder="+5511937273838" 
+                      value={zapiForm.numero_origem} 
+                      onChange={(e) => setZapiForm({ ...zapiForm, numero_origem: e.target.value })} 
+                    />
+                    <p className="text-xs text-muted-foreground">Número WhatsApp conectado à instância</p>
+                  </div>
+                </div>
+
+                {/* API URL gerada */}
+                {zapiForm.instance_id && zapiForm.token && (
+                  <div className="space-y-2">
+                    <Label>API da instância</Label>
+                    <div className="flex gap-2">
+                      <Input 
+                        value={`https://api.z-api.io/instances/${zapiForm.instance_id}/token/${zapiForm.token}/send-text`} 
+                        readOnly 
+                        className="font-mono text-xs"
+                      />
+                      <Button 
+                        variant="outline" 
+                        size="icon" 
+                        onClick={() => { 
+                          navigator.clipboard.writeText(`https://api.z-api.io/instances/${zapiForm.instance_id}/token/${zapiForm.token}/send-text`); 
+                          toast.success("Copiado!"); 
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Webhook URL */}
+                <div className="space-y-2">
+                  <Label>Webhook URL</Label>
+                  <div className="flex gap-2">
+                    <Input value={webhookUrl} readOnly className="font-mono text-sm" />
+                    <Button 
+                      variant="outline" 
+                      size="icon" 
+                      onClick={() => { navigator.clipboard.writeText(webhookUrl); toast.success("Copiado!"); }}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Configure este URL em "Webhooks" → "On Message Received" no painel Z-API</p>
+                </div>
+
+                {/* Instruções */}
+                <div className="p-4 bg-muted rounded-lg space-y-3">
+                  <p className="text-sm font-medium">Como configurar:</p>
+                  <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
+                    <li>
+                      Acesse{" "}
+                      <a href="https://z-api.io" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                        z-api.io
+                      </a>{" "}
+                      e crie uma instância
+                    </li>
+                    <li>Copie o ID e Token da instância dos "Dados da instância"</li>
+                    <li>Configure o Client Token em "Segurança"</li>
+                    <li>Configure o Webhook URL acima em "Webhooks"</li>
+                    <li>Conecte seu WhatsApp escaneando o QR Code</li>
+                  </ol>
+                </div>
+
+                {/* Botões de ação */}
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    onClick={async () => {
+                      if (!zapiForm.instance_id || !zapiForm.token) {
+                        toast.error("Preencha o ID e Token da instância");
+                        return;
+                      }
+                      setTestingZapiConnection(true);
+                      try {
+                        const response = await fetch(
+                          `https://api.z-api.io/instances/${zapiForm.instance_id}/token/${zapiForm.token}/status`,
+                          {
+                            method: "GET",
+                            headers: { "Client-Token": zapiForm.client_token }
+                          }
+                        );
+                        if (response.ok) {
+                          const data = await response.json();
+                          if (data.connected) {
+                            toast.success("Conexão estabelecida! WhatsApp conectado.");
+                          } else {
+                            toast.warning("Instância encontrada, mas WhatsApp não conectado. Escaneie o QR Code no painel Z-API.");
+                          }
+                        } else {
+                          toast.error("Não foi possível conectar. Verifique as credenciais.");
+                        }
+                      } catch (error) {
+                        toast.error("Erro ao testar conexão. Verifique as credenciais.");
+                      } finally {
+                        setTestingZapiConnection(false);
+                      }
+                    }} 
+                    disabled={testingZapiConnection || !zapiForm.instance_id || !zapiForm.token}
+                  >
+                    {testingZapiConnection ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <MessageSquare className="h-4 w-4 mr-2" />
+                    )}
+                    Testar Conexão
+                  </Button>
+                  <Button onClick={saveZAPI} disabled={updateZAPI.isPending}>
+                    {updateZAPI.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                    Salvar Configuração
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
         <TabsContent value="email">
