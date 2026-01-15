@@ -93,11 +93,15 @@ export type Database = {
           horario_fim: string | null
           horario_inicio: string | null
           id: string
+          idioma: string | null
+          max_tokens: number | null
           mensagem_boas_vindas: string | null
           mensagem_fora_horario: string | null
           modo_automatico: boolean | null
+          prompt_orcamentos: string | null
           prompt_treinamento: string | null
           responder_fora_horario: boolean | null
+          tempo_espera: number | null
           tom_conversa: string | null
           updated_at: string | null
         }
@@ -108,11 +112,15 @@ export type Database = {
           horario_fim?: string | null
           horario_inicio?: string | null
           id?: string
+          idioma?: string | null
+          max_tokens?: number | null
           mensagem_boas_vindas?: string | null
           mensagem_fora_horario?: string | null
           modo_automatico?: boolean | null
+          prompt_orcamentos?: string | null
           prompt_treinamento?: string | null
           responder_fora_horario?: boolean | null
+          tempo_espera?: number | null
           tom_conversa?: string | null
           updated_at?: string | null
         }
@@ -123,11 +131,15 @@ export type Database = {
           horario_fim?: string | null
           horario_inicio?: string | null
           id?: string
+          idioma?: string | null
+          max_tokens?: number | null
           mensagem_boas_vindas?: string | null
           mensagem_fora_horario?: string | null
           modo_automatico?: boolean | null
+          prompt_orcamentos?: string | null
           prompt_treinamento?: string | null
           responder_fora_horario?: boolean | null
+          tempo_espera?: number | null
           tom_conversa?: string | null
           updated_at?: string | null
         }

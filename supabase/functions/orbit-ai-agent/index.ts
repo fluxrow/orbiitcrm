@@ -87,6 +87,9 @@ serve(async (req) => {
     const emColetaOrcamento = aiContexto.em_coleta_orcamento || false;
     const camposColetados = aiContexto.campos_coletados || {};
     const camposCadastro = aiConfig.campos_cadastro || ["nome_razao", "email_principal", "cidade"];
+    const maxTokens = aiConfig.max_tokens || 500;
+    const idioma = aiConfig.idioma || "pt-BR";
+    const promptOrcamentos = aiConfig.prompt_orcamentos || "";
 
     // Verificar quais campos faltam
     const camposFaltantes = camposCadastro.filter(
@@ -94,10 +97,16 @@ serve(async (req) => {
     );
     const cadastroCompleto = camposFaltantes.length === 0;
 
+    // Instrução especial para orçamentos
+    const instrucaoOrcamento = promptOrcamentos 
+      ? `\nINSTRUÇÃO ESPECIAL PARA ORÇAMENTOS:\n${promptOrcamentos}`
+      : "";
+
     // Montar prompt do sistema
     const systemPrompt = `${aiConfig.prompt_treinamento || "Você é um assistente de vendas."}
 
 Tom de voz: ${aiConfig.tom_conversa || "profissional e amigável"}
+Idioma: ${idioma === "pt-BR" ? "Português do Brasil" : idioma === "en" ? "Inglês" : "Espanhol"}
 
 REGRAS IMPORTANTES:
 1. Se for PRIMEIRA INTERAÇÃO, envie a mensagem de boas-vindas: "${aiConfig.mensagem_boas_vindas || 'Olá! Como posso ajudá-lo?'}"
@@ -106,6 +115,8 @@ REGRAS IMPORTANTES:
 4. Quando o cadastro estiver COMPLETO, agradeça e informe que um vendedor especializado entrará em contato
 5. NUNCA invente dados sobre produtos ou preços
 6. Seja cordial e responda de forma concisa
+7. SEMPRE responda no idioma configurado: ${idioma === "pt-BR" ? "Português do Brasil" : idioma === "en" ? "Inglês" : "Espanhol"}
+${instrucaoOrcamento}
 
 Campos necessários para qualificação: ${camposCadastro.join(", ")}
 Campos já coletados: ${JSON.stringify(camposColetados)}
@@ -145,6 +156,7 @@ IMPORTANTE: Responda em JSON com esta estrutura:
           },
         ],
         temperature: 0.7,
+        max_tokens: maxTokens,
       }),
     });
 

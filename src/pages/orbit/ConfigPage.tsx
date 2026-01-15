@@ -11,7 +11,8 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Bot, MessageSquare, Mail, Save, Loader2, Copy, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Send, Upload, Download, FileText, X } from "lucide-react";
+import { Bot, MessageSquare, Mail, Save, Loader2, Copy, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Send, Upload, Download, FileText, X, Settings2, Info } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useOrbitAIConfig, useUpdateAIConfig, useOrbitZAPIConfig, useUpdateZAPIConfig, useOrbitResendConfig, useUpdateResendConfig, useTestResendConnection } from "@/hooks/useOrbitConfig";
 import { parseCSV, generateCSVTemplate, useImportProspects, useImportHistory } from "@/hooks/useImportProspects";
 import { toast } from "sonner";
@@ -44,7 +45,18 @@ export default function ConfigPage() {
   const testConnection = useTestResendConnection();
   const importProspects = useImportProspects();
 
-  const [aiForm, setAiForm] = useState({ modo_automatico: true, tom_conversa: "", prompt_treinamento: "", horario_inicio: "08:00", horario_fim: "18:00" });
+  const [aiForm, setAiForm] = useState({ 
+    modo_automatico: true, 
+    tom_conversa: "profissional", 
+    prompt_treinamento: "", 
+    horario_inicio: "08:00", 
+    horario_fim: "18:00",
+    idioma: "pt-BR",
+    max_tokens: 500,
+    tempo_espera: 10,
+    prompt_orcamentos: "",
+    campos_cadastro: ["nome_razao", "nome_fantasia", "email_principal", "cidade", "segmento"] as string[]
+  });
 const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", token: "", client_token: "", numero_origem: "", ativo: false });
   const [showZapiToken, setShowZapiToken] = useState(false);
   const [showZapiClientToken, setShowZapiClientToken] = useState(false);
@@ -71,7 +83,20 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/orbit-webhook`;
   const emailWebhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/orbit-send-email`;
 
-  useEffect(() => { if (aiConfig) setAiForm({ modo_automatico: aiConfig.modo_automatico ?? true, tom_conversa: aiConfig.tom_conversa || "", prompt_treinamento: aiConfig.prompt_treinamento || "", horario_inicio: aiConfig.horario_inicio || "08:00", horario_fim: aiConfig.horario_fim || "18:00" }); }, [aiConfig]);
+  useEffect(() => { 
+    if (aiConfig) setAiForm({ 
+      modo_automatico: aiConfig.modo_automatico ?? true, 
+      tom_conversa: aiConfig.tom_conversa || "profissional", 
+      prompt_treinamento: aiConfig.prompt_treinamento || "", 
+      horario_inicio: aiConfig.horario_inicio || "08:00", 
+      horario_fim: aiConfig.horario_fim || "18:00",
+      idioma: (aiConfig as any).idioma || "pt-BR",
+      max_tokens: (aiConfig as any).max_tokens || 500,
+      tempo_espera: (aiConfig as any).tempo_espera || 10,
+      prompt_orcamentos: (aiConfig as any).prompt_orcamentos || "",
+      campos_cadastro: aiConfig.campos_cadastro || ["nome_razao", "nome_fantasia", "email_principal", "cidade", "segmento"]
+    }); 
+  }, [aiConfig]);
   useEffect(() => { 
     if (zapiConfig) setZapiForm({ 
       nome_instancia: (zapiConfig as any).nome_instancia || "", 
@@ -247,12 +272,201 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
         </TabsList>
         <TabsContent value="ai">
           {aiLoading ? <Loader2 className="animate-spin" /> : (
-            <Card><CardHeader><CardTitle>Agente IA</CardTitle></CardHeader><CardContent className="space-y-4">
-              <div className="flex justify-between"><Label>Modo Automático</Label><Switch checked={aiForm.modo_automatico} onCheckedChange={(v) => setAiForm({ ...aiForm, modo_automatico: v })} /></div>
-              <div><Label>Tom</Label><Input value={aiForm.tom_conversa} onChange={(e) => setAiForm({ ...aiForm, tom_conversa: e.target.value })} /></div>
-              <div><Label>Prompt</Label><Textarea value={aiForm.prompt_treinamento} onChange={(e) => setAiForm({ ...aiForm, prompt_treinamento: e.target.value })} /></div>
-              <Button onClick={saveAI} disabled={updateAI.isPending}><Save className="h-4 w-4 mr-2" />Salvar</Button>
-            </CardContent></Card>
+            <div className="space-y-6">
+              {/* Card 1: Configuração de IA */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Bot className="h-5 w-5 text-primary" />
+                      <CardTitle>Configuração de IA</CardTitle>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="ia-ativa" className="text-sm">IA Ativa</Label>
+                      <Switch 
+                        id="ia-ativa"
+                        checked={aiForm.modo_automatico} 
+                        onCheckedChange={(v) => setAiForm({ ...aiForm, modo_automatico: v })} 
+                      />
+                    </div>
+                  </div>
+                  <CardDescription>Configure o treinamento da IA para geração de mensagens</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Texto de Treinamento */}
+                  <div className="space-y-2">
+                    <Label>Texto de Treinamento *</Label>
+                    <Textarea 
+                      className="min-h-[150px]"
+                      placeholder="Você é um assistente de vendas profissional. Seu objetivo é iniciar conversas com prospects de forma amigável e identificar suas necessidades..."
+                      value={aiForm.prompt_treinamento} 
+                      onChange={(e) => setAiForm({ ...aiForm, prompt_treinamento: e.target.value })} 
+                    />
+                    <p className="text-xs text-muted-foreground">Este texto será usado como contexto para gerar mensagens personalizadas</p>
+                  </div>
+
+                  {/* Tom, Idioma, Max Tokens */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Tom da Conversa</Label>
+                      <Select 
+                        value={aiForm.tom_conversa} 
+                        onValueChange={(v) => setAiForm({ ...aiForm, tom_conversa: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione o tom" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="profissional">Profissional</SelectItem>
+                          <SelectItem value="amigavel">Amigável</SelectItem>
+                          <SelectItem value="formal">Formal</SelectItem>
+                          <SelectItem value="casual">Casual</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Idioma</Label>
+                      <Select 
+                        value={aiForm.idioma} 
+                        onValueChange={(v) => setAiForm({ ...aiForm, idioma: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione o idioma" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pt-BR">Português (BR)</SelectItem>
+                          <SelectItem value="en">Inglês</SelectItem>
+                          <SelectItem value="es">Espanhol</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Máx. Tokens</Label>
+                      <Input 
+                        type="number"
+                        min={100}
+                        max={2000}
+                        value={aiForm.max_tokens} 
+                        onChange={(e) => setAiForm({ ...aiForm, max_tokens: parseInt(e.target.value) || 500 })} 
+                      />
+                      <p className="text-xs text-muted-foreground">Limite de tamanho da resposta</p>
+                    </div>
+                  </div>
+
+                  {/* Tempo de Espera */}
+                  <div className="space-y-2">
+                    <Label>Tempo de Espera (segundos)</Label>
+                    <Input 
+                      type="number"
+                      min={0}
+                      max={60}
+                      value={aiForm.tempo_espera} 
+                      onChange={(e) => setAiForm({ ...aiForm, tempo_espera: parseInt(e.target.value) || 0 })} 
+                    />
+                    <p className="text-xs text-muted-foreground">Tempo que a IA aguarda antes de responder (0 = imediato)</p>
+                  </div>
+
+                  <Button onClick={saveAI} disabled={updateAI.isPending}>
+                    {updateAI.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                    Salvar Configurações de IA
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Card 2: Automação de Conversas */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Settings2 className="h-5 w-5 text-primary" />
+                    <CardTitle>Automação de Conversas</CardTitle>
+                  </div>
+                  <CardDescription>Configure a IA para responder automaticamente às mensagens recebidas</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Modo Automático */}
+                  <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+                    <div>
+                      <Label className="text-base font-medium">Modo Automático</Label>
+                      <p className="text-sm text-muted-foreground">Quando ativo, a IA responde automaticamente às mensagens recebidas</p>
+                    </div>
+                    <Switch 
+                      checked={aiForm.modo_automatico} 
+                      onCheckedChange={(v) => setAiForm({ ...aiForm, modo_automatico: v })} 
+                    />
+                  </div>
+
+                  {/* Prompt para Orçamentos */}
+                  <div className="space-y-2">
+                    <Label>Prompt para Orçamentos</Label>
+                    <Textarea 
+                      className="min-h-[100px]"
+                      placeholder="Quando o prospect mencionar orçamento, cotação, preço ou valores, colete os seguintes dados: nome da empresa, email, telefone e descrição do que precisa..."
+                      value={aiForm.prompt_orcamentos} 
+                      onChange={(e) => setAiForm({ ...aiForm, prompt_orcamentos: e.target.value })} 
+                    />
+                    <p className="text-xs text-muted-foreground">Este prompt será usado quando a IA detectar que o prospect quer um orçamento</p>
+                  </div>
+
+                  {/* Campos a Coletar */}
+                  <div className="space-y-3">
+                    <div>
+                      <Label className="text-base">Campos a Coletar</Label>
+                      <p className="text-sm text-muted-foreground">Selecione os campos que a IA deve coletar do prospect durante a conversa</p>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {[
+                        { value: "nome_razao", label: "Nome/Razão Social" },
+                        { value: "nome_fantasia", label: "Nome Fantasia" },
+                        { value: "email_principal", label: "Email" },
+                        { value: "cidade", label: "Cidade" },
+                        { value: "segmento", label: "Segmento" },
+                        { value: "telefone_comercial", label: "Telefone Comercial" },
+                      ].map(campo => (
+                        <div key={campo.value} className="flex items-center space-x-2">
+                          <Checkbox 
+                            id={campo.value}
+                            checked={aiForm.campos_cadastro.includes(campo.value)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setAiForm({ ...aiForm, campos_cadastro: [...aiForm.campos_cadastro, campo.value] });
+                              } else {
+                                setAiForm({ ...aiForm, campos_cadastro: aiForm.campos_cadastro.filter(c => c !== campo.value) });
+                              }
+                            }}
+                          />
+                          <label htmlFor={campo.value} className="text-sm cursor-pointer">{campo.label}</label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Info Box - Fluxo Automático */}
+                  <div className="p-4 bg-muted rounded-lg space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Info className="h-4 w-4 text-primary" />
+                      <p className="text-sm font-medium">Como funciona o fluxo automático:</p>
+                    </div>
+                    <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
+                      <li><strong>Mensagem recebida:</strong> Prospect envia mensagem via WhatsApp</li>
+                      <li><strong>Classificação:</strong> IA identifica a intenção (orçamento, suporte, informação, outro)</li>
+                      <li><strong>Ação:</strong>
+                        <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
+                          <li><strong>Orçamento:</strong> Coleta dados configurados acima e atualiza o cadastro</li>
+                          <li><strong>Suporte/Outro:</strong> Transfere para atendimento humano</li>
+                          <li><strong>Informação:</strong> Responde com base no treinamento</li>
+                        </ul>
+                      </li>
+                      <li><strong>Resposta:</strong> IA envia resposta automática via Z-API</li>
+                    </ol>
+                  </div>
+
+                  <Button onClick={saveAI} disabled={updateAI.isPending}>
+                    {updateAI.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                    Salvar Configurações de Automação
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
           )}
         </TabsContent>
         <TabsContent value="zapi">
