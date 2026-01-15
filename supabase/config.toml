@@ -5,3 +5,33 @@ verify_jwt = false
 
 [functions.create-master-user]
 verify_jwt = false
+
+[functions.orbit-webhook]
+verify_jwt = false
+
+[functions.orbit-ai-agent]
+verify_jwt = false
+
+[functions.orbit-ai-suggest]
+verify_jwt = true
+
+[functions.orbit-send-message]
+verify_jwt = true
+
+[functions.orbit-send-email]
+verify_jwt = true
+
+[functions.send-orbit-campaign]
+verify_jwt = true
+
+[functions.request-campaign-approval]
+verify_jwt = true
+
+[functions.send-vendedor-notification]
+verify_jwt = false
+
+[functions.orbit-meta-webhook]
+verify_jwt = false
+
+[functions.send-orbit-meta-message]
+verify_jwt = true
