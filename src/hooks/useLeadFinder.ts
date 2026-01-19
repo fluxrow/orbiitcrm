@@ -281,6 +281,29 @@ export function useCreateLeadSearch() {
   });
 }
 
+// Execute Lead Search - calls Apollo API
+export function useExecuteLeadSearch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (searchId: string) => {
+      const { data, error } = await supabase.functions.invoke("orbit-search-leads", {
+        body: { search_id: searchId },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["lead-searches"] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      toast.success(`Busca concluída! ${data.imported} leads importados.`);
+    },
+    onError: (error: Error) => {
+      toast.error("Erro ao executar busca: " + error.message);
+    },
+  });
+}
+
 export function useUpdateLeadSearch() {
   const queryClient = useQueryClient();
   return useMutation({

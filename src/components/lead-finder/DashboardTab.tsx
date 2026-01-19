@@ -1,4 +1,5 @@
-import { useLeadFinderStats, useLeadSearches, LeadSearch } from "@/hooks/useLeadFinder";
+import { useState } from "react";
+import { useLeadFinderStats, useLeadSearches, useExecuteLeadSearch, LeadSearch } from "@/hooks/useLeadFinder";
 import { StatsCard } from "@/components/orbit/StatsCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
   Play,
   Eye,
   MoreHorizontal,
+  Loader2,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -21,6 +23,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
 
 interface DashboardTabProps {
   onViewSearch: (search: LeadSearch) => void;
@@ -30,6 +33,23 @@ interface DashboardTabProps {
 export function DashboardTab({ onViewSearch, onNewSearch }: DashboardTabProps) {
   const stats = useLeadFinderStats();
   const { data: searches, isLoading } = useLeadSearches();
+  const executeSearch = useExecuteLeadSearch();
+  const [executingId, setExecutingId] = useState<string | null>(null);
+
+  const handleReExecute = async (search: LeadSearch) => {
+    if (executingId) return;
+    
+    setExecutingId(search.id);
+    toast.info("Re-executando busca...");
+    
+    try {
+      await executeSearch.mutateAsync(search.id);
+    } catch (error) {
+      console.error("Error re-executing search:", error);
+    } finally {
+      setExecutingId(null);
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -173,7 +193,19 @@ export function DashboardTab({ onViewSearch, onNewSearch }: DashboardTabProps) {
                       <DropdownMenuItem onClick={() => onViewSearch(search)}>
                         Ver resultados
                       </DropdownMenuItem>
-                      <DropdownMenuItem>Executar novamente</DropdownMenuItem>
+                      <DropdownMenuItem 
+                        onClick={() => handleReExecute(search)}
+                        disabled={executingId === search.id}
+                      >
+                        {executingId === search.id ? (
+                          <>
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            Executando...
+                          </>
+                        ) : (
+                          "Executar novamente"
+                        )}
+                      </DropdownMenuItem>
                       <DropdownMenuItem className="text-destructive">
                         Excluir busca
                       </DropdownMenuItem>
