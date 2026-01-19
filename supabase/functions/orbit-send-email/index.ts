@@ -36,24 +36,37 @@ const handler = async (req: Request): Promise<Response> => {
     let resendApiKey: string | null = null;
     let fromEmail = "Orbit <onboarding@resend.dev>";
     
+    // Primeiro tenta buscar config da empresa específica
+    let resendConfig = null;
     if (empresa_id) {
-      const { data: resendConfig } = await supabase
+      const { data } = await supabase
         .from("orbit_resend_config")
         .select("*")
         .eq("empresa_id", empresa_id)
         .maybeSingle();
+      resendConfig = data;
+    }
+    
+    // Se não encontrou, busca config global (empresa_id IS NULL)
+    if (!resendConfig) {
+      const { data } = await supabase
+        .from("orbit_resend_config")
+        .select("*")
+        .is("empresa_id", null)
+        .maybeSingle();
+      resendConfig = data;
+    }
 
-      if (resendConfig) {
-        // Usar a API key da empresa se disponível
-        if (resendConfig.api_key) {
-          resendApiKey = resendConfig.api_key;
-        }
+    if (resendConfig) {
+      // Usar a API key encontrada
+      if (resendConfig.api_key) {
+        resendApiKey = resendConfig.api_key;
+      }
 
-        // Configurar o remetente se disponível e ativo
-        if (resendConfig.ativo && resendConfig.from_email) {
-          const fromName = resendConfig.from_name || "Orbit";
-          fromEmail = `${fromName} <${resendConfig.from_email}>`;
-        }
+      // Configurar o remetente se disponível e ativo
+      if (resendConfig.ativo && resendConfig.from_email) {
+        const fromName = resendConfig.from_name || "Orbit";
+        fromEmail = `${fromName} <${resendConfig.from_email}>`;
       }
     }
 
