@@ -17,6 +17,7 @@ import {
   useICPs,
   useCreateLeadSearch,
   useCreateICP,
+  useExecuteLeadSearch,
 } from "@/hooks/useLeadFinder";
 import {
   Dialog,
@@ -90,6 +91,8 @@ export function NewSearchTab({ onSearchCreated }: NewSearchTabProps) {
   const { data: icps } = useICPs();
   const createSearch = useCreateLeadSearch();
   const createICP = useCreateICP();
+  const executeSearch = useExecuteLeadSearch();
+  const [isExecuting, setIsExecuting] = useState(false);
 
   const [formData, setFormData] = useState({
     nome: "",
@@ -152,24 +155,36 @@ export function NewSearchTab({ onSearchCreated }: NewSearchTabProps) {
       return;
     }
 
-    const result = await createSearch.mutateAsync({
-      nome: formData.nome,
-      source_id: formData.source_id,
-      icp_id: formData.icp_id || null,
-      filtros: {
-        pais: formData.pais,
-        estado: formData.estado,
-        cidade: formData.cidade,
-        cargos: formData.cargos,
-        segmentos: formData.segmentos,
-        tamanhos: formData.tamanhos,
-      },
-      observacoes: formData.observacoes || null,
-      status: "pendente",
-    });
+    setIsExecuting(true);
+    
+    try {
+      // 1. Create search in database
+      const result = await createSearch.mutateAsync({
+        nome: formData.nome,
+        source_id: formData.source_id,
+        icp_id: formData.icp_id || null,
+        filtros: {
+          pais: formData.pais,
+          estado: formData.estado,
+          cidade: formData.cidade,
+          cargos: formData.cargos,
+          segmentos: formData.segmentos,
+          tamanhos: formData.tamanhos,
+        },
+        observacoes: formData.observacoes || null,
+        status: "pendente",
+      });
 
-    if (result) {
-      onSearchCreated(result.id);
+      if (result) {
+        // 2. Execute search immediately - call Apollo API
+        toast.info("Buscando leads no Apollo...");
+        await executeSearch.mutateAsync(result.id);
+        onSearchCreated(result.id);
+      }
+    } catch (error) {
+      console.error("Error executing search:", error);
+    } finally {
+      setIsExecuting(false);
     }
   };
 
@@ -457,12 +472,12 @@ export function NewSearchTab({ onSearchCreated }: NewSearchTabProps) {
           {/* Submit */}
           <Button
             onClick={handleSubmit}
-            disabled={createSearch.isPending}
+            disabled={createSearch.isPending || isExecuting}
             className="w-full"
             size="lg"
           >
-            <Play className="w-4 h-4 mr-2" />
-            {createSearch.isPending ? "Criando..." : "Iniciar Busca"}
+            <Play className={`w-4 h-4 mr-2 ${isExecuting ? 'animate-pulse' : ''}`} />
+            {isExecuting ? "Buscando leads..." : createSearch.isPending ? "Criando..." : "Iniciar Busca"}
           </Button>
         </div>
       </div>
