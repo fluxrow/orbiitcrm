@@ -9,8 +9,10 @@ import {
   Search,
   Rocket,
   BarChart3,
+  UserCog,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useIsAdmin } from "@/hooks/useUserRole";
 
 const navigation = [
   { name: "Prospects", href: "/orbit/prospects", icon: Users },
@@ -25,6 +27,7 @@ const navigation = [
 
 export function OrbitSidebar() {
   const location = useLocation();
+  const { isAdmin } = useIsAdmin();
 
   return (
     <aside className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col">
@@ -59,6 +62,18 @@ export function OrbitSidebar() {
             </Link>
           );
         })}
+        {isAdmin && (
+          <Link
+            to="/orbit/usuarios"
+            className={cn(
+              "nav-link",
+              location.pathname === "/orbit/usuarios" && "nav-link-active"
+            )}
+          >
+            <UserCog className="w-5 h-5" />
+            <span>Usuários</span>
+          </Link>
+        )}
       </nav>
 
       {/* User info */}

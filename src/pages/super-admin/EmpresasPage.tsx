@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import SuperAdminLayout from "./SuperAdminLayout";
 import { useEmpresas, useToggleEmpresaAtivo } from "@/hooks/useSuperAdmin";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ import EmpresaDialog from "@/components/super-admin/EmpresaDialog";
 export default function EmpresasPage() {
   const { data: empresas, isLoading } = useEmpresas();
   const toggleAtivo = useToggleEmpresaAtivo();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -173,7 +175,9 @@ export default function EmpresasPage() {
                               <Edit className="w-4 h-4 mr-2" />
                               Editar
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => navigate(`/super-admin/empresas/${empresa.id}/usuarios`)}
+                            >
                               <Users className="w-4 h-4 mr-2" />
                               Ver Usuários
                             </DropdownMenuItem>

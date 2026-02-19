@@ -19,10 +19,12 @@ import TemplatesPage from "./pages/orbit/TemplatesPage";
 import LeadFinderPage from "./pages/orbit/LeadFinderPage";
 import ConfigPage from "./pages/orbit/ConfigPage";
 import AnalyticsPage from "./pages/orbit/AnalyticsPage";
+import UsuariosEmpresaPage from "./pages/orbit/UsuariosEmpresaPage";
 
 // Super Admin Pages
 import SuperAdminDashboard from "./pages/super-admin/SuperAdminDashboard";
 import EmpresasPage from "./pages/super-admin/EmpresasPage";
+import EmpresaUsersPage from "./pages/super-admin/EmpresaUsersPage";
 import UsuariosGlobaisPage from "./pages/super-admin/UsuariosGlobaisPage";
 
 const queryClient = new QueryClient();
@@ -84,10 +86,12 @@ const AppRoutes = () => (
     <Route path="/orbit/lead-finder" element={<ProtectedRoute><LeadFinderPage /></ProtectedRoute>} />
     <Route path="/orbit/config" element={<ProtectedRoute><ConfigPage /></ProtectedRoute>} />
     <Route path="/orbit/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
+    <Route path="/orbit/usuarios" element={<ProtectedRoute><UsuariosEmpresaPage /></ProtectedRoute>} />
     
     {/* Super Admin Routes */}
     <Route path="/super-admin" element={<SuperAdminRoute><SuperAdminDashboard /></SuperAdminRoute>} />
     <Route path="/super-admin/empresas" element={<SuperAdminRoute><EmpresasPage /></SuperAdminRoute>} />
+    <Route path="/super-admin/empresas/:id/usuarios" element={<SuperAdminRoute><EmpresaUsersPage /></SuperAdminRoute>} />
     <Route path="/super-admin/usuarios" element={<SuperAdminRoute><UsuariosGlobaisPage /></SuperAdminRoute>} />
     
     <Route path="*" element={<NotFound />} />

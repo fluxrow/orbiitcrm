@@ -86,6 +86,99 @@ export function useEmpresaUsers(empresaId: string) {
   });
 }
 
+export function useAddEmpresaUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      empresa_id: string;
+      nome: string;
+      email: string;
+      senha: string;
+      cargo?: string;
+      role: string;
+    }) => {
+      const { data: result, error } = await supabase.functions.invoke('add-empresa-user', {
+        body: data,
+      });
+
+      if (error) throw error;
+      if (result?.error) throw new Error(result.error);
+      return result;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['empresa-users', variables.empresa_id] });
+      queryClient.invalidateQueries({ queryKey: ['empresas-stats'] });
+    },
+  });
+}
+
+export function useToggleUserAtivo() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ userId, ativo }: { userId: string; ativo: boolean }) => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({ ativo })
+        .eq('id', userId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['empresa-users'] });
+    },
+  });
+}
+
+export function useChangeUserRole() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
+      // Delete existing roles then insert new one
+      const { error: deleteError } = await supabase
+        .from('user_roles')
+        .delete()
+        .eq('user_id', userId);
+
+      if (deleteError) throw deleteError;
+
+      const { data, error } = await supabase
+        .from('user_roles')
+        .insert({ user_id: userId, role: role as any });
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['empresa-users'] });
+    },
+  });
+}
+
+export function useUsersStats() {
+  return useQuery({
+    queryKey: ['users-stats'],
+    queryFn: async () => {
+      const { data: profiles, error } = await supabase
+        .from('profiles')
+        .select('id, ativo');
+
+      if (error) throw error;
+
+      const total = profiles?.length || 0;
+      const ativos = profiles?.filter(p => p.ativo)?.length || 0;
+      const inativos = total - ativos;
+
+      return { total, ativos, inativos };
+    },
+  });
+}
+
 export function useCreateEmpresa() {
   const queryClient = useQueryClient();
 

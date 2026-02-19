@@ -38,3 +38,6 @@ verify_jwt = true
 
 [functions.orbit-search-leads]
 verify_jwt = false
+
+[functions.add-empresa-user]
+verify_jwt = false
