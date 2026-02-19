@@ -1661,6 +1661,220 @@ export type Database = {
           },
         ]
       }
+      organizations: {
+        Row: {
+          cnpj: string | null
+          created_at: string
+          id: string
+          legal_name: string | null
+          name: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          cnpj?: string | null
+          created_at?: string
+          id?: string
+          legal_name?: string | null
+          name: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          cnpj?: string | null
+          created_at?: string
+          id?: string
+          legal_name?: string | null
+          name?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      pe_audit_log: {
+        Row: {
+          action: string
+          actor_user_id: string | null
+          created_at: string
+          entity_id: string | null
+          entity_type: string
+          id: string
+          metadata: Json | null
+          organization_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_user_id?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_type: string
+          id?: string
+          metadata?: Json | null
+          organization_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string
+          id?: string
+          metadata?: Json | null
+          organization_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pe_audit_log_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "pe_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pe_audit_log_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pe_invitations: {
+        Row: {
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by_user_id: string
+          organization_id: string
+          role_id: string
+          status: string
+          token: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          expires_at: string
+          id?: string
+          invited_by_user_id: string
+          organization_id: string
+          role_id: string
+          status?: string
+          token: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by_user_id?: string
+          organization_id?: string
+          role_id?: string
+          status?: string
+          token?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pe_invitations_invited_by_user_id_fkey"
+            columns: ["invited_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "pe_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pe_invitations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pe_invitations_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "pe_roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pe_roles: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      pe_users: {
+        Row: {
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+          is_active: boolean
+          is_super_admin: boolean
+          organization_id: string | null
+          phone: string | null
+          role_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          full_name: string
+          id: string
+          is_active?: boolean
+          is_super_admin?: boolean
+          organization_id?: string | null
+          phone?: string | null
+          role_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+          is_active?: boolean
+          is_super_admin?: boolean
+          organization_id?: string | null
+          phone?: string | null
+          role_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pe_users_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pe_users_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "pe_roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           ativo: boolean | null
@@ -1740,6 +1954,13 @@ export type Database = {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
+        Returns: boolean
+      }
+      pe_get_user_org_id: { Args: { p_user_id: string }; Returns: string }
+      pe_get_user_role_code: { Args: { p_user_id: string }; Returns: string }
+      pe_is_super_admin: { Args: { p_user_id: string }; Returns: boolean }
+      pe_user_is_org_admin: {
+        Args: { p_org_id: string; p_user_id: string }
         Returns: boolean
       }
     }

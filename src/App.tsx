@@ -5,9 +5,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useIsSuperAdmin } from "@/hooks/useUserRole";
+
 import NotFound from "./pages/NotFound";
 import AuthPage from "./pages/AuthPage";
 import SetupPage from "./pages/SetupPage";
+import AcceptInvitePage from "./pages/AcceptInvitePage";
 
 // Orbit CRM Pages
 import OrbitDashboard from "./pages/orbit/OrbitDashboard";
@@ -21,11 +23,21 @@ import ConfigPage from "./pages/orbit/ConfigPage";
 import AnalyticsPage from "./pages/orbit/AnalyticsPage";
 import UsuariosEmpresaPage from "./pages/orbit/UsuariosEmpresaPage";
 
-// Super Admin Pages
+// Super Admin Pages (legacy)
 import SuperAdminDashboard from "./pages/super-admin/SuperAdminDashboard";
 import EmpresasPage from "./pages/super-admin/EmpresasPage";
 import EmpresaUsersPage from "./pages/super-admin/EmpresaUsersPage";
 import UsuariosGlobaisPage from "./pages/super-admin/UsuariosGlobaisPage";
+
+// PE Admin Pages
+import PeAdminLayout from "./pages/pe-admin/PeAdminLayout";
+import OrganizationsPage from "./pages/pe-admin/OrganizationsPage";
+import PeOrgUsersPage from "./pages/pe-admin/PeOrgUsersPage";
+import PeGlobalUsersPage from "./pages/pe-admin/GlobalUsersPage";
+import PeAuditLogPage from "./pages/pe-admin/AuditLogPage";
+
+// Org Pages
+import OrgUsersPage from "./pages/org/OrgUsersPage";
 
 const queryClient = new QueryClient();
 
@@ -74,6 +86,7 @@ const AppRoutes = () => (
   <Routes>
     <Route path="/auth" element={<AuthPage />} />
     <Route path="/setup" element={<SetupPage />} />
+    <Route path="/invite/:token" element={<AcceptInvitePage />} />
     <Route path="/" element={<Navigate to="/orbit" replace />} />
     
     {/* Protected Orbit CRM Routes */}
@@ -88,11 +101,23 @@ const AppRoutes = () => (
     <Route path="/orbit/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
     <Route path="/orbit/usuarios" element={<ProtectedRoute><UsuariosEmpresaPage /></ProtectedRoute>} />
     
-    {/* Super Admin Routes */}
+    {/* Legacy Super Admin Routes */}
     <Route path="/super-admin" element={<SuperAdminRoute><SuperAdminDashboard /></SuperAdminRoute>} />
     <Route path="/super-admin/empresas" element={<SuperAdminRoute><EmpresasPage /></SuperAdminRoute>} />
     <Route path="/super-admin/empresas/:id/usuarios" element={<SuperAdminRoute><EmpresaUsersPage /></SuperAdminRoute>} />
     <Route path="/super-admin/usuarios" element={<SuperAdminRoute><UsuariosGlobaisPage /></SuperAdminRoute>} />
+
+    {/* PE Admin Routes */}
+    <Route path="/pe-admin" element={<PeAdminLayout />}>
+      <Route index element={<Navigate to="/pe-admin/organizations" replace />} />
+      <Route path="organizations" element={<OrganizationsPage />} />
+      <Route path="organizations/:id/users" element={<PeOrgUsersPage />} />
+      <Route path="users" element={<PeGlobalUsersPage />} />
+      <Route path="audit" element={<PeAuditLogPage />} />
+    </Route>
+
+    {/* Org Routes */}
+    <Route path="/org/users" element={<ProtectedRoute><OrgUsersPage /></ProtectedRoute>} />
     
     <Route path="*" element={<NotFound />} />
   </Routes>
