@@ -1,0 +1,68 @@
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { format } from "date-fns";
+
+export default function GlobalUsersPage() {
+  const { data: users, isLoading } = useQuery({
+    queryKey: ["pe-all-users"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("pe_users" as any)
+        .select("*, pe_roles(code, name), organizations:organization_id(name)")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data as any[];
+    },
+  });
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Usuários Globais</h1>
+        <p className="text-sm text-muted-foreground">Todos os usuários cadastrados no sistema</p>
+      </div>
+
+      <div className="border border-border rounded-lg">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nome</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Organização</TableHead>
+              <TableHead>Papel</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Desde</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+            ) : !users?.length ? (
+              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Nenhum usuário</TableCell></TableRow>
+            ) : (
+              users.map((u: any) => (
+                <TableRow key={u.id}>
+                  <TableCell className="font-medium text-foreground">
+                    {u.full_name}
+                    {u.is_super_admin && <Badge variant="destructive" className="ml-2 text-xs">Super Admin</Badge>}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{u.email}</TableCell>
+                  <TableCell className="text-muted-foreground">{u.organizations?.name || "—"}</TableCell>
+                  <TableCell><Badge variant="outline">{u.pe_roles?.name || (u.is_super_admin ? "Global" : "—")}</Badge></TableCell>
+                  <TableCell>
+                    <Badge variant={u.is_active ? "default" : "secondary"}>
+                      {u.is_active ? "Ativo" : "Inativo"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{format(new Date(u.created_at), "dd/MM/yyyy")}</TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
