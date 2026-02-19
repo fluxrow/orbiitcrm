@@ -1,13 +1,14 @@
 import SuperAdminLayout from "./SuperAdminLayout";
-import { useEmpresas, useEmpresasStats } from "@/hooks/useSuperAdmin";
+import { useEmpresas, useEmpresasStats, useUsersStats } from "@/hooks/useSuperAdmin";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Users, CheckCircle, Clock } from "lucide-react";
+import { Building2, Users, CheckCircle, Clock, UserCheck, UserX } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 export default function SuperAdminDashboard() {
   const { data: empresas, isLoading } = useEmpresas();
   const { data: stats } = useEmpresasStats();
+  const { data: usersStats } = useUsersStats();
 
   const recentEmpresas = empresas?.slice(0, 5) || [];
 
@@ -65,7 +66,31 @@ export default function SuperAdminDashboard() {
               <Users className="w-4 h-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">-</div>
+              <div className="text-2xl font-bold">{usersStats?.total || 0}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Usuários Ativos
+              </CardTitle>
+              <UserCheck className="w-4 h-4 text-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-500">{usersStats?.ativos || 0}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Usuários Inativos
+              </CardTitle>
+              <UserX className="w-4 h-4 text-red-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-500">{usersStats?.inativos || 0}</div>
             </CardContent>
           </Card>
         </div>
