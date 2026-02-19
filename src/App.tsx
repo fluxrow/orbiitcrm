@@ -35,6 +35,12 @@ import OrganizationsPage from "./pages/pe-admin/OrganizationsPage";
 import PeOrgUsersPage from "./pages/pe-admin/PeOrgUsersPage";
 import PeGlobalUsersPage from "./pages/pe-admin/GlobalUsersPage";
 import PeAuditLogPage from "./pages/pe-admin/AuditLogPage";
+import ClientesPage from "./pages/pe-admin/ClientesPage";
+import ClienteDetailPage from "./pages/pe-admin/ClienteDetailPage";
+import ContatosPage from "./pages/pe-admin/ContatosPage";
+import SegmentosPage from "./pages/pe-admin/SegmentosPage";
+import OrigensPage from "./pages/pe-admin/OrigensPage";
+import ImportacaoPage from "./pages/pe-admin/ImportacaoPage";
 
 // Org Pages
 import OrgUsersPage from "./pages/org/OrgUsersPage";
@@ -113,6 +119,12 @@ const AppRoutes = () => (
       <Route path="organizations" element={<OrganizationsPage />} />
       <Route path="organizations/:id/users" element={<PeOrgUsersPage />} />
       <Route path="users" element={<PeGlobalUsersPage />} />
+      <Route path="clientes" element={<ClientesPage />} />
+      <Route path="clientes/:id" element={<ClienteDetailPage />} />
+      <Route path="contatos" element={<ContatosPage />} />
+      <Route path="segmentos" element={<SegmentosPage />} />
+      <Route path="origens" element={<OrigensPage />} />
+      <Route path="importacao" element={<ImportacaoPage />} />
       <Route path="audit" element={<PeAuditLogPage />} />
     </Route>
 

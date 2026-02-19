@@ -14,6 +14,196 @@ export type Database = {
   }
   public: {
     Tables: {
+      cliente_origem: {
+        Row: {
+          cliente_id: string
+          data_importacao: string
+          id: string
+          lista: string | null
+          observacao: string | null
+          organization_id: string
+          origem_id: string
+        }
+        Insert: {
+          cliente_id: string
+          data_importacao?: string
+          id?: string
+          lista?: string | null
+          observacao?: string | null
+          organization_id: string
+          origem_id: string
+        }
+        Update: {
+          cliente_id?: string
+          data_importacao?: string
+          id?: string
+          lista?: string | null
+          observacao?: string | null
+          organization_id?: string
+          origem_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cliente_origem_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cliente_origem_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cliente_origem_origem_id_fkey"
+            columns: ["origem_id"]
+            isOneToOne: false
+            referencedRelation: "origens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clientes: {
+        Row: {
+          cidade: string | null
+          cnpj: string | null
+          created_at: string
+          dominio_principal: string | null
+          id: string
+          nome_fantasia: string | null
+          observacoes: string | null
+          organization_id: string
+          porte: string | null
+          razao_social: string
+          razao_social_normalizada: string
+          segmento_id: string | null
+          site: string | null
+          status_geral: string
+          uf: string | null
+          updated_at: string
+        }
+        Insert: {
+          cidade?: string | null
+          cnpj?: string | null
+          created_at?: string
+          dominio_principal?: string | null
+          id?: string
+          nome_fantasia?: string | null
+          observacoes?: string | null
+          organization_id: string
+          porte?: string | null
+          razao_social: string
+          razao_social_normalizada: string
+          segmento_id?: string | null
+          site?: string | null
+          status_geral?: string
+          uf?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cidade?: string | null
+          cnpj?: string | null
+          created_at?: string
+          dominio_principal?: string | null
+          id?: string
+          nome_fantasia?: string | null
+          observacoes?: string | null
+          organization_id?: string
+          porte?: string | null
+          razao_social?: string
+          razao_social_normalizada?: string
+          segmento_id?: string | null
+          site?: string | null
+          status_geral?: string
+          uf?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clientes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clientes_segmento_id_fkey"
+            columns: ["segmento_id"]
+            isOneToOne: false
+            referencedRelation: "segmentos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contatos: {
+        Row: {
+          area: string | null
+          cargo: string | null
+          cliente_id: string
+          created_at: string
+          decisor: boolean
+          email: string | null
+          email_normalizado: string | null
+          id: string
+          nivel_influencia: number | null
+          nome: string
+          organization_id: string
+          telefone: string | null
+          updated_at: string
+          whatsapp: string | null
+        }
+        Insert: {
+          area?: string | null
+          cargo?: string | null
+          cliente_id: string
+          created_at?: string
+          decisor?: boolean
+          email?: string | null
+          email_normalizado?: string | null
+          id?: string
+          nivel_influencia?: number | null
+          nome: string
+          organization_id: string
+          telefone?: string | null
+          updated_at?: string
+          whatsapp?: string | null
+        }
+        Update: {
+          area?: string | null
+          cargo?: string | null
+          cliente_id?: string
+          created_at?: string
+          decisor?: boolean
+          email?: string | null
+          email_normalizado?: string | null
+          id?: string
+          nivel_influencia?: number | null
+          nome?: string
+          organization_id?: string
+          telefone?: string | null
+          updated_at?: string
+          whatsapp?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contatos_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contatos_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_activities: {
         Row: {
           assunto: string
@@ -1691,6 +1881,44 @@ export type Database = {
         }
         Relationships: []
       }
+      origens: {
+        Row: {
+          created_at: string
+          descricao: string | null
+          id: string
+          is_active: boolean
+          nome: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          is_active?: boolean
+          nome: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          is_active?: boolean
+          nome?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "origens_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pe_audit_log: {
         Row: {
           action: string
@@ -1922,6 +2150,44 @@ export type Database = {
           },
         ]
       }
+      segmentos: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          macro: string
+          micro: string | null
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          macro: string
+          micro?: string | null
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          macro?: string
+          micro?: string | null
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "segmentos_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -1959,6 +2225,10 @@ export type Database = {
       pe_get_user_org_id: { Args: { p_user_id: string }; Returns: string }
       pe_get_user_role_code: { Args: { p_user_id: string }; Returns: string }
       pe_is_super_admin: { Args: { p_user_id: string }; Returns: boolean }
+      pe_user_can_write: {
+        Args: { p_org_id: string; p_user_id: string }
+        Returns: boolean
+      }
       pe_user_is_org_admin: {
         Args: { p_org_id: string; p_user_id: string }
         Returns: boolean
