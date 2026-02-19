@@ -2,13 +2,18 @@ import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { usePeAuth } from "@/hooks/usePeAuth";
-import { Building2, Users, FileText, LogOut, Menu, X, Shield } from "lucide-react";
+import { Building2, Users, FileText, LogOut, Menu, X, Shield, Briefcase, Contact, Tag, MapPin, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Navigate } from "react-router-dom";
 
 const navItems = [
   { to: "/pe-admin/organizations", label: "Organizações", icon: Building2 },
   { to: "/pe-admin/users", label: "Usuários Globais", icon: Users },
+  { to: "/pe-admin/clientes", label: "Clientes", icon: Briefcase },
+  { to: "/pe-admin/contatos", label: "Contatos", icon: Contact },
+  { to: "/pe-admin/segmentos", label: "Segmentos", icon: Tag },
+  { to: "/pe-admin/origens", label: "Origens", icon: MapPin },
+  { to: "/pe-admin/importacao", label: "Importação", icon: Upload },
   { to: "/pe-admin/audit", label: "Auditoria", icon: FileText },
 ];
 
