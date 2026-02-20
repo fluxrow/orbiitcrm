@@ -1,149 +1,162 @@
 
-# Etapa 4A.1 -- Tenant Map Management (UX + Seguranca)
+
+# Etapa 4A.2 -- Auto-Provisioning de Tenant (Orbit to PE)
 
 ## Objetivo
 
-Criar uma interface administrativa para gerenciar o mapeamento entre empresas Orbit (`empresa_id`) e organizacoes PE (`organization_id`), eliminando a necessidade de SQL manual na tabela `pe_tenant_map`.
+Automatizar a criacao da organization PE e do registro em `pe_tenant_map` sempre que uma empresa Orbit for criada, eliminando setup manual pelo Super Admin.
 
 ---
 
-## 1. Backend (Migracoes SQL)
+## 1. Backend -- RPC `pe_provision_tenant`
 
-### 1.1 RPC `pe_upsert_tenant_map`
+Criar funcao SQL `SECURITY DEFINER` idempotente que:
 
-Funcao SECURITY DEFINER que apenas Super Admins podem executar:
+A) Verifica se ja existe mapeamento em `pe_tenant_map` para o `empresa_id` -- se sim, retorna o existente (idempotente).
+
+B) Cria `organization` no PE com `name = p_empresa_nome`.
+
+C) Insere `pe_tenant_map(empresa_id, organization_id)`.
+
+D) Seed padrao para a nova org:
+   - **Produtos** (7 itens): AEREO, RODOVIARIO, LOCACAO_VEICULO, TRANSFER (TRANSPORTE), HOSPEDAGEM (HOSPEDAGEM), SEGURO (PROTECAO), EVENTOS (EVENTOS) -- com `ON CONFLICT DO NOTHING` no par `(organization_id, codigo)` para idempotencia. Requer adicionar constraint UNIQUE em `(organization_id, codigo)` na tabela `produtos`.
+   - **Funil Etapas** (6 etapas): Solicitacao Recebida (open, ordem 1), Em Qualificacao (open, 2), Cotacao Enviada (open, 3), Ajustes / Negociacao (open, 4), Emitido / Confirmado (won, 5), Perdido / Cancelado (lost, 6) -- com `ON CONFLICT DO NOTHING` no par `(organization_id, nome)` para idempotencia. Requer adicionar constraint UNIQUE em `(organization_id, nome)` na tabela `funil_etapas`.
+
+E) Audit log: `TENANT_PROVISIONED`.
+
+Retorno: `{ empresa_id, organization_id, seeded: true/false }`
 
 ```text
-CREATE OR REPLACE FUNCTION public.pe_upsert_tenant_map(
+CREATE OR REPLACE FUNCTION public.pe_provision_tenant(
   p_empresa_id uuid,
-  p_organization_id uuid
+  p_empresa_nome text,
+  p_created_by_user_id uuid
 ) RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+  v_org_id uuid;
+  v_seeded boolean := false;
 BEGIN
-  -- Validar que caller e super admin
-  IF NOT pe_is_super_admin(auth.uid()) THEN
-    RAISE EXCEPTION 'access_denied: only super admins can manage tenant mappings';
+  -- A) Idempotente: retornar mapeamento existente
+  SELECT organization_id INTO v_org_id
+  FROM pe_tenant_map WHERE empresa_id = p_empresa_id;
+
+  IF v_org_id IS NOT NULL THEN
+    RETURN jsonb_build_object(
+      'empresa_id', p_empresa_id,
+      'organization_id', v_org_id,
+      'seeded', false
+    );
   END IF;
 
-  -- Validar existencia de empresa_id
-  IF NOT EXISTS (SELECT 1 FROM orbit_empresas WHERE id = p_empresa_id) THEN
-    RAISE EXCEPTION 'empresa_not_found: %', p_empresa_id;
-  END IF;
+  -- B) Criar organization
+  INSERT INTO organizations (name)
+  VALUES (p_empresa_nome)
+  RETURNING id INTO v_org_id;
 
-  -- Validar existencia de organization_id
-  IF NOT EXISTS (SELECT 1 FROM organizations WHERE id = p_organization_id) THEN
-    RAISE EXCEPTION 'organization_not_found: %', p_organization_id;
-  END IF;
-
-  -- Upsert
+  -- C) Inserir pe_tenant_map
   INSERT INTO pe_tenant_map (empresa_id, organization_id)
-  VALUES (p_empresa_id, p_organization_id)
-  ON CONFLICT (empresa_id) DO UPDATE SET organization_id = EXCLUDED.organization_id;
+  VALUES (p_empresa_id, v_org_id);
 
-  -- Handle reverse conflict (org already mapped to different empresa)
-  -- The UNIQUE on organization_id will raise an error naturally
+  -- D) Seed produtos
+  INSERT INTO produtos (organization_id, codigo, nome, categoria) VALUES
+    (v_org_id, 'AEREO', 'Aereo', 'TRANSPORTE'),
+    (v_org_id, 'RODOVIARIO', 'Rodoviario', 'TRANSPORTE'),
+    (v_org_id, 'LOCACAO_VEICULO', 'Locacao de Veiculo', 'TRANSPORTE'),
+    (v_org_id, 'TRANSFER', 'Transfer', 'TRANSPORTE'),
+    (v_org_id, 'HOSPEDAGEM', 'Hospedagem', 'HOSPEDAGEM'),
+    (v_org_id, 'SEGURO', 'Seguro Viagem', 'PROTECAO'),
+    (v_org_id, 'EVENTOS', 'Eventos', 'EVENTOS')
+  ON CONFLICT (organization_id, codigo) DO NOTHING;
 
-  -- Audit log
+  -- Seed funil etapas
+  INSERT INTO funil_etapas (organization_id, nome, ordem, tipo) VALUES
+    (v_org_id, 'Solicitacao Recebida', 1, 'open'),
+    (v_org_id, 'Em Qualificacao', 2, 'open'),
+    (v_org_id, 'Cotacao Enviada', 3, 'open'),
+    (v_org_id, 'Ajustes / Negociacao', 4, 'open'),
+    (v_org_id, 'Emitido / Confirmado', 5, 'won'),
+    (v_org_id, 'Perdido / Cancelado', 6, 'lost')
+  ON CONFLICT (organization_id, nome) DO NOTHING;
+
+  v_seeded := true;
+
+  -- E) Audit log
   INSERT INTO pe_audit_log (
-    organization_id, actor_user_id, action, entity_type, entity_id, metadata
+    organization_id, actor_user_id, action, entity_type, metadata
   ) VALUES (
-    p_organization_id, auth.uid(), 'TENANT_MAP_UPSERT', 'pe_tenant_map', null,
-    jsonb_build_object('empresa_id', p_empresa_id, 'organization_id', p_organization_id)
+    v_org_id, p_created_by_user_id, 'TENANT_PROVISIONED', 'pe_tenant_map',
+    jsonb_build_object(
+      'empresa_id', p_empresa_id,
+      'organization_id', v_org_id,
+      'seeded', v_seeded
+    )
   );
 
-  RETURN jsonb_build_object('empresa_id', p_empresa_id, 'organization_id', p_organization_id);
+  RETURN jsonb_build_object(
+    'empresa_id', p_empresa_id,
+    'organization_id', v_org_id,
+    'seeded', v_seeded
+  );
 END;
 $$;
 ```
 
-### 1.2 RPC `pe_delete_tenant_map`
+A migracao tambem adicionara as constraints UNIQUE necessarias:
+- `ALTER TABLE produtos ADD CONSTRAINT uq_produtos_org_codigo UNIQUE (organization_id, codigo);`
+- `ALTER TABLE funil_etapas ADD CONSTRAINT uq_funil_etapas_org_nome UNIQUE (organization_id, nome);`
 
-Para permitir desfazer mapeamentos incorretos:
+---
+
+## 2. Edge Function `create-empresa` -- Integracao
+
+Modificar `supabase/functions/create-empresa/index.ts` para chamar `pe_provision_tenant` logo apos criar a empresa com sucesso (usando o service role client).
+
+Adicionar entre os passos 1 e 2 atuais:
 
 ```text
-CREATE OR REPLACE FUNCTION public.pe_delete_tenant_map(p_empresa_id uuid)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE v_org_id uuid;
-BEGIN
-  IF NOT pe_is_super_admin(auth.uid()) THEN
-    RAISE EXCEPTION 'access_denied';
-  END IF;
+// 1.5 Auto-provision PE tenant
+const { data: provision, error: provisionError } = await supabaseAdmin
+  .rpc("pe_provision_tenant", {
+    p_empresa_id: empresa.id,
+    p_empresa_nome: empresa.nome,
+    p_created_by_user_id: user.id,
+  });
 
-  SELECT organization_id INTO v_org_id FROM pe_tenant_map WHERE empresa_id = p_empresa_id;
-
-  DELETE FROM pe_tenant_map WHERE empresa_id = p_empresa_id;
-
-  INSERT INTO pe_audit_log (
-    organization_id, actor_user_id, action, entity_type, entity_id, metadata
-  ) VALUES (
-    v_org_id, auth.uid(), 'TENANT_MAP_DELETED', 'pe_tenant_map', null,
-    jsonb_build_object('empresa_id', p_empresa_id, 'organization_id', v_org_id)
-  );
-END;
-$$;
+if (provisionError) {
+  console.error("Error provisioning tenant:", provisionError);
+  // Non-blocking: empresa still works, provisioning can be retried
+}
 ```
 
----
+O provisionamento e nao-bloqueante: se falhar, a empresa e criada normalmente e o Super Admin pode reprovisionar pela UI.
 
-## 2. Frontend -- Hook
-
-### 2.1 Novo hook `src/hooks/useTenantMap.ts`
-
-- `useTenantMaps()` -- query que busca todos os registros de `pe_tenant_map` (Super Admin ve todos via RLS)
-- `useUpsertTenantMap()` -- mutation que chama `supabase.rpc('pe_upsert_tenant_map', ...)`
-- `useDeleteTenantMap()` -- mutation que chama `supabase.rpc('pe_delete_tenant_map', ...)`
+O retorno da edge function sera estendido com `provision` (organization_id, seeded).
 
 ---
 
-## 3. Frontend -- Pagina
+## 3. UX -- Status de Provisionamento
 
-### 3.1 Nova pagina `src/pages/pe-admin/TenantMapPage.tsx`
+### 3.1 TenantMapPage.tsx
 
-Layout: tabela com todas as empresas Orbit, mostrando status de mapeamento.
+Atualizar a pagina existente para mostrar status "Provisionado" (verde) para empresas com mapeamento e adicionar botao "Re-provisionar" (chama `pe_provision_tenant` via RPC) para empresas sem mapeamento.
 
-| Coluna | Conteudo |
-|---|---|
-| Empresa (Orbit) | Nome da empresa |
-| CNPJ | CNPJ se disponivel |
-| Status | Badge "Mapeado" (verde) ou "Nao mapeado" (amarelo) |
-| Organizacao (PE) | Nome da org mapeada ou Select para escolher |
-| Acoes | Salvar / Remover mapeamento |
+### 3.2 EmpresasPage.tsx
 
-Comportamento:
-- Carrega lista de empresas (`useEmpresas`) e lista de organizacoes (`useOrganizations`)
-- Carrega mapeamentos existentes (`useTenantMaps`)
-- Para cada empresa, mostra select com organizacoes disponiveis (filtrando as ja mapeadas a outras empresas)
-- Botao "Mapear" executa `pe_upsert_tenant_map`
-- Botao "Remover" executa `pe_delete_tenant_map`
-- Warning visual se tentar mapear org ja vinculada
+Adicionar coluna ou badge "PE" na listagem de empresas indicando se a empresa esta provisionada (tem entrada em `pe_tenant_map`).
 
-### 3.2 Rota e navegacao
+### 3.3 Hook `useTenantMap.ts`
 
-- Adicionar rota `/pe-admin/tenants` no `App.tsx` dentro do bloco `<PeAdminLayout>`
-- Adicionar item de navegacao no `PeAdminLayout.tsx`: icone `Link2`, label "Tenant Map"
+Adicionar mutation `useProvisionTenant()` que chama `supabase.rpc('pe_provision_tenant', ...)` para permitir re-tentativa manual.
 
 ---
 
-## 4. Auto-heal na ProspectDialog
+## 4. Documentacao
 
-### 4.1 Melhorar tratamento do erro `tenant_map_missing`
-
-No `ProspectDialog.tsx`, quando o erro `tenant_map_missing` e recebido:
-- Se o usuario for Super Admin (via `usePeAuth`): mostrar botao "Configurar Mapeamento" que navega para `/pe-admin/tenants`
-- Se nao for Super Admin: manter mensagem "Contate o administrador"
-
----
-
-## 5. Documentacao
-
-Atualizar `DocumentacaoPage.tsx` adicionando secao sobre Tenant Map Management.
+Atualizar `DocumentacaoPage.tsx` com secao sobre Auto-Provisioning.
 
 ---
 
@@ -151,19 +164,19 @@ Atualizar `DocumentacaoPage.tsx` adicionando secao sobre Tenant Map Management.
 
 | Arquivo | Acao |
 |---|---|
-| Migration SQL | Criar RPCs `pe_upsert_tenant_map` e `pe_delete_tenant_map` |
-| `src/hooks/useTenantMap.ts` | Novo hook com queries e mutations |
-| `src/pages/pe-admin/TenantMapPage.tsx` | Nova pagina de gerenciamento |
-| `src/pages/pe-admin/PeAdminLayout.tsx` | Adicionar nav item "Tenant Map" |
-| `src/App.tsx` | Adicionar rota `/pe-admin/tenants` |
-| `src/components/orbit/ProspectDialog.tsx` | Melhorar erro tenant_map_missing com CTA para Super Admin |
-| `src/pages/DocumentacaoPage.tsx` | Documentar Tenant Map |
+| Migration SQL | Criar RPC `pe_provision_tenant` + UNIQUE constraints |
+| `supabase/functions/create-empresa/index.ts` | Chamar `pe_provision_tenant` apos criar empresa |
+| `src/hooks/useTenantMap.ts` | Adicionar `useProvisionTenant` mutation |
+| `src/pages/pe-admin/TenantMapPage.tsx` | Botao "Re-provisionar" para empresas sem map |
+| `src/pages/super-admin/EmpresasPage.tsx` | Badge de status PE provisionado |
 
 ---
 
 ## Detalhes tecnicos
 
-- As RPCs usam `SECURITY DEFINER` para acessar tabelas com RLS restritiva
-- Validacao de existencia de `empresa_id` e `organization_id` acontece no backend (nao confia no frontend)
-- O constraint `UNIQUE` em `organization_id` na tabela `pe_tenant_map` impede mapeamento duplicado naturalmente
-- O select de organizacoes no frontend filtra as ja mapeadas para evitar confusao visual
+- A funcao `pe_provision_tenant` usa `SECURITY DEFINER` pois precisa inserir em `organizations`, `pe_tenant_map`, `produtos`, e `funil_etapas` sem depender de RLS do caller.
+- O `p_created_by_user_id` e passado como parametro (nao usa `auth.uid()`) porque a edge function roda com service role, onde `auth.uid()` retornaria null.
+- As constraints UNIQUE `(organization_id, codigo)` e `(organization_id, nome)` garantem idempotencia dos seeds via `ON CONFLICT DO NOTHING`.
+- O provisionamento na edge function e nao-bloqueante: falha no PE nao impede a criacao da empresa Orbit.
+- A funcionalidade manual do TenantMapPage (mapear/remover) permanece intacta para cenarios de remapeamento.
+
