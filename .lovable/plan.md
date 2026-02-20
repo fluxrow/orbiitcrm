@@ -1,149 +1,115 @@
 
 
-# Etapa 4X.3 -- UI/Front accept-invite + Onboarding
+# Etapa 4X.4 -- Enhancements to `accept-empresa-invite` (NOT a new function)
 
-## Prerequisito
+## Analysis
 
-A migration da Etapa 4X.1 (tabelas `saas_plans`, `saas_empresa`, `saas_invites`, `saas_usage_monthly`, `cnpj_normalized`) precisa ser aplicada primeiro, pois as tabelas ainda nao existem no banco. A implementacao desta etapa inclui re-executar essa migration.
+The existing `accept-empresa-invite` edge function already implements the full finalization workflow described for `finalize-empresa-onboarding`. Creating a separate function would be pure code duplication.
 
----
-
-## 1. Edge Function: `validate-invite`
-
-**Arquivo:** `supabase/functions/validate-invite/index.ts`
-
-Endpoint publico (sem JWT) que recebe `{ token }` e retorna os dados do convite para exibicao na tela.
-
-**Fluxo:**
-1. Receber `token` no body
-2. Calcular SHA-256 do token
-3. Buscar em `saas_invites` por `token_hash`, fazendo join com `orbit_empresas` e `saas_plans`
-4. Validar: nao expirado, `used_at IS NULL`
-5. Retornar: `empresa_nome`, `responsible_name`, `responsible_email`, `plan_code`, `plan_name`, `expires_at`
-
-**Config TOML:** `verify_jwt = false`
+Instead, this plan enhances the existing function with the missing pieces from the 4X.4 spec.
 
 ---
 
-## 2. Edge Function: `accept-empresa-invite`
+## 1. Enhancements to `accept-empresa-invite`
 
-**Arquivo:** `supabase/functions/accept-empresa-invite/index.ts`
+**File:** `supabase/functions/accept-empresa-invite/index.ts`
 
-Endpoint publico que finaliza a aceitacao do convite SaaS.
+### 1a. Accept `dados_receita` in the request body
 
-**Entrada:**
+Add optional field to the input interface:
+
 ```text
-{
-  token: string,
-  password: string,
-  full_name: string,
-  cnpj?: string  // obrigatorio se plan != demo
+interface AcceptRequest {
+  token: string;
+  password: string;
+  full_name: string;
+  cnpj?: string;
+  dados_receita?: {
+    razao_social?: string;
+    nome_fantasia?: string;
+    logradouro?: string;
+    numero?: string;
+    bairro?: string;
+    municipio?: string;
+    uf?: string;
+    cnae_fiscal_descricao?: string;
+  }
 }
 ```
 
-**Fluxo:**
-1. Validar token (mesma logica do validate-invite)
-2. Validar CNPJ se plan != demo:
-   - Normalizar (strip non-digits)
-   - Validar comprimento (14 digitos)
-   - Verificar unicidade em `orbit_empresas.cnpj_normalized` (se existir a coluna) ou `cnpj`
-3. Criar auth user com email do convite + senha
-4. Criar profile vinculado a empresa
-5. Atribuir role `admin` em `user_roles`
-6. Atualizar `orbit_empresas`: `ativo = true`, preencher `cnpj` se fornecido
-7. Atualizar `saas_empresa`: `status = 'active'`, `activated_at = now()`
-8. Marcar convite como usado: `used_at = now()`, `used_by_user_id`
-9. Se plan != demo: chamar `pe_provision_tenant` + criar pipeline/AI config (mesmo padrao de create-empresa)
-10. Se plan == demo: NAO provisionar PE, NAO criar integ. externas
-11. Audit log: `EMPRESA_ACTIVATED`
-12. Retornar `{ success, empresa_id, user_id }`
+### 1b. Save `dados_receita` to `orbit_empresas`
 
-**Config TOML:** `verify_jwt = false`
+When updating `orbit_empresas` (step 7), also save the company data fetched from BrasilAPI:
 
----
+- `nome` = dados_receita.razao_social (if provided, otherwise keep empresa_nome)
+- Add other fields if columns exist, or store in a metadata/JSON column
 
-## 3. Pagina: `AcceptInviteSaasPage.tsx`
+Since `orbit_empresas` already has `nome` and `cnpj`, we update `nome` with razao_social if provided, keeping it simple.
 
-**Arquivo:** `src/pages/AcceptInviteSaasPage.tsx`
+### 1c. Calculate `trial_ends_at`
 
-Pagina publica com fluxo multi-step.
+After setting `saas_empresa.status = 'active'`, also compute trial period based on plan:
 
-### Step 1: Validacao do Token
-- Extrair `token` de `?token=...` (query param)
-- Chamar `validate-invite`
-- Se invalido/expirado: mostrar tela de erro
-- Se valido: mostrar dados (empresa, plano, responsavel)
+- demo: no trial_ends_at
+- basic: trial_ends_at = now + 14 days
+- professional: trial_ends_at = now + 14 days
+- plus: trial_ends_at = now + 30 days
 
-### Step 2: Criacao de Conta
-- Campos: Nome completo (pre-preenchido com responsible_name), Senha, Confirmar Senha
-- Email exibido como readonly (do convite)
+This uses the existing `trial_ends_at` column in `saas_empresa`.
 
-### Step 3: Dados da Empresa (condicional)
-- **Se plan == demo:** Pular este step. Mostrar botao "Entrar na Demo"
-- **Se plan != demo:**
-  - Campo CNPJ com mascara (XX.XXX.XXX/XXXX-XX)
-  - Ao digitar CNPJ completo (14 digitos): chamar BrasilAPI (`https://brasilapi.com.br/api/cnpj/v1/{cnpj}`)
-  - Autopreencher: Razao Social, Nome Fantasia, Endereco, CNAE
-  - Campos editaveis para ajuste
-  - Validacao de DV do CNPJ no client-side
+### 1d. Return `organization_id` in response
 
-### Step 4: Finalizacao
-- Chamar `accept-empresa-invite`
-- Mostrar loading/progress
-- Ao concluir: tela de sucesso com botao "Ir para Login"
+After PE provisioning, capture the returned `organization_id` and include it in the response:
 
-### Componente visual
-- Card centralizado, similar ao AuthPage
-- Progress stepper no topo (Step 1/2/3)
-- Branding Orbit
-
----
-
-## 4. Rota no App.tsx
-
-Adicionar rota publica:
 ```text
-<Route path="/accept-invite" element={<AcceptInviteSaasPage />} />
+{
+  success: true,
+  empresa_id: "...",
+  user_id: "...",
+  organization_id: "..." | null,
+  plan_code: "...",
+  status: "active"
+}
 ```
 
-Nota: a rota existente `/invite/:token` continua para convites de organizacao PE (sistema diferente).
+---
+
+## 2. Frontend: Pass `dados_receita` from CNPJ step
+
+**File:** `src/pages/AcceptInviteSaasPage.tsx`
+
+In `handleFinalize()`, include the BrasilAPI data already captured in state (`cnpjData`) in the payload sent to `accept-empresa-invite`.
 
 ---
 
-## 5. Utilitario: validacao CNPJ
+## 3. No new edge function needed
 
-**Arquivo:** `src/lib/cnpj.ts`
+The `finalize-empresa-onboarding` function described in the spec is NOT created as a separate file. All logic lives in `accept-empresa-invite`, which already handles:
 
-- `formatCnpj(value: string): string` -- aplica mascara
-- `validateCnpjDv(cnpj: string): boolean` -- valida digitos verificadores
-- `normalizeCnpj(cnpj: string): string` -- strip non-digits
+- Token validation (hash, expiry, used_at)
+- Auth user creation
+- Profile + role assignment
+- CNPJ validation + uniqueness
+- PE tenant provisioning (non-demo)
+- Pipeline stages + AI config seeding
+- Invite marking + status updates
+- Audit logging
 
 ---
 
-## 6. Migration SQL (re-aplicar Etapa 4X.1)
+## 4. Summary of file changes
 
-A migration sera incluida para criar as tabelas `saas_plans`, `saas_empresa`, `saas_invites`, `saas_usage_monthly` e a coluna `cnpj_normalized` com trigger, caso ainda nao existam (usando `IF NOT EXISTS`).
-
----
-
-## 7. Resumo de arquivos
-
-| Arquivo | Acao |
+| File | Action |
 |---|---|
-| Migration SQL | Criar tabelas saas_* + cnpj_normalized (idempotente) |
-| `supabase/functions/validate-invite/index.ts` | Nova edge function |
-| `supabase/functions/accept-empresa-invite/index.ts` | Nova edge function |
-| `supabase/config.toml` | Adicionar 2 entries |
-| `src/pages/AcceptInviteSaasPage.tsx` | Nova pagina multi-step |
-| `src/lib/cnpj.ts` | Utilitarios CNPJ |
-| `src/App.tsx` | Adicionar rota `/accept-invite` |
+| `supabase/functions/accept-empresa-invite/index.ts` | Add dados_receita handling, trial_ends_at, organization_id in response |
+| `src/pages/AcceptInviteSaasPage.tsx` | Pass cnpjData as dados_receita in finalize payload |
 
 ---
 
-## Detalhes tecnicos
+## Technical details
 
-- O `validate-invite` e separado do `accept-empresa-invite` para permitir validacao sem side-effects (exibir dados antes de criar conta).
-- A chamada a BrasilAPI e feita diretamente do frontend (`fetch` client-side) pois e uma API publica sem necessidade de auth.
-- O CNPJ e validado tanto no client (DV check) quanto no server (unicidade via unique index parcial).
-- Para demo, o onboarding e simplificado: nao pede CNPJ, nao provisiona PE tenant, nao cria integ. externas. A empresa fica com `ativo = true` mas sem organizacao PE associada.
-- O `accept-empresa-invite` segue o mesmo padrao do `create-empresa` para provisionamento (pipeline stages, AI config, PE tenant via `pe_provision_tenant`), mas sem criar o usuario admin inline (o usuario ja e criado no step de signup).
+- The `trial_ends_at` values (14/30 days) can be adjusted later when plan configuration becomes more sophisticated. For now, hardcoded per plan_code.
+- `dados_receita` fields are optional -- if the BrasilAPI call failed on the frontend, the function proceeds without them.
+- The `pe_provision_tenant` RPC already returns `organization_id` in its JSONB response, so we capture it from the return value.
+- No database migration needed -- `trial_ends_at` column already exists on `saas_empresa`.
+
