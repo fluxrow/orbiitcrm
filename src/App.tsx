@@ -41,6 +41,12 @@ import ContatosPage from "./pages/pe-admin/ContatosPage";
 import SegmentosPage from "./pages/pe-admin/SegmentosPage";
 import OrigensPage from "./pages/pe-admin/OrigensPage";
 import ImportacaoPage from "./pages/pe-admin/ImportacaoPage";
+import ProdutosPage from "./pages/pe-admin/ProdutosPage";
+import FunilEtapasPage from "./pages/pe-admin/FunilEtapasPage";
+import OportunidadesPage from "./pages/pe-admin/OportunidadesPage";
+import OportunidadesKanbanPage from "./pages/pe-admin/OportunidadesKanbanPage";
+import OportunidadeDetailPage from "./pages/pe-admin/OportunidadeDetailPage";
+import TarefasPage from "./pages/pe-admin/TarefasPage";
 
 // Org Pages
 import OrgUsersPage from "./pages/org/OrgUsersPage";
@@ -125,6 +131,12 @@ const AppRoutes = () => (
       <Route path="segmentos" element={<SegmentosPage />} />
       <Route path="origens" element={<OrigensPage />} />
       <Route path="importacao" element={<ImportacaoPage />} />
+      <Route path="produtos" element={<ProdutosPage />} />
+      <Route path="funil" element={<FunilEtapasPage />} />
+      <Route path="oportunidades" element={<OportunidadesPage />} />
+      <Route path="oportunidades/kanban" element={<OportunidadesKanbanPage />} />
+      <Route path="oportunidades/:id" element={<OportunidadeDetailPage />} />
+      <Route path="tarefas" element={<TarefasPage />} />
       <Route path="audit" element={<PeAuditLogPage />} />
     </Route>
 

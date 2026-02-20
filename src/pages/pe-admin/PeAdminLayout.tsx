@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { usePeAuth } from "@/hooks/usePeAuth";
-import { Building2, Users, FileText, LogOut, Menu, X, Shield, Briefcase, Contact, Tag, MapPin, Upload } from "lucide-react";
+import { Building2, Users, FileText, LogOut, Menu, X, Shield, Briefcase, Contact, Tag, MapPin, Upload, Package, GitBranch, Target, CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Navigate } from "react-router-dom";
 
@@ -13,6 +13,10 @@ const navItems = [
   { to: "/pe-admin/contatos", label: "Contatos", icon: Contact },
   { to: "/pe-admin/segmentos", label: "Segmentos", icon: Tag },
   { to: "/pe-admin/origens", label: "Origens", icon: MapPin },
+  { to: "/pe-admin/produtos", label: "Produtos", icon: Package },
+  { to: "/pe-admin/funil", label: "Funil", icon: GitBranch },
+  { to: "/pe-admin/oportunidades", label: "Oportunidades", icon: Target },
+  { to: "/pe-admin/tarefas", label: "Tarefas", icon: CheckSquare },
   { to: "/pe-admin/importacao", label: "Importação", icon: Upload },
   { to: "/pe-admin/audit", label: "Auditoria", icon: FileText },
 ];
