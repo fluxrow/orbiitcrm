@@ -10,6 +10,7 @@ import NotFound from "./pages/NotFound";
 import AuthPage from "./pages/AuthPage";
 import SetupPage from "./pages/SetupPage";
 import AcceptInvitePage from "./pages/AcceptInvitePage";
+import AcceptInviteSaasPage from "./pages/AcceptInviteSaasPage";
 import DocumentacaoPage from "./pages/DocumentacaoPage";
 
 // Orbit CRM Pages
@@ -101,6 +102,7 @@ const AppRoutes = () => (
     <Route path="/auth" element={<AuthPage />} />
     <Route path="/setup" element={<SetupPage />} />
     <Route path="/invite/:token" element={<AcceptInvitePage />} />
+    <Route path="/accept-invite" element={<AcceptInviteSaasPage />} />
     <Route path="/documentacao" element={<DocumentacaoPage />} />
     <Route path="/" element={<Navigate to="/orbit" replace />} />
     

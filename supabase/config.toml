@@ -50,3 +50,9 @@ verify_jwt = false
 
 [functions.accept-invitation]
 verify_jwt = false
+
+[functions.validate-invite]
+verify_jwt = false
+
+[functions.accept-empresa-invite]
+verify_jwt = false
