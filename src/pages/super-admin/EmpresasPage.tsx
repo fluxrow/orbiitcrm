@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import SuperAdminLayout from "./SuperAdminLayout";
 import { useEmpresas, useToggleEmpresaAtivo } from "@/hooks/useSuperAdmin";
 import { useTenantMaps } from "@/hooks/useTenantMap";
+import { useSaasEmpresas, type SaasEmpresa } from "@/hooks/useSaasPlans";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,7 +30,11 @@ import EmpresaDialog from "@/components/super-admin/EmpresaDialog";
 export default function EmpresasPage() {
   const { data: empresas, isLoading } = useEmpresas();
   const { data: tenantMaps } = useTenantMaps();
+  const { data: saasEmpresas } = useSaasEmpresas();
   const toggleAtivo = useToggleEmpresaAtivo();
+
+  const saasMap = new Map<string, SaasEmpresa>();
+  saasEmpresas?.forEach((se) => saasMap.set(se.empresa_id, se));
 
   const mappedEmpresaIds = new Set(tenantMaps?.map((tm: any) => tm.empresa_id) || []);
   const navigate = useNavigate();
@@ -52,14 +57,31 @@ export default function EmpresasPage() {
     }
   };
 
-  const planoBadgeColor = (plano: string | null) => {
-    switch (plano) {
-      case 'enterprise':
+  const planoBadgeColor = (code: string | null | undefined) => {
+    switch (code) {
+      case 'plus':
         return 'bg-purple-500/20 text-purple-400';
-      case 'pro':
+      case 'professional':
         return 'bg-blue-500/20 text-blue-400';
-      case 'basico':
+      case 'basic':
         return 'bg-green-500/20 text-green-400';
+      case 'demo':
+        return 'bg-yellow-500/20 text-yellow-400';
+      default:
+        return 'bg-muted text-muted-foreground';
+    }
+  };
+
+  const statusBadgeColor = (status: string | null | undefined) => {
+    switch (status) {
+      case 'active':
+        return 'bg-green-500/20 text-green-500';
+      case 'suspended':
+      case 'canceled':
+        return 'bg-red-500/20 text-red-500';
+      case 'onboarding':
+      case 'invited':
+        return 'bg-blue-500/20 text-blue-400';
       default:
         return 'bg-yellow-500/20 text-yellow-400';
     }
@@ -110,14 +132,15 @@ export default function EmpresasPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Empresa</TableHead>
-                    <TableHead>CNPJ</TableHead>
-                    <TableHead>Plano</TableHead>
-                    <TableHead>Usuários</TableHead>
-                    <TableHead>PE</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Criada em</TableHead>
-                    <TableHead className="w-[50px]"></TableHead>
+                     <TableHead>Empresa</TableHead>
+                     <TableHead>CNPJ</TableHead>
+                     <TableHead>Plano SaaS</TableHead>
+                     <TableHead>Status SaaS</TableHead>
+                     <TableHead>Usuários</TableHead>
+                     <TableHead>PE</TableHead>
+                     <TableHead>Status</TableHead>
+                     <TableHead>Criada em</TableHead>
+                     <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -140,11 +163,26 @@ export default function EmpresasPage() {
                         {empresa.cnpj || '-'}
                       </TableCell>
                       <TableCell>
-                        <span
-                          className={`inline-flex px-2 py-1 rounded-full text-xs font-medium capitalize ${planoBadgeColor(empresa.plano)}`}
-                        >
-                          {empresa.plano || 'trial'}
-                        </span>
+                        {(() => {
+                          const saas = saasMap.get(empresa.id);
+                          const planCode = saas?.saas_plans?.code;
+                          const planName = saas?.saas_plans?.name;
+                          return (
+                            <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium capitalize ${planoBadgeColor(planCode)}`}>
+                              {planName || empresa.plano || 'N/A'}
+                            </span>
+                          );
+                        })()}
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const saas = saasMap.get(empresa.id);
+                          return (
+                            <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium capitalize ${statusBadgeColor(saas?.status)}`}>
+                              {saas?.status || 'N/A'}
+                            </span>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         <span className="text-muted-foreground">

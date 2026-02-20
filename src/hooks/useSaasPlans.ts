@@ -1,0 +1,124 @@
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+
+export interface SaasPlan {
+  id: string;
+  code: string;
+  name: string;
+  features: Record<string, boolean>;
+  limits: Record<string, number>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SaasEmpresa {
+  empresa_id: string;
+  plan_id: string;
+  status: string;
+  responsible_name: string | null;
+  responsible_email: string | null;
+  invited_at: string | null;
+  activated_at: string | null;
+  trial_ends_at: string | null;
+  billing_status: string | null;
+  created_by_user_id: string;
+  created_at: string;
+  updated_at: string;
+  saas_plans?: SaasPlan;
+}
+
+export interface SaasUsageMonthly {
+  id: string;
+  empresa_id: string;
+  period: string;
+  email_sent: number;
+  whatsapp_sent: number;
+  ig_sent: number;
+  fb_sent: number;
+  lead_search_calls: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export function useSaasPlans() {
+  return useQuery({
+    queryKey: ["saas-plans"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("saas_plans" as any)
+        .select("*")
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return data as unknown as SaasPlan[];
+    },
+  });
+}
+
+export function useSaasEmpresa(empresaId: string | undefined) {
+  return useQuery({
+    queryKey: ["saas-empresa", empresaId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("saas_empresa" as any)
+        .select("*, saas_plans(*)")
+        .eq("empresa_id", empresaId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data as unknown as SaasEmpresa | null;
+    },
+    enabled: !!empresaId,
+  });
+}
+
+export function useSaasEmpresas() {
+  return useQuery({
+    queryKey: ["saas-empresas"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("saas_empresa" as any)
+        .select("*, saas_plans(*)");
+      if (error) throw error;
+      return data as unknown as SaasEmpresa[];
+    },
+  });
+}
+
+export function useSaasUsage(empresaId: string | undefined, period: string) {
+  return useQuery({
+    queryKey: ["saas-usage", empresaId, period],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("saas_usage_monthly" as any)
+        .select("*")
+        .eq("empresa_id", empresaId!)
+        .eq("period", period)
+        .maybeSingle();
+      if (error) throw error;
+      return data as unknown as SaasUsageMonthly | null;
+    },
+    enabled: !!empresaId && !!period,
+  });
+}
+
+export function useUpdateSaasEmpresa() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      empresaId,
+      ...updates
+    }: { empresaId: string } & Partial<Omit<SaasEmpresa, "empresa_id" | "created_at" | "updated_at" | "saas_plans">>) => {
+      const { data, error } = await supabase
+        .from("saas_empresa" as any)
+        .update(updates)
+        .eq("empresa_id", empresaId)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["saas-empresa", vars.empresaId] });
+      queryClient.invalidateQueries({ queryKey: ["saas-empresas"] });
+    },
+  });
+}

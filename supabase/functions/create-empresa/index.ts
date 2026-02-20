@@ -11,6 +11,7 @@ interface CreateEmpresaRequest {
   email_contato?: string;
   telefone?: string;
   plano?: string;
+  plano_saas?: string; // code from saas_plans: demo, basic, professional, plus
   max_usuarios?: number;
   data_expiracao?: string;
   admin_nome: string;
@@ -119,6 +120,34 @@ Deno.serve(async (req) => {
       }
     } catch (e) {
       console.error("Exception provisioning tenant:", e);
+    }
+
+    // 1.6 Create saas_empresa record
+    const planCode = body.plano_saas || "demo";
+    try {
+      const { data: planRow } = await supabaseAdmin
+        .from("saas_plans")
+        .select("id")
+        .eq("code", planCode)
+        .single();
+
+      if (planRow) {
+        const { error: saasError } = await supabaseAdmin
+          .from("saas_empresa")
+          .insert({
+            empresa_id: empresa.id,
+            plan_id: planRow.id,
+            status: "active",
+            created_by_user_id: user.id,
+          });
+        if (saasError) {
+          console.error("Error creating saas_empresa:", saasError);
+        }
+      } else {
+        console.error("Plan not found for code:", planCode);
+      }
+    } catch (e) {
+      console.error("Exception creating saas_empresa:", e);
     }
 
     // 2. Create the admin user in auth.users
