@@ -1,125 +1,118 @@
 
 
-# Etapa 3D -- Hotfix de Banco (Validacoes + Automacoes)
+# Etapa 3E -- Upgrade Kanban
 
-Mover regras criticas do frontend para o Postgres. Nenhuma tabela nova, apenas triggers/functions e ajustes minimos nos hooks.
+Melhorar `/pe-admin/oportunidades/kanban` com filtros por responsavel e cards enriquecidos (badges de servicos + proxima tarefa).
 
 ---
 
-## Fase 1 -- Migration SQL
+## Abordagem Tecnica
 
-Uma unica migration com 3 blocos:
+Para evitar N+1 queries e nao precisar criar views no banco, usaremos **3 queries paralelas** no Kanban:
 
-### 1.1 Validar funil_etapas.tipo
+1. **Oportunidades** (existente, com filtro owner_user_id)
+2. **Itens + Produtos** (todos os itens da org, agrupados client-side por oportunidade_id)
+3. **Proximas Tarefas** (tarefas open com due_date >= hoje, agrupadas por oportunidade_id)
+
+Todas rodam em paralelo via React Query. O merge e feito no componente.
+
+---
+
+## Fase 1 -- Filtro por Owner
+
+### Arquivo: `src/pages/pe-admin/OportunidadesKanbanPage.tsx`
+
+- Adicionar estado `ownerFilter` com valores: `"mine"` | `"all"` | `uuid`
+- Importar `usePeAuth` para obter `peUser`, `roleCode`, `orgId`
+- Importar `useOrgUsers` para listar usuarios da org (dropdown para admin/manager)
+- Passar `owner_user_id` como filtro ao `useOportunidades`:
+  - `"mine"` => `owner_user_id: peUser.id`
+  - `"all"` => sem filtro
+  - uuid => `owner_user_id: uuid`
+- Renderizar um `Select` com:
+  - "Meus" (sempre visivel)
+  - "Todos" (apenas se roleCode in `['ORG_ADMIN', 'ORG_MANAGER']` ou isSuperAdmin)
+  - Lista de usuarios da org (apenas admin/manager/superadmin)
+
+O hook `useOportunidades` ja suporta `owner_user_id` como filtro -- nao precisa alterar.
+
+---
+
+## Fase 2 -- Badges de Servicos
+
+### Novo hook: `src/hooks/useKanbanEnrichment.ts`
+
+Criar hook `useOportunidadesProdutos(orgId)`:
 
 ```text
-CREATE FUNCTION validate_funil_etapa() RETURNS trigger
-  IF NEW.tipo NOT IN ('open','won','lost') => RAISE EXCEPTION
-CREATE TRIGGER trg_validate_funil_etapa
-  BEFORE INSERT OR UPDATE ON funil_etapas
-  FOR EACH ROW EXECUTE FUNCTION validate_funil_etapa()
+SELECT oportunidade_id, produtos.nome, produtos.categoria
+FROM oportunidade_itens
+JOIN produtos ON produtos.id = oportunidade_itens.produto_id
+WHERE oportunidade_itens.organization_id = orgId
 ```
 
-### 1.2 Status automatico ao mudar etapa_id em oportunidades
+Retorna um `Map<oportunidade_id, string[]>` com nomes de produtos distintos.
+
+### No Kanban
+
+- Consultar o Map para cada oportunidade
+- Renderizar badges coloridas (ex: "Aereo", "Hospedagem", "Seguro") abaixo do cliente
+
+---
+
+## Fase 3 -- Proxima Tarefa
+
+### Mesmo hook: `useKanbanEnrichment.ts`
+
+Criar hook `useOportunidadesProximaTarefa(orgId)`:
 
 ```text
-CREATE FUNCTION auto_oportunidade_status() RETURNS trigger
-  -- So executa quando etapa_id muda (INSERT ou UPDATE com etapa_id diferente)
-  -- Busca funil_etapas.tipo da nova etapa_id
-  -- Valida que organization_id da etapa = organization_id da oportunidade
-  -- tipo='won'  => status='won',  closed_at=now()
-  -- tipo='lost' => status='lost', closed_at=now()
-  -- tipo='open' => status='open', closed_at=null
-CREATE TRIGGER trg_auto_oportunidade_status
-  BEFORE INSERT OR UPDATE ON oportunidades
-  FOR EACH ROW EXECUTE FUNCTION auto_oportunidade_status()
+SELECT oportunidade_id, titulo, due_date
+FROM tarefas
+WHERE organization_id = orgId
+  AND status = 'open'
+  AND due_date >= CURRENT_DATE
+ORDER BY due_date ASC
 ```
 
-Nota: este trigger executa ANTES do `validate_oportunidade` existente, garantindo que o status ja esteja correto quando a validacao rodar.
+Client-side: agrupar por `oportunidade_id`, pegar apenas a primeira (menor due_date).
 
-### 1.3 Recalculo automatico de valor_total_estimado
+Retorna um `Map<oportunidade_id, { titulo: string, due_date: string }>`.
+
+### No Kanban
+
+- Exibir no card: `"Proxima: dd/mm - Titulo"` em texto pequeno
+- Se nao houver tarefa, nao exibir nada
+
+---
+
+## Fase 4 -- UI do Card Enriquecido
+
+Layout do card atualizado:
 
 ```text
-CREATE FUNCTION recalc_oportunidade_total() RETURNS trigger
-  -- Determina o oportunidade_id afetado (NEW ou OLD conforme operacao)
-  -- SELECT COALESCE(SUM(COALESCE(valor_total, quantidade * valor_unitario, 0)), 0)
-  --   FROM oportunidade_itens WHERE oportunidade_id = ...
-  -- UPDATE oportunidades SET valor_total_estimado = resultado
-
-CREATE TRIGGER trg_recalc_total_insert
-  AFTER INSERT ON oportunidade_itens
-  FOR EACH ROW EXECUTE FUNCTION recalc_oportunidade_total()
-
-CREATE TRIGGER trg_recalc_total_update
-  AFTER UPDATE ON oportunidade_itens
-  FOR EACH ROW EXECUTE FUNCTION recalc_oportunidade_total()
-
-CREATE TRIGGER trg_recalc_total_delete
-  AFTER DELETE ON oportunidade_itens
-  FOR EACH ROW EXECUTE FUNCTION recalc_oportunidade_total()
++----------------------------------+
+| Titulo                      [Eye]|
+| Cliente                          |
+| Destino                          |
+| [Aereo] [Hotel] [Seguro]        |
+| Proxima: 25/02 - Ligar cliente  |
+| R$ 15.000,00              80%   |
++----------------------------------+
 ```
+
+- Badges usam `<Badge variant="secondary">` com texto xs
+- Proxima tarefa usa icone de calendario + texto muted xs
+- Maximo 3 badges visiveis + "+N" se houver mais
 
 ---
 
-## Fase 2 -- Ajustes nos Hooks (2 arquivos)
+## Resumo de Arquivos
 
-### 2.1 useOportunidades.ts -- `useMoveOportunidade`
+| Arquivo | Acao |
+|---|---|
+| `src/hooks/useKanbanEnrichment.ts` | **Novo** -- 2 hooks: produtos por oportunidade + proxima tarefa |
+| `src/pages/pe-admin/OportunidadesKanbanPage.tsx` | **Editar** -- filtro owner + cards enriquecidos |
 
-**Antes (linhas 123-131):**
-```typescript
-const newStatus = etapa_tipo === "won" ? ... ;
-const closedAt = ...;
-.update({ etapa_id, status: newStatus, closed_at: closedAt })
-```
-
-**Depois:**
-```typescript
-// Apenas atualiza etapa_id; banco define status e closed_at via trigger
-.update({ etapa_id })
-```
-
-- Remover parametro `etapa_tipo` da interface (nao mais necessario)
-- O audit log continua registrando a acao, mas o `metadata.status` vira do `data` retornado (que ja reflete o trigger)
-
-### 2.2 useOportunidadeItens.ts -- remover `recalcOportunidadeTotal`
-
-- Deletar a funcao `recalcOportunidadeTotal` (linhas 23-31)
-- Em `useCreateOportunidadeItem`: remover chamada `await recalcOportunidadeTotal(...)` (linha 56)
-- Em `useUpdateOportunidadeItem`: remover chamada (linha 104)
-- Em `useDeleteOportunidadeItem`: remover chamada (linha 124)
-- Manter `valor_total` calculado no INSERT/UPDATE do item (quantidade * valor_unitario) pois e campo do proprio item
-- As queries de invalidacao ja existentes garantem que o frontend recarrega o valor atualizado pelo trigger
-
----
-
-## Fase 3 -- Verificacao de chamadas ao useMoveOportunidade
-
-Verificar todos os locais que chamam `moveOportunidade.mutate(...)` e remover o parametro `etapa_tipo`:
-
-- `OportunidadesKanbanPage.tsx` -- drag-and-drop handler
-- `OportunidadeDetailPage.tsx` -- botoes de mover etapa (se existir)
-- `MotivoPerda.tsx` -- ao marcar como perdido
-
-Esses arquivos passarao a enviar apenas `{ id, etapa_id }`.
-
----
-
-## Resumo de alteracoes
-
-| Tipo | Arquivo/Objeto | Acao |
-|---|---|---|
-| Migration | Nova migration SQL | Criar 3 functions + 5 triggers |
-| Hook | useOportunidades.ts | Simplificar useMoveOportunidade (remover logica status/closed_at) |
-| Hook | useOportunidadeItens.ts | Remover funcao recalcOportunidadeTotal e suas chamadas |
-| UI | OportunidadesKanbanPage.tsx | Remover parametro etapa_tipo do mutate |
-| UI | MotivoPerda.tsx | Remover parametro etapa_tipo do mutate |
-| UI | OportunidadeDetailPage.tsx | Remover parametro etapa_tipo do mutate (se aplicavel) |
-
-### Resultado
-
-- Banco valida `funil_etapas.tipo` e rejeita valores invalidos
-- Banco automaticamente define `status` e `closed_at` ao mudar `etapa_id`
-- Banco automaticamente recalcula `valor_total_estimado` ao alterar itens
-- Frontend simplificado, sem regras duplicadas
-- Audit log mantido sem duplicacao
+Nenhuma alteracao de banco necessaria. Todas as tabelas e RLS ja existem.
 
