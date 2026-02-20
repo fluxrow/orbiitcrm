@@ -1,101 +1,100 @@
 
 
-# Etapa 2 -- Tabelas Comerciais do Orbit Prospecting Engine
+# Etapa 3A -- Pipeline de Turismo Corporativo (Pacote + Itens) -- ATUALIZADO
 
-## Contexto e Bug Pendente
+## Alteracao nesta revisao
 
-O erro "Database error creating new user" persiste porque existe uma segunda constraint (`chk_super_admin_role`) que exige `role_id IS NOT NULL` para usuarios nao-super-admin. O trigger `handle_new_user_pe` cria o usuario com `role_id = NULL`, violando essa regra. Esse fix sera incluido neste plano.
-
----
-
-## Fase 1 -- Correcao do Bug (Constraint `chk_super_admin_role`)
-
-Relaxar a constraint para permitir `role_id = NULL` em usuarios comuns (estado "nao-atribuido" temporario, antes do accept-invitation atribuir o role).
-
-```sql
-ALTER TABLE public.pe_users DROP CONSTRAINT IF EXISTS chk_super_admin_role;
-ALTER TABLE public.pe_users ADD CONSTRAINT chk_super_admin_role
-  CHECK (
-    (is_super_admin = true AND role_id IS NULL)
-    OR
-    (is_super_admin = false)
-  );
-```
+Tabela `produtos` agora inclui campo `categoria` (TRANSPORTE, HOSPEDAGEM, PROTECAO, EVENTOS, SERVICOS) e seed expandido com 7 tipos de servico.
 
 ---
 
-## Fase 2 -- Criacao das 5 Tabelas Comerciais (Migration SQL)
+## Fase 1 -- Migration SQL
 
-Todas as tabelas seguem o padrao PE: `organization_id NOT NULL`, FK para `organizations`, RLS com `pe_get_user_org_id` e `pe_is_super_admin`.
+Uma migration criando 6 tabelas + funcao auxiliar + RLS + indices.
+
+### Funcao auxiliar
+
+`pe_user_is_sales_or_sdr(p_user_id uuid)` -- retorna true se role = ORG_SALES ou ORG_SDR.
 
 ### Tabelas
 
-1. **segmentos** -- macro/micro segmentos, unique(org, macro, micro)
-2. **origens** -- fontes de leads, unique(org, nome)
-3. **clientes** -- empresas prospectadas, com campos de normalizacao (`razao_social_normalizada`, `dominio_principal`), unique parcial por CNPJ e indice composto para dedupe por nome
-4. **contatos** -- pessoas vinculadas a clientes, unique parcial por email normalizado
-5. **cliente_origem** -- vinculo N:N entre cliente e origem, unique(org, cliente, origem)
+1. **produtos** -- tipos de servico com categoria.
+   - Campos: id, organization_id, nome, codigo, **categoria** (text, not null), is_active, created_at, updated_at
+   - Constraints: `unique(organization_id, codigo)`
+   - Indices: `index(organization_id)`, `index(organization_id, categoria)`
+   - Seed (7 registros por org):
+     - AEREO / Aereo / TRANSPORTE
+     - RODOVIARIO / Rodoviario / TRANSPORTE
+     - LOCACAO_VEICULO / Locacao de Veiculo / TRANSPORTE
+     - TRANSFER / Transfer / TRANSPORTE
+     - HOSPEDAGEM / Hospedagem / HOSPEDAGEM
+     - SEGURO / Seguro Viagem / PROTECAO
+     - EVENTOS / Eventos / EVENTOS
+   - Nota: seeds serao criados via UI (botao "Criar Produtos Padrao") pois dependem de organization_id.
 
-### RLS (mesmo padrao para todas as 5 tabelas)
+2. **funil_etapas** -- etapas do funil da org (SEM produto_id). `unique(organization_id, ordem)`, `unique(organization_id, nome)`. Tipo: open/won/lost.
 
-- `pe_is_super_admin(auth.uid())` -> ALL
-- `pe_get_user_org_id(auth.uid()) = organization_id` -> SELECT (todos os roles)
-- `pe_get_user_org_id(auth.uid()) = organization_id` AND role in (ORG_ADMIN, ORG_MANAGER) -> INSERT, UPDATE, DELETE
+3. **oportunidades** -- pacote/viagem vinculado a cliente + etapa. Campos de viagem: `destino`, `data_ida`, `data_volta`, `viajantes_qtd`. FK owner/created_by para pe_users. CHECK status, probabilidade.
 
-### Indices
+4. **oportunidade_itens** -- servicos dentro do pacote. FK para oportunidade + produto. Campos: descricao, quantidade, valor_unitario, valor_total, status (open/confirmed/canceled), fornecedor.
 
-Conforme especificado no pedido (organization_id, FKs, campos de busca/dedupe).
+5. **interacoes** -- registros de contato (call, whatsapp, email, meeting, note). FK para cliente, oportunidade (opcional), contato (opcional), user.
+
+6. **tarefas** -- to-dos com prioridade/status/due_date. FK para cliente, oportunidade (opcional), contato (opcional), assigned_to, created_by.
+
+### RLS (mesmo padrao para todas)
+
+- **SUPER_ADMIN**: ALL (bypass global)
+- **Org members**: SELECT na propria org
+- **Writers (admin/manager)**: INSERT, UPDATE, DELETE na propria org
+- **Sales/SDR** (oportunidades): INSERT + UPDATE/DELETE apenas onde `owner_user_id = auth.uid()`
+- **Sales/SDR** (interacoes): INSERT + UPDATE/DELETE apenas onde `user_id = auth.uid()`
+- **Sales/SDR** (tarefas): INSERT + UPDATE/DELETE apenas onde `assigned_to_user_id = auth.uid()`
+- **produtos e funil_etapas**: somente writers (admin/manager) podem modificar
 
 ---
 
-## Fase 3 -- Hooks React (6 arquivos)
+## Fase 2 -- Hooks React (6 arquivos)
 
-Seguindo o padrao existente de `useOrganizations.ts`:
-
-| Arquivo | Responsabilidade |
+| Arquivo | Conteudo |
 |---|---|
-| `src/hooks/useSegmentos.ts` | CRUD segmentos, filtro por org |
-| `src/hooks/useOrigens.ts` | CRUD origens, filtro por org |
-| `src/hooks/useClientes.ts` | Lista com filtros (segmento, cidade/uf, status, busca), detail, create, update |
-| `src/hooks/useContatos.ts` | Lista com filtros (decisor, cliente, busca), create, update |
-| `src/hooks/useClienteOrigem.ts` | Vincular/desvincular cliente-origem |
-| `src/hooks/useImportClientes.ts` | Logica de importacao CSV com dedupe (CNPJ -> dominio -> razao normalizada) |
+| `src/hooks/useProdutos.ts` | CRUD produtos (inclui campo `categoria`), filtro por org e por categoria, funcao `createDefaultProducts` para seed |
+| `src/hooks/useFunilEtapas.ts` | CRUD etapas, reordenacao, funcao `createDefaultStages` |
+| `src/hooks/useOportunidades.ts` | Lista com filtros (etapa, status, owner, cliente, destino), create, update, mover etapa (auto-status + closed_at) |
+| `src/hooks/useOportunidadeItens.ts` | CRUD itens, calculo valor_total do item, recalculo valor_total_estimado da oportunidade |
+| `src/hooks/useInteracoes.ts` | Lista por oportunidade/cliente, create |
+| `src/hooks/useTarefas.ts` | Lista com filtros, create, update, marcar done |
+
+### Logica de negocio
+
+- **Mover oportunidade**: auto-status won/lost/open + closed_at conforme tipo da etapa
+- **Itens**: valor_total = quantidade * valor_unitario; recalculo da soma na oportunidade
+- **Audit log** em todos os hooks
 
 ---
 
-## Fase 4 -- Telas (8 arquivos novos/editados)
+## Fase 3 -- Paginas e Componentes
 
-### Novas paginas
+### Novas paginas (7)
 
 | Rota | Arquivo | Descricao |
 |---|---|---|
-| `/pe-admin/clientes` | `src/pages/pe-admin/ClientesPage.tsx` | Lista com filtros, dialog de criacao/edicao |
-| `/pe-admin/clientes/:id` | `src/pages/pe-admin/ClienteDetailPage.tsx` | Detalhes + abas Contatos e Origens |
-| `/pe-admin/contatos` | `src/pages/pe-admin/ContatosPage.tsx` | Lista com filtros por decisor, cliente, busca |
-| `/pe-admin/segmentos` | `src/pages/pe-admin/SegmentosPage.tsx` | CRUD simples em tabela |
-| `/pe-admin/origens` | `src/pages/pe-admin/OrigensPage.tsx` | CRUD simples em tabela |
-| `/pe-admin/importacao` | `src/pages/pe-admin/ImportacaoPage.tsx` | Upload CSV, mapeamento, preview, relatorio |
+| `/pe-admin/produtos` | `ProdutosPage.tsx` | CRUD produtos em tabela, agrupados por categoria, botao "Criar Produtos Padrao" |
+| `/pe-admin/funil` | `FunilEtapasPage.tsx` | Gerenciar etapas do funil |
+| `/pe-admin/oportunidades` | `OportunidadesPage.tsx` | Lista/filtros de oportunidades |
+| `/pe-admin/oportunidades/kanban` | `OportunidadesKanbanPage.tsx` | Visao kanban |
+| `/pe-admin/oportunidades/:id` | `OportunidadeDetailPage.tsx` | Detalhes + abas Itens, Interacoes, Tarefas |
+| `/pe-admin/tarefas` | `TarefasPage.tsx` | Lista de tarefas |
+| (componente) | `OportunidadeItensTab.tsx` | Aba de itens dentro do detalhe |
 
-### Arquivos editados
+### Componentes de suporte (5)
 
-- `src/pages/pe-admin/PeAdminLayout.tsx` -- adicionar itens de nav (Clientes, Contatos, Segmentos, Origens, Importacao)
-- `src/App.tsx` -- registrar as 6 novas rotas sob `/pe-admin`
+OportunidadeDialog, ItemDialog, InteracaoDialog, TarefaDialog, MotivoPerda
 
----
+### Arquivos editados (2)
 
-## Fase 5 -- Logica de Importacao (Dedupe)
-
-Implementada em `useImportClientes.ts`:
-
-1. Parse CSV (reutilizando `parseCSVLine`/`detectSeparator` do `useImportProspects.ts`)
-2. Para cada linha:
-   - Normalizar razao social (lowercase, sem acento, sem pontuacao)
-   - Extrair dominio do email
-   - Aplicar regras de dedupe: CNPJ -> dominio -> razao+cidade+uf
-   - Criar ou atualizar cliente
-   - Criar contato se email nao duplicado
-3. Registrar em `pe_audit_log` (CLIENTE_CREATED, CONTATO_CREATED, IMPORT_BATCH_COMPLETED)
-4. Retornar relatorio (criados, atualizados, duplicados evitados)
+- **PeAdminLayout.tsx** -- nav items: Produtos, Funil, Oportunidades, Tarefas
+- **App.tsx** -- 7 novas rotas
 
 ---
 
@@ -105,19 +104,14 @@ Implementada em `useImportClientes.ts`:
 
 | Acao | SUPER_ADMIN | ORG_ADMIN | ORG_MANAGER | ORG_SALES/SDR | ORG_VIEWER |
 |---|---|---|---|---|---|
-| Leitura | Todas orgs | Propria org | Propria org | Propria org | Propria org |
-| Escrita | Sim | Sim | Sim | Nao | Nao |
-| Importacao | Sim | Sim | Sim | Nao | Nao |
-
-### Funcao auxiliar para RLS de escrita
-
-Sera criada uma funcao SQL `pe_user_can_write(p_user_id uuid, p_org_id uuid)` que retorna true se o usuario for super_admin OU tiver role ORG_ADMIN/ORG_MANAGER na organizacao, para simplificar as policies de INSERT/UPDATE/DELETE.
+| Produtos/Funil (CRUD) | Sim | Sim | Sim | Nao | Nao |
+| Oportunidades (leitura) | Todas orgs | Propria org | Propria org | Propria org | Propria org |
+| Oportunidades (escrita) | Sim | Sim | Sim | Somente proprias | Nao |
+| Itens/Interacoes/Tarefas | Sim | Sim | Sim | Somente proprias | Nao |
 
 ### Ordem de implementacao
 
-1. Fix constraint (fase 1)
-2. Migration com tabelas + RLS + indices (fase 2)
-3. Hooks (fase 3)
-4. Telas + rotas (fase 4)
-5. Importacao (fase 5)
+1. Migration SQL (fase 1)
+2. Hooks (fase 2)
+3. Paginas + componentes + rotas (fase 3)
 
