@@ -1,182 +1,220 @@
 
 
-# Etapa 4A.2 -- Auto-Provisioning de Tenant (Orbit to PE)
+# Etapa 4X.1 -- SaaS Plans + Invites + Usage + CNPJ Unique
 
 ## Objetivo
 
-Automatizar a criacao da organization PE e do registro em `pe_tenant_map` sempre que uma empresa Orbit for criada, eliminando setup manual pelo Super Admin.
+Criar a infraestrutura SaaS completa: tabela de planos, estado comercial por empresa, convites, controle de uso mensal, e CNPJ normalizado com unicidade.
 
 ---
 
-## 1. Backend -- RPC `pe_provision_tenant`
+## 1. Migration SQL
 
-Criar funcao SQL `SECURITY DEFINER` idempotente que:
+Uma unica migracao criando todas as tabelas, funcoes e seeds.
 
-A) Verifica se ja existe mapeamento em `pe_tenant_map` para o `empresa_id` -- se sim, retorna o existente (idempotente).
-
-B) Cria `organization` no PE com `name = p_empresa_nome`.
-
-C) Insere `pe_tenant_map(empresa_id, organization_id)`.
-
-D) Seed padrao para a nova org:
-   - **Produtos** (7 itens): AEREO, RODOVIARIO, LOCACAO_VEICULO, TRANSFER (TRANSPORTE), HOSPEDAGEM (HOSPEDAGEM), SEGURO (PROTECAO), EVENTOS (EVENTOS) -- com `ON CONFLICT DO NOTHING` no par `(organization_id, codigo)` para idempotencia. Requer adicionar constraint UNIQUE em `(organization_id, codigo)` na tabela `produtos`.
-   - **Funil Etapas** (6 etapas): Solicitacao Recebida (open, ordem 1), Em Qualificacao (open, 2), Cotacao Enviada (open, 3), Ajustes / Negociacao (open, 4), Emitido / Confirmado (won, 5), Perdido / Cancelado (lost, 6) -- com `ON CONFLICT DO NOTHING` no par `(organization_id, nome)` para idempotencia. Requer adicionar constraint UNIQUE em `(organization_id, nome)` na tabela `funil_etapas`.
-
-E) Audit log: `TENANT_PROVISIONED`.
-
-Retorno: `{ empresa_id, organization_id, seeded: true/false }`
+### 1.1 Tabela `saas_plans`
 
 ```text
-CREATE OR REPLACE FUNCTION public.pe_provision_tenant(
-  p_empresa_id uuid,
-  p_empresa_nome text,
-  p_created_by_user_id uuid
-) RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_org_id uuid;
-  v_seeded boolean := false;
+CREATE TABLE public.saas_plans (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  code text UNIQUE NOT NULL,
+  name text NOT NULL,
+  features jsonb NOT NULL DEFAULT '{}',
+  limits jsonb NOT NULL DEFAULT '{}',
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE public.saas_plans ENABLE ROW LEVEL SECURITY;
+
+-- Read: todos autenticados
+CREATE POLICY "Authenticated can view plans"
+  ON public.saas_plans FOR SELECT
+  TO authenticated USING (true);
+
+-- Write: so super_admin
+CREATE POLICY "Super admin can manage plans"
+  ON public.saas_plans FOR ALL
+  TO authenticated USING (has_role(auth.uid(), 'super_admin'::app_role));
+```
+
+**Seed (4 planos)**:
+
+| code | features | limits |
+|------|----------|--------|
+| demo | crm=true, email/wa/ig/fb/lead_search=false, sandbox=true | users:2, email_per_month:0, wa_per_month:0 |
+| basic | crm=true, email=true, rest=false | users:5, email_per_month:5000, wa_per_month:0 |
+| professional | crm+email+whatsapp=true, ig/fb/lead_search=false | users:15, email_per_month:20000, wa_per_month:5000 |
+| plus | tudo=true | users:50, email_per_month:100000, wa_per_month:50000 |
+
+### 1.2 Tabela `saas_empresa`
+
+Estado comercial 1:1 com `orbit_empresas`.
+
+```text
+CREATE TABLE public.saas_empresa (
+  empresa_id uuid PRIMARY KEY REFERENCES orbit_empresas(id) ON DELETE CASCADE,
+  plan_id uuid NOT NULL REFERENCES saas_plans(id),
+  status text NOT NULL DEFAULT 'pending',
+  responsible_name text,
+  responsible_email text,
+  invited_at timestamptz,
+  activated_at timestamptz,
+  trial_ends_at timestamptz,
+  billing_status text,
+  created_by_user_id uuid NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+```
+
+RLS:
+- SELECT: membros da empresa (`get_user_empresa_id(auth.uid()) = empresa_id`) + super_admin
+- ALL: super_admin
+
+### 1.3 Tabela `saas_invites`
+
+```text
+CREATE TABLE public.saas_invites (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  empresa_id uuid NOT NULL REFERENCES orbit_empresas(id),
+  email text NOT NULL,
+  responsible_name text,
+  token_hash text UNIQUE NOT NULL,
+  expires_at timestamptz NOT NULL,
+  used_at timestamptz,
+  used_by_user_id uuid,
+  created_by_user_id uuid NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  metadata jsonb
+);
+
+CREATE INDEX idx_saas_invites_empresa ON saas_invites(empresa_id);
+CREATE INDEX idx_saas_invites_email ON saas_invites(email);
+CREATE INDEX idx_saas_invites_expires ON saas_invites(expires_at);
+```
+
+RLS:
+- ALL: super_admin
+- SELECT adicional: admin da empresa (`has_role + get_user_empresa_id`)
+
+### 1.4 Tabela `saas_usage_monthly`
+
+```text
+CREATE TABLE public.saas_usage_monthly (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  empresa_id uuid NOT NULL REFERENCES orbit_empresas(id),
+  period text NOT NULL,
+  email_sent int DEFAULT 0,
+  whatsapp_sent int DEFAULT 0,
+  ig_sent int DEFAULT 0,
+  fb_sent int DEFAULT 0,
+  lead_search_calls int DEFAULT 0,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  UNIQUE(empresa_id, period)
+);
+```
+
+RLS:
+- SELECT: admin/manager da empresa + super_admin
+- INSERT/UPDATE: super_admin (edge functions usam service role)
+
+### 1.5 CNPJ Normalizado
+
+A tabela `orbit_empresas` ja tem coluna `cnpj` com unique index (`orbit_empresas_cnpj_key`). Vamos adicionar `cnpj_normalized` e migrar:
+
+```text
+-- Adicionar coluna
+ALTER TABLE orbit_empresas ADD COLUMN cnpj_normalized text;
+
+-- Funcao de normalizacao
+CREATE OR REPLACE FUNCTION public.normalize_cnpj(p text)
+RETURNS text LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE
+    WHEN p IS NULL OR p = '' THEN NULL
+    ELSE regexp_replace(p, '[^0-9]', '', 'g')
+  END
+$$;
+
+-- Preencher dados existentes
+UPDATE orbit_empresas SET cnpj_normalized = normalize_cnpj(cnpj)
+WHERE cnpj IS NOT NULL AND cnpj <> '';
+
+-- Unique parcial (ignora NULLs = demo sem CNPJ)
+CREATE UNIQUE INDEX uq_orbit_empresas_cnpj_norm
+  ON orbit_empresas(cnpj_normalized) WHERE cnpj_normalized IS NOT NULL;
+
+-- Trigger para auto-normalizar
+CREATE OR REPLACE FUNCTION trg_normalize_cnpj()
+RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
-  -- A) Idempotente: retornar mapeamento existente
-  SELECT organization_id INTO v_org_id
-  FROM pe_tenant_map WHERE empresa_id = p_empresa_id;
-
-  IF v_org_id IS NOT NULL THEN
-    RETURN jsonb_build_object(
-      'empresa_id', p_empresa_id,
-      'organization_id', v_org_id,
-      'seeded', false
-    );
-  END IF;
-
-  -- B) Criar organization
-  INSERT INTO organizations (name)
-  VALUES (p_empresa_nome)
-  RETURNING id INTO v_org_id;
-
-  -- C) Inserir pe_tenant_map
-  INSERT INTO pe_tenant_map (empresa_id, organization_id)
-  VALUES (p_empresa_id, v_org_id);
-
-  -- D) Seed produtos
-  INSERT INTO produtos (organization_id, codigo, nome, categoria) VALUES
-    (v_org_id, 'AEREO', 'Aereo', 'TRANSPORTE'),
-    (v_org_id, 'RODOVIARIO', 'Rodoviario', 'TRANSPORTE'),
-    (v_org_id, 'LOCACAO_VEICULO', 'Locacao de Veiculo', 'TRANSPORTE'),
-    (v_org_id, 'TRANSFER', 'Transfer', 'TRANSPORTE'),
-    (v_org_id, 'HOSPEDAGEM', 'Hospedagem', 'HOSPEDAGEM'),
-    (v_org_id, 'SEGURO', 'Seguro Viagem', 'PROTECAO'),
-    (v_org_id, 'EVENTOS', 'Eventos', 'EVENTOS')
-  ON CONFLICT (organization_id, codigo) DO NOTHING;
-
-  -- Seed funil etapas
-  INSERT INTO funil_etapas (organization_id, nome, ordem, tipo) VALUES
-    (v_org_id, 'Solicitacao Recebida', 1, 'open'),
-    (v_org_id, 'Em Qualificacao', 2, 'open'),
-    (v_org_id, 'Cotacao Enviada', 3, 'open'),
-    (v_org_id, 'Ajustes / Negociacao', 4, 'open'),
-    (v_org_id, 'Emitido / Confirmado', 5, 'won'),
-    (v_org_id, 'Perdido / Cancelado', 6, 'lost')
-  ON CONFLICT (organization_id, nome) DO NOTHING;
-
-  v_seeded := true;
-
-  -- E) Audit log
-  INSERT INTO pe_audit_log (
-    organization_id, actor_user_id, action, entity_type, metadata
-  ) VALUES (
-    v_org_id, p_created_by_user_id, 'TENANT_PROVISIONED', 'pe_tenant_map',
-    jsonb_build_object(
-      'empresa_id', p_empresa_id,
-      'organization_id', v_org_id,
-      'seeded', v_seeded
-    )
-  );
-
-  RETURN jsonb_build_object(
-    'empresa_id', p_empresa_id,
-    'organization_id', v_org_id,
-    'seeded', v_seeded
-  );
+  NEW.cnpj_normalized := normalize_cnpj(NEW.cnpj);
+  RETURN NEW;
 END;
 $$;
+
+CREATE TRIGGER orbit_empresas_normalize_cnpj
+  BEFORE INSERT OR UPDATE OF cnpj ON orbit_empresas
+  FOR EACH ROW EXECUTE FUNCTION trg_normalize_cnpj();
 ```
 
-A migracao tambem adicionara as constraints UNIQUE necessarias:
-- `ALTER TABLE produtos ADD CONSTRAINT uq_produtos_org_codigo UNIQUE (organization_id, codigo);`
-- `ALTER TABLE funil_etapas ADD CONSTRAINT uq_funil_etapas_org_nome UNIQUE (organization_id, nome);`
-
----
-
-## 2. Edge Function `create-empresa` -- Integracao
-
-Modificar `supabase/functions/create-empresa/index.ts` para chamar `pe_provision_tenant` logo apos criar a empresa com sucesso (usando o service role client).
-
-Adicionar entre os passos 1 e 2 atuais:
-
+Remover o unique index antigo em `cnpj` (que nao e normalizado):
 ```text
-// 1.5 Auto-provision PE tenant
-const { data: provision, error: provisionError } = await supabaseAdmin
-  .rpc("pe_provision_tenant", {
-    p_empresa_id: empresa.id,
-    p_empresa_nome: empresa.nome,
-    p_created_by_user_id: user.id,
-  });
-
-if (provisionError) {
-  console.error("Error provisioning tenant:", provisionError);
-  // Non-blocking: empresa still works, provisioning can be retried
-}
+DROP INDEX IF EXISTS orbit_empresas_cnpj_key;
 ```
 
-O provisionamento e nao-bloqueante: se falhar, a empresa e criada normalmente e o Super Admin pode reprovisionar pela UI.
+---
 
-O retorno da edge function sera estendido com `provision` (organization_id, seeded).
+## 2. Frontend -- Hook `useSaasPlans.ts`
+
+Novo hook com:
+- `useSaasPlans()` -- lista todos os planos
+- `useSaasEmpresa(empresaId)` -- estado SaaS de uma empresa
+- `useSaasUsage(empresaId, period)` -- uso mensal
+- `useUpdateSaasEmpresa()` -- mutation para atualizar status/plano
 
 ---
 
-## 3. UX -- Status de Provisionamento
+## 3. Integracao com `create-empresa`
 
-### 3.1 TenantMapPage.tsx
-
-Atualizar a pagina existente para mostrar status "Provisionado" (verde) para empresas com mapeamento e adicionar botao "Re-provisionar" (chama `pe_provision_tenant` via RPC) para empresas sem mapeamento.
-
-### 3.2 EmpresasPage.tsx
-
-Adicionar coluna ou badge "PE" na listagem de empresas indicando se a empresa esta provisionada (tem entrada em `pe_tenant_map`).
-
-### 3.3 Hook `useTenantMap.ts`
-
-Adicionar mutation `useProvisionTenant()` que chama `supabase.rpc('pe_provision_tenant', ...)` para permitir re-tentativa manual.
+Atualizar `supabase/functions/create-empresa/index.ts` para:
+- Apos criar empresa + provisionar tenant, inserir registro em `saas_empresa` com:
+  - `plan_id` = plano selecionado (lookup por code no body)
+  - `status` = 'active' (ou 'pending' se fluxo de convite)
+  - `created_by_user_id` = user.id
 
 ---
 
-## 4. Documentacao
+## 4. UI -- EmpresaDialog e EmpresasPage
 
-Atualizar `DocumentacaoPage.tsx` com secao sobre Auto-Provisioning.
+### 4.1 EmpresaDialog
+- Adicionar campo "Plano" (select com opcoes demo/basic/professional/plus)
+- CNPJ obrigatorio quando plano != demo
+
+### 4.2 EmpresasPage
+- Coluna "Plano" mostrando badge do plano SaaS (em vez do campo legado `plano` da orbit_empresas)
+- Coluna "Status SaaS"
 
 ---
 
-## Resumo de arquivos
+## 5. Resumo de arquivos
 
 | Arquivo | Acao |
 |---|---|
-| Migration SQL | Criar RPC `pe_provision_tenant` + UNIQUE constraints |
-| `supabase/functions/create-empresa/index.ts` | Chamar `pe_provision_tenant` apos criar empresa |
-| `src/hooks/useTenantMap.ts` | Adicionar `useProvisionTenant` mutation |
-| `src/pages/pe-admin/TenantMapPage.tsx` | Botao "Re-provisionar" para empresas sem map |
-| `src/pages/super-admin/EmpresasPage.tsx` | Badge de status PE provisionado |
+| Migration SQL | Criar 4 tabelas + normalize_cnpj + trigger + seed + RLS |
+| `src/hooks/useSaasPlans.ts` | Novo hook para planos, estado e uso |
+| `supabase/functions/create-empresa/index.ts` | Inserir `saas_empresa` apos criacao |
+| `src/components/super-admin/EmpresaDialog.tsx` | Campo plano + validacao CNPJ |
+| `src/pages/super-admin/EmpresasPage.tsx` | Colunas plano SaaS e status |
 
 ---
 
 ## Detalhes tecnicos
 
-- A funcao `pe_provision_tenant` usa `SECURITY DEFINER` pois precisa inserir em `organizations`, `pe_tenant_map`, `produtos`, e `funil_etapas` sem depender de RLS do caller.
-- O `p_created_by_user_id` e passado como parametro (nao usa `auth.uid()`) porque a edge function roda com service role, onde `auth.uid()` retornaria null.
-- As constraints UNIQUE `(organization_id, codigo)` e `(organization_id, nome)` garantem idempotencia dos seeds via `ON CONFLICT DO NOTHING`.
-- O provisionamento na edge function e nao-bloqueante: falha no PE nao impede a criacao da empresa Orbit.
-- A funcionalidade manual do TenantMapPage (mapear/remover) permanece intacta para cenarios de remapeamento.
+- `saas_plans` usa `code` como chave logica (demo, basic, etc.) para lookup na edge function sem depender de UUIDs hardcoded.
+- `cnpj_normalized` usa partial unique index (`WHERE cnpj_normalized IS NOT NULL`) para permitir multiplas empresas demo sem CNPJ.
+- O trigger `trg_normalize_cnpj` garante que qualquer INSERT/UPDATE em `cnpj` atualiza automaticamente `cnpj_normalized`.
+- As politicas RLS em `saas_usage_monthly` restringem INSERT/UPDATE ao super_admin; edge functions que incrementam uso operam via service role, contornando RLS.
+- O seed dos 4 planos usa `INSERT ... ON CONFLICT (code) DO NOTHING` para idempotencia.
 
