@@ -32,6 +32,23 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    // Check if empresa is on demo plan
+    if (empresa_id) {
+      const { data: saasEmpresa } = await supabase
+        .from("saas_empresa")
+        .select("plan_id, plan:saas_plans(code)")
+        .eq("empresa_id", empresa_id)
+        .maybeSingle();
+      const planCode = (saasEmpresa?.plan as any)?.code;
+      if (planCode === "demo") {
+        console.log("[orbit-send-email] Demo mode: skipping real send");
+        return new Response(
+          JSON.stringify({ id: "simulated", simulated: true }),
+          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+    }
+
     // Buscar configuração do Resend da empresa (incluindo api_key)
     let resendApiKey: string | null = null;
     let fromEmail = "Orbit <onboarding@resend.dev>";

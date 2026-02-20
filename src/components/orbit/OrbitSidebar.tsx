@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsAdmin } from "@/hooks/useUserRole";
+import { useIsDemo } from "@/hooks/useIsDemo";
 
 const navigation = [
   { name: "Prospects", href: "/orbit/prospects", icon: Users },
@@ -28,6 +29,7 @@ const navigation = [
 export function OrbitSidebar() {
   const location = useLocation();
   const { isAdmin } = useIsAdmin();
+  const { isDemo } = useIsDemo();
 
   return (
     <aside className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col">
@@ -39,6 +41,9 @@ export function OrbitSidebar() {
           </div>
           <div>
             <h1 className="text-xl font-bold gradient-text">ORBIT</h1>
+            {isDemo && (
+              <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-semibold tracking-wide">DEMO</span>
+            )}
             <p className="text-xs text-muted-foreground">CRM Prospecção</p>
           </div>
         </Link>

@@ -44,39 +44,63 @@ serve(async (req) => {
       });
     }
 
-    // Buscar config Z-API
-    const { data: zapiConfig } = await supabase
-      .from("orbit_zapi_config")
-      .select("*")
-      .eq("ativo", true)
+    // Check if empresa is on demo plan
+    const userId = claims.user.id;
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("empresa_id")
+      .eq("id", userId)
       .maybeSingle();
+
+    let isDemo = false;
+    if (profile?.empresa_id) {
+      const { data: saasEmpresa } = await supabase
+        .from("saas_empresa")
+        .select("plan_id, plan:saas_plans(code)")
+        .eq("empresa_id", profile.empresa_id)
+        .maybeSingle();
+      const planCode = (saasEmpresa?.plan as any)?.code;
+      isDemo = planCode === "demo";
+    }
 
     let messageStatus = "pendente";
     let providerId = null;
 
-    if (zapiConfig?.instance_id && zapiConfig?.token && telefone) {
-      try {
-        const response = await fetch(
-          `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-text`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Client-Token": zapiConfig.client_token || "",
-            },
-            body: JSON.stringify({
-              phone: telefone,
-              message: mensagem,
-            }),
-          }
-        );
+    if (isDemo) {
+      // Demo mode: skip provider, mark as simulated
+      messageStatus = "simulated";
+    } else {
+      // Buscar config Z-API
+      const { data: zapiConfig } = await supabase
+        .from("orbit_zapi_config")
+        .select("*")
+        .eq("ativo", true)
+        .maybeSingle();
 
-        const result = await response.json();
-        messageStatus = response.ok ? "enviada" : "falhou";
-        providerId = result.messageId;
-      } catch (error) {
-        console.error("[orbit-send-message] Erro Z-API:", error);
-        messageStatus = "falhou";
+      if (zapiConfig?.instance_id && zapiConfig?.token && telefone) {
+        try {
+          const response = await fetch(
+            `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-text`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Client-Token": zapiConfig.client_token || "",
+              },
+              body: JSON.stringify({
+                phone: telefone,
+                message: mensagem,
+              }),
+            }
+          );
+
+          const result = await response.json();
+          messageStatus = response.ok ? "enviada" : "falhou";
+          providerId = result.messageId;
+        } catch (error) {
+          console.error("[orbit-send-message] Erro Z-API:", error);
+          messageStatus = "falhou";
+        }
       }
     }
 
@@ -106,7 +130,7 @@ serve(async (req) => {
       })
       .eq("id", conversa_id);
 
-    return new Response(JSON.stringify({ ok: true, mensagem: novaMensagem, status: messageStatus }), {
+    return new Response(JSON.stringify({ ok: true, mensagem: novaMensagem, status: messageStatus, simulated: isDemo }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: unknown) {
