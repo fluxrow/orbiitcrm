@@ -103,22 +103,26 @@ export default function AcceptInviteSaasPage() {
   async function fetchCnpjData(digits: string) {
     setCnpjLoading(true);
     try {
-      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`);
-      if (res.ok) {
-        const data = await res.json();
-        setCnpjData({
-          razao_social: data.razao_social || "",
-          nome_fantasia: data.nome_fantasia || "",
-          logradouro: data.logradouro || "",
-          numero: data.numero || "",
-          bairro: data.bairro || "",
-          municipio: data.municipio || "",
-          uf: data.uf || "",
-          cnae_fiscal_descricao: data.cnae_fiscal_descricao || "",
-        });
+      const { data, error: fnErr } = await supabase.functions.invoke("fetch-cnpj", {
+        body: { cnpj: digits },
+      });
+      if (fnErr) throw fnErr;
+      if (data?.error) {
+        // API failed, allow manual entry
+        return;
       }
+      setCnpjData({
+        razao_social: data.razao_social || "",
+        nome_fantasia: data.nome_fantasia || "",
+        logradouro: data.logradouro || "",
+        numero: data.numero || "",
+        bairro: data.bairro || "",
+        municipio: data.municipio || "",
+        uf: data.uf || "",
+        cnae_fiscal_descricao: data.cnae_fiscal_descricao || "",
+      });
     } catch {
-      // BrasilAPI may fail - not blocking
+      // fetch-cnpj may fail - not blocking
     } finally {
       setCnpjLoading(false);
     }
