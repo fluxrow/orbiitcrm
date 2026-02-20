@@ -204,6 +204,300 @@ export type Database = {
           },
         ]
       }
+      funil_etapas: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          nome: string
+          ordem: number
+          organization_id: string
+          tipo: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          nome: string
+          ordem: number
+          organization_id: string
+          tipo?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          nome?: string
+          ordem?: number
+          organization_id?: string
+          tipo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funil_etapas_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      interacoes: {
+        Row: {
+          anexos: Json | null
+          cliente_id: string
+          contato_id: string | null
+          created_at: string
+          data_followup: string | null
+          data_interacao: string
+          id: string
+          oportunidade_id: string | null
+          organization_id: string
+          proxima_acao: string | null
+          resumo: string
+          tipo: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          anexos?: Json | null
+          cliente_id: string
+          contato_id?: string | null
+          created_at?: string
+          data_followup?: string | null
+          data_interacao?: string
+          id?: string
+          oportunidade_id?: string | null
+          organization_id: string
+          proxima_acao?: string | null
+          resumo: string
+          tipo: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          anexos?: Json | null
+          cliente_id?: string
+          contato_id?: string | null
+          created_at?: string
+          data_followup?: string | null
+          data_interacao?: string
+          id?: string
+          oportunidade_id?: string | null
+          organization_id?: string
+          proxima_acao?: string | null
+          resumo?: string
+          tipo?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interacoes_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interacoes_contato_id_fkey"
+            columns: ["contato_id"]
+            isOneToOne: false
+            referencedRelation: "contatos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interacoes_oportunidade_id_fkey"
+            columns: ["oportunidade_id"]
+            isOneToOne: false
+            referencedRelation: "oportunidades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interacoes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interacoes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "pe_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      oportunidade_itens: {
+        Row: {
+          created_at: string
+          descricao: string | null
+          fornecedor: string | null
+          id: string
+          oportunidade_id: string
+          organization_id: string
+          produto_id: string
+          quantidade: number
+          status: string
+          updated_at: string
+          valor_total: number | null
+          valor_unitario: number | null
+        }
+        Insert: {
+          created_at?: string
+          descricao?: string | null
+          fornecedor?: string | null
+          id?: string
+          oportunidade_id: string
+          organization_id: string
+          produto_id: string
+          quantidade?: number
+          status?: string
+          updated_at?: string
+          valor_total?: number | null
+          valor_unitario?: number | null
+        }
+        Update: {
+          created_at?: string
+          descricao?: string | null
+          fornecedor?: string | null
+          id?: string
+          oportunidade_id?: string
+          organization_id?: string
+          produto_id?: string
+          quantidade?: number
+          status?: string
+          updated_at?: string
+          valor_total?: number | null
+          valor_unitario?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oportunidade_itens_oportunidade_id_fkey"
+            columns: ["oportunidade_id"]
+            isOneToOne: false
+            referencedRelation: "oportunidades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "oportunidade_itens_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "oportunidade_itens_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      oportunidades: {
+        Row: {
+          cliente_id: string
+          closed_at: string | null
+          created_at: string
+          created_by_user_id: string
+          data_ida: string | null
+          data_volta: string | null
+          destino: string | null
+          etapa_id: string
+          id: string
+          motivo_perda: string | null
+          organization_id: string
+          owner_user_id: string
+          probabilidade: number
+          status: string
+          titulo: string
+          updated_at: string
+          valor_total_estimado: number | null
+          viajantes_qtd: number | null
+        }
+        Insert: {
+          cliente_id: string
+          closed_at?: string | null
+          created_at?: string
+          created_by_user_id: string
+          data_ida?: string | null
+          data_volta?: string | null
+          destino?: string | null
+          etapa_id: string
+          id?: string
+          motivo_perda?: string | null
+          organization_id: string
+          owner_user_id: string
+          probabilidade?: number
+          status?: string
+          titulo: string
+          updated_at?: string
+          valor_total_estimado?: number | null
+          viajantes_qtd?: number | null
+        }
+        Update: {
+          cliente_id?: string
+          closed_at?: string | null
+          created_at?: string
+          created_by_user_id?: string
+          data_ida?: string | null
+          data_volta?: string | null
+          destino?: string | null
+          etapa_id?: string
+          id?: string
+          motivo_perda?: string | null
+          organization_id?: string
+          owner_user_id?: string
+          probabilidade?: number
+          status?: string
+          titulo?: string
+          updated_at?: string
+          valor_total_estimado?: number | null
+          viajantes_qtd?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oportunidades_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "oportunidades_created_by_user_id_fkey"
+            columns: ["created_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "pe_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "oportunidades_etapa_id_fkey"
+            columns: ["etapa_id"]
+            isOneToOne: false
+            referencedRelation: "funil_etapas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "oportunidades_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "oportunidades_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "pe_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_activities: {
         Row: {
           assunto: string
@@ -2103,6 +2397,47 @@ export type Database = {
           },
         ]
       }
+      produtos: {
+        Row: {
+          categoria: string
+          codigo: string
+          created_at: string
+          id: string
+          is_active: boolean
+          nome: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          categoria: string
+          codigo: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          nome: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          categoria?: string
+          codigo?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          nome?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "produtos_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           ativo: boolean | null
@@ -2188,6 +2523,103 @@ export type Database = {
           },
         ]
       }
+      tarefas: {
+        Row: {
+          assigned_to_user_id: string
+          cliente_id: string
+          contato_id: string | null
+          created_at: string
+          created_by_user_id: string
+          descricao: string | null
+          done_at: string | null
+          due_date: string | null
+          id: string
+          oportunidade_id: string | null
+          organization_id: string
+          prioridade: string
+          status: string
+          titulo: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_to_user_id: string
+          cliente_id: string
+          contato_id?: string | null
+          created_at?: string
+          created_by_user_id: string
+          descricao?: string | null
+          done_at?: string | null
+          due_date?: string | null
+          id?: string
+          oportunidade_id?: string | null
+          organization_id: string
+          prioridade?: string
+          status?: string
+          titulo: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_to_user_id?: string
+          cliente_id?: string
+          contato_id?: string | null
+          created_at?: string
+          created_by_user_id?: string
+          descricao?: string | null
+          done_at?: string | null
+          due_date?: string | null
+          id?: string
+          oportunidade_id?: string | null
+          organization_id?: string
+          prioridade?: string
+          status?: string
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tarefas_assigned_to_user_id_fkey"
+            columns: ["assigned_to_user_id"]
+            isOneToOne: false
+            referencedRelation: "pe_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tarefas_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tarefas_contato_id_fkey"
+            columns: ["contato_id"]
+            isOneToOne: false
+            referencedRelation: "contatos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tarefas_created_by_user_id_fkey"
+            columns: ["created_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "pe_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tarefas_oportunidade_id_fkey"
+            columns: ["oportunidade_id"]
+            isOneToOne: false
+            referencedRelation: "oportunidades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tarefas_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -2233,6 +2665,7 @@ export type Database = {
         Args: { p_org_id: string; p_user_id: string }
         Returns: boolean
       }
+      pe_user_is_sales_or_sdr: { Args: { p_user_id: string }; Returns: boolean }
     }
     Enums: {
       app_role: "super_admin" | "admin" | "vendedor" | "visualizador"
