@@ -32,6 +32,22 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    // ── Plan enforcement ──
+    if (empresa_id) {
+      const { data: canUseResult } = await supabase.rpc("saas_can_use", {
+        p_empresa_id: empresa_id,
+        p_feature_code: "email_send",
+        p_amount: 1,
+      });
+
+      if (canUseResult && canUseResult.allowed === false) {
+        return new Response(
+          JSON.stringify({ error: canUseResult.reason, code: canUseResult.reason }),
+          { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+    }
+
     // Check if empresa is on demo plan
     if (empresa_id) {
       const { data: saasEmpresa } = await supabase
@@ -42,6 +58,12 @@ const handler = async (req: Request): Promise<Response> => {
       const planCode = (saasEmpresa?.plan as any)?.code;
       if (planCode === "demo") {
         console.log("[orbit-send-email] Demo mode: skipping real send");
+        // Increment usage even for demo
+        await supabase.rpc("saas_increment_usage", {
+          p_empresa_id: empresa_id,
+          p_feature_code: "email_send",
+          p_amount: 1,
+        });
         return new Response(
           JSON.stringify({ id: "simulated", simulated: true }),
           { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -49,11 +71,10 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    // Buscar configuração do Resend da empresa (incluindo api_key)
+    // Buscar configuração do Resend da empresa
     let resendApiKey: string | null = null;
     let fromEmail = "Orbit <onboarding@resend.dev>";
     
-    // Primeiro tenta buscar config da empresa específica
     let resendConfig = null;
     if (empresa_id) {
       const { data } = await supabase
@@ -64,7 +85,6 @@ const handler = async (req: Request): Promise<Response> => {
       resendConfig = data;
     }
     
-    // Se não encontrou, busca config global (empresa_id IS NULL)
     if (!resendConfig) {
       const { data } = await supabase
         .from("orbit_resend_config")
@@ -75,19 +95,15 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     if (resendConfig) {
-      // Usar a API key encontrada
       if (resendConfig.api_key) {
         resendApiKey = resendConfig.api_key;
       }
-
-      // Configurar o remetente se disponível e ativo
       if (resendConfig.ativo && resendConfig.from_email) {
         const fromName = resendConfig.from_name || "Orbit";
         fromEmail = `${fromName} <${resendConfig.from_email}>`;
       }
     }
 
-    // Fallback para variável de ambiente se não tiver API key da empresa
     if (!resendApiKey) {
       resendApiKey = Deno.env.get("RESEND_API_KEY") || null;
     }
@@ -101,7 +117,6 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Usar fetch diretamente para a API do Resend
     const emailResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -124,6 +139,15 @@ const handler = async (req: Request): Promise<Response> => {
         JSON.stringify({ error: result.message || "Erro ao enviar email" }),
         { status: emailResponse.status, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
+    }
+
+    // ── Increment usage after successful send ──
+    if (empresa_id) {
+      await supabase.rpc("saas_increment_usage", {
+        p_empresa_id: empresa_id,
+        p_feature_code: "email_send",
+        p_amount: 1,
+      });
     }
 
     console.log("Email enviado com sucesso:", result);

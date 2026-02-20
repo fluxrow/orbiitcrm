@@ -2951,6 +2951,23 @@ export type Database = {
         Returns: boolean
       }
       pe_user_is_sales_or_sdr: { Args: { p_user_id: string }; Returns: boolean }
+      saas_can_use: {
+        Args: {
+          p_amount?: number
+          p_empresa_id: string
+          p_feature_code: string
+        }
+        Returns: Json
+      }
+      saas_get_empresa_plan: { Args: { p_empresa_id: string }; Returns: Json }
+      saas_increment_usage: {
+        Args: {
+          p_amount?: number
+          p_empresa_id: string
+          p_feature_code: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "super_admin" | "admin" | "vendedor" | "visualizador"

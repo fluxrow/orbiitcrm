@@ -14,7 +14,6 @@ interface SearchFilters {
   tamanhos?: string[];
 }
 
-// Map frontend company sizes to Apollo format
 function mapCompanySizes(tamanhos: string[]): string[] {
   const sizeMap: Record<string, string> = {
     "1-10": "1,10",
@@ -28,10 +27,8 @@ function mapCompanySizes(tamanhos: string[]): string[] {
   return tamanhos.map(t => sizeMap[t] || t);
 }
 
-// Build location array for Apollo
 function buildLocations(filters: SearchFilters): string[] {
   const locations: string[] = [];
-  
   if (filters.cidade && filters.estado && filters.pais) {
     locations.push(`${filters.cidade}, ${filters.estado}, ${filters.pais}`);
   } else if (filters.estado && filters.pais) {
@@ -39,11 +36,9 @@ function buildLocations(filters: SearchFilters): string[] {
   } else if (filters.pais) {
     locations.push(filters.pais);
   }
-  
   return locations;
 }
 
-// Calculate lead score based on data completeness
 function calculateScore(person: any): number {
   let score = 0;
   if (person.email) score += 30;
@@ -58,7 +53,6 @@ function calculateScore(person: any): number {
 }
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -92,10 +86,30 @@ Deno.serve(async (req) => {
       );
     }
 
+    // ── Plan enforcement ──
+    if (search.empresa_id) {
+      const { data: canUseResult } = await supabase.rpc("saas_can_use", {
+        p_empresa_id: search.empresa_id,
+        p_feature_code: "lead_search",
+        p_amount: 1,
+      });
+
+      if (canUseResult && canUseResult.allowed === false) {
+        await supabase
+          .from("orbit_lead_searches")
+          .update({ status: "erro" })
+          .eq("id", search_id);
+
+        return new Response(
+          JSON.stringify({ error: canUseResult.reason, code: canUseResult.reason }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     // 2. Get API key from source config
     const apiKey = search.source?.config?.api_key;
     if (!apiKey) {
-      // Update search status to error
       await supabase
         .from("orbit_lead_searches")
         .update({ status: "erro" })
@@ -120,7 +134,6 @@ Deno.serve(async (req) => {
       per_page: 100,
     };
 
-    // Map filters to Apollo format
     if (filters.cargos?.length) {
       apolloBody.person_titles = filters.cargos;
     }
@@ -155,7 +168,6 @@ Deno.serve(async (req) => {
       const errorText = await apolloResponse.text();
       console.error("Apollo API error:", apolloResponse.status, errorText);
 
-      // Update search status to error
       await supabase
         .from("orbit_lead_searches")
         .update({ status: "erro" })
@@ -207,6 +219,15 @@ Deno.serve(async (req) => {
       } else {
         insertedCount = insertedLeads?.length || 0;
       }
+    }
+
+    // ── Increment usage after successful search ──
+    if (search.empresa_id) {
+      await supabase.rpc("saas_increment_usage", {
+        p_empresa_id: search.empresa_id,
+        p_feature_code: "lead_search",
+        p_amount: 1,
+      });
     }
 
     // 7. Update search with results

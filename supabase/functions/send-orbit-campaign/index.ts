@@ -51,6 +51,33 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    // ── Plan enforcement: check before processing ──
+    const featureCode = campaign.canal === "email" ? "email_send" : "whatsapp_send";
+
+    // Count pending recipients for limit check
+    const { count: pendingCount } = await supabase
+      .from("orbit_campaign_recipients")
+      .select("*", { count: "exact", head: true })
+      .eq("campaign_id", campaign_id)
+      .eq("status", "pendente");
+
+    const recipientAmount = pendingCount || 0;
+
+    if (campaign.empresa_id && recipientAmount > 0) {
+      const { data: canUseResult } = await supabase.rpc("saas_can_use", {
+        p_empresa_id: campaign.empresa_id,
+        p_feature_code: featureCode,
+        p_amount: recipientAmount,
+      });
+
+      if (canUseResult && canUseResult.allowed === false) {
+        return new Response(
+          JSON.stringify({ error: canUseResult.reason, code: canUseResult.reason, remaining: canUseResult.remaining }),
+          { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+    }
+
     // Check if empresa is on demo plan
     let isDemo = false;
     if (campaign.empresa_id) {
@@ -61,27 +88,6 @@ const handler = async (req: Request): Promise<Response> => {
         .maybeSingle();
       const planCode = (saasEmpresa?.plan as any)?.code;
       isDemo = planCode === "demo";
-    }
-
-    // Verificar limite diário (para WhatsApp)
-    if (campaign.canal === "whatsapp") {
-      const today = new Date().toISOString().split("T")[0];
-      const { data: limitData } = await supabase
-        .from("orbit_whatsapp_daily_limits")
-        .select("*")
-        .eq("empresa_id", campaign.empresa_id)
-        .eq("data", today)
-        .maybeSingle();
-
-      const currentCount = limitData?.mensagens_enviadas || 0;
-      const limit = limitData?.limite_diario || 1000;
-
-      if (currentCount >= limit) {
-        return new Response(
-          JSON.stringify({ error: "Limite diário de WhatsApp atingido" }),
-          { status: 429, headers: { "Content-Type": "application/json", ...corsHeaders } }
-        );
-      }
     }
 
     // Atualizar status para enviando
@@ -96,10 +102,9 @@ const handler = async (req: Request): Promise<Response> => {
       .select("*, prospect:orbit_prospects(*)")
       .eq("campaign_id", campaign_id)
       .eq("status", "pendente")
-      .limit(100); // Processar em lotes
+      .limit(100);
 
     if (!recipients || recipients.length === 0) {
-      // Campanha concluída
       await supabase
         .from("orbit_campaigns")
         .update({ status: "concluida" })
@@ -166,18 +171,25 @@ const handler = async (req: Request): Promise<Response> => {
           html = html.replace(new RegExp(key, "g"), value);
         }
 
-        // Demo mode: skip provider calls, mark as simulated
+        // Demo mode: skip provider calls
         if (isDemo) {
           await supabase
             .from("orbit_campaign_recipients")
             .update({ status: "simulated", enviado_em: new Date().toISOString() })
             .eq("id", recipient.id);
           enviados++;
+          // Increment usage even for demo
+          if (campaign.empresa_id) {
+            await supabase.rpc("saas_increment_usage", {
+              p_empresa_id: campaign.empresa_id,
+              p_feature_code: featureCode,
+              p_amount: 1,
+            });
+          }
           continue;
         }
 
         if (campaign.canal === "email") {
-          // Enviar email via Resend
           if (!resendConfig?.api_key || !prospect.email_principal) {
             await supabase
               .from("orbit_campaign_recipients")
@@ -212,7 +224,6 @@ const handler = async (req: Request): Promise<Response> => {
 
           enviados++;
         } else {
-          // Enviar WhatsApp via Z-API
           if (!zapiConfig?.instance_id || !zapiConfig?.token || !prospect.telefone_whatsapp) {
             await supabase
               .from("orbit_campaign_recipients")
@@ -237,35 +248,6 @@ const handler = async (req: Request): Promise<Response> => {
           }
 
           enviados++;
-
-          // Atualizar limite diário
-          const today = new Date().toISOString().split("T")[0];
-          try {
-            // Tentar incrementar ou inserir limite diário
-            const { data: existingLimit } = await supabase
-              .from("orbit_whatsapp_daily_limits")
-              .select("*")
-              .eq("empresa_id", campaign.empresa_id)
-              .eq("data", today)
-              .maybeSingle();
-
-            if (existingLimit) {
-              await supabase
-                .from("orbit_whatsapp_daily_limits")
-                .update({ mensagens_enviadas: (existingLimit.mensagens_enviadas || 0) + 1 })
-                .eq("id", existingLimit.id);
-            } else {
-              await supabase
-                .from("orbit_whatsapp_daily_limits")
-                .insert({ 
-                  empresa_id: campaign.empresa_id, 
-                  data: today, 
-                  mensagens_enviadas: 1 
-                });
-            }
-          } catch (e) {
-            console.error("Erro ao atualizar limite diário:", e);
-          }
         }
 
         // Marcar como enviado
@@ -273,6 +255,15 @@ const handler = async (req: Request): Promise<Response> => {
           .from("orbit_campaign_recipients")
           .update({ status: "enviado", enviado_em: new Date().toISOString() })
           .eq("id", recipient.id);
+
+        // ── Increment usage per successful send ──
+        if (campaign.empresa_id) {
+          await supabase.rpc("saas_increment_usage", {
+            p_empresa_id: campaign.empresa_id,
+            p_feature_code: featureCode,
+            p_amount: 1,
+          });
+        }
 
       } catch (error: any) {
         console.error(`Erro ao enviar para ${recipient.id}:`, error);

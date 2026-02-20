@@ -45,6 +45,21 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    // ── Plan enforcement ──
+    const featureCode = conversa.canal === "instagram" ? "ig_send" : "fb_send";
+    const { data: canUseResult } = await supabase.rpc("saas_can_use", {
+      p_empresa_id: empresa_id,
+      p_feature_code: featureCode,
+      p_amount: 1,
+    });
+
+    if (canUseResult && canUseResult.allowed === false) {
+      return new Response(
+        JSON.stringify({ error: canUseResult.reason, code: canUseResult.reason }),
+        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
     // Buscar config Meta
     const { data: metaConfig } = await supabase
       .from("orbit_meta_config")
@@ -60,8 +75,7 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Extrair recipient ID do prospect
-    const recipientId = conversa.telefone_whatsapp; // Usado para armazenar Meta ID
+    const recipientId = conversa.telefone_whatsapp;
     
     if (!recipientId) {
       return new Response(
@@ -70,7 +84,6 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Determinar page ID baseado no canal
     const pageId = conversa.canal === "instagram" 
       ? metaConfig.instagram_business_id 
       : metaConfig.facebook_page_id;
@@ -82,7 +95,6 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Enviar mensagem via Meta Graph API
     const metaRes = await fetch(
       `https://graph.facebook.com/v18.0/${pageId}/messages`,
       {
@@ -121,6 +133,13 @@ const handler = async (req: Request): Promise<Response> => {
         provider_message_id: result.message_id,
         status: "enviada",
       });
+
+    // ── Increment usage after successful send ──
+    await supabase.rpc("saas_increment_usage", {
+      p_empresa_id: empresa_id,
+      p_feature_code: featureCode,
+      p_amount: 1,
+    });
 
     // Atualizar conversa
     await supabase
