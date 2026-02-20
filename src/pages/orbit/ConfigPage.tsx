@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useOrbitAIConfig, useUpdateAIConfig, useOrbitZAPIConfig, useUpdateZAPIConfig, useOrbitResendConfig, useUpdateResendConfig, useTestResendConnection } from "@/hooks/useOrbitConfig";
 import { parseCSV, generateCSVTemplate, useImportProspects, useImportHistory } from "@/hooks/useImportProspects";
 import { toast } from "sonner";
+import { useIsDemo } from "@/hooks/useIsDemo";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -35,6 +36,7 @@ interface ParsedProspect {
 }
 
 export default function ConfigPage() {
+  const { isDemo } = useIsDemo();
   const { data: aiConfig, isLoading: aiLoading } = useOrbitAIConfig();
   const { data: zapiConfig, isLoading: zapiLoading } = useOrbitZAPIConfig();
   const { data: resendConfig, isLoading: resendLoading } = useOrbitResendConfig();
@@ -473,6 +475,12 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
         <TabsContent value="zapi">
           {zapiLoading ? <Loader2 className="animate-spin" /> : (
             <div className="space-y-6">
+            {isDemo && (
+              <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>Modo Demo — Integrações externas desabilitadas. Disponível apenas em planos pagos.</span>
+              </div>
+            )}
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-2">
@@ -671,7 +679,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     )}
                     Testar Conexão
                   </Button>
-                  <Button onClick={saveZAPI} disabled={updateZAPI.isPending}>
+                   <Button onClick={saveZAPI} disabled={updateZAPI.isPending || isDemo}>
                     {updateZAPI.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
                     Salvar Configuração
                   </Button>
@@ -895,7 +903,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     <ClipboardList className="h-4 w-4 mr-2" />
                     Copiar Todas as URLs
                   </Button>
-                  <Button onClick={saveZAPI} disabled={updateZAPI.isPending}>
+                  <Button onClick={saveZAPI} disabled={updateZAPI.isPending || isDemo}>
                     {updateZAPI.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
                     Salvar Configurações
                   </Button>
@@ -908,6 +916,12 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
         <TabsContent value="email">
           {resendLoading ? <Loader2 className="animate-spin" /> : (
             <div className="space-y-6">
+            {isDemo && (
+              <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>Modo Demo — Integrações externas desabilitadas. Disponível apenas em planos pagos.</span>
+              </div>
+            )}
               {/* Card 1: API Key Resend */}
               <Card>
                 <CardHeader>
@@ -964,7 +978,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                   </div>
 
                   <div className="flex gap-2">
-                    <Button onClick={saveResendApiKey} disabled={updateResend.isPending}>
+                    <Button onClick={saveResendApiKey} disabled={updateResend.isPending || isDemo}>
                       <Save className="h-4 w-4 mr-2" />Salvar API Key
                     </Button>
                     <Button 
@@ -1072,7 +1086,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     />
                   </div>
 
-                  <Button onClick={saveResendCampaigns} disabled={updateResend.isPending}>
+                  <Button onClick={saveResendCampaigns} disabled={updateResend.isPending || isDemo}>
                     <Save className="h-4 w-4 mr-2" />Salvar Configurações de Campanhas
                   </Button>
                 </CardContent>
