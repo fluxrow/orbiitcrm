@@ -33,11 +33,19 @@ const empresaSchema = z.object({
   cnpj: z.string().optional(),
   email_contato: z.string().email("Email inválido").optional().or(z.literal("")),
   telefone: z.string().optional(),
-  plano: z.string().default("trial"),
+  plano_saas: z.string().default("demo"),
   max_usuarios: z.coerce.number().min(1).default(5),
   admin_nome: z.string().min(2, "Nome do admin obrigatório"),
   admin_email: z.string().email("Email do admin inválido"),
   admin_senha: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+}).refine((data) => {
+  if (data.plano_saas !== "demo") {
+    return !!data.cnpj && data.cnpj.replace(/\D/g, "").length === 14;
+  }
+  return true;
+}, {
+  message: "CNPJ obrigatório (14 dígitos) para planos não-demo",
+  path: ["cnpj"],
 });
 
 type EmpresaFormData = z.infer<typeof empresaSchema>;
@@ -57,7 +65,7 @@ export default function EmpresaDialog({ open, onOpenChange }: EmpresaDialogProps
       cnpj: "",
       email_contato: "",
       telefone: "",
-      plano: "trial",
+      plano_saas: "demo",
       max_usuarios: 5,
       admin_nome: "",
       admin_email: "",
@@ -72,7 +80,7 @@ export default function EmpresaDialog({ open, onOpenChange }: EmpresaDialogProps
         cnpj: data.cnpj,
         email_contato: data.email_contato,
         telefone: data.telefone,
-        plano: data.plano,
+        plano_saas: data.plano_saas,
         max_usuarios: data.max_usuarios,
         admin_nome: data.admin_nome,
         admin_email: data.admin_email,
@@ -165,10 +173,10 @@ export default function EmpresaDialog({ open, onOpenChange }: EmpresaDialogProps
 
                 <FormField
                   control={form.control}
-                  name="plano"
+                  name="plano_saas"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Plano</FormLabel>
+                      <FormLabel>Plano SaaS</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
@@ -176,10 +184,10 @@ export default function EmpresaDialog({ open, onOpenChange }: EmpresaDialogProps
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="trial">Trial</SelectItem>
-                          <SelectItem value="basico">Básico</SelectItem>
-                          <SelectItem value="pro">Pro</SelectItem>
-                          <SelectItem value="enterprise">Enterprise</SelectItem>
+                          <SelectItem value="demo">Demo</SelectItem>
+                          <SelectItem value="basic">Basic</SelectItem>
+                          <SelectItem value="professional">Professional</SelectItem>
+                          <SelectItem value="plus">Plus</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />

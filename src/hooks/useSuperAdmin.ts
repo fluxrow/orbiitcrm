@@ -22,6 +22,7 @@ export interface CreateEmpresaData {
   email_contato?: string;
   telefone?: string;
   plano?: string;
+  plano_saas?: string;
   max_usuarios?: number;
   data_expiracao?: string;
   admin_nome: string;
