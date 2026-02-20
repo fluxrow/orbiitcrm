@@ -14,11 +14,23 @@ async function hashToken(plaintext: string): Promise<string> {
     .join("");
 }
 
+interface DadosReceita {
+  razao_social?: string;
+  nome_fantasia?: string;
+  logradouro?: string;
+  numero?: string;
+  bairro?: string;
+  municipio?: string;
+  uf?: string;
+  cnae_fiscal_descricao?: string;
+}
+
 interface AcceptRequest {
   token: string;
   password: string;
   full_name: string;
   cnpj?: string;
+  dados_receita?: DadosReceita;
 }
 
 Deno.serve(async (req) => {
@@ -143,18 +155,28 @@ Deno.serve(async (req) => {
     if (cnpjNormalized) {
       empresaUpdate.cnpj = body.cnpj;
     }
+    if (body.dados_receita?.razao_social) {
+      empresaUpdate.nome = body.dados_receita.razao_social;
+    }
     await supabase
       .from("orbit_empresas")
       .update(empresaUpdate)
       .eq("id", invite.empresa_id);
 
-    // 8. Update saas_empresa
+    // 8. Update saas_empresa with trial calculation
+    const now = new Date();
+    const saasUpdate: Record<string, unknown> = {
+      status: "active",
+      activated_at: now.toISOString(),
+    };
+    if (!isDemo) {
+      const trialDays = planCode === "plus" ? 30 : 14;
+      const trialEnd = new Date(now.getTime() + trialDays * 86400000);
+      saasUpdate.trial_ends_at = trialEnd.toISOString();
+    }
     await supabase
       .from("saas_empresa")
-      .update({
-        status: "active",
-        activated_at: new Date().toISOString(),
-      })
+      .update(saasUpdate)
       .eq("empresa_id", invite.empresa_id);
 
     // 9. Mark invite as used
@@ -167,14 +189,16 @@ Deno.serve(async (req) => {
       .eq("id", invite.id);
 
     // 10. Provisioning (non-demo only)
+    let organizationId: string | null = null;
     if (!isDemo) {
       // PE tenant
       try {
-        await supabase.rpc("pe_provision_tenant", {
+        const { data: provisionData } = await supabase.rpc("pe_provision_tenant", {
           p_empresa_id: invite.empresa_id,
-          p_empresa_nome: body.full_name.trim(),
+          p_empresa_nome: body.dados_receita?.razao_social || body.full_name.trim(),
           p_created_by_user_id: userId,
         });
+        organizationId = provisionData?.organization_id || null;
       } catch (e) {
         console.error("PE provision error:", e);
       }
@@ -226,6 +250,9 @@ Deno.serve(async (req) => {
       success: true,
       empresa_id: invite.empresa_id,
       user_id: userId,
+      organization_id: organizationId,
+      plan_code: planCode,
+      status: "active",
     });
   } catch (err: unknown) {
     console.error("Unexpected error:", err);
