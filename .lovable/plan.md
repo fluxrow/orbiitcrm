@@ -1,99 +1,115 @@
 
-# Etapa SAAS-5 -- Plan Enforcement + Usage Limits
 
-## Overview
+# Etapa SAAS-6 -- Demo Sandbox Implementation Plan
 
-Create three database RPCs for plan/feature/limit checks, integrate them into all send-related Edge Functions, and add a frontend error modal for blocked actions.
+## Current State Analysis
 
-## Part 1: Database RPCs (Migration)
+| Requirement | Status | Gap |
+|---|---|---|
+| Demo plan marking | Partial | `sandbox` flag missing from `saas_plans.features`; plan exists with `code=demo` |
+| Fake send (simulation) | Done | `orbit-send-message`, `orbit-send-email`, `send-orbit-campaign` already simulate with `status='simulated'` |
+| UI config blocking | Partial | Banner shown + save button disabled on Z-API tab, but all fields remain editable; Email tab has no demo blocking |
+| AI agent demo mode | Missing | `orbit-ai-agent` always tries to send via Z-API -- no demo check in `sendWhatsAppMessage` |
+| Inbound real for demo | Partial | Webhook processes inbound, but prospects created without `empresa_id` -- no demo isolation |
+| Rate limiting demo | Missing | No rate limit on demo message sends |
+| Prospect/campaign limits | Missing | `max_prospects` and `max_campaigns` not enforced |
 
-### 1.1 `saas_get_empresa_plan(p_empresa_id uuid) RETURNS jsonb`
+## Implementation Plan
 
-Returns `{ plan_code, features, limits, status, trial_ends_at }` by joining `saas_empresa` + `saas_plans`. Returns `null` if not found.
+### Part 1: Database Changes (Migration)
 
-### 1.2 `saas_can_use(p_empresa_id uuid, p_feature_code text, p_amount int DEFAULT 1) RETURNS jsonb`
-
-Logic:
-1. Call `saas_get_empresa_plan` to get plan data
-2. If `status` not in (`active`, `trial`) => deny with reason `SUSPENDED`
-3. If `status = trial` and `trial_ends_at < now()` => deny with reason `TRIAL_EXPIRED`
-4. Map `feature_code` to feature flag key (e.g. `email_send` -> `email`, `whatsapp_send` -> `whatsapp`, `ig_send` -> `instagram`, `fb_send` -> `facebook`, `lead_search` -> `lead_finder`)
-5. If `features[flag] != true` => deny with reason `FEATURE_DISABLED`
-6. Map `feature_code` to limit key (e.g. `email_send` -> `email_monthly`, `whatsapp_send` -> `whatsapp_monthly`, etc.)
-7. Get current period `to_char(now(), 'YYYY-MM')`
-8. Upsert into `saas_usage_monthly` to ensure row exists
-9. Read current usage column value
-10. If `current + amount > limit` => deny with reason `PLAN_LIMIT`
-11. Return `{ allowed: true, remaining: limit - current, plan_code }`
-
-### 1.3 `saas_increment_usage(p_empresa_id uuid, p_feature_code text, p_amount int DEFAULT 1) RETURNS void`
-
-- `SECURITY DEFINER` (only service role / edge functions should call it)
-- Upserts into `saas_usage_monthly` for the current period
-- Increments the appropriate column by `p_amount`
-
-## Part 2: Edge Function Updates
-
-### Mapping of feature_code to usage column
-
-```text
-email_send      -> email_sent
-whatsapp_send   -> whatsapp_sent
-ig_send         -> ig_sent
-fb_send         -> fb_sent
-lead_search     -> lead_search_calls
+**1.1** Update demo plan features to add `sandbox: true`:
+```sql
+UPDATE saas_plans
+SET features = features || '{"sandbox": true}'::jsonb
+WHERE code = 'demo';
 ```
 
-### 2.1 `orbit-send-message/index.ts` (WhatsApp individual)
+**1.2** No new role needed. The plan `code = 'demo'` combined with `sandbox` feature flag is sufficient. Adding a `DEMO_USER` role would add complexity without benefit since the plan already determines behavior.
 
-- After getting `empresa_id`, call `saas_can_use(empresa_id, 'whatsapp_send', 1)` via `supabase.rpc()`
-- If `allowed = false`, return 403 with `{ error: reason, code: "PLAN_LIMIT" | "FEATURE_DISABLED" | ... }`
-- After successful send, call `saas_increment_usage(empresa_id, 'whatsapp_send', 1)`
-- Keep existing demo mode logic (demo skips real send but still checks/increments)
+### Part 2: AI Agent Demo Mode (Edge Function)
 
-### 2.2 `orbit-send-email/index.ts` (Email individual)
+**File:** `supabase/functions/orbit-ai-agent/index.ts`
 
-- Same pattern: `saas_can_use(empresa_id, 'email_send', 1)` before send
-- `saas_increment_usage` after success
+The `sendWhatsAppMessage` helper function currently always calls Z-API. For demo companies, it should:
 
-### 2.3 `send-orbit-campaign/index.ts` (Campaign batch)
+1. Look up the prospect's `empresa_id` to determine if demo
+2. If demo: save the AI response as `orbit_mensagens` with `status='simulated'` instead of calling Z-API
+3. AI still generates the response normally -- only the delivery is simulated
 
-- Before processing recipients: `saas_can_use(empresa_id, '<canal>_send', recipients.length)`
-- After each successful send: `saas_increment_usage(empresa_id, '<canal>_send', 1)`
-- Map campaign.canal to feature_code: `whatsapp` -> `whatsapp_send`, `email` -> `email_send`
+This is the key fix: the AI brain works, but outbound delivery is faked.
 
-### 2.4 `send-orbit-meta-message/index.ts` (IG/FB)
+### Part 3: Webhook Inbound Isolation for Demo
 
-- Determine feature code from `conversa.canal`: `instagram` -> `ig_send`, `facebook` -> `fb_send`
-- `saas_can_use` before send, `saas_increment_usage` after success
+**File:** `supabase/functions/orbit-webhook/index.ts`
 
-### 2.5 `orbit-search-leads/index.ts` (Lead finder)
+Current problem: prospects created by webhook have no `empresa_id`, so they are invisible to demo users (RLS blocks them).
 
-- `saas_can_use(empresa_id, 'lead_search', 1)` before calling Apollo
-- `saas_increment_usage` after successful search
+Simplest approach for now:
+- When a message arrives, the webhook looks up `orbit_zapi_config` to find which `empresa_id` owns that Z-API instance (already has `empresa_id` column)
+- Set `empresa_id` on created prospects and conversations
+- This already enables demo isolation because each empresa has its own Z-API config and data is RLS-filtered
 
-## Part 3: Frontend - Plan Limit Modal
+Changes needed:
+1. Query `orbit_zapi_config` by matching `instance_id` or `numero_origem` to determine `empresa_id`
+2. Pass `empresa_id` when inserting prospects and conversations
+3. Also filter `orbit_ai_config` by `empresa_id` (currently uses `.maybeSingle()` without filter)
 
-### 3.1 New component: `src/components/orbit/PlanLimitDialog.tsx`
+### Part 4: UI Config Blocking for Demo
 
-A reusable dialog that shows:
-- Title: "Limite do plano atingido" or "Funcionalidade nao disponivel"
-- Description based on error reason
-- CTA button: "Solicitar upgrade" (for now just closes the dialog; billing comes later)
+**File:** `src/pages/orbit/ConfigPage.tsx`
 
-### 3.2 Error handling in hooks/pages
+Currently only Z-API save button is disabled for demo. Need to:
 
-Update the hooks that invoke these edge functions (`useOrbitMensagens`, `useOrbitCampaigns`, etc.) to detect `PLAN_LIMIT` / `FEATURE_DISABLED` / `TRIAL_EXPIRED` / `SUSPENDED` error codes and show the `PlanLimitDialog`.
+1. **Z-API tab**: Disable ALL input fields (not just save button) with `disabled={isDemo}`
+2. **Email tab**: Add same demo banner + disable all input fields
+3. **AI tab**: Allow editing of non-sensitive fields (prompt, tone, language) but show info that outbound is simulated
+4. Add tooltip "Disponivel em planos pagos" on disabled fields
+
+### Part 5: Rate Limiting for Demo (Edge Function)
+
+**File:** `supabase/functions/orbit-send-message/index.ts`
+
+Add a simple rate limit check for demo users:
+1. Query `orbit_mensagens` count where `empresa_id = X` and `timestamp > now() - 1 hour` and `direcao = 'OUT'`
+2. If count >= 30, return error with code `DEMO_RATE_LIMIT`
+3. Add `DEMO_RATE_LIMIT` to `PlanLimitDialog` reason config
+
+### Part 6: Prospect Limit Enforcement
+
+**File:** `supabase/functions/orbit-send-message/index.ts` and import hooks
+
+For demo plan with `max_prospects: 50`:
+1. In the webhook (prospect creation): check current prospect count for the empresa before creating new ones
+2. In import flow: check count before allowing bulk import
+3. Return clear error when limit reached
+
+### Part 7: Frontend PlanLimitDialog Update
+
+**File:** `src/components/orbit/PlanLimitDialog.tsx`
+
+Add new reason: `DEMO_RATE_LIMIT` with message "Limite de mensagens por hora atingido no modo demo."
+
+**File:** `src/lib/plan-errors.ts`
+
+Add `DEMO_RATE_LIMIT` to the error codes array.
 
 ## Summary of Changes
 
 | Change | Type | Files |
 |---|---|---|
-| 3 RPCs: `saas_get_empresa_plan`, `saas_can_use`, `saas_increment_usage` | Migration | New migration file |
-| Enforce in `orbit-send-message` | Edit | `supabase/functions/orbit-send-message/index.ts` |
-| Enforce in `orbit-send-email` | Edit | `supabase/functions/orbit-send-email/index.ts` |
-| Enforce in `send-orbit-campaign` | Edit | `supabase/functions/send-orbit-campaign/index.ts` |
-| Enforce in `send-orbit-meta-message` | Edit | `supabase/functions/send-orbit-meta-message/index.ts` |
-| Enforce in `orbit-search-leads` | Edit | `supabase/functions/orbit-search-leads/index.ts` |
-| Plan limit dialog component | New | `src/components/orbit/PlanLimitDialog.tsx` |
-| Error handling in send hooks | Edit | Relevant hooks files |
+| Add `sandbox:true` to demo plan features | Migration | New migration file |
+| AI agent demo mode (skip Z-API send) | Edit | `supabase/functions/orbit-ai-agent/index.ts` |
+| Webhook: set empresa_id on prospects/conversas | Edit | `supabase/functions/orbit-webhook/index.ts` |
+| UI: disable config fields for demo | Edit | `src/pages/orbit/ConfigPage.tsx` |
+| Rate limit demo sends (30/hr) | Edit | `supabase/functions/orbit-send-message/index.ts` |
+| Prospect limit enforcement in webhook | Edit | `supabase/functions/orbit-webhook/index.ts` |
+| Add DEMO_RATE_LIMIT to dialog/errors | Edit | `src/components/orbit/PlanLimitDialog.tsx`, `src/lib/plan-errors.ts` |
+| Deploy updated functions | Deploy | `orbit-ai-agent`, `orbit-webhook`, `orbit-send-message` |
+
+## What We Are NOT Doing (and Why)
+
+- **New `demo` role in user_roles**: Unnecessary -- `plan.code === 'demo'` via `saas_plans` already identifies demo users without adding role complexity
+- **Dedicated sandbox phone number**: Too complex for now. The webhook already ties to empresa via `orbit_zapi_config.empresa_id`, providing natural isolation
+- **Campaign size limits**: Can be added later; current demo limits (100 msgs/month) already constrain campaign scale
+
