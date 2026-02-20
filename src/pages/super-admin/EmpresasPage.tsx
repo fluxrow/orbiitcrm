@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import SuperAdminLayout from "./SuperAdminLayout";
 import { useEmpresas, useToggleEmpresaAtivo } from "@/hooks/useSuperAdmin";
+import { useTenantMaps } from "@/hooks/useTenantMap";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +28,10 @@ import EmpresaDialog from "@/components/super-admin/EmpresaDialog";
 
 export default function EmpresasPage() {
   const { data: empresas, isLoading } = useEmpresas();
+  const { data: tenantMaps } = useTenantMaps();
   const toggleAtivo = useToggleEmpresaAtivo();
+
+  const mappedEmpresaIds = new Set(tenantMaps?.map((tm: any) => tm.empresa_id) || []);
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -110,6 +114,7 @@ export default function EmpresasPage() {
                     <TableHead>CNPJ</TableHead>
                     <TableHead>Plano</TableHead>
                     <TableHead>Usuários</TableHead>
+                    <TableHead>PE</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Criada em</TableHead>
                     <TableHead className="w-[50px]"></TableHead>
@@ -145,6 +150,17 @@ export default function EmpresasPage() {
                         <span className="text-muted-foreground">
                           0/{empresa.max_usuarios || 5}
                         </span>
+                      </TableCell>
+                      <TableCell>
+                        {mappedEmpresaIds.has(empresa.id) ? (
+                          <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-primary/15 text-primary">
+                            Provisionado
+                          </span>
+                        ) : (
+                          <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+                            Pendente
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <span
