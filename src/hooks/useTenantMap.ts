@@ -61,3 +61,25 @@ export function useDeleteTenantMap() {
     onError: (e: any) => toast.error(e?.message || "Erro ao remover mapeamento"),
   });
 }
+
+export function useProvisionTenant() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (params: { empresa_id: string; empresa_nome: string; user_id: string }) => {
+      const { data, error } = await supabase.rpc("pe_provision_tenant" as any, {
+        p_empresa_id: params.empresa_id,
+        p_empresa_nome: params.empresa_nome,
+        p_created_by_user_id: params.user_id,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ["tenant-maps"] });
+      qc.invalidateQueries({ queryKey: ["organizations"] });
+      const seeded = data?.seeded;
+      toast.success(seeded ? "Tenant provisionado com seeds padrão" : "Tenant já existia (idempotente)");
+    },
+    onError: (e: any) => toast.error(e?.message || "Erro ao provisionar tenant"),
+  });
+}

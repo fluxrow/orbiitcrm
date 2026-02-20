@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
 import { useEmpresas } from "@/hooks/useSuperAdmin";
 import { useOrganizations } from "@/hooks/useOrganizations";
-import { useTenantMaps, useUpsertTenantMap, useDeleteTenantMap } from "@/hooks/useTenantMap";
+import { useTenantMaps, useUpsertTenantMap, useDeleteTenantMap, useProvisionTenant } from "@/hooks/useTenantMap";
+import { useAuth } from "@/hooks/useAuth";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -11,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Link2, Save, Trash2, Loader2 } from "lucide-react";
+import { Link2, Save, Trash2, Loader2, RefreshCw } from "lucide-react";
 
 export default function TenantMapPage() {
   const { data: empresas, isLoading: loadingEmpresas } = useEmpresas();
@@ -19,6 +20,8 @@ export default function TenantMapPage() {
   const { data: maps, isLoading: loadingMaps } = useTenantMaps();
   const upsert = useUpsertTenantMap();
   const remove = useDeleteTenantMap();
+  const provision = useProvisionTenant();
+  const { user } = useAuth();
 
   const [selections, setSelections] = useState<Record<string, string>>({});
 
@@ -50,6 +53,15 @@ export default function TenantMapPage() {
     remove.mutate(empresaId);
   };
 
+  const handleProvision = (emp: any) => {
+    if (!user?.id) return;
+    provision.mutate({
+      empresa_id: emp.id,
+      empresa_nome: emp.nome,
+      user_id: user.id,
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -74,7 +86,7 @@ export default function TenantMapPage() {
                 <TableHead>CNPJ</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Organização (PE)</TableHead>
-                <TableHead className="w-[140px]">Ações</TableHead>
+                <TableHead className="w-[200px]">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -92,11 +104,11 @@ export default function TenantMapPage() {
                     <TableCell>
                       {isMapped ? (
                         <Badge className="bg-primary/15 text-primary border-primary/30">
-                          Mapeado
+                          Provisionado
                         </Badge>
                       ) : (
                         <Badge variant="outline" className="text-muted-foreground">
-                          Não mapeado
+                          Não provisionado
                         </Badge>
                       )}
                     </TableCell>
@@ -128,27 +140,40 @@ export default function TenantMapPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {isMapped ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemove(emp.id)}
-                          disabled={remove.isPending}
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4 mr-1" />
-                          Remover
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          onClick={() => handleSave(emp.id)}
-                          disabled={!selectedOrgId || upsert.isPending}
-                        >
-                          <Save className="h-4 w-4 mr-1" />
-                          Mapear
-                        </Button>
-                      )}
+                      <div className="flex gap-1">
+                        {isMapped ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemove(emp.id)}
+                            disabled={remove.isPending}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Remover
+                          </Button>
+                        ) : (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleProvision(emp)}
+                              disabled={provision.isPending}
+                            >
+                              <RefreshCw className={`h-4 w-4 mr-1 ${provision.isPending ? "animate-spin" : ""}`} />
+                              Auto-provisionar
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => handleSave(emp.id)}
+                              disabled={!selectedOrgId || upsert.isPending}
+                            >
+                              <Save className="h-4 w-4 mr-1" />
+                              Mapear
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 );

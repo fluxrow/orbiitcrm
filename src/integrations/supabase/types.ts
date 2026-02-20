@@ -2740,6 +2740,14 @@ export type Database = {
         }
         Returns: Json
       }
+      pe_provision_tenant: {
+        Args: {
+          p_created_by_user_id: string
+          p_empresa_id: string
+          p_empresa_nome: string
+        }
+        Returns: Json
+      }
       pe_upsert_tenant_map: {
         Args: { p_empresa_id: string; p_organization_id: string }
         Returns: Json

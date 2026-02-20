@@ -102,6 +102,25 @@ Deno.serve(async (req) => {
       );
     }
 
+    // 1.5 Auto-provision PE tenant (non-blocking)
+    let provision = null;
+    try {
+      const { data: provisionData, error: provisionError } = await supabaseAdmin
+        .rpc("pe_provision_tenant", {
+          p_empresa_id: empresa.id,
+          p_empresa_nome: empresa.nome,
+          p_created_by_user_id: user.id,
+        });
+
+      if (provisionError) {
+        console.error("Error provisioning tenant:", provisionError);
+      } else {
+        provision = provisionData;
+      }
+    } catch (e) {
+      console.error("Exception provisioning tenant:", e);
+    }
+
     // 2. Create the admin user in auth.users
     const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: body.admin_email,
@@ -189,6 +208,7 @@ Deno.serve(async (req) => {
           id: authUser.user.id,
           email: authUser.user.email,
         },
+        provision,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
