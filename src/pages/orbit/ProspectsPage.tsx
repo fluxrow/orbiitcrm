@@ -4,9 +4,11 @@ import { PageHeader } from "@/components/orbit/PageHeader";
 import { ProspectDialog } from "@/components/orbit/ProspectDialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, Plus, Filter, Loader2 } from "lucide-react";
 import { useOrbitProspects, useDeleteProspect } from "@/hooks/useOrbitProspects";
+import { useOrbitPeLinks } from "@/hooks/usePromoteProspect";
 import { toast } from "sonner";
 import type { Tables } from "@/integrations/supabase/types";
 
@@ -28,7 +30,10 @@ export default function ProspectsPage() {
     search: search || undefined,
     status_qualificacao: statusFilter,
   });
+  const { data: peLinks } = useOrbitPeLinks();
   const deleteProspect = useDeleteProspect();
+
+  const linkedProspectIds = new Set(peLinks?.map((l: any) => l.prospect_id) || []);
 
   const handleEdit = (prospect: Tables<"orbit_prospects">) => {
     setSelectedProspect(prospect);
@@ -81,9 +86,14 @@ export default function ProspectsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {prospects?.map((p) => (
             <div key={p.id} className="bg-card border border-border rounded-lg p-4 hover:border-primary/50 cursor-pointer" onClick={() => handleEdit(p)}>
-              <div className="flex justify-between mb-2">
+              <div className="flex justify-between items-start mb-2">
                 <h3 className="font-semibold truncate">{p.nome_razao}</h3>
-                <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(p.status_qualificacao)}`}>{p.status_qualificacao}</span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {linkedProspectIds.has(p.id) && (
+                    <Badge variant="outline" className="text-xs border-green-500/50 text-green-400">Convertido</Badge>
+                  )}
+                  <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(p.status_qualificacao)}`}>{p.status_qualificacao}</span>
+                </div>
               </div>
               <div className="text-sm text-muted-foreground space-y-1">
                 {p.email_principal && <p className="truncate">{p.email_principal}</p>}
