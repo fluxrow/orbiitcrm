@@ -1,115 +1,162 @@
 
 
-# Etapa 4X.4 -- Enhancements to `accept-empresa-invite` (NOT a new function)
+# Etapa 4X.5 -- Demo Mode (Sandbox)
 
-## Analysis
+## Overview
 
-The existing `accept-empresa-invite` edge function already implements the full finalization workflow described for `finalize-empresa-onboarding`. Creating a separate function would be pure code duplication.
-
-Instead, this plan enhances the existing function with the missing pieces from the 4X.4 spec.
+Implement a demo mode that provides a full visual experience of Orbit CRM without incurring costs from external providers. Demo users can explore all screens but cannot configure real integrations or send real messages.
 
 ---
 
-## 1. Enhancements to `accept-empresa-invite`
+## 1. Hook: `useIsDemo`
 
-**File:** `supabase/functions/accept-empresa-invite/index.ts`
+**File:** `src/hooks/useIsDemo.ts` (new)
 
-### 1a. Accept `dados_receita` in the request body
-
-Add optional field to the input interface:
+A hook that queries `saas_empresa` joined with `saas_plans` to determine if the current user's empresa is on the `demo` plan.
 
 ```text
-interface AcceptRequest {
-  token: string;
-  password: string;
-  full_name: string;
-  cnpj?: string;
-  dados_receita?: {
-    razao_social?: string;
-    nome_fantasia?: string;
-    logradouro?: string;
-    numero?: string;
-    bairro?: string;
-    municipio?: string;
-    uf?: string;
-    cnae_fiscal_descricao?: string;
-  }
+export function useIsDemo() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ['is-demo', user?.id],
+    queryFn: async () => {
+      // 1. Get empresa_id from profiles
+      // 2. Query saas_empresa with join to saas_plans
+      // 3. Return { isDemo: plan.code === 'demo', planCode, planName }
+    },
+    enabled: !!user?.id,
+  });
 }
 ```
 
-### 1b. Save `dados_receita` to `orbit_empresas`
+This hook is the single source of truth for demo detection -- no new DB roles or columns needed. The `saas_plans` table already has the `demo` plan.
 
-When updating `orbit_empresas` (step 7), also save the company data fetched from BrasilAPI:
+---
 
-- `nome` = dados_receita.razao_social (if provided, otherwise keep empresa_nome)
-- Add other fields if columns exist, or store in a metadata/JSON column
+## 2. RLS Policy for `saas_empresa` (read access)
 
-Since `orbit_empresas` already has `nome` and `cnpj`, we update `nome` with razao_social if provided, keeping it simple.
-
-### 1c. Calculate `trial_ends_at`
-
-After setting `saas_empresa.status = 'active'`, also compute trial period based on plan:
-
-- demo: no trial_ends_at
-- basic: trial_ends_at = now + 14 days
-- professional: trial_ends_at = now + 14 days
-- plus: trial_ends_at = now + 30 days
-
-This uses the existing `trial_ends_at` column in `saas_empresa`.
-
-### 1d. Return `organization_id` in response
-
-After PE provisioning, capture the returned `organization_id` and include it in the response:
+**Migration:** Add SELECT policy so users can read their own empresa's plan info.
 
 ```text
-{
-  success: true,
-  empresa_id: "...",
-  user_id: "...",
-  organization_id: "..." | null,
-  plan_code: "...",
-  status: "active"
-}
+CREATE POLICY "Users can view own saas_empresa"
+  ON saas_empresa FOR SELECT
+  USING (empresa_id = get_user_empresa_id(auth.uid()));
+```
+
+Currently only super_admin has access. Without this, the `useIsDemo` hook cannot query the plan.
+
+---
+
+## 3. Edge Function: `orbit-send-message` -- Demo Guard
+
+**File:** `supabase/functions/orbit-send-message/index.ts`
+
+Add a check after authentication:
+
+1. Get user's `empresa_id` from profiles
+2. Query `saas_empresa` joined with `saas_plans` for that empresa
+3. If `plan.code === 'demo'`:
+   - Do NOT call Z-API
+   - Insert message into `orbit_mensagens` with `status = 'simulated'`
+   - Return `{ ok: true, status: 'simulated', simulated: true }`
+
+This means demo users see messages appear in the UI exactly like normal, but no external API call is made.
+
+---
+
+## 4. Edge Function: `orbit-send-email` -- Demo Guard
+
+**File:** `supabase/functions/orbit-send-email/index.ts`
+
+Same pattern: check if empresa plan is `demo`. If so, return success without calling Resend. Log as simulated.
+
+---
+
+## 5. Edge Function: `send-orbit-campaign` -- Demo Guard
+
+**File:** `supabase/functions/send-orbit-campaign/index.ts`
+
+When processing campaign recipients, if empresa plan is `demo`:
+- Mark all recipients as `status = 'simulated'` instead of calling providers
+- Update campaign counters normally
+- No external API calls
+
+---
+
+## 6. ConfigPage UI -- Demo Restrictions
+
+**File:** `src/pages/orbit/ConfigPage.tsx`
+
+Import `useIsDemo` and conditionally:
+
+### 6a. Integration Tabs (Z-API, Email)
+- Show a banner at top of each tab: "Modo Demo -- Integrações externas desabilitadas"
+- Disable all form inputs and save buttons (set `disabled={isDemo}`)
+- Show tooltip on disabled buttons: "Disponível apenas em planos pagos"
+
+### 6b. Visual treatment
+- Add a yellow/amber banner component reusable across demo-restricted sections
+- Use existing `AlertCircle` icon from lucide
+
+---
+
+## 7. OrbitLayout -- Demo Banner
+
+**File:** `src/components/orbit/OrbitLayout.tsx`
+
+Add a persistent top banner when `isDemo === true`:
+
+```text
+<div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-center text-sm text-amber-700">
+  Modo Demo -- Envio real indisponível. Mensagens serão simuladas.
+</div>
+```
+
+This appears above the main content area so it is always visible.
+
+---
+
+## 8. ConversasPage -- Simulated Badge
+
+**File:** `src/pages/orbit/ConversasPage.tsx`
+
+When rendering messages, if `m.status === 'simulated'`, show a small badge/chip next to the message: "Simulado" in amber color. This makes it clear to the demo user.
+
+---
+
+## 9. OrbitSidebar -- Demo Badge
+
+**File:** `src/components/orbit/OrbitSidebar.tsx`
+
+Add "DEMO" badge next to the Orbit logo when `isDemo === true`:
+
+```text
+<span className="text-xs bg-amber-500 text-white px-1.5 py-0.5 rounded">DEMO</span>
 ```
 
 ---
 
-## 2. Frontend: Pass `dados_receita` from CNPJ step
-
-**File:** `src/pages/AcceptInviteSaasPage.tsx`
-
-In `handleFinalize()`, include the BrasilAPI data already captured in state (`cnpjData`) in the payload sent to `accept-empresa-invite`.
-
----
-
-## 3. No new edge function needed
-
-The `finalize-empresa-onboarding` function described in the spec is NOT created as a separate file. All logic lives in `accept-empresa-invite`, which already handles:
-
-- Token validation (hash, expiry, used_at)
-- Auth user creation
-- Profile + role assignment
-- CNPJ validation + uniqueness
-- PE tenant provisioning (non-demo)
-- Pipeline stages + AI config seeding
-- Invite marking + status updates
-- Audit logging
-
----
-
-## 4. Summary of file changes
+## Summary of files
 
 | File | Action |
 |---|---|
-| `supabase/functions/accept-empresa-invite/index.ts` | Add dados_receita handling, trial_ends_at, organization_id in response |
-| `src/pages/AcceptInviteSaasPage.tsx` | Pass cnpjData as dados_receita in finalize payload |
+| Migration SQL | Add SELECT RLS policy on `saas_empresa` for users |
+| `src/hooks/useIsDemo.ts` | New hook |
+| `supabase/functions/orbit-send-message/index.ts` | Add demo guard |
+| `supabase/functions/orbit-send-email/index.ts` | Add demo guard |
+| `supabase/functions/send-orbit-campaign/index.ts` | Add demo guard |
+| `src/pages/orbit/ConfigPage.tsx` | Disable integration forms + banner |
+| `src/components/orbit/OrbitLayout.tsx` | Persistent demo banner |
+| `src/pages/orbit/ConversasPage.tsx` | Simulated message badge |
+| `src/components/orbit/OrbitSidebar.tsx` | Demo badge on logo |
 
 ---
 
 ## Technical details
 
-- The `trial_ends_at` values (14/30 days) can be adjusted later when plan configuration becomes more sophisticated. For now, hardcoded per plan_code.
-- `dados_receita` fields are optional -- if the BrasilAPI call failed on the frontend, the function proceeds without them.
-- The `pe_provision_tenant` RPC already returns `organization_id` in its JSONB response, so we capture it from the return value.
-- No database migration needed -- `trial_ends_at` column already exists on `saas_empresa`.
+- **No new role needed.** Demo mode is determined by the empresa's plan (`saas_plans.code = 'demo'`), not by a user role. This avoids polluting the RBAC system.
+- **Server-side enforcement.** The edge functions check the plan server-side, so even if a user bypasses the UI restrictions, no real messages are sent.
+- **Client-side UX.** The `useIsDemo` hook caches the plan check and provides a simple boolean for conditional rendering across all Orbit pages.
+- **Inbound messages still work.** The webhook (`orbit-webhook`) processes incoming messages normally. If a demo user has a test Z-API instance configured by the super admin, inbound messages flow as usual and the AI can respond (though responses are also simulated on the outbound side).
+- **`simulated` status.** Using a new status value `'simulated'` on `orbit_mensagens` differentiates demo messages from real failed/sent messages. This does not require a DB migration since the `status` column is a text field without constraints.
 
