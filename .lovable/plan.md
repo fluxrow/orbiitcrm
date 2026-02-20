@@ -1,64 +1,39 @@
 
-# Etapa 3I -- Paginacao / Load More em Interacoes
+# Etapa 3J -- Indice Composto em tarefas
 
-Implementar carregamento paginado nas interacoes para evitar renderizacao de centenas de registros de uma vez.
+## Situacao atual
 
----
+Existem 3 indices individuais na tabela `tarefas`:
+- `idx_tarefas_org` (organization_id)
+- `idx_tarefas_status` (status)
+- `idx_tarefas_due` (due_date)
 
-## Abordagem
+Nenhum indice composto cobrindo os tres campos juntos. O Postgres so pode usar um indice por scan, entao a query do Kanban enrichment (`WHERE organization_id = X AND status = 'open' AND due_date >= Y ORDER BY due_date`) nao esta otimizada.
 
-Usar paginacao offset-based com `useInfiniteQuery` do TanStack Query. Supabase `.range()` simplifica a implementacao sem necessidade de cursor customizado no banco.
+## Alteracao
 
----
+Uma unica migration SQL:
 
-## Mudancas
-
-### 1. Hook: `src/hooks/useInteracoes.ts`
-
-**Nova funcao `useInteracoesPaginated`** (manter `useInteracoes` original intacta para outros consumidores):
-
-- Usar `useInfiniteQuery` do TanStack Query
-- Parametros: `{ oportunidade_id?, cliente_id?, pageSize = 50 }`
-- Cada pagina usa `.range(offset, offset + pageSize - 1)` com `.order("data_interacao", { ascending: false })`
-- Manter os mesmos JOINs: `pe_users:user_id(full_name), contatos(nome), clientes(razao_social)`
-- `getNextPageParam`: se a pagina retornou `pageSize` registros, ha mais; caso contrario, `undefined`
-- Retorna `data.pages.flatMap(p => p)` como lista achatada, mais `fetchNextPage`, `hasNextPage`, `isFetchingNextPage`
-
-### 2. UI: `src/components/pe-admin/InteracoesTab.tsx`
-
-- Substituir `useInteracoes` por `useInteracoesPaginated`
-- Achatar paginas em array unico para renderizar timeline/lista
-- Adicionar botao "Carregar mais" no final da lista quando `hasNextPage === true`
-- Mostrar spinner no botao durante `isFetchingNextPage`
-- Texto do botao: "Carregar mais interacoes"
-- Apos criar nova interacao (dialog), invalidar query para recarregar primeira pagina
-
----
-
-## Detalhes tecnicos
-
-**Query com range:**
 ```text
-supabase
-  .from("interacoes")
-  .select("*, pe_users:user_id(full_name), contatos(nome), clientes(razao_social)")
-  .order("data_interacao", { ascending: false })
-  .range(pageParam * pageSize, (pageParam + 1) * pageSize - 1)
-  // + filtros de org, oportunidade_id, cliente_id
+CREATE INDEX idx_tarefas_org_status_due
+ON public.tarefas (organization_id, status, due_date);
 ```
 
-**useInfiniteQuery config:**
-- `queryKey`: `["interacoes_paginated", orgId, filters]`
-- `initialPageParam`: 0
-- `getNextPageParam`: `(lastPage, allPages) => lastPage.length === pageSize ? allPages.length : undefined`
+A ordem das colunas segue a seletividade da query:
+1. `organization_id` -- filtro de igualdade (mais seletivo, isola tenant)
+2. `status` -- filtro de igualdade ('open')
+3. `due_date` -- range scan (>=) e ORDER BY
 
----
+Este indice cobre completamente a query do hook `useOportunidadesProximaTarefa` e tambem beneficia a query de `useTarefas` quando filtrada por org + status.
 
-## Arquivos alterados
+## Indices individuais existentes
 
-| Arquivo | Acao |
+Os indices `idx_tarefas_org`, `idx_tarefas_status` e `idx_tarefas_due` continuam uteis para queries que filtram por apenas uma coluna, entao nao serao removidos.
+
+## Resumo
+
+| Acao | Detalhe |
 |---|---|
-| `src/hooks/useInteracoes.ts` | Adicionar `useInteracoesPaginated` (manter hook original) |
-| `src/components/pe-admin/InteracoesTab.tsx` | Usar novo hook + botao "Carregar mais" |
-
-Nenhuma alteracao de banco necessaria.
+| Migration SQL | `CREATE INDEX idx_tarefas_org_status_due ON public.tarefas (organization_id, status, due_date)` |
+| Arquivos frontend | Nenhum |
+| Risco | Zero -- apenas adiciona indice, nao altera dados nem schema |
