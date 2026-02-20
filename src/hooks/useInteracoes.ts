@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { usePeAuth } from "./usePeAuth";
@@ -25,6 +25,37 @@ export function useInteracoes(filters?: { oportunidade_id?: string; cliente_id?:
       if (error) throw error;
       return data;
     },
+  });
+}
+
+const PAGE_SIZE = 50;
+
+export function useInteracoesPaginated(filters?: { oportunidade_id?: string; cliente_id?: string; pageSize?: number }) {
+  const { orgId, isSuperAdmin } = usePeAuth();
+  const size = filters?.pageSize ?? PAGE_SIZE;
+
+  return useInfiniteQuery({
+    queryKey: ["interacoes_paginated", orgId, filters?.oportunidade_id, filters?.cliente_id],
+    queryFn: async ({ pageParam = 0 }) => {
+      let query = supabase
+        .from("interacoes")
+        .select("*, pe_users:user_id(full_name), contatos(nome), clientes(razao_social)")
+        .order("data_interacao", { ascending: false })
+        .range(pageParam * size, (pageParam + 1) * size - 1);
+
+      if (!isSuperAdmin && orgId) {
+        query = query.eq("organization_id", orgId);
+      }
+      if (filters?.oportunidade_id) query = query.eq("oportunidade_id", filters.oportunidade_id);
+      if (filters?.cliente_id) query = query.eq("cliente_id", filters.cliente_id);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length === size ? allPages.length : undefined,
   });
 }
 
