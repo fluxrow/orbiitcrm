@@ -1,72 +1,65 @@
 
-# Etapa 3G -- Interacoes Timeline (UI)
+# Etapa 3H -- Harden Multi-Tenant Consistency (organization_id)
 
-Transformar a `InteracoesTab` de uma lista de cards simples para uma timeline cronologica visual, com linha vertical conectando os eventos e melhor destaque para follow-ups.
-
----
-
-## Abordagem
-
-O componente atual ja exibe cards com icone, tipo, data, usuario, resumo e follow-up. A evolucao e puramente visual:
-
-1. Substituir o layout `space-y-3` por uma timeline vertical (linha + dots)
-2. Melhorar a formatacao de data/hora (incluir horario)
-3. Destacar follow-up com cor/borda quando presente
-4. Adicionar toggle Timeline/Lista para alternar entre as visoes
-
-Nenhuma alteracao de banco ou hook necessaria. Os dados ja vem ordenados por `data_interacao desc` no `useInteracoes`.
+Adicionar 3 triggers BEFORE INSERT/UPDATE para garantir consistencia de `organization_id` entre tabelas filhas e pais, impedindo registros cross-tenant mesmo via SQL direto.
 
 ---
 
-## Mudancas no Componente
+## Funcoes e Triggers
 
-### Arquivo: `src/components/pe-admin/InteracoesTab.tsx`
+### 1. `validate_oportunidade_item_org()` -- trigger em `oportunidade_itens`
 
-**Toggle de visao**
-- Estado `viewMode`: `"timeline"` (default) | `"list"`
-- Dois botoes icone no header (ao lado do botao "Nova Interacao")
+BEFORE INSERT OR UPDATE:
+- Busca `organization_id` da `oportunidades` via `NEW.oportunidade_id`
+- Se `NEW.organization_id IS NULL` --> auto-preenche com org do pai
+- Se `NEW.organization_id != pai.organization_id` --> RAISE EXCEPTION `'org_mismatch: oportunidade_itens.organization_id must match oportunidades.organization_id'`
 
-**Layout Timeline**
-- Container com `relative` para a linha vertical
-- Linha vertical absoluta (`border-l-2 border-muted`) do lado esquerdo
-- Cada interacao: dot colorido por tipo + conteudo ao lado
+### 2. `validate_interacao_org()` -- trigger em `interacoes`
 
-```text
-  |
-  o--- [call] 20/02 14:30 - por Joao
-  |    Conversamos sobre o pacote para Europa...
-  |    >> Follow-up: 25/02 - Enviar orcamento
-  |
-  o--- [email] 18/02 09:15 - por Maria
-  |    Enviado orcamento v2...
-  |
-```
+BEFORE INSERT OR UPDATE:
+- Busca `organization_id` do `clientes` via `NEW.cliente_id`
+- Se `NEW.organization_id IS NULL` --> auto-preenche com org do cliente
+- Se `NEW.organization_id != clientes.organization_id` --> RAISE EXCEPTION `'org_mismatch: interacoes.organization_id must match clientes.organization_id'`
+- Se `NEW.oportunidade_id IS NOT NULL`:
+  - Busca `organization_id` e `cliente_id` da `oportunidades`
+  - Se org da oportunidade != `NEW.organization_id` --> RAISE EXCEPTION
+  - Se `oportunidade.cliente_id != NEW.cliente_id` --> RAISE EXCEPTION `'integrity_error: oportunidade.cliente_id must match interacao.cliente_id'`
 
-- Dot: `div` circular 10px com cor por tipo (Phone=blue, Email=green, WhatsApp=emerald, Meeting=purple, Note=gray)
-- Follow-up: bloco com `bg-amber-50 border-l-2 border-amber-400 p-2` para destaque visual
-- Data formatada: `dd/MM HH:mm` usando `toLocaleString("pt-BR")`
+### 3. `validate_tarefa_org()` -- trigger em `tarefas`
 
-**Layout Lista (fallback)**
-- Manter o layout atual de cards como alternativa
-
----
-
-## Cores por tipo
-
-| Tipo | Cor do dot | Label |
-|---|---|---|
-| call | `bg-blue-500` | Ligacao |
-| email | `bg-green-500` | E-mail |
-| whatsapp | `bg-emerald-500` | WhatsApp |
-| meeting | `bg-purple-500` | Reuniao |
-| note | `bg-gray-400` | Nota |
+BEFORE INSERT OR UPDATE:
+- Busca `organization_id` do `clientes` via `NEW.cliente_id`
+- Se `NEW.organization_id IS NULL` --> auto-preenche com org do cliente
+- Se `NEW.organization_id != clientes.organization_id` --> RAISE EXCEPTION `'org_mismatch: tarefas.organization_id must match clientes.organization_id'`
+- Se `NEW.oportunidade_id IS NOT NULL`:
+  - Busca `organization_id` e `cliente_id` da `oportunidades`
+  - Se org da oportunidade != `NEW.organization_id` --> RAISE EXCEPTION
+  - Se `oportunidade.cliente_id != NEW.cliente_id` --> RAISE EXCEPTION `'integrity_error: oportunidade.cliente_id must match tarefa.cliente_id'`
 
 ---
 
-## Resumo
+## Migration SQL (unica)
 
-| Arquivo | Acao |
+Uma migration contendo:
+1. 3 funcoes PL/pgSQL (`SECURITY DEFINER, SET search_path TO 'public'`)
+2. 3 triggers BEFORE INSERT OR UPDATE (um por tabela)
+
+---
+
+## Nao sera alterado
+
+- Nenhum arquivo frontend
+- Nenhuma tabela/coluna existente
+- Nenhum trigger existente (recalc, validate_status, updated_at continuam intactos)
+
+---
+
+## Checklist de validacao pos-deploy
+
+| Cenario | Resultado esperado |
 |---|---|
-| `src/components/pe-admin/InteracoesTab.tsx` | **Editar** -- adicionar timeline layout + toggle de visao |
-
-Nenhum arquivo novo, nenhuma alteracao de banco.
+| INSERT oportunidade_itens com org diferente da oportunidade | EXCEPTION org_mismatch |
+| INSERT interacao com cliente de outra org | EXCEPTION org_mismatch |
+| INSERT tarefa com oportunidade de outro cliente | EXCEPTION integrity_error |
+| INSERT oportunidade_itens com org NULL | Auto-preenche com org do pai |
+| INSERT interacao normal (mesma org) | Sucesso |
