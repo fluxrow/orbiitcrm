@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { useInteracoes } from "@/hooks/useInteracoes";
+import { useInteracoesPaginated } from "@/hooks/useInteracoes";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Phone, Mail, MessageSquare, Calendar, FileText, List, Clock } from "lucide-react";
+import { Plus, Phone, Mail, MessageSquare, Calendar, FileText, List, Clock, Loader2 } from "lucide-react";
 import { InteracaoDialog } from "@/components/pe-admin/InteracaoDialog";
 
 const TIPO_ICONS: Record<string, any> = {
@@ -27,7 +27,14 @@ interface Props {
 }
 
 export function InteracoesTab({ oportunidade }: Props) {
-  const { data: interacoes, isLoading } = useInteracoes({ oportunidade_id: oportunidade.id });
+  const {
+    data,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInteracoesPaginated({ oportunidade_id: oportunidade.id });
+  const interacoes = data?.pages.flatMap((p) => p) ?? [];
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"timeline" | "list">("timeline");
 
@@ -71,8 +78,9 @@ export function InteracoesTab({ oportunidade }: Props) {
         </div>
       ) : (!interacoes || interacoes.length === 0) ? (
         <p className="text-center py-6 text-muted-foreground">Nenhuma interação registrada</p>
-      ) : viewMode === "timeline" ? (
-        /* ── Timeline View ── */
+      ) : (
+        <>
+          {viewMode === "timeline" ? (
         <div className="relative pl-6">
           {/* Vertical line */}
           <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-muted" />
@@ -122,32 +130,51 @@ export function InteracoesTab({ oportunidade }: Props) {
             })}
           </div>
         </div>
-      ) : (
-        /* ── List View (original) ── */
-        <div className="space-y-3">
-          {interacoes.map((i: any) => {
-            const Icon = TIPO_ICONS[i.tipo] || FileText;
-            return (
-              <Card key={i.id}>
-                <CardContent className="p-4 flex gap-3">
-                  <div className="mt-1"><Icon className="w-4 h-4 text-muted-foreground" /></div>
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">{i.tipo}</Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(i.data_interacao).toLocaleDateString("pt-BR")}
-                      </span>
-                      <span className="text-xs text-muted-foreground">por {(i.pe_users as any)?.full_name || "—"}</span>
-                    </div>
-                    <p className="text-sm">{i.resumo}</p>
-                    {i.proxima_acao && <p className="text-xs text-muted-foreground">Próxima ação: {i.proxima_acao}</p>}
-                    {i.data_followup && <p className="text-xs text-muted-foreground">Follow-up: {i.data_followup}</p>}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+          ) : (
+            /* ── List View (original) ── */
+            <div className="space-y-3">
+              {interacoes.map((i: any) => {
+                const Icon = TIPO_ICONS[i.tipo] || FileText;
+                return (
+                  <Card key={i.id}>
+                    <CardContent className="p-4 flex gap-3">
+                      <div className="mt-1"><Icon className="w-4 h-4 text-muted-foreground" /></div>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">{i.tipo}</Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(i.data_interacao).toLocaleDateString("pt-BR")}
+                          </span>
+                          <span className="text-xs text-muted-foreground">por {(i.pe_users as any)?.full_name || "—"}</span>
+                        </div>
+                        <p className="text-sm">{i.resumo}</p>
+                        {i.proxima_acao && <p className="text-xs text-muted-foreground">Próxima ação: {i.proxima_acao}</p>}
+                        {i.data_followup && <p className="text-xs text-muted-foreground">Follow-up: {i.data_followup}</p>}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          {hasNextPage && (
+            <div className="flex justify-center pt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
+              >
+                {isFetchingNextPage ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Carregando...</>
+                ) : (
+                  "Carregar mais interações"
+                )}
+              </Button>
+            </div>
+          )}
+        </>
       )}
 
       <InteracaoDialog open={dialogOpen} onOpenChange={setDialogOpen} oportunidade={oportunidade} />
