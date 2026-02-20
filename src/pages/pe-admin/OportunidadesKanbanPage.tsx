@@ -19,9 +19,9 @@ export default function OportunidadesKanbanPage() {
   const formatCurrency = (v: number | null) =>
     v != null ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v) : "—";
 
-  const handleDrop = (etapaId: string, etapaTipo: string) => {
+  const handleDrop = (etapaId: string) => {
     if (draggedId) {
-      moveOp.mutate({ id: draggedId, etapa_id: etapaId, etapa_tipo: etapaTipo });
+      moveOp.mutate({ id: draggedId, etapa_id: etapaId });
       setDraggedId(null);
     }
   };
@@ -49,7 +49,7 @@ export default function OportunidadesKanbanPage() {
               key={etapa.id}
               className="flex-shrink-0 w-72 bg-muted/30 rounded-lg p-3 space-y-3"
               onDragOver={(e) => e.preventDefault()}
-              onDrop={() => handleDrop(etapa.id, etapa.tipo)}
+              onDrop={() => handleDrop(etapa.id)}
             >
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-sm text-foreground">{etapa.nome}</h3>

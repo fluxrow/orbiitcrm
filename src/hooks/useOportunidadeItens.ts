@@ -20,16 +20,6 @@ export function useOportunidadeItens(oportunidadeId: string | undefined) {
   });
 }
 
-async function recalcOportunidadeTotal(oportunidadeId: string) {
-  const { data: itens } = await supabase
-    .from("oportunidade_itens")
-    .select("valor_total")
-    .eq("oportunidade_id", oportunidadeId);
-
-  const total = (itens || []).reduce((sum, i) => sum + (Number(i.valor_total) || 0), 0);
-  await supabase.from("oportunidades").update({ valor_total_estimado: total }).eq("id", oportunidadeId);
-}
-
 export function useCreateOportunidadeItem() {
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -52,8 +42,6 @@ export function useCreateOportunidadeItem() {
         .select()
         .single();
       if (error) throw error;
-
-      await recalcOportunidadeTotal(item.oportunidade_id);
 
       await supabase.from("pe_audit_log" as any).insert({
         organization_id: item.organization_id,
@@ -100,8 +88,6 @@ export function useUpdateOportunidadeItem() {
 
       const { data, error } = await supabase.from("oportunidade_itens").update(patch).eq("id", id).select().single();
       if (error) throw error;
-
-      await recalcOportunidadeTotal(oportunidade_id);
       return data;
     },
     onSuccess: (_, vars) => {
@@ -121,7 +107,6 @@ export function useDeleteOportunidadeItem() {
     mutationFn: async ({ id, oportunidade_id }: { id: string; oportunidade_id: string }) => {
       const { error } = await supabase.from("oportunidade_itens").delete().eq("id", id);
       if (error) throw error;
-      await recalcOportunidadeTotal(oportunidade_id);
     },
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["oportunidade-itens", vars.oportunidade_id] });
