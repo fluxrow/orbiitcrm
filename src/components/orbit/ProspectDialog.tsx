@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
+import { useNavigate } from "react-router-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
@@ -29,8 +30,9 @@ import {
 } from "@/components/ui/select";
 import { useCreateProspect, useUpdateProspect } from "@/hooks/useOrbitProspects";
 import { usePromoteProspect } from "@/hooks/usePromoteProspect";
+import { usePeAuth } from "@/hooks/usePeAuth";
 import { toast } from "sonner";
-import { ArrowUpRight, Loader2 } from "lucide-react";
+import { ArrowUpRight, Loader2, Settings } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 
 const prospectSchema = z.object({
@@ -81,11 +83,14 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
   const createProspect = useCreateProspect();
   const updateProspect = useUpdateProspect();
   const promoteProspect = usePromoteProspect();
+  const { isSuperAdmin } = usePeAuth();
+  const navigate = useNavigate();
   const isEditing = !!prospect;
 
   const [showPromote, setShowPromote] = useState(false);
   const [createOpp, setCreateOpp] = useState(true);
   const [promoteResult, setPromoteResult] = useState<any>(null);
+  const [tenantMapError, setTenantMapError] = useState(false);
 
   const form = useForm<ProspectFormData>({
     resolver: zodResolver(prospectSchema),
@@ -108,6 +113,7 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
   useEffect(() => {
     setShowPromote(false);
     setPromoteResult(null);
+    setTenantMapError(false);
     if (prospect) {
       form.reset({
         nome_razao: prospect.nome_razao || "",
@@ -173,7 +179,12 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
     } catch (error: any) {
       const msg = error?.message || "Erro ao promover";
       if (msg.includes("tenant_map_missing")) {
-        toast.error("Mapeamento de tenant não configurado. Contate o administrador.");
+        setTenantMapError(true);
+        if (isSuperAdmin) {
+          toast.error("Mapeamento de tenant não configurado. Configure na página Tenant Map.");
+        } else {
+          toast.error("Mapeamento de tenant não configurado. Contate o administrador.");
+        }
       } else {
         toast.error(msg);
       }
@@ -452,6 +463,27 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
                         )}
                       </Button>
                     </div>
+                    {tenantMapError && (
+                      <div className="border border-destructive/30 rounded-lg p-3 bg-destructive/10 space-y-2">
+                        <p className="text-sm text-destructive font-medium">Mapeamento de tenant não configurado</p>
+                        {isSuperAdmin ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              onOpenChange(false);
+                              navigate("/pe-admin/tenants");
+                            }}
+                          >
+                            <Settings className="h-4 w-4 mr-1" />
+                            Configurar Mapeamento
+                          </Button>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">Contate o Super Admin para configurar.</p>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
               </div>
