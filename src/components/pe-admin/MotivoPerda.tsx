@@ -21,9 +21,7 @@ export function MotivoPerda({ open, onOpenChange, oportunidadeId }: Props) {
     const lostEtapa = (etapas || []).find((e: any) => e.tipo === "lost");
     await update.mutateAsync({
       id: oportunidadeId,
-      status: "lost",
       motivo_perda: motivo || null,
-      closed_at: new Date().toISOString(),
       ...(lostEtapa ? { etapa_id: lostEtapa.id } : {}),
     });
     setMotivo("");

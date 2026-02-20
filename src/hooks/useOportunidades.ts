@@ -120,13 +120,11 @@ export function useMoveOportunidade() {
   const { user } = useAuth();
 
   return useMutation({
-    mutationFn: async ({ id, etapa_id, etapa_tipo }: { id: string; etapa_id: string; etapa_tipo: string }) => {
-      const newStatus = etapa_tipo === "won" ? "won" : etapa_tipo === "lost" ? "lost" : "open";
-      const closedAt = newStatus !== "open" ? new Date().toISOString() : null;
-
+    mutationFn: async ({ id, etapa_id }: { id: string; etapa_id: string }) => {
+      // Apenas atualiza etapa_id; banco define status e closed_at via trigger
       const { data, error } = await supabase
         .from("oportunidades")
-        .update({ etapa_id, status: newStatus, closed_at: closedAt })
+        .update({ etapa_id })
         .eq("id", id)
         .select()
         .single();
@@ -138,7 +136,7 @@ export function useMoveOportunidade() {
         action: "OPORTUNIDADE_MOVED",
         entity_type: "oportunidade",
         entity_id: id,
-        metadata: { etapa_id, status: newStatus },
+        metadata: { etapa_id, status: data.status },
       });
       return data;
     },
