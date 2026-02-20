@@ -2724,6 +2724,10 @@ export type Database = {
       normalize_email: { Args: { p: string }; Returns: string }
       normalize_name: { Args: { p: string }; Returns: string }
       normalize_phone: { Args: { p: string }; Returns: string }
+      pe_delete_tenant_map: {
+        Args: { p_empresa_id: string }
+        Returns: undefined
+      }
       pe_get_user_org_id: { Args: { p_user_id: string }; Returns: string }
       pe_get_user_role_code: { Args: { p_user_id: string }; Returns: string }
       pe_is_super_admin: { Args: { p_user_id: string }; Returns: boolean }
@@ -2734,6 +2738,10 @@ export type Database = {
           p_owner_user_id?: string
           p_prospect_id: string
         }
+        Returns: Json
+      }
+      pe_upsert_tenant_map: {
+        Args: { p_empresa_id: string; p_organization_id: string }
         Returns: Json
       }
       pe_user_can_write: {
