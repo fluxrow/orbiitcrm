@@ -2622,6 +2622,7 @@ export type Database = {
           empresa_id: string
           expires_at: string
           id: string
+          metadata: Json | null
           responsible_name: string | null
           token_hash: string
           used_at: string | null
@@ -2634,6 +2635,7 @@ export type Database = {
           empresa_id: string
           expires_at: string
           id?: string
+          metadata?: Json | null
           responsible_name?: string | null
           token_hash: string
           used_at?: string | null
@@ -2646,6 +2648,7 @@ export type Database = {
           empresa_id?: string
           expires_at?: string
           id?: string
+          metadata?: Json | null
           responsible_name?: string | null
           token_hash?: string
           used_at?: string | null
