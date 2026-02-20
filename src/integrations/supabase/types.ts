@@ -1811,6 +1811,51 @@ export type Database = {
           },
         ]
       }
+      orbit_pe_links: {
+        Row: {
+          cliente_id: string | null
+          contato_id: string | null
+          created_at: string
+          empresa_id: string
+          id: string
+          is_primary: boolean
+          match_confidence: number
+          match_type: string
+          oportunidade_id: string | null
+          organization_id: string
+          prospect_id: string
+          updated_at: string
+        }
+        Insert: {
+          cliente_id?: string | null
+          contato_id?: string | null
+          created_at?: string
+          empresa_id: string
+          id?: string
+          is_primary?: boolean
+          match_confidence?: number
+          match_type?: string
+          oportunidade_id?: string | null
+          organization_id: string
+          prospect_id: string
+          updated_at?: string
+        }
+        Update: {
+          cliente_id?: string | null
+          contato_id?: string | null
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          is_primary?: boolean
+          match_confidence?: number
+          match_type?: string
+          oportunidade_id?: string | null
+          organization_id?: string
+          prospect_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       orbit_pipeline_stages: {
         Row: {
           cor: string | null
@@ -2343,6 +2388,27 @@ export type Database = {
         }
         Relationships: []
       }
+      pe_tenant_map: {
+        Row: {
+          created_at: string
+          empresa_id: string
+          id: string
+          organization_id: string
+        }
+        Insert: {
+          created_at?: string
+          empresa_id: string
+          id?: string
+          organization_id: string
+        }
+        Update: {
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          organization_id?: string
+        }
+        Relationships: []
+      }
       pe_users: {
         Row: {
           created_at: string
@@ -2646,6 +2712,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      extract_domain: { Args: { p: string }; Returns: string }
       get_user_empresa_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
@@ -2654,9 +2721,21 @@ export type Database = {
         }
         Returns: boolean
       }
+      normalize_email: { Args: { p: string }; Returns: string }
+      normalize_name: { Args: { p: string }; Returns: string }
+      normalize_phone: { Args: { p: string }; Returns: string }
       pe_get_user_org_id: { Args: { p_user_id: string }; Returns: string }
       pe_get_user_role_code: { Args: { p_user_id: string }; Returns: string }
       pe_is_super_admin: { Args: { p_user_id: string }; Returns: boolean }
+      pe_promote_prospect: {
+        Args: {
+          p_create_opportunity?: boolean
+          p_empresa_id: string
+          p_owner_user_id?: string
+          p_prospect_id: string
+        }
+        Returns: Json
+      }
       pe_user_can_write: {
         Args: { p_org_id: string; p_user_id: string }
         Returns: boolean
