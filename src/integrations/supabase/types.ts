@@ -1104,6 +1104,7 @@ export type Database = {
         Row: {
           ativo: boolean | null
           cnpj: string | null
+          cnpj_normalized: string | null
           created_at: string | null
           data_expiracao: string | null
           email_contato: string | null
@@ -1118,6 +1119,7 @@ export type Database = {
         Insert: {
           ativo?: boolean | null
           cnpj?: string | null
+          cnpj_normalized?: string | null
           created_at?: string | null
           data_expiracao?: string | null
           email_contato?: string | null
@@ -1132,6 +1134,7 @@ export type Database = {
         Update: {
           ativo?: boolean | null
           cnpj?: string | null
+          cnpj_normalized?: string | null
           created_at?: string | null
           data_expiracao?: string | null
           email_contato?: string | null
@@ -2544,6 +2547,190 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "profiles_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saas_empresa: {
+        Row: {
+          activated_at: string | null
+          billing_status: string | null
+          created_at: string
+          created_by_user_id: string
+          empresa_id: string
+          invited_at: string | null
+          plan_id: string
+          responsible_email: string | null
+          responsible_name: string | null
+          status: string
+          trial_ends_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          activated_at?: string | null
+          billing_status?: string | null
+          created_at?: string
+          created_by_user_id: string
+          empresa_id: string
+          invited_at?: string | null
+          plan_id: string
+          responsible_email?: string | null
+          responsible_name?: string | null
+          status?: string
+          trial_ends_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          activated_at?: string | null
+          billing_status?: string | null
+          created_at?: string
+          created_by_user_id?: string
+          empresa_id?: string
+          invited_at?: string | null
+          plan_id?: string
+          responsible_email?: string | null
+          responsible_name?: string | null
+          status?: string
+          trial_ends_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saas_empresa_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "saas_empresa_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "saas_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saas_invites: {
+        Row: {
+          created_at: string
+          created_by_user_id: string
+          email: string
+          empresa_id: string
+          expires_at: string
+          id: string
+          responsible_name: string | null
+          token_hash: string
+          used_at: string | null
+          used_by_user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by_user_id: string
+          email: string
+          empresa_id: string
+          expires_at: string
+          id?: string
+          responsible_name?: string | null
+          token_hash: string
+          used_at?: string | null
+          used_by_user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by_user_id?: string
+          email?: string
+          empresa_id?: string
+          expires_at?: string
+          id?: string
+          responsible_name?: string | null
+          token_hash?: string
+          used_at?: string | null
+          used_by_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saas_invites_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saas_plans: {
+        Row: {
+          code: string
+          created_at: string
+          features: Json
+          id: string
+          limits: Json
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          features?: Json
+          id?: string
+          limits?: Json
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          features?: Json
+          id?: string
+          limits?: Json
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      saas_usage_monthly: {
+        Row: {
+          created_at: string
+          email_sent: number
+          empresa_id: string
+          fb_sent: number
+          id: string
+          ig_sent: number
+          lead_search_calls: number
+          period: string
+          updated_at: string
+          whatsapp_sent: number
+        }
+        Insert: {
+          created_at?: string
+          email_sent?: number
+          empresa_id: string
+          fb_sent?: number
+          id?: string
+          ig_sent?: number
+          lead_search_calls?: number
+          period: string
+          updated_at?: string
+          whatsapp_sent?: number
+        }
+        Update: {
+          created_at?: string
+          email_sent?: number
+          empresa_id?: string
+          fb_sent?: number
+          id?: string
+          ig_sent?: number
+          lead_search_calls?: number
+          period?: string
+          updated_at?: string
+          whatsapp_sent?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saas_usage_monthly_empresa_id_fkey"
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "orbit_empresas"
