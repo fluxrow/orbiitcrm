@@ -45,5 +45,8 @@ verify_jwt = false
 [functions.invite-org-user]
 verify_jwt = true
 
+[functions.create-empresa-invite]
+verify_jwt = false
+
 [functions.accept-invitation]
 verify_jwt = false
