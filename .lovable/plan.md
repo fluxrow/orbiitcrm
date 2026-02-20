@@ -1,117 +1,125 @@
 
 
-# Etapa 3A -- Pipeline de Turismo Corporativo (Pacote + Itens) -- ATUALIZADO
+# Etapa 3D -- Hotfix de Banco (Validacoes + Automacoes)
 
-## Alteracao nesta revisao
-
-Tabela `produtos` agora inclui campo `categoria` (TRANSPORTE, HOSPEDAGEM, PROTECAO, EVENTOS, SERVICOS) e seed expandido com 7 tipos de servico.
+Mover regras criticas do frontend para o Postgres. Nenhuma tabela nova, apenas triggers/functions e ajustes minimos nos hooks.
 
 ---
 
 ## Fase 1 -- Migration SQL
 
-Uma migration criando 6 tabelas + funcao auxiliar + RLS + indices.
+Uma unica migration com 3 blocos:
 
-### Funcao auxiliar
+### 1.1 Validar funil_etapas.tipo
 
-`pe_user_is_sales_or_sdr(p_user_id uuid)` -- retorna true se role = ORG_SALES ou ORG_SDR.
+```text
+CREATE FUNCTION validate_funil_etapa() RETURNS trigger
+  IF NEW.tipo NOT IN ('open','won','lost') => RAISE EXCEPTION
+CREATE TRIGGER trg_validate_funil_etapa
+  BEFORE INSERT OR UPDATE ON funil_etapas
+  FOR EACH ROW EXECUTE FUNCTION validate_funil_etapa()
+```
 
-### Tabelas
+### 1.2 Status automatico ao mudar etapa_id em oportunidades
 
-1. **produtos** -- tipos de servico com categoria.
-   - Campos: id, organization_id, nome, codigo, **categoria** (text, not null), is_active, created_at, updated_at
-   - Constraints: `unique(organization_id, codigo)`
-   - Indices: `index(organization_id)`, `index(organization_id, categoria)`
-   - Seed (7 registros por org):
-     - AEREO / Aereo / TRANSPORTE
-     - RODOVIARIO / Rodoviario / TRANSPORTE
-     - LOCACAO_VEICULO / Locacao de Veiculo / TRANSPORTE
-     - TRANSFER / Transfer / TRANSPORTE
-     - HOSPEDAGEM / Hospedagem / HOSPEDAGEM
-     - SEGURO / Seguro Viagem / PROTECAO
-     - EVENTOS / Eventos / EVENTOS
-   - Nota: seeds serao criados via UI (botao "Criar Produtos Padrao") pois dependem de organization_id.
+```text
+CREATE FUNCTION auto_oportunidade_status() RETURNS trigger
+  -- So executa quando etapa_id muda (INSERT ou UPDATE com etapa_id diferente)
+  -- Busca funil_etapas.tipo da nova etapa_id
+  -- Valida que organization_id da etapa = organization_id da oportunidade
+  -- tipo='won'  => status='won',  closed_at=now()
+  -- tipo='lost' => status='lost', closed_at=now()
+  -- tipo='open' => status='open', closed_at=null
+CREATE TRIGGER trg_auto_oportunidade_status
+  BEFORE INSERT OR UPDATE ON oportunidades
+  FOR EACH ROW EXECUTE FUNCTION auto_oportunidade_status()
+```
 
-2. **funil_etapas** -- etapas do funil da org (SEM produto_id). `unique(organization_id, ordem)`, `unique(organization_id, nome)`. Tipo: open/won/lost.
+Nota: este trigger executa ANTES do `validate_oportunidade` existente, garantindo que o status ja esteja correto quando a validacao rodar.
 
-3. **oportunidades** -- pacote/viagem vinculado a cliente + etapa. Campos de viagem: `destino`, `data_ida`, `data_volta`, `viajantes_qtd`. FK owner/created_by para pe_users. CHECK status, probabilidade.
+### 1.3 Recalculo automatico de valor_total_estimado
 
-4. **oportunidade_itens** -- servicos dentro do pacote. FK para oportunidade + produto. Campos: descricao, quantidade, valor_unitario, valor_total, status (open/confirmed/canceled), fornecedor.
+```text
+CREATE FUNCTION recalc_oportunidade_total() RETURNS trigger
+  -- Determina o oportunidade_id afetado (NEW ou OLD conforme operacao)
+  -- SELECT COALESCE(SUM(COALESCE(valor_total, quantidade * valor_unitario, 0)), 0)
+  --   FROM oportunidade_itens WHERE oportunidade_id = ...
+  -- UPDATE oportunidades SET valor_total_estimado = resultado
 
-5. **interacoes** -- registros de contato (call, whatsapp, email, meeting, note). FK para cliente, oportunidade (opcional), contato (opcional), user.
+CREATE TRIGGER trg_recalc_total_insert
+  AFTER INSERT ON oportunidade_itens
+  FOR EACH ROW EXECUTE FUNCTION recalc_oportunidade_total()
 
-6. **tarefas** -- to-dos com prioridade/status/due_date. FK para cliente, oportunidade (opcional), contato (opcional), assigned_to, created_by.
+CREATE TRIGGER trg_recalc_total_update
+  AFTER UPDATE ON oportunidade_itens
+  FOR EACH ROW EXECUTE FUNCTION recalc_oportunidade_total()
 
-### RLS (mesmo padrao para todas)
-
-- **SUPER_ADMIN**: ALL (bypass global)
-- **Org members**: SELECT na propria org
-- **Writers (admin/manager)**: INSERT, UPDATE, DELETE na propria org
-- **Sales/SDR** (oportunidades): INSERT + UPDATE/DELETE apenas onde `owner_user_id = auth.uid()`
-- **Sales/SDR** (interacoes): INSERT + UPDATE/DELETE apenas onde `user_id = auth.uid()`
-- **Sales/SDR** (tarefas): INSERT + UPDATE/DELETE apenas onde `assigned_to_user_id = auth.uid()`
-- **produtos e funil_etapas**: somente writers (admin/manager) podem modificar
-
----
-
-## Fase 2 -- Hooks React (6 arquivos)
-
-| Arquivo | Conteudo |
-|---|---|
-| `src/hooks/useProdutos.ts` | CRUD produtos (inclui campo `categoria`), filtro por org e por categoria, funcao `createDefaultProducts` para seed |
-| `src/hooks/useFunilEtapas.ts` | CRUD etapas, reordenacao, funcao `createDefaultStages` |
-| `src/hooks/useOportunidades.ts` | Lista com filtros (etapa, status, owner, cliente, destino), create, update, mover etapa (auto-status + closed_at) |
-| `src/hooks/useOportunidadeItens.ts` | CRUD itens, calculo valor_total do item, recalculo valor_total_estimado da oportunidade |
-| `src/hooks/useInteracoes.ts` | Lista por oportunidade/cliente, create |
-| `src/hooks/useTarefas.ts` | Lista com filtros, create, update, marcar done |
-
-### Logica de negocio
-
-- **Mover oportunidade**: auto-status won/lost/open + closed_at conforme tipo da etapa
-- **Itens**: valor_total = quantidade * valor_unitario; recalculo da soma na oportunidade
-- **Audit log** em todos os hooks
+CREATE TRIGGER trg_recalc_total_delete
+  AFTER DELETE ON oportunidade_itens
+  FOR EACH ROW EXECUTE FUNCTION recalc_oportunidade_total()
+```
 
 ---
 
-## Fase 3 -- Paginas e Componentes
+## Fase 2 -- Ajustes nos Hooks (2 arquivos)
 
-### Novas paginas (7)
+### 2.1 useOportunidades.ts -- `useMoveOportunidade`
 
-| Rota | Arquivo | Descricao |
+**Antes (linhas 123-131):**
+```typescript
+const newStatus = etapa_tipo === "won" ? ... ;
+const closedAt = ...;
+.update({ etapa_id, status: newStatus, closed_at: closedAt })
+```
+
+**Depois:**
+```typescript
+// Apenas atualiza etapa_id; banco define status e closed_at via trigger
+.update({ etapa_id })
+```
+
+- Remover parametro `etapa_tipo` da interface (nao mais necessario)
+- O audit log continua registrando a acao, mas o `metadata.status` vira do `data` retornado (que ja reflete o trigger)
+
+### 2.2 useOportunidadeItens.ts -- remover `recalcOportunidadeTotal`
+
+- Deletar a funcao `recalcOportunidadeTotal` (linhas 23-31)
+- Em `useCreateOportunidadeItem`: remover chamada `await recalcOportunidadeTotal(...)` (linha 56)
+- Em `useUpdateOportunidadeItem`: remover chamada (linha 104)
+- Em `useDeleteOportunidadeItem`: remover chamada (linha 124)
+- Manter `valor_total` calculado no INSERT/UPDATE do item (quantidade * valor_unitario) pois e campo do proprio item
+- As queries de invalidacao ja existentes garantem que o frontend recarrega o valor atualizado pelo trigger
+
+---
+
+## Fase 3 -- Verificacao de chamadas ao useMoveOportunidade
+
+Verificar todos os locais que chamam `moveOportunidade.mutate(...)` e remover o parametro `etapa_tipo`:
+
+- `OportunidadesKanbanPage.tsx` -- drag-and-drop handler
+- `OportunidadeDetailPage.tsx` -- botoes de mover etapa (se existir)
+- `MotivoPerda.tsx` -- ao marcar como perdido
+
+Esses arquivos passarao a enviar apenas `{ id, etapa_id }`.
+
+---
+
+## Resumo de alteracoes
+
+| Tipo | Arquivo/Objeto | Acao |
 |---|---|---|
-| `/pe-admin/produtos` | `ProdutosPage.tsx` | CRUD produtos em tabela, agrupados por categoria, botao "Criar Produtos Padrao" |
-| `/pe-admin/funil` | `FunilEtapasPage.tsx` | Gerenciar etapas do funil |
-| `/pe-admin/oportunidades` | `OportunidadesPage.tsx` | Lista/filtros de oportunidades |
-| `/pe-admin/oportunidades/kanban` | `OportunidadesKanbanPage.tsx` | Visao kanban |
-| `/pe-admin/oportunidades/:id` | `OportunidadeDetailPage.tsx` | Detalhes + abas Itens, Interacoes, Tarefas |
-| `/pe-admin/tarefas` | `TarefasPage.tsx` | Lista de tarefas |
-| (componente) | `OportunidadeItensTab.tsx` | Aba de itens dentro do detalhe |
+| Migration | Nova migration SQL | Criar 3 functions + 5 triggers |
+| Hook | useOportunidades.ts | Simplificar useMoveOportunidade (remover logica status/closed_at) |
+| Hook | useOportunidadeItens.ts | Remover funcao recalcOportunidadeTotal e suas chamadas |
+| UI | OportunidadesKanbanPage.tsx | Remover parametro etapa_tipo do mutate |
+| UI | MotivoPerda.tsx | Remover parametro etapa_tipo do mutate |
+| UI | OportunidadeDetailPage.tsx | Remover parametro etapa_tipo do mutate (se aplicavel) |
 
-### Componentes de suporte (5)
+### Resultado
 
-OportunidadeDialog, ItemDialog, InteracaoDialog, TarefaDialog, MotivoPerda
-
-### Arquivos editados (2)
-
-- **PeAdminLayout.tsx** -- nav items: Produtos, Funil, Oportunidades, Tarefas
-- **App.tsx** -- 7 novas rotas
-
----
-
-## Detalhes Tecnicos
-
-### Permissoes por Role
-
-| Acao | SUPER_ADMIN | ORG_ADMIN | ORG_MANAGER | ORG_SALES/SDR | ORG_VIEWER |
-|---|---|---|---|---|---|
-| Produtos/Funil (CRUD) | Sim | Sim | Sim | Nao | Nao |
-| Oportunidades (leitura) | Todas orgs | Propria org | Propria org | Propria org | Propria org |
-| Oportunidades (escrita) | Sim | Sim | Sim | Somente proprias | Nao |
-| Itens/Interacoes/Tarefas | Sim | Sim | Sim | Somente proprias | Nao |
-
-### Ordem de implementacao
-
-1. Migration SQL (fase 1)
-2. Hooks (fase 2)
-3. Paginas + componentes + rotas (fase 3)
+- Banco valida `funil_etapas.tipo` e rejeita valores invalidos
+- Banco automaticamente define `status` e `closed_at` ao mudar `etapa_id`
+- Banco automaticamente recalcula `valor_total_estimado` ao alterar itens
+- Frontend simplificado, sem regras duplicadas
+- Audit log mantido sem duplicacao
 
