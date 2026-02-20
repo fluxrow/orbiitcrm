@@ -1,99 +1,72 @@
 
+# Etapa 3G -- Interacoes Timeline (UI)
 
-# Etapa 3F -- Tarefas (Minhas + Hoje/Atrasadas/Proximas)
-
-Evoluir `/pe-admin/tarefas` de uma tabela simples para uma visao operacional agrupada por urgencia, com filtro "Minhas tarefas" e acoes rapidas inline.
+Transformar a `InteracoesTab` de uma lista de cards simples para uma timeline cronologica visual, com linha vertical conectando os eventos e melhor destaque para follow-ups.
 
 ---
 
 ## Abordagem
 
-Nenhuma alteracao de banco necessaria. O hook `useTarefas` ja suporta `assigned_to_user_id` como filtro, e `useUpdateTarefa` ja aceita `due_date` e `prioridade`. Todo o trabalho e no frontend.
+O componente atual ja exibe cards com icone, tipo, data, usuario, resumo e follow-up. A evolucao e puramente visual:
 
-Buscaremos tarefas abertas (sem filtro de status) e agruparemos client-side em 4 secoes temporais. Tarefas concluidas ficam em secao colapsavel no final.
+1. Substituir o layout `space-y-3` por uma timeline vertical (linha + dots)
+2. Melhorar a formatacao de data/hora (incluir horario)
+3. Destacar follow-up com cor/borda quando presente
+4. Adicionar toggle Timeline/Lista para alternar entre as visoes
 
----
-
-## Fase 1 -- Filtro "Minhas Tarefas"
-
-### Arquivo: `src/pages/pe-admin/TarefasPage.tsx`
-
-- Importar `usePeAuth` para obter `peUser`, `roleCode`, `isSuperAdmin`
-- Adicionar estado `minhasTarefas` (boolean, default `true` para Sales/SDR, `false` para Admin/Manager/SuperAdmin)
-- Usar `Switch` + label "Minhas tarefas" no header de filtros
-- Passar `assigned_to_user_id: minhasTarefas ? peUser.id : undefined` ao `useTarefas`
-- Remover filtro de status fixo -- buscar todas (open + done) e agrupar client-side
+Nenhuma alteracao de banco ou hook necessaria. Os dados ja vem ordenados por `data_interacao desc` no `useInteracoes`.
 
 ---
 
-## Fase 2 -- Agrupamento Temporal
+## Mudancas no Componente
 
-Apos receber `tarefas`, separar client-side em 4 grupos usando `date-fns`:
+### Arquivo: `src/components/pe-admin/InteracoesTab.tsx`
+
+**Toggle de visao**
+- Estado `viewMode`: `"timeline"` (default) | `"list"`
+- Dois botoes icone no header (ao lado do botao "Nova Interacao")
+
+**Layout Timeline**
+- Container com `relative` para a linha vertical
+- Linha vertical absoluta (`border-l-2 border-muted`) do lado esquerdo
+- Cada interacao: dot colorido por tipo + conteudo ao lado
 
 ```text
-const hoje = startOfDay(new Date())
-
-Atrasadas:  status='open' AND due_date < hoje
-Hoje:       status='open' AND due_date = hoje
-Proximas:   status='open' AND (due_date > hoje OR due_date is null)
-Concluidas: status='done'
+  |
+  o--- [call] 20/02 14:30 - por Joao
+  |    Conversamos sobre o pacote para Europa...
+  |    >> Follow-up: 25/02 - Enviar orcamento
+  |
+  o--- [email] 18/02 09:15 - por Maria
+  |    Enviado orcamento v2...
+  |
 ```
 
-Renderizar cada grupo como secao com:
-- Header com titulo + contagem (badge)
-- Secao "Atrasadas" com destaque visual (borda vermelha / texto destructive)
-- Secao "Concluidas" colapsavel (Collapsible) e fechada por default
+- Dot: `div` circular 10px com cor por tipo (Phone=blue, Email=green, WhatsApp=emerald, Meeting=purple, Note=gray)
+- Follow-up: bloco com `bg-amber-50 border-l-2 border-amber-400 p-2` para destaque visual
+- Data formatada: `dd/MM HH:mm` usando `toLocaleString("pt-BR")`
+
+**Layout Lista (fallback)**
+- Manter o layout atual de cards como alternativa
 
 ---
 
-## Fase 3 -- Card de Tarefa (substituir tabela)
+## Cores por tipo
 
-Trocar a tabela por cards para melhor usabilidade. Cada card:
-
-```text
-+-----------------------------------------------+
-| [checkbox] Titulo              [high] badge    |
-|   Cliente > Oportunidade                       |
-|   Vence: 20/02  |  Responsavel: Joao           |
-|   [Reagendar]                                  |
-+-----------------------------------------------+
-```
-
-- Checkbox: marca como done (ja existe)
-- Badge de prioridade com cores existentes
-- Linha de contexto: cliente + oportunidade
-- Due date formatada com `format(parseISO(...), "dd/MM")`
-- Botao "Reagendar": abre Popover com Calendar (date picker inline)
+| Tipo | Cor do dot | Label |
+|---|---|---|
+| call | `bg-blue-500` | Ligacao |
+| email | `bg-green-500` | E-mail |
+| whatsapp | `bg-emerald-500` | WhatsApp |
+| meeting | `bg-purple-500` | Reuniao |
+| note | `bg-gray-400` | Nota |
 
 ---
 
-## Fase 4 -- Acoes Rapidas
-
-### Reagendar (due_date)
-
-- Botao icone calendario no card
-- Abre `Popover` com `Calendar` (mode="single")
-- Ao selecionar data, chama `useUpdateTarefa.mutate({ id, due_date: format(date, "yyyy-MM-dd") })`
-- Popover fecha automaticamente
-
-### Alterar Prioridade (opcional inline)
-
-- Click na badge de prioridade abre `Popover` com 3 opcoes (low/normal/high)
-- Ao selecionar, chama `useUpdateTarefa.mutate({ id, prioridade })`
-
----
-
-## Fase 5 -- Filtros Complementares
-
-Manter filtro de prioridade existente. Remover filtro de status (agora e agrupamento visual).
-
----
-
-## Resumo de Arquivos
+## Resumo
 
 | Arquivo | Acao |
 |---|---|
-| `src/pages/pe-admin/TarefasPage.tsx` | **Reescrever** -- layout card-based, agrupamento temporal, filtro "minhas", acoes inline |
+| `src/components/pe-admin/InteracoesTab.tsx` | **Editar** -- adicionar timeline layout + toggle de visao |
 
-Nenhum arquivo novo, nenhuma alteracao de banco. Apenas refatoracao da pagina existente.
-
+Nenhum arquivo novo, nenhuma alteracao de banco.
