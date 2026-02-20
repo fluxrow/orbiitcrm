@@ -1,136 +1,149 @@
 
 
-# Etapa 4X.2 -- Edge Function `create-empresa-invite`
+# Etapa 4X.3 -- UI/Front accept-invite + Onboarding
 
-## Objetivo
+## Prerequisito
 
-Edge function que permite ao Super Admin pre-cadastrar uma empresa e enviar convite por email com link seguro de ativacao.
+A migration da Etapa 4X.1 (tabelas `saas_plans`, `saas_empresa`, `saas_invites`, `saas_usage_monthly`, `cnpj_normalized`) precisa ser aplicada primeiro, pois as tabelas ainda nao existem no banco. A implementacao desta etapa inclui re-executar essa migration.
 
 ---
 
-## 1. Nova Edge Function
+## 1. Edge Function: `validate-invite`
 
-**Arquivo:** `supabase/functions/create-empresa-invite/index.ts`
+**Arquivo:** `supabase/functions/validate-invite/index.ts`
 
-### Entrada (POST body)
+Endpoint publico (sem JWT) que recebe `{ token }` e retorna os dados do convite para exibicao na tela.
 
+**Fluxo:**
+1. Receber `token` no body
+2. Calcular SHA-256 do token
+3. Buscar em `saas_invites` por `token_hash`, fazendo join com `orbit_empresas` e `saas_plans`
+4. Validar: nao expirado, `used_at IS NULL`
+5. Retornar: `empresa_nome`, `responsible_name`, `responsible_email`, `plan_code`, `plan_name`, `expires_at`
+
+**Config TOML:** `verify_jwt = false`
+
+---
+
+## 2. Edge Function: `accept-empresa-invite`
+
+**Arquivo:** `supabase/functions/accept-empresa-invite/index.ts`
+
+Endpoint publico que finaliza a aceitacao do convite SaaS.
+
+**Entrada:**
 ```text
 {
-  empresa_nome: string,
-  responsible_name: string,
-  responsible_email: string,
-  plan_code: "demo" | "basic" | "professional" | "plus"
+  token: string,
+  password: string,
+  full_name: string,
+  cnpj?: string  // obrigatorio se plan != demo
 }
 ```
 
-### Fluxo completo
+**Fluxo:**
+1. Validar token (mesma logica do validate-invite)
+2. Validar CNPJ se plan != demo:
+   - Normalizar (strip non-digits)
+   - Validar comprimento (14 digitos)
+   - Verificar unicidade em `orbit_empresas.cnpj_normalized` (se existir a coluna) ou `cnpj`
+3. Criar auth user com email do convite + senha
+4. Criar profile vinculado a empresa
+5. Atribuir role `admin` em `user_roles`
+6. Atualizar `orbit_empresas`: `ativo = true`, preencher `cnpj` se fornecido
+7. Atualizar `saas_empresa`: `status = 'active'`, `activated_at = now()`
+8. Marcar convite como usado: `used_at = now()`, `used_by_user_id`
+9. Se plan != demo: chamar `pe_provision_tenant` + criar pipeline/AI config (mesmo padrao de create-empresa)
+10. Se plan == demo: NAO provisionar PE, NAO criar integ. externas
+11. Audit log: `EMPRESA_ACTIVATED`
+12. Retornar `{ success, empresa_id, user_id }`
 
-1. **Autenticacao** -- Extrair JWT do header Authorization, validar via `supabaseAdmin.auth.getUser(token)`, verificar role `super_admin` em `user_roles` (mesmo padrao de `create-empresa`).
-
-2. **Buscar plan_id** -- `SELECT id FROM saas_plans WHERE code = plan_code`. Retornar 400 se nao encontrar.
-
-3. **Criar orbit_empresas** -- Inserir registro com `nome = empresa_nome`, `ativo = false` (status pendente). NAO provisionar PE tenant, NAO criar auth user.
-
-4. **Upsert saas_empresa** -- Inserir com:
-   - `empresa_id`, `plan_id`
-   - `status = 'invited'`
-   - `responsible_name`, `responsible_email`
-   - `invited_at = now()`
-   - `created_by_user_id = user.id`
-
-5. **Invalidar convites anteriores** -- Buscar convites ativos (`used_at IS NULL AND expires_at > now()`) para o mesmo `responsible_email`. Se existir, atualizar `expires_at = now()` para invalidar.
-
-6. **Gerar token** -- Gerar 32 bytes aleatorios via `crypto.getRandomValues()`, converter para hex. Calcular SHA-256 e armazenar apenas o hash.
-
-7. **Inserir saas_invites** -- Com `empresa_id`, `email`, `responsible_name`, `token_hash`, `expires_at = now() + 48h`, `created_by_user_id`.
-
-8. **Enviar email** -- Chamar a API Resend diretamente (reutilizando o padrao de `orbit-send-email`: buscar config em `orbit_resend_config` ou fallback para env `RESEND_API_KEY`). Email contem:
-   - Nome da empresa
-   - Plano selecionado
-   - Link: `https://{APP_URL}/accept-invite?token={TOKEN_PLAINTEXT}`
-   - CTA button
-
-9. **Audit log** -- Inserir em `pe_audit_log`:
-   - `action = 'EMPRESA_INVITED'`
-   - `entity_type = 'saas_invites'`
-   - metadata com `empresa_id`, `email`, `plan_code`
-
-10. **Retorno** -- `{ empresa_id, invite_id, expires_at }`
-
-### Tratamento de erros
-
-- 401: sem Authorization header ou token invalido
-- 403: usuario nao e super_admin
-- 400: campos obrigatorios faltando ou plan_code invalido
-- 500: erros internos (com rollback da empresa se falhar apos criacao)
+**Config TOML:** `verify_jwt = false`
 
 ---
 
-## 2. Config TOML
+## 3. Pagina: `AcceptInviteSaasPage.tsx`
 
-Adicionar em `supabase/config.toml`:
+**Arquivo:** `src/pages/AcceptInviteSaasPage.tsx`
 
+Pagina publica com fluxo multi-step.
+
+### Step 1: Validacao do Token
+- Extrair `token` de `?token=...` (query param)
+- Chamar `validate-invite`
+- Se invalido/expirado: mostrar tela de erro
+- Se valido: mostrar dados (empresa, plano, responsavel)
+
+### Step 2: Criacao de Conta
+- Campos: Nome completo (pre-preenchido com responsible_name), Senha, Confirmar Senha
+- Email exibido como readonly (do convite)
+
+### Step 3: Dados da Empresa (condicional)
+- **Se plan == demo:** Pular este step. Mostrar botao "Entrar na Demo"
+- **Se plan != demo:**
+  - Campo CNPJ com mascara (XX.XXX.XXX/XXXX-XX)
+  - Ao digitar CNPJ completo (14 digitos): chamar BrasilAPI (`https://brasilapi.com.br/api/cnpj/v1/{cnpj}`)
+  - Autopreencher: Razao Social, Nome Fantasia, Endereco, CNAE
+  - Campos editaveis para ajuste
+  - Validacao de DV do CNPJ no client-side
+
+### Step 4: Finalizacao
+- Chamar `accept-empresa-invite`
+- Mostrar loading/progress
+- Ao concluir: tela de sucesso com botao "Ir para Login"
+
+### Componente visual
+- Card centralizado, similar ao AuthPage
+- Progress stepper no topo (Step 1/2/3)
+- Branding Orbit
+
+---
+
+## 4. Rota no App.tsx
+
+Adicionar rota publica:
 ```text
-[functions.create-empresa-invite]
-verify_jwt = false
+<Route path="/accept-invite" element={<AcceptInviteSaasPage />} />
 ```
 
-`verify_jwt = false` porque a validacao e feita manualmente no codigo (padrao existente).
+Nota: a rota existente `/invite/:token` continua para convites de organizacao PE (sistema diferente).
 
 ---
 
-## 3. Geracao segura do token
+## 5. Utilitario: validacao CNPJ
 
-```text
-// Gerar 32 bytes aleatorios
-const tokenBytes = new Uint8Array(32);
-crypto.getRandomValues(tokenBytes);
-const tokenPlaintext = Array.from(tokenBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+**Arquivo:** `src/lib/cnpj.ts`
 
-// Hash SHA-256 para armazenamento
-const encoder = new TextEncoder();
-const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(tokenPlaintext));
-const tokenHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-```
-
-O `tokenPlaintext` vai no link do email. Apenas `tokenHash` e salvo no banco.
+- `formatCnpj(value: string): string` -- aplica mascara
+- `validateCnpjDv(cnpj: string): boolean` -- valida digitos verificadores
+- `normalizeCnpj(cnpj: string): string` -- strip non-digits
 
 ---
 
-## 4. Template do email
+## 6. Migration SQL (re-aplicar Etapa 4X.1)
 
-HTML simples com:
-- Logo/header Orbit
-- "Voce foi convidado para {empresa_nome}"
-- "Plano: {plan_name}"
-- Botao CTA: "Ativar Minha Conta"
-- Texto de expiracao: "Este link expira em 48 horas"
+A migration sera incluida para criar as tabelas `saas_plans`, `saas_empresa`, `saas_invites`, `saas_usage_monthly` e a coluna `cnpj_normalized` com trigger, caso ainda nao existam (usando `IF NOT EXISTS`).
 
 ---
 
-## 5. URL do app
-
-A URL base do app sera obtida de:
-1. Variavel de ambiente `APP_URL` (se configurada)
-2. Fallback: header `Origin` ou `Referer` da requisicao
-3. Fallback final: URL do preview do projeto
-
----
-
-## 6. Resumo de arquivos
+## 7. Resumo de arquivos
 
 | Arquivo | Acao |
 |---|---|
-| `supabase/functions/create-empresa-invite/index.ts` | Novo -- edge function completa |
-| `supabase/config.toml` | Adicionar entry `create-empresa-invite` com `verify_jwt = false` |
+| Migration SQL | Criar tabelas saas_* + cnpj_normalized (idempotente) |
+| `supabase/functions/validate-invite/index.ts` | Nova edge function |
+| `supabase/functions/accept-empresa-invite/index.ts` | Nova edge function |
+| `supabase/config.toml` | Adicionar 2 entries |
+| `src/pages/AcceptInviteSaasPage.tsx` | Nova pagina multi-step |
+| `src/lib/cnpj.ts` | Utilitarios CNPJ |
+| `src/App.tsx` | Adicionar rota `/accept-invite` |
 
 ---
 
 ## Detalhes tecnicos
 
-- O token plaintext nunca e armazenado no banco; apenas o SHA-256 hash. Quando o destinatario clicar no link, a pagina de aceitacao fara hash do token recebido e comparara com `token_hash` no banco.
-- Convites anteriores para o mesmo email sao invalidados (expires_at = now()) antes de criar um novo, evitando tokens orfaos.
-- A empresa e criada com `ativo = false` para nao aparecer como ativa ate o convite ser aceito.
-- O email e enviado via Resend seguindo a mesma logica hierarquica de configuracao ja existente (`orbit_resend_config` da empresa -> global -> env).
-- A funcao NAO cria auth user, NAO provisiona PE tenant -- isso sera feito na etapa de aceitacao do convite (futura edge function `accept-empresa-invite`).
-
+- O `validate-invite` e separado do `accept-empresa-invite` para permitir validacao sem side-effects (exibir dados antes de criar conta).
+- A chamada a BrasilAPI e feita diretamente do frontend (`fetch` client-side) pois e uma API publica sem necessidade de auth.
+- O CNPJ e validado tanto no client (DV check) quanto no server (unicidade via unique index parcial).
+- Para demo, o onboarding e simplificado: nao pede CNPJ, nao provisiona PE tenant, nao cria integ. externas. A empresa fica com `ativo = true` mas sem organizacao PE associada.
+- O `accept-empresa-invite` segue o mesmo padrao do `create-empresa` para provisionamento (pipeline stages, AI config, PE tenant via `pe_provision_tenant`), mas sem criar o usuario admin inline (o usuario ja e criado no step de signup).
