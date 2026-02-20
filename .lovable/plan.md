@@ -1,65 +1,64 @@
 
-# Etapa 3H -- Harden Multi-Tenant Consistency (organization_id)
+# Etapa 3I -- Paginacao / Load More em Interacoes
 
-Adicionar 3 triggers BEFORE INSERT/UPDATE para garantir consistencia de `organization_id` entre tabelas filhas e pais, impedindo registros cross-tenant mesmo via SQL direto.
-
----
-
-## Funcoes e Triggers
-
-### 1. `validate_oportunidade_item_org()` -- trigger em `oportunidade_itens`
-
-BEFORE INSERT OR UPDATE:
-- Busca `organization_id` da `oportunidades` via `NEW.oportunidade_id`
-- Se `NEW.organization_id IS NULL` --> auto-preenche com org do pai
-- Se `NEW.organization_id != pai.organization_id` --> RAISE EXCEPTION `'org_mismatch: oportunidade_itens.organization_id must match oportunidades.organization_id'`
-
-### 2. `validate_interacao_org()` -- trigger em `interacoes`
-
-BEFORE INSERT OR UPDATE:
-- Busca `organization_id` do `clientes` via `NEW.cliente_id`
-- Se `NEW.organization_id IS NULL` --> auto-preenche com org do cliente
-- Se `NEW.organization_id != clientes.organization_id` --> RAISE EXCEPTION `'org_mismatch: interacoes.organization_id must match clientes.organization_id'`
-- Se `NEW.oportunidade_id IS NOT NULL`:
-  - Busca `organization_id` e `cliente_id` da `oportunidades`
-  - Se org da oportunidade != `NEW.organization_id` --> RAISE EXCEPTION
-  - Se `oportunidade.cliente_id != NEW.cliente_id` --> RAISE EXCEPTION `'integrity_error: oportunidade.cliente_id must match interacao.cliente_id'`
-
-### 3. `validate_tarefa_org()` -- trigger em `tarefas`
-
-BEFORE INSERT OR UPDATE:
-- Busca `organization_id` do `clientes` via `NEW.cliente_id`
-- Se `NEW.organization_id IS NULL` --> auto-preenche com org do cliente
-- Se `NEW.organization_id != clientes.organization_id` --> RAISE EXCEPTION `'org_mismatch: tarefas.organization_id must match clientes.organization_id'`
-- Se `NEW.oportunidade_id IS NOT NULL`:
-  - Busca `organization_id` e `cliente_id` da `oportunidades`
-  - Se org da oportunidade != `NEW.organization_id` --> RAISE EXCEPTION
-  - Se `oportunidade.cliente_id != NEW.cliente_id` --> RAISE EXCEPTION `'integrity_error: oportunidade.cliente_id must match tarefa.cliente_id'`
+Implementar carregamento paginado nas interacoes para evitar renderizacao de centenas de registros de uma vez.
 
 ---
 
-## Migration SQL (unica)
+## Abordagem
 
-Uma migration contendo:
-1. 3 funcoes PL/pgSQL (`SECURITY DEFINER, SET search_path TO 'public'`)
-2. 3 triggers BEFORE INSERT OR UPDATE (um por tabela)
+Usar paginacao offset-based com `useInfiniteQuery` do TanStack Query. Supabase `.range()` simplifica a implementacao sem necessidade de cursor customizado no banco.
 
 ---
 
-## Nao sera alterado
+## Mudancas
 
-- Nenhum arquivo frontend
-- Nenhuma tabela/coluna existente
-- Nenhum trigger existente (recalc, validate_status, updated_at continuam intactos)
+### 1. Hook: `src/hooks/useInteracoes.ts`
+
+**Nova funcao `useInteracoesPaginated`** (manter `useInteracoes` original intacta para outros consumidores):
+
+- Usar `useInfiniteQuery` do TanStack Query
+- Parametros: `{ oportunidade_id?, cliente_id?, pageSize = 50 }`
+- Cada pagina usa `.range(offset, offset + pageSize - 1)` com `.order("data_interacao", { ascending: false })`
+- Manter os mesmos JOINs: `pe_users:user_id(full_name), contatos(nome), clientes(razao_social)`
+- `getNextPageParam`: se a pagina retornou `pageSize` registros, ha mais; caso contrario, `undefined`
+- Retorna `data.pages.flatMap(p => p)` como lista achatada, mais `fetchNextPage`, `hasNextPage`, `isFetchingNextPage`
+
+### 2. UI: `src/components/pe-admin/InteracoesTab.tsx`
+
+- Substituir `useInteracoes` por `useInteracoesPaginated`
+- Achatar paginas em array unico para renderizar timeline/lista
+- Adicionar botao "Carregar mais" no final da lista quando `hasNextPage === true`
+- Mostrar spinner no botao durante `isFetchingNextPage`
+- Texto do botao: "Carregar mais interacoes"
+- Apos criar nova interacao (dialog), invalidar query para recarregar primeira pagina
 
 ---
 
-## Checklist de validacao pos-deploy
+## Detalhes tecnicos
 
-| Cenario | Resultado esperado |
+**Query com range:**
+```text
+supabase
+  .from("interacoes")
+  .select("*, pe_users:user_id(full_name), contatos(nome), clientes(razao_social)")
+  .order("data_interacao", { ascending: false })
+  .range(pageParam * pageSize, (pageParam + 1) * pageSize - 1)
+  // + filtros de org, oportunidade_id, cliente_id
+```
+
+**useInfiniteQuery config:**
+- `queryKey`: `["interacoes_paginated", orgId, filters]`
+- `initialPageParam`: 0
+- `getNextPageParam`: `(lastPage, allPages) => lastPage.length === pageSize ? allPages.length : undefined`
+
+---
+
+## Arquivos alterados
+
+| Arquivo | Acao |
 |---|---|
-| INSERT oportunidade_itens com org diferente da oportunidade | EXCEPTION org_mismatch |
-| INSERT interacao com cliente de outra org | EXCEPTION org_mismatch |
-| INSERT tarefa com oportunidade de outro cliente | EXCEPTION integrity_error |
-| INSERT oportunidade_itens com org NULL | Auto-preenche com org do pai |
-| INSERT interacao normal (mesma org) | Sucesso |
+| `src/hooks/useInteracoes.ts` | Adicionar `useInteracoesPaginated` (manter hook original) |
+| `src/components/pe-admin/InteracoesTab.tsx` | Usar novo hook + botao "Carregar mais" |
+
+Nenhuma alteracao de banco necessaria.
