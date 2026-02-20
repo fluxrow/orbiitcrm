@@ -132,13 +132,16 @@ export default function AcceptInviteSaasPage() {
     setStep(4);
     setLoading(true);
     try {
-      const payload: Record<string, string> = {
+      const payload: Record<string, unknown> = {
         token,
         password,
         full_name: fullName.trim(),
       };
       if (!isDemo) {
         payload.cnpj = cnpj;
+        if (cnpjData) {
+          payload.dados_receita = cnpjData;
+        }
       }
 
       const { data, error: fnErr } = await supabase.functions.invoke("accept-empresa-invite", {
