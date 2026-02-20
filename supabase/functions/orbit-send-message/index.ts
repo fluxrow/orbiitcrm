@@ -44,7 +44,7 @@ serve(async (req) => {
       });
     }
 
-    // Check if empresa is on demo plan
+    // Get empresa_id from profile
     const userId = claims.user.id;
     const { data: profile } = await supabase
       .from("profiles")
@@ -52,6 +52,23 @@ serve(async (req) => {
       .eq("id", userId)
       .maybeSingle();
 
+    // ── Plan enforcement ──
+    if (profile?.empresa_id) {
+      const { data: canUseResult } = await supabase.rpc("saas_can_use", {
+        p_empresa_id: profile.empresa_id,
+        p_feature_code: "whatsapp_send",
+        p_amount: 1,
+      });
+
+      if (canUseResult && canUseResult.allowed === false) {
+        return new Response(
+          JSON.stringify({ error: canUseResult.reason, code: canUseResult.reason }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Check if empresa is on demo plan
     let isDemo = false;
     if (profile?.empresa_id) {
       const { data: saasEmpresa } = await supabase
@@ -67,7 +84,6 @@ serve(async (req) => {
     let providerId = null;
 
     if (isDemo) {
-      // Demo mode: skip provider, mark as simulated
       messageStatus = "simulated";
     } else {
       // Buscar config Z-API
@@ -119,6 +135,15 @@ serve(async (req) => {
       .single();
 
     if (msgError) throw msgError;
+
+    // ── Increment usage after successful save ──
+    if (profile?.empresa_id && messageStatus !== "falhou") {
+      await supabase.rpc("saas_increment_usage", {
+        p_empresa_id: profile.empresa_id,
+        p_feature_code: "whatsapp_send",
+        p_amount: 1,
+      });
+    }
 
     // Atualizar conversa
     await supabase
