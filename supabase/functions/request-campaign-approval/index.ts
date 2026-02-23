@@ -1,10 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
 
 interface ApprovalRequest {
   campaign_id: string;
@@ -12,9 +8,7 @@ interface ApprovalRequest {
 }
 
 const handler = async (req: Request): Promise<Response> => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return optionsResponse();
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -24,13 +18,9 @@ const handler = async (req: Request): Promise<Response> => {
     const { campaign_id, user_id }: ApprovalRequest = await req.json();
 
     if (!campaign_id) {
-      return new Response(
-        JSON.stringify({ error: "campaign_id é obrigatório" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      return fail(ErrorCodes.VALIDATION_ERROR, "campaign_id é obrigatório");
     }
 
-    // Buscar campanha
     const { data: campaign, error: campaignError } = await supabase
       .from("orbit_campaigns")
       .select("*, template:orbit_message_templates(nome)")
@@ -38,46 +28,27 @@ const handler = async (req: Request): Promise<Response> => {
       .single();
 
     if (campaignError || !campaign) {
-      return new Response(
-        JSON.stringify({ error: "Campanha não encontrada" }),
-        { status: 404, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      return fail(ErrorCodes.NOT_FOUND, "Campanha não encontrada", 404);
     }
 
-    // Buscar usuário solicitante
-    const { data: solicitante } = await supabase
-      .from("profiles")
-      .select("nome")
-      .eq("id", user_id)
-      .single();
+    const { data: solicitante } = await supabase.from("profiles").select("nome").eq("id", user_id).single();
 
-    // Atualizar status da campanha
-    await supabase
-      .from("orbit_campaigns")
-      .update({ 
-        aprovacao_status: "pendente",
-        status: "pendente_aprovacao"
-      })
-      .eq("id", campaign_id);
+    await supabase.from("orbit_campaigns").update({ aprovacao_status: "pendente", status: "pendente_aprovacao" }).eq("id", campaign_id);
 
-    // Registrar solicitação no log de aprovações
-    await supabase
-      .from("orbit_campaign_approvals")
-      .insert({
-        campaign_id,
-        empresa_id: campaign.empresa_id,
-        acao: "solicitada",
-        user_id,
-      });
+    await supabase.from("orbit_campaign_approvals").insert({
+      campaign_id,
+      empresa_id: campaign.empresa_id,
+      acao: "solicitada",
+      user_id,
+    });
 
-    // Buscar admins/gerentes para notificar
+    // Buscar admins para notificar
     const { data: admins } = await supabase
       .from("user_roles")
       .select("user_id, profiles!inner(nome, telefone)")
       .in("role", ["super_admin", "admin"])
       .limit(10);
 
-    // Buscar configuração Z-API para enviar notificação
     const { data: zapiConfig } = await supabase
       .from("orbit_zapi_config")
       .select("*")
@@ -101,11 +72,7 @@ const handler = async (req: Request): Promise<Response> => {
           try {
             await fetch(
               `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-text`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ phone, message: mensagem }),
-              }
+              { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone, message: mensagem }) },
             );
           } catch (e) {
             console.error("Erro ao notificar admin:", e);
@@ -114,17 +81,10 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    return new Response(
-      JSON.stringify({ success: true, message: "Solicitação de aprovação enviada" }),
-      { headers: { "Content-Type": "application/json", ...corsHeaders } }
-    );
-
+    return ok({ message: "Solicitação de aprovação enviada" });
   } catch (error: any) {
     console.error("Erro ao solicitar aprovação:", error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
-    );
+    return fail(ErrorCodes.INTERNAL_ERROR, error.message, 500);
   }
 };
 

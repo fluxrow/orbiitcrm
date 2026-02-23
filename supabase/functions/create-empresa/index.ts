@@ -1,9 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
 
 interface CreateEmpresaRequest {
   nome: string;
@@ -11,7 +7,7 @@ interface CreateEmpresaRequest {
   email_contato?: string;
   telefone?: string;
   plano?: string;
-  plano_saas?: string; // code from saas_plans: demo, basic, professional, plus
+  plano_saas?: string;
   max_usuarios?: number;
   data_expiracao?: string;
   admin_nome: string;
@@ -20,183 +16,67 @@ interface CreateEmpresaRequest {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return optionsResponse();
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    
-    // Create admin client
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
 
-    // Verify the requester is a super_admin
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: "Não autorizado" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    if (!authHeader) return fail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401);
 
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-    
-    if (userError || !user) {
-      return new Response(
-        JSON.stringify({ error: "Token inválido" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    if (userError || !user) return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401);
 
-    // Check if user has super_admin role
-    const { data: roles, error: rolesError } = await supabaseAdmin
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .eq("role", "super_admin");
-
-    if (rolesError || !roles?.length) {
-      return new Response(
-        JSON.stringify({ error: "Acesso negado. Apenas super admins podem criar empresas." }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const { data: roles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", user.id).eq("role", "super_admin");
+    if (!roles?.length) return fail(ErrorCodes.FORBIDDEN, "Acesso negado. Apenas super admins podem criar empresas.", 403);
 
     const body: CreateEmpresaRequest = await req.json();
-
-    // Validate required fields
     if (!body.nome || !body.admin_nome || !body.admin_email || !body.admin_senha) {
-      return new Response(
-        JSON.stringify({ error: "Campos obrigatórios faltando" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios faltando");
     }
 
-    // 1. Create the empresa
-    const { data: empresa, error: empresaError } = await supabaseAdmin
-      .from("orbit_empresas")
-      .insert({
-        nome: body.nome,
-        cnpj: body.cnpj,
-        email_contato: body.email_contato,
-        telefone: body.telefone,
-        plano: body.plano || "trial",
-        max_usuarios: body.max_usuarios || 5,
-        data_expiracao: body.data_expiracao,
-        ativo: true,
-      })
-      .select()
-      .single();
+    const { data: empresa, error: empresaError } = await supabaseAdmin.from("orbit_empresas").insert({
+      nome: body.nome, cnpj: body.cnpj, email_contato: body.email_contato, telefone: body.telefone,
+      plano: body.plano || "trial", max_usuarios: body.max_usuarios || 5, data_expiracao: body.data_expiracao, ativo: true,
+    }).select().single();
 
-    if (empresaError) {
-      console.error("Error creating empresa:", empresaError);
-      return new Response(
-        JSON.stringify({ error: `Erro ao criar empresa: ${empresaError.message}` }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    if (empresaError) return fail(ErrorCodes.INTERNAL_ERROR, `Erro ao criar empresa: ${empresaError.message}`, 500);
 
-    // 1.5 Auto-provision PE tenant (non-blocking)
     let provision = null;
     try {
-      const { data: provisionData, error: provisionError } = await supabaseAdmin
-        .rpc("pe_provision_tenant", {
-          p_empresa_id: empresa.id,
-          p_empresa_nome: empresa.nome,
-          p_created_by_user_id: user.id,
-        });
+      const { data: provisionData, error: provisionError } = await supabaseAdmin.rpc("pe_provision_tenant", {
+        p_empresa_id: empresa.id, p_empresa_nome: empresa.nome, p_created_by_user_id: user.id,
+      });
+      if (provisionError) console.error("Error provisioning tenant:", provisionError);
+      else provision = provisionData;
+    } catch (e) { console.error("Exception provisioning tenant:", e); }
 
-      if (provisionError) {
-        console.error("Error provisioning tenant:", provisionError);
-      } else {
-        provision = provisionData;
-      }
-    } catch (e) {
-      console.error("Exception provisioning tenant:", e);
-    }
-
-    // 1.6 Create saas_empresa record
     const planCode = body.plano_saas || "demo";
     try {
-      const { data: planRow } = await supabaseAdmin
-        .from("saas_plans")
-        .select("id")
-        .eq("code", planCode)
-        .single();
-
+      const { data: planRow } = await supabaseAdmin.from("saas_plans").select("id").eq("code", planCode).single();
       if (planRow) {
-        const { error: saasError } = await supabaseAdmin
-          .from("saas_empresa")
-          .insert({
-            empresa_id: empresa.id,
-            plan_id: planRow.id,
-            status: "active",
-            created_by_user_id: user.id,
-          });
-        if (saasError) {
-          console.error("Error creating saas_empresa:", saasError);
-        }
-      } else {
-        console.error("Plan not found for code:", planCode);
+        await supabaseAdmin.from("saas_empresa").insert({
+          empresa_id: empresa.id, plan_id: planRow.id, status: "active", created_by_user_id: user.id,
+        });
       }
-    } catch (e) {
-      console.error("Exception creating saas_empresa:", e);
-    }
+    } catch (e) { console.error("Exception creating saas_empresa:", e); }
 
-    // 2. Create the admin user in auth.users
     const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email: body.admin_email,
-      password: body.admin_senha,
-      email_confirm: true,
-      user_metadata: {
-        nome: body.admin_nome,
-        empresa_id: empresa.id,
-      },
+      email: body.admin_email, password: body.admin_senha, email_confirm: true,
+      user_metadata: { nome: body.admin_nome, empresa_id: empresa.id },
     });
 
     if (authError) {
-      // Rollback: delete the empresa
       await supabaseAdmin.from("orbit_empresas").delete().eq("id", empresa.id);
-      console.error("Error creating user:", authError);
-      return new Response(
-        JSON.stringify({ error: `Erro ao criar usuário: ${authError.message}` }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return fail(ErrorCodes.INTERNAL_ERROR, `Erro ao criar usuário: ${authError.message}`, 500);
     }
 
-    // 3. Update the profile with empresa_id (profile is created by trigger)
-    const { error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .update({
-        empresa_id: empresa.id,
-        cargo: "Admin",
-      })
-      .eq("id", authUser.user.id);
+    await supabaseAdmin.from("profiles").update({ empresa_id: empresa.id, cargo: "Admin" }).eq("id", authUser.user.id);
+    await supabaseAdmin.from("user_roles").insert({ user_id: authUser.user.id, role: "admin" });
 
-    if (profileError) {
-      console.error("Error updating profile:", profileError);
-    }
-
-    // 4. Add admin role to user_roles
-    const { error: roleError } = await supabaseAdmin
-      .from("user_roles")
-      .insert({
-        user_id: authUser.user.id,
-        role: "admin",
-      });
-
-    if (roleError) {
-      console.error("Error adding role:", roleError);
-    }
-
-    // 5. Create default pipeline stages for the empresa
     const defaultStages = [
       { nome: "Qualificação", ordem: 1, cor: "#3b82f6", empresa_id: empresa.id },
       { nome: "Proposta", ordem: 2, cor: "#8b5cf6", empresa_id: empresa.id },
@@ -205,47 +85,15 @@ Deno.serve(async (req) => {
       { nome: "Ganho", ordem: 5, cor: "#22c55e", is_won: true, empresa_id: empresa.id },
       { nome: "Perdido", ordem: 6, cor: "#ef4444", is_lost: true, empresa_id: empresa.id },
     ];
+    await supabaseAdmin.from("orbit_pipeline_stages").insert(defaultStages);
+    await supabaseAdmin.from("orbit_ai_config").insert({
+      empresa_id: empresa.id, modo_automatico: true, tom_conversa: "profissional e amigável",
+      horario_inicio: "08:00", horario_fim: "18:00",
+    });
 
-    const { error: stagesError } = await supabaseAdmin
-      .from("orbit_pipeline_stages")
-      .insert(defaultStages);
-
-    if (stagesError) {
-      console.error("Error creating stages:", stagesError);
-    }
-
-    // 6. Create default AI config for the empresa
-    const { error: aiConfigError } = await supabaseAdmin
-      .from("orbit_ai_config")
-      .insert({
-        empresa_id: empresa.id,
-        modo_automatico: true,
-        tom_conversa: "profissional e amigável",
-        horario_inicio: "08:00",
-        horario_fim: "18:00",
-      });
-
-    if (aiConfigError) {
-      console.error("Error creating AI config:", aiConfigError);
-    }
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        empresa,
-        user: {
-          id: authUser.user.id,
-          email: authUser.user.email,
-        },
-        provision,
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return ok({ empresa, user: { id: authUser.user.id, email: authUser.user.email }, provision });
   } catch (error) {
     console.error("Unexpected error:", error);
-    return new Response(
-      JSON.stringify({ error: "Erro interno do servidor" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return fail(ErrorCodes.INTERNAL_ERROR, "Erro interno do servidor", 500);
   }
 });

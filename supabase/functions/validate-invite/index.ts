@@ -1,10 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
 
 async function hashToken(plaintext: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -15,15 +10,7 @@ async function hashToken(plaintext: string): Promise<string> {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  const json = (body: unknown, status = 200) =>
-    new Response(JSON.stringify(body), {
-      status,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  if (req.method === "OPTIONS") return optionsResponse();
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -34,12 +21,11 @@ Deno.serve(async (req) => {
 
     const { token } = await req.json();
     if (!token || typeof token !== "string") {
-      return json({ error: "Token obrigatório" }, 400);
+      return fail(ErrorCodes.VALIDATION_ERROR, "Token obrigatório");
     }
 
     const tokenHash = await hashToken(token);
 
-    // Query invite with joins
     const { data: invite, error } = await supabase
       .from("saas_invites")
       .select("id, email, responsible_name, expires_at, used_at, empresa_id, orbit_empresas(id, nome), saas_empresa:empresa_id(plan_id, saas_plans(code, name))")
@@ -48,29 +34,26 @@ Deno.serve(async (req) => {
 
     if (error) {
       console.error("Query error:", error);
-      return json({ error: "Erro ao buscar convite" }, 500);
+      return fail(ErrorCodes.INTERNAL_ERROR, "Erro ao buscar convite", 500);
     }
 
     if (!invite) {
-      return json({ error: "Convite não encontrado ou token inválido" }, 404);
+      return fail(ErrorCodes.INVITE_INVALID, "Convite não encontrado ou token inválido", 404);
     }
 
-    // Check if already used
     if (invite.used_at) {
-      return json({ error: "Este convite já foi utilizado" }, 410);
+      return fail(ErrorCodes.INVITE_USED, "Este convite já foi utilizado", 410);
     }
 
-    // Check expiration
     if (new Date(invite.expires_at) < new Date()) {
-      return json({ error: "Este convite expirou" }, 410);
+      return fail(ErrorCodes.INVITE_EXPIRED, "Este convite expirou", 410);
     }
 
-    // Extract joined data
     const empresa = invite.orbit_empresas as any;
     const saasEmpresa = invite.saas_empresa as any;
     const plan = saasEmpresa?.saas_plans as any;
 
-    return json({
+    return ok({
       valid: true,
       empresa_nome: empresa?.nome || "",
       responsible_name: invite.responsible_name || "",
@@ -82,6 +65,6 @@ Deno.serve(async (req) => {
   } catch (err: unknown) {
     console.error("Unexpected error:", err);
     const msg = err instanceof Error ? err.message : String(err);
-    return json({ error: msg }, 500);
+    return fail(ErrorCodes.INTERNAL_ERROR, msg, 500);
   }
 });

@@ -1,10 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { ok, fail, optionsResponse, fromPlanCheck, ErrorCodes } from "../_shared/responses.ts";
 
 interface EmailRequest {
   to: string;
@@ -14,9 +10,7 @@ interface EmailRequest {
 }
 
 const handler = async (req: Request): Promise<Response> => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return optionsResponse();
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -26,10 +20,7 @@ const handler = async (req: Request): Promise<Response> => {
     const { to, subject, html, empresa_id }: EmailRequest = await req.json();
 
     if (!to || !subject || !html) {
-      return new Response(
-        JSON.stringify({ error: "Campos obrigatórios: to, subject, html" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios: to, subject, html");
     }
 
     // ── Plan enforcement ──
@@ -40,12 +31,8 @@ const handler = async (req: Request): Promise<Response> => {
         p_amount: 1,
       });
 
-      if (canUseResult && canUseResult.allowed === false) {
-        return new Response(
-          JSON.stringify({ error: canUseResult.reason, code: canUseResult.reason }),
-          { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
-        );
-      }
+      const planResponse = fromPlanCheck(canUseResult);
+      if (planResponse) return planResponse;
     }
 
     // Check if empresa is on demo plan
@@ -58,23 +45,19 @@ const handler = async (req: Request): Promise<Response> => {
       const planCode = (saasEmpresa?.plan as any)?.code;
       if (planCode === "demo") {
         console.log("[orbit-send-email] Demo mode: skipping real send");
-        // Increment usage even for demo
         await supabase.rpc("saas_increment_usage", {
           p_empresa_id: empresa_id,
           p_feature_code: "email_send",
           p_amount: 1,
         });
-        return new Response(
-          JSON.stringify({ id: "simulated", simulated: true }),
-          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
-        );
+        return ok({ id: "simulated" }, { simulated: true });
       }
     }
 
     // Buscar configuração do Resend da empresa
     let resendApiKey: string | null = null;
     let fromEmail = "Orbit <onboarding@resend.dev>";
-    
+
     let resendConfig = null;
     if (empresa_id) {
       const { data } = await supabase
@@ -84,7 +67,7 @@ const handler = async (req: Request): Promise<Response> => {
         .maybeSingle();
       resendConfig = data;
     }
-    
+
     if (!resendConfig) {
       const { data } = await supabase
         .from("orbit_resend_config")
@@ -95,49 +78,40 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     if (resendConfig) {
-      if (resendConfig.api_key) {
-        resendApiKey = resendConfig.api_key;
-      }
+      if (resendConfig.api_key) resendApiKey = resendConfig.api_key;
       if (resendConfig.ativo && resendConfig.from_email) {
         const fromName = resendConfig.from_name || "Orbit";
         fromEmail = `${fromName} <${resendConfig.from_email}>`;
       }
     }
 
-    if (!resendApiKey) {
-      resendApiKey = Deno.env.get("RESEND_API_KEY") || null;
-    }
+    if (!resendApiKey) resendApiKey = Deno.env.get("RESEND_API_KEY") || null;
 
     if (!resendApiKey) {
-      return new Response(
-        JSON.stringify({ 
-          error: "API Key do Resend não configurada. Configure a API Key nas configurações de email." 
-        }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      return fail(
+        ErrorCodes.PROVIDER_NOT_CONFIGURED,
+        "API Key do Resend não configurada. Configure a API Key nas configurações de email.",
       );
     }
 
     const emailResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${resendApiKey}`,
+        Authorization: `Bearer ${resendApiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: [to],
-        subject,
-        html,
-      }),
+      body: JSON.stringify({ from: fromEmail, to: [to], subject, html }),
     });
 
     const result = await emailResponse.json();
 
     if (!emailResponse.ok) {
       console.error("Erro Resend:", result);
-      return new Response(
-        JSON.stringify({ error: result.message || "Erro ao enviar email" }),
-        { status: emailResponse.status, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      return fail(
+        ErrorCodes.PROVIDER_SEND_FAILED,
+        result.message || "Erro ao enviar email",
+        emailResponse.status,
+        { provider: "resend" },
       );
     }
 
@@ -151,17 +125,10 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     console.log("Email enviado com sucesso:", result);
-
-    return new Response(JSON.stringify(result), {
-      status: 200,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
-    });
+    return ok(result);
   } catch (error: any) {
     console.error("Erro ao enviar email:", error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
-    );
+    return fail(ErrorCodes.INTERNAL_ERROR, error.message, 500);
   }
 };
 

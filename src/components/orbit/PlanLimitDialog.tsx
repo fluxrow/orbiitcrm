@@ -10,12 +10,17 @@ import { Button } from "@/components/ui/button";
 import { AlertTriangle, Lock, Clock, Ban } from "lucide-react";
 
 export type PlanLimitReason =
+  | "PLAN_LIMIT_REACHED"
+  | "PLAN_FEATURE_DISABLED"
+  | "PLAN_STATUS_BLOCKED"
+  | "TRIAL_EXPIRED"
+  | "NO_PLAN"
+  | "DEMO_RATE_LIMIT"
+  | "DEMO_ACTION_BLOCKED"
+  // Legacy codes (mapped to new ones in display)
   | "PLAN_LIMIT"
   | "FEATURE_DISABLED"
-  | "TRIAL_EXPIRED"
-  | "SUSPENDED"
-  | "NO_PLAN"
-  | "DEMO_RATE_LIMIT";
+  | "SUSPENDED";
 
 interface PlanLimitDialogProps {
   open: boolean;
@@ -23,12 +28,24 @@ interface PlanLimitDialogProps {
   reason?: PlanLimitReason;
 }
 
-const reasonConfig: Record<PlanLimitReason, { icon: typeof AlertTriangle; title: string; description: string }> = {
+const reasonConfig: Record<string, { icon: typeof AlertTriangle; title: string; description: string }> = {
+  PLAN_LIMIT_REACHED: {
+    icon: AlertTriangle,
+    title: "Limite do plano atingido",
+    description:
+      "Você atingiu o limite mensal do seu plano para esta funcionalidade. Solicite um upgrade para continuar enviando.",
+  },
   PLAN_LIMIT: {
     icon: AlertTriangle,
     title: "Limite do plano atingido",
     description:
       "Você atingiu o limite mensal do seu plano para esta funcionalidade. Solicite um upgrade para continuar enviando.",
+  },
+  PLAN_FEATURE_DISABLED: {
+    icon: Lock,
+    title: "Funcionalidade não disponível",
+    description:
+      "Seu plano atual não inclui esta funcionalidade. Solicite um upgrade para desbloqueá-la.",
   },
   FEATURE_DISABLED: {
     icon: Lock,
@@ -41,6 +58,12 @@ const reasonConfig: Record<PlanLimitReason, { icon: typeof AlertTriangle; title:
     title: "Período de teste expirado",
     description:
       "Seu período de teste terminou. Ative um plano para continuar usando a plataforma.",
+  },
+  PLAN_STATUS_BLOCKED: {
+    icon: Ban,
+    title: "Conta suspensa",
+    description:
+      "Sua conta está suspensa. Entre em contato com o suporte para mais informações.",
   },
   SUSPENDED: {
     icon: Ban,
@@ -60,10 +83,16 @@ const reasonConfig: Record<PlanLimitReason, { icon: typeof AlertTriangle; title:
     description:
       "Você atingiu o limite de 30 mensagens por hora no modo demo. Aguarde um momento ou solicite um upgrade.",
   },
+  DEMO_ACTION_BLOCKED: {
+    icon: Lock,
+    title: "Ação bloqueada no modo demo",
+    description:
+      "Esta ação não está disponível no modo demonstração. Solicite um upgrade para desbloquear.",
+  },
 };
 
-export function PlanLimitDialog({ open, onOpenChange, reason = "PLAN_LIMIT" }: PlanLimitDialogProps) {
-  const config = reasonConfig[reason] || reasonConfig.PLAN_LIMIT;
+export function PlanLimitDialog({ open, onOpenChange, reason = "PLAN_LIMIT_REACHED" }: PlanLimitDialogProps) {
+  const config = reasonConfig[reason] || reasonConfig.PLAN_LIMIT_REACHED;
   const Icon = config.icon;
 
   return (

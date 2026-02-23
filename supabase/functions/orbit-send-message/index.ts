@@ -1,23 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { ok, fail, optionsResponse, fromPlanCheck, ErrorCodes } from "../_shared/responses.ts";
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return optionsResponse();
 
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return fail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401);
     }
 
     const supabase = createClient(
@@ -25,26 +16,18 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Verificar autenticação
     const token = authHeader.replace("Bearer ", "");
     const { data: claims, error: claimsError } = await supabase.auth.getUser(token);
     if (claimsError || !claims?.user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401);
     }
 
     const { conversa_id, mensagem, telefone, canal } = await req.json();
 
     if (!conversa_id || !mensagem) {
-      return new Response(JSON.stringify({ error: "Missing required fields" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return fail(ErrorCodes.VALIDATION_ERROR, "conversa_id e mensagem são obrigatórios");
     }
 
-    // Get empresa_id from profile
     const userId = claims.user.id;
     const { data: profile } = await supabase
       .from("profiles")
@@ -60,12 +43,8 @@ serve(async (req) => {
         p_amount: 1,
       });
 
-      if (canUseResult && canUseResult.allowed === false) {
-        return new Response(
-          JSON.stringify({ error: canUseResult.reason, code: canUseResult.reason }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+      const planResponse = fromPlanCheck(canUseResult);
+      if (planResponse) return planResponse;
     }
 
     // Check if empresa is on demo plan
@@ -73,7 +52,7 @@ serve(async (req) => {
     if (profile?.empresa_id) {
       const { data: saasEmpresa } = await supabase
         .from("saas_empresa")
-        .select("plan_id, plan:saas_plans(code)")
+        .select("plan_id, plan:saas_plans(code, features)")
         .eq("empresa_id", profile.empresa_id)
         .maybeSingle();
       const planCode = (saasEmpresa?.plan as any)?.code;
@@ -91,9 +70,10 @@ serve(async (req) => {
         .gte("timestamp", oneHourAgo);
 
       if (count !== null && count >= 30) {
-        return new Response(
-          JSON.stringify({ error: "DEMO_RATE_LIMIT", code: "DEMO_RATE_LIMIT" }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        return fail(
+          ErrorCodes.DEMO_RATE_LIMIT,
+          "Limite de 30 mensagens por hora atingido no modo demo.",
+          429,
         );
       }
     }
@@ -104,7 +84,6 @@ serve(async (req) => {
     if (isDemo) {
       messageStatus = "simulated";
     } else {
-      // Buscar config Z-API
       const { data: zapiConfig } = await supabase
         .from("orbit_zapi_config")
         .select("*")
@@ -121,10 +100,7 @@ serve(async (req) => {
                 "Content-Type": "application/json",
                 "Client-Token": zapiConfig.client_token || "",
               },
-              body: JSON.stringify({
-                phone: telefone,
-                message: mensagem,
-              }),
+              body: JSON.stringify({ phone: telefone, message: mensagem }),
             }
           );
 
@@ -173,15 +149,13 @@ serve(async (req) => {
       })
       .eq("id", conversa_id);
 
-    return new Response(JSON.stringify({ ok: true, mensagem: novaMensagem, status: messageStatus, simulated: isDemo }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return ok(
+      { mensagem: novaMensagem, status: messageStatus },
+      { simulated: isDemo },
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[orbit-send-message] Erro:", message);
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return fail(ErrorCodes.INTERNAL_ERROR, message, 500);
   }
 });
