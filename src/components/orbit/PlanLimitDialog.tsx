@@ -14,7 +14,8 @@ export type PlanLimitReason =
   | "FEATURE_DISABLED"
   | "TRIAL_EXPIRED"
   | "SUSPENDED"
-  | "NO_PLAN";
+  | "NO_PLAN"
+  | "DEMO_RATE_LIMIT";
 
 interface PlanLimitDialogProps {
   open: boolean;
@@ -52,6 +53,12 @@ const reasonConfig: Record<PlanLimitReason, { icon: typeof AlertTriangle; title:
     title: "Nenhum plano ativo",
     description:
       "Sua empresa não possui um plano ativo. Entre em contato com o administrador.",
+  },
+  DEMO_RATE_LIMIT: {
+    icon: Clock,
+    title: "Limite de mensagens atingido",
+    description:
+      "Você atingiu o limite de 30 mensagens por hora no modo demo. Aguarde um momento ou solicite um upgrade.",
   },
 };
 

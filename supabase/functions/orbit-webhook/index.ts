@@ -17,14 +17,13 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Parse event type from query params
     const url = new URL(req.url);
     const eventType = url.searchParams.get("event") || "on-receive";
 
     const payload = await req.json();
     console.log(`[orbit-webhook] Evento: ${eventType}, Payload:`, JSON.stringify(payload));
 
-    // Handle different event types
+    // Handle non-message events
     switch (eventType) {
       case "on-connect":
         console.log("[orbit-webhook] Instância conectada");
@@ -45,7 +44,6 @@ serve(async (req) => {
         });
 
       case "message-status":
-        // Update message status in database
         if (payload.messageId) {
           await supabase
             .from("orbit_mensagens")
@@ -57,58 +55,116 @@ serve(async (req) => {
         });
 
       case "on-send":
-        // Get config to check if should process own messages
-        const { data: zapiConfig } = await supabase
-          .from("orbit_zapi_config")
-          .select("notificar_enviadas_por_mim")
-          .maybeSingle();
-
-        if (!zapiConfig?.notificar_enviadas_por_mim) {
-          return new Response(JSON.stringify({ ok: true, skipped: true, reason: "own messages disabled" }), {
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        // Process as sent message - fall through to on-receive logic with fromMe flag
-        break;
-
       case "on-receive":
       default:
-        // Process incoming message - continue with main logic below
         break;
     }
 
-    // Main message processing logic (for on-receive and on-send events)
+    // ── Resolve empresa_id from Z-API config ──
+    // Try matching by instance_id from the payload, or fall back to first active config
+    let empresaId: string | null = null;
+    const payloadInstanceId = payload.instanceId || null;
+
+    if (payloadInstanceId) {
+      const { data: zapiByInstance } = await supabase
+        .from("orbit_zapi_config")
+        .select("empresa_id")
+        .eq("instance_id", payloadInstanceId)
+        .maybeSingle();
+      empresaId = zapiByInstance?.empresa_id || null;
+    }
+
+    if (!empresaId) {
+      // Fallback: get the first active Z-API config
+      const { data: zapiActive } = await supabase
+        .from("orbit_zapi_config")
+        .select("empresa_id, notificar_enviadas_por_mim")
+        .eq("ativo", true)
+        .limit(1)
+        .maybeSingle();
+      empresaId = zapiActive?.empresa_id || null;
+
+      // Handle on-send notification check
+      if (eventType === "on-send" && !zapiActive?.notificar_enviadas_por_mim) {
+        return new Response(JSON.stringify({ ok: true, skipped: true, reason: "own messages disabled" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else if (eventType === "on-send") {
+      const { data: zapiCfg } = await supabase
+        .from("orbit_zapi_config")
+        .select("notificar_enviadas_por_mim")
+        .eq("empresa_id", empresaId)
+        .maybeSingle();
+      if (!zapiCfg?.notificar_enviadas_por_mim) {
+        return new Response(JSON.stringify({ ok: true, skipped: true, reason: "own messages disabled" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    console.log("[orbit-webhook] Resolved empresa_id:", empresaId);
+
+    // Main message processing
     const phone = payload.phone?.replace(/\D/g, "") || payload.from?.replace(/\D/g, "");
     const messageText = payload.text?.message || payload.body || payload.caption || "";
     const messageId = payload.messageId || payload.id;
     const fromMe = payload.fromMe || eventType === "on-send";
 
-    // Skip messages sent by us (unless it's on-send event with notificar enabled)
     if (!phone || (fromMe && eventType !== "on-send")) {
       return new Response(JSON.stringify({ ok: true, skipped: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Normalize phone (Brazilian format)
     const normalizedPhone = phone.startsWith("55") ? phone : `55${phone}`;
 
-    // 1. Find or create prospect
-    let { data: prospect } = await supabase
+    // 1. Find or create prospect (with empresa_id)
+    let prospectQuery = supabase
       .from("orbit_prospects")
       .select("*")
-      .eq("telefone_whatsapp", normalizedPhone)
-      .maybeSingle();
+      .eq("telefone_whatsapp", normalizedPhone);
+    if (empresaId) prospectQuery = prospectQuery.eq("empresa_id", empresaId);
+
+    let { data: prospect } = await prospectQuery.maybeSingle();
 
     if (!prospect) {
+      // Check prospect limit for demo plans
+      if (empresaId) {
+        const { data: saasEmpresa } = await supabase
+          .from("saas_empresa")
+          .select("plan_id, plan:saas_plans(code, limits)")
+          .eq("empresa_id", empresaId)
+          .maybeSingle();
+        const planLimits = (saasEmpresa?.plan as any)?.limits;
+        const maxProspects = planLimits?.max_prospects;
+
+        if (maxProspects) {
+          const { count } = await supabase
+            .from("orbit_prospects")
+            .select("*", { count: "exact", head: true })
+            .eq("empresa_id", empresaId);
+
+          if (count !== null && count >= maxProspects) {
+            console.log("[orbit-webhook] Prospect limit reached for empresa:", empresaId);
+            return new Response(JSON.stringify({ ok: true, skipped: true, reason: "prospect_limit_reached" }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+        }
+      }
+
+      const insertData: any = {
+        nome_razao: `WhatsApp ${normalizedPhone}`,
+        telefone_whatsapp: normalizedPhone,
+        origem_contato: "PROSPECTS",
+        status_qualificacao: "novo",
+      };
+      if (empresaId) insertData.empresa_id = empresaId;
+
       const { data: newProspect, error: prospectError } = await supabase
         .from("orbit_prospects")
-        .insert({
-          nome_razao: `WhatsApp ${normalizedPhone}`,
-          telefone_whatsapp: normalizedPhone,
-          origem_contato: "PROSPECTS",
-          status_qualificacao: "novo",
-        })
+        .insert(insertData)
         .select()
         .single();
 
@@ -119,26 +175,31 @@ serve(async (req) => {
       prospect = newProspect;
     }
 
-    // 2. Find or create conversation
-    let { data: conversa } = await supabase
+    // 2. Find or create conversation (with empresa_id)
+    let conversaQuery = supabase
       .from("orbit_conversas")
       .select("*")
       .eq("telefone_whatsapp", normalizedPhone)
       .eq("canal", "whatsapp")
-      .eq("status", "aberta")
-      .maybeSingle();
+      .eq("status", "aberta");
+    if (empresaId) conversaQuery = conversaQuery.eq("empresa_id", empresaId);
+
+    let { data: conversa } = await conversaQuery.maybeSingle();
 
     if (!conversa) {
+      const insertConversa: any = {
+        prospect_id: prospect.id,
+        telefone_whatsapp: normalizedPhone,
+        canal: "whatsapp",
+        status: "aberta",
+        human_talk: false,
+        mensagens_nao_lidas: 0,
+      };
+      if (empresaId) insertConversa.empresa_id = empresaId;
+
       const { data: newConversa, error: conversaError } = await supabase
         .from("orbit_conversas")
-        .insert({
-          prospect_id: prospect.id,
-          telefone_whatsapp: normalizedPhone,
-          canal: "whatsapp",
-          status: "aberta",
-          human_talk: false,
-          mensagens_nao_lidas: 0,
-        })
+        .insert(insertConversa)
         .select()
         .single();
 
@@ -149,7 +210,7 @@ serve(async (req) => {
       conversa = newConversa;
     }
 
-    // 3. Check for duplicate message
+    // 3. Duplicate check
     if (messageId) {
       const { data: existingMsg } = await supabase
         .from("orbit_mensagens")
@@ -188,13 +249,12 @@ serve(async (req) => {
 
     // 6. If AI active and human_talk = false and incoming message, call AI agent
     if (!fromMe && !conversa.human_talk) {
-      const { data: aiConfig } = await supabase
-        .from("orbit_ai_config")
-        .select("*")
-        .maybeSingle();
+      let aiConfigQuery = supabase.from("orbit_ai_config").select("*");
+      if (empresaId) aiConfigQuery = aiConfigQuery.eq("empresa_id", empresaId);
+
+      const { data: aiConfig } = await aiConfigQuery.maybeSingle();
 
       if (aiConfig?.modo_automatico) {
-        // Call AI edge function (fire and forget via fetch)
         fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-ai-agent`, {
           method: "POST",
           headers: {
