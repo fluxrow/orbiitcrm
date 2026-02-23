@@ -6,6 +6,7 @@ const PLAN_ERROR_CODES: PlanLimitReason[] = [
   "TRIAL_EXPIRED",
   "SUSPENDED",
   "NO_PLAN",
+  "DEMO_RATE_LIMIT",
 ];
 
 /**

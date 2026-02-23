@@ -496,7 +496,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     <Label className="text-base font-medium">Integração Ativa</Label>
                     <p className="text-sm text-muted-foreground">Ative para habilitar o envio de mensagens via WhatsApp</p>
                   </div>
-                  <Switch checked={zapiForm.ativo} onCheckedChange={(v) => setZapiForm({ ...zapiForm, ativo: v })} />
+                  <Switch checked={zapiForm.ativo} onCheckedChange={(v) => setZapiForm({ ...zapiForm, ativo: v })} disabled={isDemo} />
                 </div>
 
                 {/* Nome da instância */}
@@ -505,8 +505,10 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                   <Input 
                     placeholder="Ex: Match-FluxRow" 
                     value={zapiForm.nome_instancia} 
-                    onChange={(e) => setZapiForm({ ...zapiForm, nome_instancia: e.target.value })} 
+                    onChange={(e) => setZapiForm({ ...zapiForm, nome_instancia: e.target.value })}
+                    disabled={isDemo}
                   />
+                  
                   <p className="text-xs text-muted-foreground">Nome para identificar sua instância (opcional)</p>
                 </div>
 
@@ -517,7 +519,9 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     <Input 
                       placeholder="3EBCAD9A3C0711696E74E6B9" 
                       value={zapiForm.instance_id} 
-                      onChange={(e) => setZapiForm({ ...zapiForm, instance_id: e.target.value })} 
+                      onChange={(e) => setZapiForm({ ...zapiForm, instance_id: e.target.value })}
+                      disabled={isDemo}
+                    
                     />
                     <p className="text-xs text-muted-foreground">Encontre em "Dados da instância" → "ID da instância" no painel Z-API</p>
                   </div>
@@ -528,7 +532,9 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                         type={showZapiToken ? "text" : "password"}
                         placeholder="Token da instância" 
                         value={zapiForm.token} 
-                        onChange={(e) => setZapiForm({ ...zapiForm, token: e.target.value })} 
+                        onChange={(e) => setZapiForm({ ...zapiForm, token: e.target.value })}
+                        disabled={isDemo}
+                      
                       />
                       <Button 
                         type="button"
@@ -553,7 +559,9 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                         type={showZapiClientToken ? "text" : "password"}
                         placeholder="Client Token" 
                         value={zapiForm.client_token} 
-                        onChange={(e) => setZapiForm({ ...zapiForm, client_token: e.target.value })} 
+                        onChange={(e) => setZapiForm({ ...zapiForm, client_token: e.target.value })}
+                        disabled={isDemo}
+                      
                       />
                       <Button 
                         type="button"
@@ -572,7 +580,9 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     <Input 
                       placeholder="+5511937273838" 
                       value={zapiForm.numero_origem} 
-                      onChange={(e) => setZapiForm({ ...zapiForm, numero_origem: e.target.value })} 
+                      onChange={(e) => setZapiForm({ ...zapiForm, numero_origem: e.target.value })}
+                      disabled={isDemo}
+                    
                     />
                     <p className="text-xs text-muted-foreground">Número WhatsApp conectado à instância</p>
                   </div>
@@ -862,9 +872,11 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     <Label className="text-base font-medium">Notificar as enviadas por mim também</Label>
                     <p className="text-sm text-muted-foreground">Receber webhook quando você mesmo envia mensagens</p>
                   </div>
-                  <Switch 
-                    checked={zapiForm.notificar_enviadas_por_mim} 
-                    onCheckedChange={(v) => setZapiForm({ ...zapiForm, notificar_enviadas_por_mim: v })} 
+                    <Switch 
+                      checked={zapiForm.notificar_enviadas_por_mim} 
+                      onCheckedChange={(v) => setZapiForm({ ...zapiForm, notificar_enviadas_por_mim: v })}
+                      disabled={isDemo}
+                  
                   />
                 </div>
 
@@ -940,7 +952,8 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                           type={showApiKey ? "text" : "password"}
                           placeholder="re_xxxxxxxxxxxxxxxxxxxx" 
                           value={resendForm.api_key} 
-                          onChange={(e) => setResendForm({ ...resendForm, api_key: e.target.value })} 
+                          onChange={(e) => setResendForm({ ...resendForm, api_key: e.target.value })}
+                          disabled={isDemo}
                         />
                         <Button 
                           type="button"
@@ -973,7 +986,8 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                       type="email"
                       placeholder="seu@email.com" 
                       value={resendForm.email_teste} 
-                      onChange={(e) => setResendForm({ ...resendForm, email_teste: e.target.value })} 
+                      onChange={(e) => setResendForm({ ...resendForm, email_teste: e.target.value })}
+                      disabled={isDemo}
                     />
                   </div>
 
@@ -984,7 +998,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     <Button 
                       variant="outline" 
                       onClick={handleTestConnection} 
-                      disabled={testConnection.isPending || !isApiKeyConfigured}
+                      disabled={testConnection.isPending || !isApiKeyConfigured || isDemo}
                     >
                       {testConnection.isPending ? (
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -1051,7 +1065,8 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                       <Input 
                         placeholder="Orbit CRM" 
                         value={resendForm.from_name} 
-                        onChange={(e) => setResendForm({ ...resendForm, from_name: e.target.value })} 
+                        onChange={(e) => setResendForm({ ...resendForm, from_name: e.target.value })}
+                        disabled={isDemo}
                       />
                     </div>
                     <div className="space-y-2">
@@ -1060,7 +1075,8 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                         type="email"
                         placeholder="noreply@seudominio.com" 
                         value={resendForm.from_email} 
-                        onChange={(e) => setResendForm({ ...resendForm, from_email: e.target.value })} 
+                        onChange={(e) => setResendForm({ ...resendForm, from_email: e.target.value })}
+                        disabled={isDemo}
                       />
                     </div>
                   </div>
@@ -1070,7 +1086,8 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     <Input 
                       placeholder="seudominio.com" 
                       value={resendForm.dominio_verificado} 
-                      onChange={(e) => setResendForm({ ...resendForm, dominio_verificado: e.target.value })} 
+                      onChange={(e) => setResendForm({ ...resendForm, dominio_verificado: e.target.value })}
+                      disabled={isDemo}
                     />
                     <p className="text-xs text-muted-foreground">Certifique-se de que seu domínio está verificado na Resend</p>
                   </div>
@@ -1082,7 +1099,8 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     </div>
                     <Switch 
                       checked={resendForm.ativo} 
-                      onCheckedChange={(v) => setResendForm({ ...resendForm, ativo: v })} 
+                      onCheckedChange={(v) => setResendForm({ ...resendForm, ativo: v })}
+                      disabled={isDemo}
                     />
                   </div>
 

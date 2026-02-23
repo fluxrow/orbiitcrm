@@ -80,6 +80,24 @@ serve(async (req) => {
       isDemo = planCode === "demo";
     }
 
+    // ── Demo rate limit: 30 outbound messages per hour ──
+    if (isDemo && profile?.empresa_id) {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { count } = await supabase
+        .from("orbit_mensagens")
+        .select("*", { count: "exact", head: true })
+        .eq("empresa_id", profile.empresa_id)
+        .eq("direcao", "OUT")
+        .gte("timestamp", oneHourAgo);
+
+      if (count !== null && count >= 30) {
+        return new Response(
+          JSON.stringify({ error: "DEMO_RATE_LIMIT", code: "DEMO_RATE_LIMIT" }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     let messageStatus = "pendente";
     let providerId = null;
 

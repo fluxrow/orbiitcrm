@@ -20,11 +20,32 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Buscar config IA
-    const { data: aiConfig } = await supabase
-      .from("orbit_ai_config")
+    // Buscar prospect first to get empresa_id
+    const { data: prospect } = await supabase
+      .from("orbit_prospects")
       .select("*")
-      .maybeSingle();
+      .eq("id", prospect_id)
+      .single();
+
+    // Determine if demo
+    let isDemo = false;
+    const empresaId = prospect?.empresa_id;
+    if (empresaId) {
+      const { data: saasEmpresa } = await supabase
+        .from("saas_empresa")
+        .select("plan_id, plan:saas_plans(code)")
+        .eq("empresa_id", empresaId)
+        .maybeSingle();
+      const planCode = (saasEmpresa?.plan as any)?.code;
+      isDemo = planCode === "demo";
+    }
+
+    // Buscar config IA (filtered by empresa_id)
+    let aiConfigQuery = supabase.from("orbit_ai_config").select("*");
+    if (empresaId) {
+      aiConfigQuery = aiConfigQuery.eq("empresa_id", empresaId);
+    }
+    const { data: aiConfig } = await aiConfigQuery.maybeSingle();
 
     if (!aiConfig) {
       console.log("[orbit-ai-agent] Config IA não encontrada");
@@ -41,21 +62,13 @@ serve(async (req) => {
     const isWithinHours = currentTime >= startTime && currentTime <= endTime;
 
     if (!isWithinHours && !aiConfig.responder_fora_horario) {
-      // Enviar mensagem de fora de horário
       if (aiConfig.mensagem_fora_horario) {
-        await sendWhatsAppMessage(supabase, telefone, aiConfig.mensagem_fora_horario, conversa_id);
+        await sendWhatsAppMessage(supabase, telefone, aiConfig.mensagem_fora_horario, conversa_id, isDemo);
       }
       return new Response(JSON.stringify({ ok: true, outside_hours: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    // Buscar prospect
-    const { data: prospect } = await supabase
-      .from("orbit_prospects")
-      .select("*")
-      .eq("id", prospect_id)
-      .single();
 
     // Buscar conversa com contexto
     const { data: conversa } = await supabase
@@ -77,12 +90,10 @@ serve(async (req) => {
       .map((m) => `${m.direcao === "IN" ? "Cliente" : "Assistente"}: ${m.mensagem}`)
       .join("\n");
 
-    // Determinar se é primeira interação
     const mensagensIN = mensagens?.filter((m) => m.direcao === "IN").length || 0;
     const mensagensOUT = mensagens?.filter((m) => m.direcao === "OUT").length || 0;
     const primeiraInteracao = mensagensOUT === 0 || mensagensIN <= 1;
 
-    // Contexto da conversa
     const aiContexto = conversa?.ai_contexto || {};
     const emColetaOrcamento = aiContexto.em_coleta_orcamento || false;
     const camposColetados = aiContexto.campos_coletados || {};
@@ -91,18 +102,15 @@ serve(async (req) => {
     const idioma = aiConfig.idioma || "pt-BR";
     const promptOrcamentos = aiConfig.prompt_orcamentos || "";
 
-    // Verificar quais campos faltam
     const camposFaltantes = camposCadastro.filter(
       (campo: string) => !camposColetados[campo] && !prospect?.[campo]
     );
     const cadastroCompleto = camposFaltantes.length === 0;
 
-    // Instrução especial para orçamentos
     const instrucaoOrcamento = promptOrcamentos 
       ? `\nINSTRUÇÃO ESPECIAL PARA ORÇAMENTOS:\n${promptOrcamentos}`
       : "";
 
-    // Montar prompt do sistema
     const systemPrompt = `${aiConfig.prompt_treinamento || "Você é um assistente de vendas."}
 
 Tom de voz: ${aiConfig.tom_conversa || "profissional e amigável"}
@@ -183,7 +191,6 @@ IMPORTANTE: Responda em JSON com esta estrutura:
     const aiData = await aiResponse.json();
     const content = aiData.choices?.[0]?.message?.content || "";
 
-    // Parsear resposta JSON
     let parsed: any;
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -219,7 +226,6 @@ IMPORTANTE: Responda em JSON com esta estrutura:
 
     // Se cadastro completo, distribuir para vendedor
     if (parsed.cadastro_completo && !prospect?.responsavel_id) {
-      // Buscar próximo vendedor da fila (round-robin)
       const { data: proximoVendedor } = await supabase
         .from("orbit_distribuicao_config")
         .select("vendedor_id")
@@ -250,10 +256,10 @@ IMPORTANTE: Responda em JSON com esta estrutura:
       }
     }
 
-    // Enviar resposta via WhatsApp
-    await sendWhatsAppMessage(supabase, telefone, resposta, conversa_id);
+    // Enviar resposta via WhatsApp (or simulate for demo)
+    await sendWhatsAppMessage(supabase, telefone, resposta, conversa_id, isDemo);
 
-    return new Response(JSON.stringify({ ok: true, resposta, parsed }), {
+    return new Response(JSON.stringify({ ok: true, resposta, parsed, simulated: isDemo }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: unknown) {
@@ -266,9 +272,31 @@ IMPORTANTE: Responda em JSON com esta estrutura:
   }
 });
 
-async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: string, conversa_id: string) {
+async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: string, conversa_id: string, isDemo: boolean) {
   try {
-    // Buscar config Z-API
+    if (isDemo) {
+      // Demo mode: save message as simulated, don't call Z-API
+      console.log("[orbit-ai-agent] Demo mode — simulando envio");
+      await supabase.from("orbit_mensagens").insert({
+        conversa_id,
+        direcao: "OUT",
+        mensagem,
+        canal: "whatsapp",
+        status: "simulated",
+        provider_message_id: null,
+      });
+
+      await supabase
+        .from("orbit_conversas")
+        .update({
+          ultima_mensagem_at: new Date().toISOString(),
+          ultima_mensagem_preview: mensagem.substring(0, 100),
+        })
+        .eq("id", conversa_id);
+      return;
+    }
+
+    // Production mode: call Z-API
     const { data: zapiConfig } = await supabase
       .from("orbit_zapi_config")
       .select("*")
@@ -294,17 +322,15 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: st
       const result = await response.json();
       console.log("[orbit-ai-agent] WhatsApp enviado:", result);
 
-      // Salvar mensagem enviada
       await supabase.from("orbit_mensagens").insert({
         conversa_id,
         direcao: "OUT",
-        mensagem: mensagem,
+        mensagem,
         canal: "whatsapp",
         status: response.ok ? "enviada" : "falhou",
         provider_message_id: result.messageId,
       });
 
-      // Atualizar preview da conversa
       await supabase
         .from("orbit_conversas")
         .update({
@@ -315,11 +341,10 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: st
     } else {
       console.log("[orbit-ai-agent] Z-API não configurado, salvando apenas no banco");
       
-      // Salvar mensagem mesmo sem Z-API (para testes)
       await supabase.from("orbit_mensagens").insert({
         conversa_id,
         direcao: "OUT",
-        mensagem: mensagem,
+        mensagem,
         canal: "whatsapp",
         status: "pendente",
       });
