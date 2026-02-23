@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { handleApiResponse } from "@/lib/api-envelope";
 
 export interface Empresa {
   id: string;
@@ -99,13 +100,11 @@ export function useAddEmpresaUser() {
       cargo?: string;
       role: string;
     }) => {
-      const { data: result, error } = await supabase.functions.invoke('add-empresa-user', {
+      const response = await supabase.functions.invoke('add-empresa-user', {
         body: data,
       });
 
-      if (error) throw error;
-      if (result?.error) throw new Error(result.error);
-      return result;
+      return handleApiResponse(response);
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['empresa-users', variables.empresa_id] });
@@ -185,13 +184,11 @@ export function useCreateEmpresa() {
 
   return useMutation({
     mutationFn: async (data: CreateEmpresaData) => {
-      // Call edge function to create empresa + admin user
-      const { data: result, error } = await supabase.functions.invoke('create-empresa', {
+      const response = await supabase.functions.invoke('create-empresa', {
         body: data,
       });
 
-      if (error) throw error;
-      return result;
+      return handleApiResponse(response);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['empresas'] });

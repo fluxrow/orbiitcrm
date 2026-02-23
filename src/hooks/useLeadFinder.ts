@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { toast } from "sonner";
+import { handleApiResponse } from "@/lib/api-envelope";
 
 // Types
 export interface LeadSource {
@@ -286,14 +287,12 @@ export function useExecuteLeadSearch() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (searchId: string) => {
-      const { data, error } = await supabase.functions.invoke("orbit-search-leads", {
+      const response = await supabase.functions.invoke("orbit-search-leads", {
         body: { search_id: searchId },
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      return data;
+      return handleApiResponse(response);
     },
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["lead-searches"] });
       queryClient.invalidateQueries({ queryKey: ["leads"] });
       toast.success(`Busca concluída! ${data.imported} leads importados.`);

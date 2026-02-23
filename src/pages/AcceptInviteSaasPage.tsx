@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { parseResponse, type ApiFailure } from "@/lib/api-envelope";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -67,20 +68,16 @@ export default function AcceptInviteSaasPage() {
 
   async function validateToken() {
     try {
-      const { data, error: fnErr } = await supabase.functions.invoke("validate-invite", {
+      const response = await supabase.functions.invoke("validate-invite", {
         body: { token },
       });
-      if (fnErr) throw fnErr;
-      if (data?.error) {
-        setError(data.error);
+      const parsed = parseResponse(response);
+      if (!parsed.ok) {
+        setError((parsed as ApiFailure).error.message);
         return;
       }
-      if (!data?.valid) {
-        setError("Convite inválido.");
-        return;
-      }
-      setInvite(data);
-      setFullName(data.responsible_name || "");
+      setInvite(parsed.data);
+      setFullName(parsed.data.responsible_name || "");
       setStep(1);
     } catch (e: any) {
       setError(e.message || "Erro ao validar convite.");
@@ -103,23 +100,21 @@ export default function AcceptInviteSaasPage() {
   async function fetchCnpjData(digits: string) {
     setCnpjLoading(true);
     try {
-      const { data, error: fnErr } = await supabase.functions.invoke("fetch-cnpj", {
+      const response = await supabase.functions.invoke("fetch-cnpj", {
         body: { cnpj: digits },
       });
-      if (fnErr) throw fnErr;
-      if (data?.error) {
-        // API failed, allow manual entry
-        return;
-      }
+      const parsed = parseResponse(response);
+      if (!parsed.ok) return; // API failed, allow manual entry
+      const d = parsed.data;
       setCnpjData({
-        razao_social: data.razao_social || "",
-        nome_fantasia: data.nome_fantasia || "",
-        logradouro: data.logradouro || "",
-        numero: data.numero || "",
-        bairro: data.bairro || "",
-        municipio: data.municipio || "",
-        uf: data.uf || "",
-        cnae_fiscal_descricao: data.cnae_fiscal_descricao || "",
+        razao_social: d.razao_social || "",
+        nome_fantasia: d.nome_fantasia || "",
+        logradouro: d.logradouro || "",
+        numero: d.numero || "",
+        bairro: d.bairro || "",
+        municipio: d.municipio || "",
+        uf: d.uf || "",
+        cnae_fiscal_descricao: d.cnae_fiscal_descricao || "",
       });
     } catch {
       // fetch-cnpj may fail - not blocking
@@ -148,12 +143,11 @@ export default function AcceptInviteSaasPage() {
         }
       }
 
-      const { data, error: fnErr } = await supabase.functions.invoke("accept-empresa-invite", {
+      const response = await supabase.functions.invoke("accept-empresa-invite", {
         body: payload,
       });
-
-      if (fnErr) throw fnErr;
-      if (data?.error) throw new Error(data.error);
+      const parsed = parseResponse(response);
+      if (!parsed.ok) throw new Error((parsed as ApiFailure).error.message);
 
       setStep(5);
     } catch (e: any) {
