@@ -10,6 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Plus, MessageSquare, Mail, Loader2, MoreVertical, Play, Pause, X, CheckCircle, Send, Eye, Edit } from "lucide-react";
 import { useOrbitCampaigns, useUpdateCampaign, useDeleteCampaign } from "@/hooks/useOrbitCampaigns";
 import { supabase } from "@/integrations/supabase/client";
+import { handleApiResponse } from "@/lib/api-envelope";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -46,7 +47,7 @@ export default function CampanhasPage() {
         body: { campaign_id: campaignId, user_id: user.id }
       });
 
-      if (response.error) throw new Error(response.error.message);
+      handleApiResponse(response);
       
       toast.success("Solicitação de aprovação enviada!");
       refetch();
@@ -140,9 +141,8 @@ export default function CampanhasPage() {
         body: { campaign_id: campaignId }
       });
 
-      if (response.error) throw new Error(response.error.message);
-
-      toast.success(`Enviados: ${response.data.enviados}, Falhas: ${response.data.falhas}`);
+      const result = handleApiResponse<{ enviados: number; falhas: number }>(response);
+      toast.success(`Enviados: ${result.enviados}, Falhas: ${result.falhas}`);
       refetch();
     } catch (error: any) {
       toast.error(error.message || "Erro ao enviar campanha");

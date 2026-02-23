@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Shield, Mail, Lock, User, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { handleApiResponse } from "@/lib/api-envelope";
 
 export default function SetupPage() {
   const navigate = useNavigate();
@@ -55,13 +56,7 @@ export default function SetupPage() {
         body: { email, password, nome },
       });
 
-      if (response.error) {
-        throw new Error(response.error.message);
-      }
-
-      if (response.data?.error) {
-        throw new Error(response.data.error);
-      }
+      handleApiResponse(response);
 
       toast.success("Super Admin Master criado com sucesso!");
       toast.info("Faça login com suas credenciais");

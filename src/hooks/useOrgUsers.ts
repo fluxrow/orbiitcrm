@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { toast } from "sonner";
+import { handleApiResponse } from "@/lib/api-envelope";
 
 export function useOrgUsers(orgId: string | null | undefined) {
   return useQuery({
@@ -56,12 +57,10 @@ export function useInviteUser() {
 
   return useMutation({
     mutationFn: async (payload: { organization_id: string; email: string; role_code: string; full_name?: string; phone?: string }) => {
-      const { data, error } = await supabase.functions.invoke("invite-org-user", {
+      const response = await supabase.functions.invoke("invite-org-user", {
         body: payload,
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      return data;
+      return handleApiResponse(response);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["org-invitations"] });

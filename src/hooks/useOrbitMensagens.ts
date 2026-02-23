@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { handleApiResponse } from "@/lib/api-envelope";
 import type { Tables } from "@/integrations/supabase/types";
 
 type Mensagem = Tables<"orbit_mensagens">;
@@ -71,8 +72,7 @@ export function useSendMensagem() {
         body: { conversa_id, mensagem, telefone, canal },
       });
 
-      if (response.error) throw response.error;
-      return response.data;
+      return handleApiResponse(response);
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["orbit_mensagens", variables.conversa_id] });
@@ -99,8 +99,7 @@ export function useGetAISuggestions() {
         body: { conversa_id, prospect_id, ultima_mensagem },
       });
 
-      if (response.error) throw response.error;
-      return response.data;
+      return handleApiResponse(response);
     },
   });
 }
