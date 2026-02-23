@@ -1,23 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return optionsResponse();
 
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return fail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401);
     }
 
     const supabase = createClient(
@@ -25,30 +16,19 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Verificar autenticação
     const token = authHeader.replace("Bearer ", "");
     const { data: claims, error: claimsError } = await supabase.auth.getUser(token);
     if (claimsError || !claims?.user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401);
     }
 
     const { conversa_id, prospect_id, ultima_mensagem } = await req.json();
 
     // Buscar config IA
-    const { data: aiConfig } = await supabase
-      .from("orbit_ai_config")
-      .select("*")
-      .maybeSingle();
+    const { data: aiConfig } = await supabase.from("orbit_ai_config").select("*").maybeSingle();
 
     // Buscar prospect
-    const { data: prospect } = await supabase
-      .from("orbit_prospects")
-      .select("*")
-      .eq("id", prospect_id)
-      .maybeSingle();
+    const { data: prospect } = await supabase.from("orbit_prospects").select("*").eq("id", prospect_id).maybeSingle();
 
     // Buscar histórico
     const { data: mensagens } = await supabase
@@ -101,16 +81,10 @@ Responda em JSON:
 
     if (!aiResponse.ok) {
       if (aiResponse.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return fail(ErrorCodes.PROVIDER_RATE_LIMIT, "Limite de taxa excedido. Tente novamente mais tarde.", 429);
       }
       if (aiResponse.status === 402) {
-        return new Response(JSON.stringify({ error: "Payment required" }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return fail(ErrorCodes.PROVIDER_AUTH_FAILED, "Créditos de IA insuficientes.", 402);
       }
       throw new Error(`AI Gateway error: ${aiResponse.status}`);
     }
@@ -126,15 +100,10 @@ Responda em JSON:
       parsed = { sugestoes: [{ tipo: "amigavel", mensagem: content }] };
     }
 
-    return new Response(JSON.stringify(parsed), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return ok(parsed);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[orbit-ai-suggest] Erro:", message);
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return fail(ErrorCodes.INTERNAL_ERROR, message, 500);
   }
 });

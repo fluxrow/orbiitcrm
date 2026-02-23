@@ -1,10 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { ok, fail, optionsResponse, fromPlanCheck, ErrorCodes } from "../_shared/responses.ts";
 
 interface MetaMessageRequest {
   conversa_id: string;
@@ -13,9 +9,7 @@ interface MetaMessageRequest {
 }
 
 const handler = async (req: Request): Promise<Response> => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return optionsResponse();
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -25,13 +19,9 @@ const handler = async (req: Request): Promise<Response> => {
     const { conversa_id, mensagem, empresa_id }: MetaMessageRequest = await req.json();
 
     if (!conversa_id || !mensagem || !empresa_id) {
-      return new Response(
-        JSON.stringify({ error: "conversa_id, mensagem e empresa_id são obrigatórios" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      return fail(ErrorCodes.VALIDATION_ERROR, "conversa_id, mensagem e empresa_id são obrigatórios");
     }
 
-    // Buscar conversa
     const { data: conversa } = await supabase
       .from("orbit_conversas")
       .select("*, prospect:orbit_prospects(*)")
@@ -39,10 +29,7 @@ const handler = async (req: Request): Promise<Response> => {
       .single();
 
     if (!conversa) {
-      return new Response(
-        JSON.stringify({ error: "Conversa não encontrada" }),
-        { status: 404, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      return fail(ErrorCodes.NOT_FOUND, "Conversa não encontrada", 404);
     }
 
     // ── Plan enforcement ──
@@ -53,12 +40,8 @@ const handler = async (req: Request): Promise<Response> => {
       p_amount: 1,
     });
 
-    if (canUseResult && canUseResult.allowed === false) {
-      return new Response(
-        JSON.stringify({ error: canUseResult.reason, code: canUseResult.reason }),
-        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
+    const planResponse = fromPlanCheck(canUseResult);
+    if (planResponse) return planResponse;
 
     // Buscar config Meta
     const { data: metaConfig } = await supabase
@@ -69,30 +52,20 @@ const handler = async (req: Request): Promise<Response> => {
       .maybeSingle();
 
     if (!metaConfig || !metaConfig.access_token) {
-      return new Response(
-        JSON.stringify({ error: "Meta não configurado" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      return fail(ErrorCodes.PROVIDER_NOT_CONFIGURED, "Meta não configurado");
     }
 
     const recipientId = conversa.telefone_whatsapp;
-    
     if (!recipientId) {
-      return new Response(
-        JSON.stringify({ error: "ID do destinatário não encontrado" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      return fail(ErrorCodes.VALIDATION_ERROR, "ID do destinatário não encontrado");
     }
 
-    const pageId = conversa.canal === "instagram" 
-      ? metaConfig.instagram_business_id 
+    const pageId = conversa.canal === "instagram"
+      ? metaConfig.instagram_business_id
       : metaConfig.facebook_page_id;
 
     if (!pageId) {
-      return new Response(
-        JSON.stringify({ error: `${conversa.canal} não configurado` }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      return fail(ErrorCodes.PROVIDER_NOT_CONFIGURED, `${conversa.canal} não configurado`);
     }
 
     const metaRes = await fetch(
@@ -100,7 +73,7 @@ const handler = async (req: Request): Promise<Response> => {
       {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${metaConfig.access_token}`,
+          Authorization: `Bearer ${metaConfig.access_token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -115,26 +88,26 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (!metaRes.ok) {
       console.error("[send-orbit-meta-message] Erro Meta:", result);
-      return new Response(
-        JSON.stringify({ error: result.error?.message || "Erro ao enviar mensagem" }),
-        { status: metaRes.status, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      return fail(
+        ErrorCodes.PROVIDER_SEND_FAILED,
+        result.error?.message || "Erro ao enviar mensagem",
+        metaRes.status,
+        { provider: "meta" },
       );
     }
 
     // Salvar mensagem no banco
-    await supabase
-      .from("orbit_mensagens")
-      .insert({
-        empresa_id,
-        conversa_id,
-        direcao: "OUT",
-        mensagem,
-        canal: conversa.canal,
-        provider_message_id: result.message_id,
-        status: "enviada",
-      });
+    await supabase.from("orbit_mensagens").insert({
+      empresa_id,
+      conversa_id,
+      direcao: "OUT",
+      mensagem,
+      canal: conversa.canal,
+      provider_message_id: result.message_id,
+      status: "enviada",
+    });
 
-    // ── Increment usage after successful send ──
+    // Increment usage
     await supabase.rpc("saas_increment_usage", {
       p_empresa_id: empresa_id,
       p_feature_code: featureCode,
@@ -150,17 +123,10 @@ const handler = async (req: Request): Promise<Response> => {
       })
       .eq("id", conversa_id);
 
-    return new Response(
-      JSON.stringify({ success: true, message_id: result.message_id }),
-      { headers: { "Content-Type": "application/json", ...corsHeaders } }
-    );
-
+    return ok({ message_id: result.message_id });
   } catch (error: any) {
     console.error("[send-orbit-meta-message] Error:", error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
-    );
+    return fail(ErrorCodes.INTERNAL_ERROR, error.message, 500);
   }
 };
 
