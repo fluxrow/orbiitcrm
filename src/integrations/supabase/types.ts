@@ -2885,6 +2885,39 @@ export type Database = {
           },
         ]
       }
+      trial_requests: {
+        Row: {
+          created_at: string
+          email: string
+          empresa: string
+          id: string
+          nome: string
+          plan_code: string
+          status: string
+          telefone: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          empresa: string
+          id?: string
+          nome: string
+          plan_code?: string
+          status?: string
+          telefone?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          empresa?: string
+          id?: string
+          nome?: string
+          plan_code?: string
+          status?: string
+          telefone?: string | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string | null

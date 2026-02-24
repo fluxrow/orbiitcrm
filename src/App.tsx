@@ -8,6 +8,8 @@ import { useIsSuperAdmin } from "@/hooks/useUserRole";
 
 import NotFound from "./pages/NotFound";
 import AuthPage from "./pages/AuthPage";
+import LandingPage from "./pages/LandingPage";
+import TrialPage from "./pages/TrialPage";
 import SetupPage from "./pages/SetupPage";
 import AcceptInvitePage from "./pages/AcceptInvitePage";
 import AcceptInviteSaasPage from "./pages/AcceptInviteSaasPage";
@@ -133,7 +135,8 @@ const AppRoutes = () => (
     <Route path="/invite/:token" element={<AcceptInvitePage />} />
     <Route path="/accept-invite" element={<AcceptInviteSaasPage />} />
     <Route path="/documentacao" element={<DocumentacaoPage />} />
-    <Route path="/" element={<Navigate to="/auth" replace />} />
+    <Route path="/trial" element={<TrialPage />} />
+    <Route path="/" element={<LandingPage />} />
     
     {/* Compatibility redirect: /orbit/* → /demo/* */}
     <Route path="/orbit/*" element={<OrbitRedirect />} />
