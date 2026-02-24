@@ -1,226 +1,172 @@
 
-# Etapa SAAS-7 -- Error Envelope Standardization
 
-## Current State
+# ETAPA SAAS-ROUTING-V3 -- Slug na Raiz + Trial 7 Dias
 
-Every edge function uses its own ad-hoc error format. Some return `{ error: "message" }`, others `{ error: reason, code: reason }`, others `{ success: true, ... }`, and some `{ ok: true, ... }`. The frontend handles errors with scattered `if/else` and `try/catch` blocks in each hook and page, making it fragile and inconsistent.
+## Resumo
 
-| Pattern | Functions using it |
-|---|---|
-| `{ error: "msg" }` | validate-invite, accept-empresa-invite, create-empresa, add-empresa-user, fetch-cnpj, send-vendedor-notification, request-campaign-approval, orbit-ai-suggest |
-| `{ error: reason, code: reason }` | orbit-send-message, orbit-send-email, send-orbit-campaign, send-orbit-meta-message, orbit-search-leads (plan enforcement only) |
-| `{ ok: true, data... }` | orbit-send-message |
-| `{ success: true, ... }` | create-empresa, accept-empresa-invite, send-orbit-campaign, request-campaign-approval, send-vendedor-notification |
+Empresas pagas acessam via `/{slug}/*`, demo via `/demo/*`. Slug gerado no onboarding. Trial de 7 dias para planos pagos com status `trial`. Rotas `/orbit/*` mantidas como redirect de compatibilidade.
 
-## Implementation Plan
+## Parte 1: Migration SQL
 
-### Part 1: Shared Helper Module for Edge Functions
+### 1.1 Colunas em orbit_empresas
+```sql
+ALTER TABLE orbit_empresas
+  ADD COLUMN slug text,
+  ADD COLUMN public_url text,
+  ADD COLUMN slug_created_at timestamptz;
 
-**New file:** `supabase/functions/_shared/responses.ts`
-
-```typescript
-// Generates a UUID v4 correlation ID
-function makeCorrelationId(): string
-
-// Success envelope
-function ok(data: unknown, meta?: Record<string, unknown>): Response
-// Returns: { ok: true, data: {...}, meta: { correlation_id, ...meta } }
-
-// Error envelope
-function fail(
-  code: string,
-  message: string,
-  status?: number,
-  details?: Record<string, unknown>
-): Response
-// Returns: { ok: false, error: { code, message, details, correlation_id } }
-
-// Map saas_can_use result to appropriate response
-function fromPlanCheck(
-  canUseResult: any,
-  sandbox?: boolean
-): Response | null
-// If allowed: returns null (continue processing)
-// If denied + sandbox: returns ok() with meta.simulated = true
-// If denied: returns fail() with appropriate code
-
-// Map provider errors to standard codes
-function mapProviderError(err: any, provider: string): Response
+CREATE UNIQUE INDEX idx_orbit_empresas_slug_unique
+  ON orbit_empresas (slug) WHERE slug IS NOT NULL;
 ```
 
-Error codes enum (constants, not actual TypeScript enum):
+### 1.2 Funcoes SQL
+
+**normalize_slug(text)**: lowercase, remove acentos (translate), substitui espacos por hifens, remove caracteres nao-alfanumericos, remove hifens duplicados e nas extremidades.
+
+**generate_unique_slug(p_nome text)**: chama normalize_slug, testa colisao em orbit_empresas.slug, incrementa sufixo `-2`, `-3` ate encontrar disponivel.
+
+**get_empresa_by_slug(p_slug text)**: SECURITY DEFINER. Retorna jsonb com empresa_id, nome, plan_code, saas_status, trial_ends_at. Valida: se plan_code=demo retorna null. Se status NOT IN (trial, active) retorna blocked=true + reason.
+
+### 1.3 Ajuste de trial
+
+O campo `saas_empresa.status` ja existe (default `invited`). Os valores possiveis passam a incluir `trial`. O campo `trial_ends_at` ja existe. Nenhuma alteracao de schema necessaria aqui.
+
+A mudanca e na **logica do onboarding**: planos pagos recebem `status='trial'` + `trial_ends_at = now() + 7 days` (em vez do atual `status='active'` com 14/30 dias).
+
+## Parte 2: Edge Function accept-empresa-invite
+
+Alteracoes no `supabase/functions/accept-empresa-invite/index.ts`:
+
+1. **Trial 7 dias**: Trocar logica atual (status='active', trialDays=14/30) por:
+   - Se pago: `status='trial'`, `trial_ends_at = now() + 7 days`, `activated_at = now()`
+   - Se demo: `status='active'`, `activated_at = now()`, sem trial
+
+2. **Gerar slug** (apos ativar empresa e provisionar tenant):
+   - Se pago: chamar RPC `generate_unique_slug(empresa_nome)`
+   - Salvar `slug`, `public_url = '/' + slug`, `slug_created_at = now()` em orbit_empresas
+   - Demo: nao gera slug
+
+3. **Retornar** no response: `slug`, `redirect_url` (`/{slug}/dashboard` ou `/demo/dashboard`)
+
+## Parte 3: TenantContext
+
+**Novo arquivo**: `src/contexts/TenantContext.tsx`
+
+```typescript
+interface TenantState {
+  empresaId: string | null;
+  slug: string | null;
+  isDemo: boolean;
+  basePath: string;       // "/demo" ou "/{slug}"
+  planCode: string | null;
+  saasStatus: string | null;
+  trialEndsAt: string | null;
+  isLoading: boolean;
+}
+```
+
+Provider e hook `useTenant()`.
+
+## Parte 4: TenantLayout + Telas de Bloqueio
+
+**Novo arquivo**: `src/pages/tenant/TenantLayout.tsx`
+- Recebe `:slug` do React Router param
+- Se slug == "demo": modo demo, carrega empresa_id do usuario logado (profiles.empresa_id)
+- Senao: chama RPC `get_empresa_by_slug(slug)` para resolver empresa_id
+- Valida `profiles.empresa_id == empresa_id` (ou super_admin)
+- Se blocked: renderiza tela de bloqueio (trial expirado, suspenso)
+- Se ok: seta TenantContext, renderiza OrbitLayout + `<Outlet />`
+
+**Novo arquivo**: `src/pages/tenant/TenantNotFound.tsx` -- "Empresa nao encontrada"
+
+**Novo arquivo**: `src/pages/tenant/TenantBlocked.tsx` -- "Acesso pausado"
+- Se reason=`trial_expired`: "Seu periodo de teste de 7 dias acabou" + CTA upgrade
+- Se reason=`suspended`: motivo + contato suporte
+
+## Parte 5: Reestruturar Rotas (App.tsx)
 
 ```text
--- SaaS / Plans --
-PLAN_FEATURE_DISABLED
-PLAN_LIMIT_REACHED
-PLAN_STATUS_BLOCKED
-TRIAL_EXPIRED
-NO_PLAN
+/auth              → AuthPage
+/setup             → SetupPage
+/invite/:token     → AcceptInvitePage
+/accept-invite     → AcceptInviteSaasPage
+/documentacao      → DocumentacaoPage
 
--- Demo --
-DEMO_RATE_LIMIT
-DEMO_ACTION_BLOCKED
+/demo/*            → TenantLayout (demo mode)
+  dashboard        → OrbitDashboard
+  prospects        → ProspectsPage
+  conversas        → ConversasPage
+  funil            → FunilPage
+  campanhas        → CampanhasPage
+  templates        → TemplatesPage
+  lead-finder      → LeadFinderPage
+  config           → ConfigPage
+  analytics        → AnalyticsPage
+  usuarios         → UsuariosEmpresaPage
 
--- Invites --
-INVITE_INVALID
-INVITE_EXPIRED
-INVITE_USED
+/:slug/*           → TenantLayout (paid mode, trial ou active)
+  (mesmas sub-rotas acima)
 
--- CNPJ --
-CNPJ_INVALID
-CNPJ_ALREADY_EXISTS
-CNPJ_LOOKUP_FAILED
+/orbit/*           → Redirect para /demo/* (compatibilidade)
+/orbit             → Redirect para /demo/dashboard
 
--- Integrations --
-PROVIDER_NOT_CONFIGURED
-PROVIDER_AUTH_FAILED
-PROVIDER_RATE_LIMIT
-PROVIDER_SEND_FAILED
-
--- Auth --
-UNAUTHORIZED
-FORBIDDEN
-
--- Validation --
-VALIDATION_ERROR
-NOT_FOUND
-INTERNAL_ERROR
+/super-admin/*     → (sem mudanca)
+/pe-admin/*        → (sem mudanca)
+/org/*             → (sem mudanca)
 ```
 
-### Part 2: Migrate All Edge Functions to Standard Envelope
+Rotas reservadas (`auth`, `setup`, `invite`, `accept-invite`, `documentacao`, `super-admin`, `pe-admin`, `org`, `demo`) sao declaradas antes do catch-all `/:slug`.
 
-Each function will import from `_shared/responses.ts` and replace ad-hoc responses.
+## Parte 6: OrbitSidebar Dinamico
 
-**Functions to update (20 total):**
+Trocar links hardcoded `/orbit/...` por `${basePath}/...` usando `useTenant().basePath`.
 
-| Function | Key changes |
+Tambem atualizar links no OrbitDashboard ("Ver todos", "Ver todas").
+
+## Parte 7: Redirect Pos-Login (AuthPage)
+
+Apos login bem-sucedido:
+1. Buscar `profiles.empresa_id`
+2. Buscar `orbit_empresas.slug` para essa empresa
+3. Se slug existe: redirect para `/${slug}/dashboard`
+4. Se nao (demo): redirect para `/demo/dashboard`
+
+## Parte 8: Redirect Pos-Onboarding (AcceptInviteSaasPage)
+
+No step 5 (done), em vez de "Ir para Login", redirecionar diretamente:
+- Se pago (slug retornado): fazer auto-login e redirect para `/${slug}/dashboard`
+- Se demo: redirect para `/demo/dashboard`
+
+## Parte 9: useIsDemo Adaptacao
+
+O hook `useIsDemo` pode ser simplificado para ler do TenantContext quando disponivel, mantendo fallback para queries diretas quando fora do contexto de tenant.
+
+## Resumo de Arquivos
+
+| Tipo | Arquivo |
 |---|---|
-| `orbit-send-message` | Replace `{ ok: true, mensagem, status, simulated }` with `ok(mensagem, { simulated })`. Replace `{ error, code }` with `fail(code, message)`. |
-| `orbit-send-email` | Replace `{ id, simulated }` with `ok({ id }, { simulated })`. Replace error returns with `fail()`. |
-| `send-orbit-campaign` | Replace `{ success, enviados, falhas }` with `ok({ enviados, falhas })`. Plan errors via `fromPlanCheck()`. |
-| `send-orbit-meta-message` | Replace `{ success, message_id }` with `ok({ message_id })`. `{ error: "Meta nao configurado" }` becomes `fail("PROVIDER_NOT_CONFIGURED", ...)`. |
-| `orbit-search-leads` | Replace `{ success, total_found, imported }` with `ok(...)`. Apollo errors become `fail("PROVIDER_SEND_FAILED", ...)`. |
-| `orbit-ai-suggest` | Replace `{ sugestoes }` with `ok({ sugestoes })`. Rate limit becomes `fail("PROVIDER_RATE_LIMIT", ...)`. |
-| `orbit-ai-agent` | Internal function (webhook-triggered), lower priority. Standardize error logging only. |
-| `validate-invite` | Replace `{ valid, ... }` with `ok(data)`. Errors become `fail("INVITE_INVALID"/"INVITE_EXPIRED"/"INVITE_USED", ...)`. |
-| `accept-empresa-invite` | Replace `{ success, ... }` with `ok(data)`. CNPJ errors become `fail("CNPJ_INVALID"/"CNPJ_ALREADY_EXISTS", ...)`. Invite errors become `fail("INVITE_*", ...)`. |
-| `create-empresa-invite` | Replace `{ empresa_id, invite_id }` with `ok(data)`. Auth errors become `fail("UNAUTHORIZED"/"FORBIDDEN", ...)`. |
-| `create-empresa` | Replace `{ success, empresa, user }` with `ok(data)`. |
-| `add-empresa-user` | Replace `{ success, user }` with `ok(data)`. |
-| `fetch-cnpj` | Replace `{ error, manual }` with `fail("CNPJ_LOOKUP_FAILED", ..., { manual: true })`. |
-| `request-campaign-approval` | Replace `{ success, message }` with `ok({ message })`. |
-| `send-vendedor-notification` | Replace `{ success, message }` with `ok({ message })`. Provider errors become `fail("PROVIDER_SEND_FAILED", ...)`. |
-| `orbit-webhook` | Internal (no client response), skip standardization. |
-| `orbit-meta-webhook` | Internal, skip. |
-| `create-master-user` | One-time setup function, lower priority but standardize. |
-| `accept-invitation` | Legacy, standardize. |
-| `invite-org-user` | Standardize. |
+| Migration | Colunas slug/public_url/slug_created_at, normalize_slug(), generate_unique_slug(), get_empresa_by_slug() |
+| Novo | `src/contexts/TenantContext.tsx` |
+| Novo | `src/pages/tenant/TenantLayout.tsx` |
+| Novo | `src/pages/tenant/TenantNotFound.tsx` |
+| Novo | `src/pages/tenant/TenantBlocked.tsx` |
+| Edit | `src/App.tsx` (rotas) |
+| Edit | `src/components/orbit/OrbitSidebar.tsx` (links dinamicos) |
+| Edit | `src/pages/orbit/OrbitDashboard.tsx` (links dinamicos) |
+| Edit | `src/pages/AuthPage.tsx` (redirect pos-login) |
+| Edit | `src/pages/AcceptInviteSaasPage.tsx` (redirect pos-onboarding) |
+| Edit | `supabase/functions/accept-empresa-invite/index.ts` (trial 7d + slug) |
+| Deploy | accept-empresa-invite |
 
-### Part 3: Frontend -- Unified Error Handler
+## Ordem de Execucao
 
-**New file:** `src/lib/api-envelope.ts`
+1. Migration SQL (colunas + funcoes + RPC)
+2. Edge function accept-empresa-invite (trial 7d + slug)
+3. TenantContext + TenantLayout + telas bloqueio
+4. App.tsx (rotas)
+5. OrbitSidebar + OrbitDashboard (links dinamicos)
+6. AuthPage (redirect pos-login)
+7. AcceptInviteSaasPage (redirect pos-onboarding)
+8. Deploy edge function
+9. Teste end-to-end
 
-```typescript
-interface ApiSuccess<T = any> {
-  ok: true;
-  data: T;
-  meta?: { simulated?: boolean; correlation_id?: string };
-}
-
-interface ApiError {
-  ok: false;
-  error: {
-    code: string;
-    message: string;
-    details?: Record<string, any>;
-    correlation_id?: string;
-  };
-}
-
-type ApiResponse<T = any> = ApiSuccess<T> | ApiError;
-
-// Parse edge function response into typed envelope
-function parseResponse<T>(response: { data: any; error: any }): ApiResponse<T>
-
-// Handle the response: show toast for simulated, throw for errors
-function handleApiResponse<T>(
-  response: { data: any; error: any },
-  options?: {
-    onSimulated?: () => void;
-    onPlanLimit?: (reason: string) => void;
-    onProviderMissing?: (code: string) => void;
-    silentSimulated?: boolean;
-  }
-): T
-```
-
-The handler will:
-1. Parse the response envelope
-2. If `ok: true` and `meta.simulated`: show "Envio simulado (Demo)" toast (unless silent)
-3. If `ok: false`: check error code and either show PlanLimitDialog, provider config modal, or generic toast with `correlation_id`
-4. Return the `data` for success cases
-
-**Updated file:** `src/lib/plan-errors.ts`
-
-Expand `PlanLimitReason` type and `PLAN_ERROR_CODES` array to include all new codes. Deprecate `extractPlanLimitReason` in favor of envelope-based detection.
-
-**Updated file:** `src/components/orbit/PlanLimitDialog.tsx`
-
-Add new reason configs for `PLAN_STATUS_BLOCKED`, `DEMO_ACTION_BLOCKED`, `NO_PLAN`.
-
-### Part 4: Update Frontend Consumers
-
-Each hook/page that calls `supabase.functions.invoke()` will use the new `handleApiResponse()` helper. This replaces the current pattern of:
-
-```typescript
-// BEFORE (scattered in each hook)
-const response = await supabase.functions.invoke("orbit-send-message", { body });
-if (response.error) throw response.error;
-return response.data;
-```
-
-With:
-
-```typescript
-// AFTER (unified)
-const response = await supabase.functions.invoke("orbit-send-message", { body });
-return handleApiResponse(response);
-```
-
-Files to update:
-- `src/hooks/useOrbitMensagens.ts` (useSendMensagem, useGetAISuggestions)
-- `src/pages/orbit/CampanhasPage.tsx` (handleRequestApproval, handleSend)
-- `src/hooks/useSuperAdmin.ts` (useCreateEmpresaUser, useCreateEmpresa)
-- `src/hooks/useLeadFinder.ts` (useExecuteSearch)
-- `src/hooks/useOrgUsers.ts` (useInviteOrgUser)
-- `src/pages/AcceptInviteSaasPage.tsx` (validateToken, fetchCnpjData, handleFinalize)
-- `src/pages/SetupPage.tsx` (create-master-user call)
-
-### Part 5: Observability (Optional Enhancement)
-
-Log errors server-side using the existing `pe_audit_log` table with `action = 'EDGE_ERROR'` and `metadata` containing `correlation_id`, `function_name`, `code`, and `message`. This avoids creating a new table while providing traceability.
-
-Add a `logError()` helper in `_shared/responses.ts` that optionally writes to audit log for non-trivial errors (skip validation errors).
-
-## Execution Order
-
-1. Create `supabase/functions/_shared/responses.ts` (shared helpers)
-2. Update all 18 edge functions to use standard envelope (batch by priority)
-3. Create `src/lib/api-envelope.ts` (frontend handler)
-4. Update `PlanLimitDialog.tsx` with new codes
-5. Update all frontend consumers to use `handleApiResponse()`
-6. Deploy all updated edge functions
-7. Test end-to-end
-
-## Summary of Changes
-
-| Change | Type | Files |
-|---|---|---|
-| Shared response helpers | New | `supabase/functions/_shared/responses.ts` |
-| Standardize 18 edge functions | Edit | All functions in `supabase/functions/` (except webhooks) |
-| Frontend API envelope handler | New | `src/lib/api-envelope.ts` |
-| Expand PlanLimitDialog codes | Edit | `src/components/orbit/PlanLimitDialog.tsx` |
-| Expand plan-errors codes | Edit | `src/lib/plan-errors.ts` |
-| Update 7 frontend consumers | Edit | Hooks and pages listed above |
-| Deploy functions | Deploy | All modified functions |
