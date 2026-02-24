@@ -109,7 +109,8 @@ function TenantContent() {
   const { user, loading: authLoading } = useAuth();
   const tenant = useTenant();
 
-  if (authLoading || tenant.isLoading) {
+  // While auth is loading, show spinner
+  if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
@@ -117,12 +118,23 @@ function TenantContent() {
     );
   }
 
+  // If not logged in and demo mode, show inline auth
   if (!user && tenant.isDemo) {
     return <DemoAuthGate />;
   }
 
+  // If not logged in and not demo, redirect to auth
   if (!user) {
     return <Navigate to="/auth" replace />;
+  }
+
+  // User is logged in, wait for tenant to load
+  if (tenant.isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
   }
 
   if (tenant.notFound) {
