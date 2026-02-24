@@ -5,6 +5,7 @@ import { TenantProvider, useTenant } from "@/contexts/TenantContext";
 import TenantNotFound from "./TenantNotFound";
 import TenantBlocked from "./TenantBlocked";
 import orbitLogo from "@/assets/orbit-logo.png";
+import HotsiteHeader from "@/components/HotsiteHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,7 +45,9 @@ function DemoAuthGate() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+    <>
+      <HotsiteHeader />
+      <div className="min-h-screen flex items-center justify-center bg-background px-4 pt-16">
       <Card className="w-full max-w-md">
         <CardHeader className="items-center space-y-4">
           <img src={orbitLogo} alt="Orbit" className="h-16" />
@@ -101,7 +104,8 @@ function DemoAuthGate() {
           </Tabs>
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </>
   );
 }
 

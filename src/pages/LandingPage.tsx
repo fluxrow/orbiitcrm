@@ -8,16 +8,10 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import {
   Users, Target, BarChart3, CheckCircle, Mail, MessageSquare,
   Kanban, Clock, ListChecks, Zap, Search, ArrowRight, Rocket,
-  Shield, ChevronRight, Menu, X, Star, Instagram, Facebook
+  Shield, ChevronRight, Star, Instagram, Facebook
 } from "lucide-react";
 import orbitLogo from "@/assets/orbit-logo.png";
 
-const NAV_ITEMS = [
-  { label: "Produto", href: "#como-funciona" },
-  { label: "Recursos", href: "#recursos" },
-  { label: "Planos", href: "#planos" },
-  { label: "FAQ", href: "#faq" },
-];
 
 const STEPS = [
   { icon: Target, title: "Capte leads", desc: "Prospects chegam via WhatsApp, formulários, importação ou busca ativa." },
@@ -97,12 +91,6 @@ export default function LandingPage() {
   const navigate = useNavigate();
   const [slug, setSlug] = useState("");
   const [slugError, setSlugError] = useState("");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  const scrollTo = (id: string) => {
-    setMobileMenuOpen(false);
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
-  };
 
   const handleSlugAccess = () => {
     const trimmed = slug.trim().toLowerCase();
@@ -116,65 +104,8 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* ── Header ── */}
-      <header className="fixed top-0 inset-x-0 z-50 glass-card border-t-0 rounded-none border-x-0">
-        <div className="max-w-7xl mx-auto flex items-center justify-between px-4 h-16">
-          <img src={orbitLogo} alt="Orbit" className="h-8" />
-
-          {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-6">
-            {NAV_ITEMS.map((item) => (
-              <button
-                key={item.href}
-                onClick={() => scrollTo(item.href.slice(1))}
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
-
-          <div className="hidden md:flex items-center gap-3">
-            <Button variant="ghost" size="sm" onClick={() => navigate("/demo")}>
-              Acessar Demo
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => navigate("/auth")}>
-              Entrar
-            </Button>
-            <Button size="sm" onClick={() => navigate("/trial")}>
-              Começar Trial
-            </Button>
-          </div>
-
-          {/* Mobile hamburger */}
-          <button className="md:hidden text-foreground" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
-        </div>
-
-        {/* Mobile menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden glass-card border-t border-border px-4 pb-4 space-y-3">
-            {NAV_ITEMS.map((item) => (
-              <button
-                key={item.href}
-                onClick={() => scrollTo(item.href.slice(1))}
-                className="block w-full text-left text-sm text-muted-foreground py-2"
-              >
-                {item.label}
-              </button>
-            ))}
-            <div className="flex flex-col gap-2 pt-2">
-              <Button variant="ghost" size="sm" onClick={() => navigate("/demo")}>Acessar Demo</Button>
-              <Button variant="outline" size="sm" onClick={() => navigate("/auth")}>Entrar</Button>
-              <Button size="sm" onClick={() => navigate("/trial")}>Começar Trial</Button>
-            </div>
-          </div>
-        )}
-      </header>
-
       {/* ── Hero ── */}
-      <section className="pt-32 pb-20 px-4">
+      <section className="pt-16 pb-20 px-4">
         <div className="max-w-4xl mx-auto text-center space-y-6">
           <img src={orbitLogo} alt="Orbit" className="h-52 mx-auto" />
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-tight">
