@@ -147,6 +147,7 @@ const AppRoutes = () => (
 
     {/* Demo tenant routes */}
     <Route path="/demo" element={<TenantLayout isDemo />}>
+      <Route index element={<Navigate to="dashboard" replace />} />
       <Route path="*" element={<OrbitRoutes />} />
     </Route>
 
@@ -183,6 +184,7 @@ const AppRoutes = () => (
 
     {/* Slug tenant routes (catch-all, must be last) */}
     <Route path="/:slug" element={<TenantLayout />}>
+      <Route index element={<Navigate to="dashboard" replace />} />
       <Route path="*" element={<OrbitRoutes />} />
     </Route>
     
