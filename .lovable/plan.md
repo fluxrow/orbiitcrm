@@ -1,38 +1,34 @@
 
 
-# Adicionar botao "Sair" na sidebar do Orbit
+# Fix: Super admin redirecionado para /demo apos login
 
 ## Problema
-A area de usuario no rodape da sidebar mostra "Usuario" e "Admin" estaticamente, sem opcao de deslogar. O usuario quer um botao de sair.
+
+Na `AuthPage.tsx`, a funcao `resolveRedirect` (linha 33-59) verifica apenas `profile.empresa_id`. Como o usuario `vagner.terres@hotmail.com` tem `empresa_id = null` (correto para super admin), o codigo cai no fallback e redireciona para `/demo/dashboard`.
+
+```text
+resolveRedirect():
+  profile.empresa_id == null → navigate("/demo/dashboard")  ← BUG
+```
 
 ## Solucao
 
-Editar `src/components/orbit/OrbitSidebar.tsx`:
+Antes de verificar `empresa_id`, checar se o usuario e super admin (via `user_roles` ou `pe_users.is_super_admin`). Se for, redirecionar para `/pe-admin`.
 
-1. Importar `useAuth` para obter `user` e `signOut`
-2. Importar `useNavigate` para redirecionar apos logout
-3. Importar `LogOut` do lucide-react
-4. Mostrar nome/email real do usuario (iniciais no avatar, nome e email nos textos)
-5. Adicionar botao "Sair" com icone `LogOut` que chama `signOut()` e redireciona para `/`
-
-### Detalhes da area de usuario (rodape da sidebar)
+Logica corrigida:
 
 ```text
-┌─────────────────────────────┐
-│  [Avatar]  Nome do Usuario  │
-│           email@example.com │
-│  [LogOut] Sair              │
-└─────────────────────────────┘
+resolveRedirect():
+  1. Checar user_roles → se tem 'super_admin' → navigate("/pe-admin")
+  2. Checar profile.empresa_id → se tem slug → navigate("/{slug}/dashboard")
+  3. Fallback → navigate("/demo/dashboard")
 ```
 
-- Avatar: exibe inicial do nome ou email
-- Nome: `user.user_metadata?.nome` ou email
-- Subtexto: email do usuario
-- Botao "Sair": `variant="ghost"`, icone LogOut, chama `signOut()` e `navigate("/")`
-
-### Arquivo
+## Arquivo
 
 | Acao | Arquivo |
 |---|---|
-| Editar | `src/components/orbit/OrbitSidebar.tsx` |
+| Editar | `src/pages/AuthPage.tsx` — adicionar checagem de super admin antes do redirect |
+
+Alteracao pontual na funcao `resolveRedirect` (linhas 33-59). Sem alteracao de banco de dados.
 
