@@ -12,6 +12,7 @@ import {
   UserCog,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import orbitLogo from "@/assets/orbit-logo.png";
 import { useIsAdmin } from "@/hooks/useUserRole";
 import { useTenant } from "@/contexts/TenantContext";
 
@@ -36,11 +37,8 @@ export function OrbitSidebar() {
       {/* Logo */}
       <div className="p-6 border-b border-sidebar-border">
         <Link to={`${basePath}/dashboard`} className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center">
-            <Rocket className="w-5 h-5 text-primary-foreground" />
-          </div>
+          <img src={orbitLogo} alt="Orbit" className="h-9" />
           <div>
-            <h1 className="text-xl font-bold gradient-text">ORBIT</h1>
             {isDemo && (
               <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-semibold tracking-wide">DEMO</span>
             )}
