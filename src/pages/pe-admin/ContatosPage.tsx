@@ -23,18 +23,18 @@ export default function ContatosPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Buscar por nome, email, telefone..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        <Select value={filters.decisor === undefined ? "" : filters.decisor ? "true" : "false"} onValueChange={v => setFilters(f => ({ ...f, decisor: v === "" ? undefined : v === "true" }))}>
+        <Select value={filters.decisor === undefined ? "all" : filters.decisor ? "true" : "false"} onValueChange={v => setFilters(f => ({ ...f, decisor: v === "all" ? undefined : v === "true" }))}>
           <SelectTrigger className="w-[140px]"><SelectValue placeholder="Decisor" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Todos</SelectItem>
+            <SelectItem value="all">Todos</SelectItem>
             <SelectItem value="true">Decisores</SelectItem>
             <SelectItem value="false">Não decisores</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={filters.cliente_id || ""} onValueChange={v => setFilters(f => ({ ...f, cliente_id: v || undefined }))}>
+        <Select value={filters.cliente_id || "all"} onValueChange={v => setFilters(f => ({ ...f, cliente_id: v === "all" ? undefined : v }))}>
           <SelectTrigger className="w-[200px]"><SelectValue placeholder="Cliente" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Todos</SelectItem>
+            <SelectItem value="all">Todos</SelectItem>
             {(clientes || []).map((c: any) => <SelectItem key={c.id} value={c.id}>{c.razao_social}</SelectItem>)}
           </SelectContent>
         </Select>
