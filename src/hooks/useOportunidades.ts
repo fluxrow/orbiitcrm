@@ -99,11 +99,24 @@ export function useCreateOportunidade() {
 
 export function useUpdateOportunidade() {
   const qc = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: { id: string; [key: string]: any }) => {
+      const { data: before } = await supabase.from("oportunidades").select("*").eq("id", id).single();
       const { data, error } = await supabase.from("oportunidades").update(updates).eq("id", id).select().single();
       if (error) throw error;
+
+      if (before) {
+        await supabase.from("pe_audit_log" as any).insert({
+          organization_id: before.organization_id,
+          actor_user_id: user?.id,
+          action: "OPORTUNIDADE_UPDATED",
+          entity_type: "oportunidade",
+          entity_id: id,
+          metadata: { before, after: updates },
+        });
+      }
       return data;
     },
     onSuccess: () => {

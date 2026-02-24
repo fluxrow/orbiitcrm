@@ -79,11 +79,24 @@ export function useCreateTarefa() {
 
 export function useUpdateTarefa() {
   const qc = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: { id: string; titulo?: string; descricao?: string; prioridade?: string; status?: string; due_date?: string; assigned_to_user_id?: string }) => {
+      const { data: before } = await supabase.from("tarefas").select("*").eq("id", id).single();
       const { data, error } = await supabase.from("tarefas").update(updates).eq("id", id).select().single();
       if (error) throw error;
+
+      if (before) {
+        await supabase.from("pe_audit_log" as any).insert({
+          organization_id: before.organization_id,
+          actor_user_id: user?.id,
+          action: "TAREFA_UPDATED",
+          entity_type: "tarefa",
+          entity_id: id,
+          metadata: { before, after: updates },
+        });
+      }
       return data;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tarefas"] }); toast.success("Tarefa atualizada"); },

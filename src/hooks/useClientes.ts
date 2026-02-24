@@ -110,6 +110,7 @@ export function useCreateCliente() {
 
 export function useUpdateCliente() {
   const qc = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: { id: string; [key: string]: any }) => {
@@ -119,8 +120,20 @@ export function useUpdateCliente() {
       if (updates.site !== undefined) {
         updates.dominio_principal = updates.site ? updates.site.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0] : null;
       }
+      const { data: before } = await supabase.from("clientes" as any).select("*").eq("id", id).single();
       const { data, error } = await supabase.from("clientes" as any).update(updates).eq("id", id).select().single();
       if (error) throw error;
+
+      if (before) {
+        await supabase.from("pe_audit_log" as any).insert({
+          organization_id: (before as any).organization_id,
+          actor_user_id: user?.id,
+          action: "CLIENTE_UPDATED",
+          entity_type: "cliente",
+          entity_id: id,
+          metadata: { before, after: updates },
+        });
+      }
       return data;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["clientes"] }); qc.invalidateQueries({ queryKey: ["cliente"] }); toast.success("Cliente atualizado"); },
