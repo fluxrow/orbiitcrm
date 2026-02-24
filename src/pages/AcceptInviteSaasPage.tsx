@@ -127,6 +127,8 @@ export default function AcceptInviteSaasPage() {
     setCnpj(formatCnpj(value));
   }
 
+  const [redirectUrl, setRedirectUrl] = useState("/demo/dashboard");
+
   async function handleFinalize() {
     setStep(4);
     setLoading(true);
@@ -148,6 +150,11 @@ export default function AcceptInviteSaasPage() {
       });
       const parsed = parseResponse(response);
       if (!parsed.ok) throw new Error((parsed as ApiFailure).error.message);
+
+      // Store redirect URL from response
+      if (parsed.data?.redirect_url) {
+        setRedirectUrl(parsed.data.redirect_url);
+      }
 
       setStep(5);
     } catch (e: any) {
@@ -341,10 +348,10 @@ export default function AcceptInviteSaasPage() {
               <CheckCircle2 className="mx-auto h-12 w-12 text-primary" />
               <h3 className="text-lg font-semibold">Conta ativada com sucesso!</h3>
               <p className="text-muted-foreground">
-                Sua empresa está pronta. Faça login para começar.
+                Sua empresa está pronta. Faça login para começar a usar o Orbit.
               </p>
               <Button className="w-full" onClick={() => navigate("/auth")}>
-                Ir para Login
+                Fazer Login e Acessar
               </Button>
             </div>
           )}

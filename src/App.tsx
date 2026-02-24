@@ -13,6 +13,9 @@ import AcceptInvitePage from "./pages/AcceptInvitePage";
 import AcceptInviteSaasPage from "./pages/AcceptInviteSaasPage";
 import DocumentacaoPage from "./pages/DocumentacaoPage";
 
+// Tenant Layout
+import TenantLayout from "./pages/tenant/TenantLayout";
+
 // Orbit CRM Pages
 import OrbitDashboard from "./pages/orbit/OrbitDashboard";
 import ProspectsPage from "./pages/orbit/ProspectsPage";
@@ -91,33 +94,56 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!isSuperAdmin) {
-    return <Navigate to="/orbit" replace />;
+    return <Navigate to="/demo" replace />;
   }
 
   return <>{children}</>;
 }
 
+// Nested orbit routes (each page wraps itself with OrbitLayout)
+function OrbitRoutes() {
+  return (
+    <Routes>
+      <Route index element={<Navigate to="dashboard" replace />} />
+      <Route path="dashboard" element={<OrbitDashboard />} />
+      <Route path="prospects" element={<ProspectsPage />} />
+      <Route path="conversas" element={<ConversasPage />} />
+      <Route path="funil" element={<FunilPage />} />
+      <Route path="campanhas" element={<CampanhasPage />} />
+      <Route path="templates" element={<TemplatesPage />} />
+      <Route path="lead-finder" element={<LeadFinderPage />} />
+      <Route path="config" element={<ConfigPage />} />
+      <Route path="analytics" element={<AnalyticsPage />} />
+      <Route path="usuarios" element={<UsuariosEmpresaPage />} />
+    </Routes>
+  );
+}
+
+// Compatibility: redirect /orbit/* to /demo/*
+function OrbitRedirect() {
+  const path = window.location.pathname.replace(/^\/orbit\/?/, "");
+  return <Navigate to={`/demo/${path || "dashboard"}`} replace />;
+}
+
 const AppRoutes = () => (
   <Routes>
+    {/* Public routes */}
     <Route path="/auth" element={<AuthPage />} />
     <Route path="/setup" element={<SetupPage />} />
     <Route path="/invite/:token" element={<AcceptInvitePage />} />
     <Route path="/accept-invite" element={<AcceptInviteSaasPage />} />
     <Route path="/documentacao" element={<DocumentacaoPage />} />
-    <Route path="/" element={<Navigate to="/orbit" replace />} />
+    <Route path="/" element={<Navigate to="/auth" replace />} />
     
-    {/* Protected Orbit CRM Routes */}
-    <Route path="/orbit" element={<ProtectedRoute><OrbitDashboard /></ProtectedRoute>} />
-    <Route path="/orbit/prospects" element={<ProtectedRoute><ProspectsPage /></ProtectedRoute>} />
-    <Route path="/orbit/conversas" element={<ProtectedRoute><ConversasPage /></ProtectedRoute>} />
-    <Route path="/orbit/funil" element={<ProtectedRoute><FunilPage /></ProtectedRoute>} />
-    <Route path="/orbit/campanhas" element={<ProtectedRoute><CampanhasPage /></ProtectedRoute>} />
-    <Route path="/orbit/templates" element={<ProtectedRoute><TemplatesPage /></ProtectedRoute>} />
-    <Route path="/orbit/lead-finder" element={<ProtectedRoute><LeadFinderPage /></ProtectedRoute>} />
-    <Route path="/orbit/config" element={<ProtectedRoute><ConfigPage /></ProtectedRoute>} />
-    <Route path="/orbit/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
-    <Route path="/orbit/usuarios" element={<ProtectedRoute><UsuariosEmpresaPage /></ProtectedRoute>} />
-    
+    {/* Compatibility redirect: /orbit/* → /demo/* */}
+    <Route path="/orbit/*" element={<OrbitRedirect />} />
+    <Route path="/orbit" element={<Navigate to="/demo/dashboard" replace />} />
+
+    {/* Demo tenant routes */}
+    <Route path="/demo" element={<TenantLayout isDemo />}>
+      <Route path="*" element={<OrbitRoutes />} />
+    </Route>
+
     {/* Legacy Super Admin Routes */}
     <Route path="/super-admin" element={<SuperAdminRoute><SuperAdminDashboard /></SuperAdminRoute>} />
     <Route path="/super-admin/empresas" element={<SuperAdminRoute><EmpresasPage /></SuperAdminRoute>} />
@@ -148,6 +174,11 @@ const AppRoutes = () => (
 
     {/* Org Routes */}
     <Route path="/org/users" element={<ProtectedRoute><OrgUsersPage /></ProtectedRoute>} />
+
+    {/* Slug tenant routes (catch-all, must be last) */}
+    <Route path="/:slug" element={<TenantLayout />}>
+      <Route path="*" element={<OrbitRoutes />} />
+    </Route>
     
     <Route path="*" element={<NotFound />} />
   </Routes>
