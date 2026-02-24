@@ -62,7 +62,7 @@ export default function ClientesPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-foreground">Clientes</h1>
+        <h1 className="text-2xl font-bold text-foreground">Assinantes</h1>
         <Button onClick={openNew} size="sm"><Plus className="w-4 h-4 mr-1" />Novo</Button>
       </div>
 
@@ -119,7 +119,7 @@ export default function ClientesPage() {
               </TableRow>
             ))}
             {(!clientes || clientes.length === 0) && (
-              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Nenhum cliente encontrado</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Nenhum assinante encontrado</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
@@ -127,7 +127,7 @@ export default function ClientesPage() {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Novo Cliente</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Novo Assinante</DialogTitle></DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             {isSuperAdmin && (
               <div className="col-span-2">
