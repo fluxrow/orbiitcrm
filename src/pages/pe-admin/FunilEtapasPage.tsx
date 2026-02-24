@@ -30,8 +30,8 @@ export default function FunilEtapasPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Etapas do Funil</h1>
-          <p className="text-muted-foreground">Configure as etapas do pipeline de oportunidades</p>
+          <h1 className="text-2xl font-bold text-foreground">Funil de Assinaturas</h1>
+          <p className="text-muted-foreground">Configure as etapas do pipeline de assinaturas</p>
         </div>
         <div className="flex gap-2">
           {orgId && (!etapas || etapas.length === 0) && (

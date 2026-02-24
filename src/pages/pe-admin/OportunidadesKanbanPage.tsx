@@ -58,8 +58,8 @@ export default function OportunidadesKanbanPage() {
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Kanban</h1>
-            <p className="text-muted-foreground">Arraste oportunidades entre etapas</p>
+            <h1 className="text-2xl font-bold text-foreground">Kanban de Assinaturas</h1>
+            <p className="text-muted-foreground">Arraste assinaturas entre etapas</p>
           </div>
         </div>
         <div className="flex items-center gap-3">

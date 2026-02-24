@@ -35,15 +35,15 @@ export default function OportunidadesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Oportunidades</h1>
-          <p className="text-muted-foreground">Gerencie pacotes e viagens corporativas</p>
+          <h1 className="text-2xl font-bold text-foreground">Assinaturas</h1>
+          <p className="text-muted-foreground">Gerencie assinaturas e planos dos clientes</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => navigate("/pe-admin/oportunidades/kanban")}>
             <LayoutGrid className="w-4 h-4 mr-2" />Kanban
           </Button>
           <Button onClick={() => setDialogOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />Nova Oportunidade
+            <Plus className="w-4 h-4 mr-2" />Nova Assinatura
           </Button>
         </div>
       </div>
@@ -104,7 +104,7 @@ export default function OportunidadesPage() {
                 </TableRow>
               ))}
               {(!oportunidades || oportunidades.length === 0) && (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Nenhuma oportunidade encontrada</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Nenhuma assinatura encontrada</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
