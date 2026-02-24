@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useIsSuperAdmin } from "@/hooks/useUserRole";
 import { TenantProvider, useTenant } from "@/contexts/TenantContext";
 import TenantNotFound from "./TenantNotFound";
 import TenantBlocked from "./TenantBlocked";
@@ -111,6 +112,7 @@ function DemoAuthGate() {
 
 function TenantContent() {
   const { user, loading: authLoading } = useAuth();
+  const { hasRole: isSuperAdmin, isLoading: roleLoading } = useIsSuperAdmin();
   const tenant = useTenant();
 
   // While auth is loading, show spinner
@@ -132,13 +134,18 @@ function TenantContent() {
     return <Navigate to="/auth" replace />;
   }
 
-  // User is logged in, wait for tenant to load
-  if (tenant.isLoading) {
+  // User is logged in, wait for tenant + role to load
+  if (tenant.isLoading || roleLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
       </div>
     );
+  }
+
+  // Super admin should go to /pe-admin, not demo
+  if (isSuperAdmin && tenant.isDemo) {
+    return <Navigate to="/pe-admin" replace />;
   }
 
   if (tenant.notFound) {
