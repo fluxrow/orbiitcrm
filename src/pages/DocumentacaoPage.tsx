@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { FileDown, BookOpen, Database, Layers, Shield, Globe, Cpu, Route, Gauge } from "lucide-react";
+import { FileDown, BookOpen, Database, Layers, Shield, Globe, Cpu, Route, Gauge, ShieldCheck } from "lucide-react";
 
 const sections = [
   { id: "visao-geral", label: "1. Visão Geral", icon: BookOpen },
@@ -18,6 +18,7 @@ const sections = [
   { id: "autenticacao", label: "6. Autenticação e Acesso", icon: Shield },
   { id: "rotas", label: "7. Rotas da Aplicação", icon: Route },
   { id: "indices", label: "8. Índices e Otimizações", icon: Gauge },
+  { id: "integridade-dados", label: "9. Integridade de Dados (PE)", icon: ShieldCheck },
 ];
 
 export default function DocumentacaoPage() {
@@ -61,7 +62,7 @@ export default function DocumentacaoPage() {
         <div className="flex items-center gap-3">
           <BookOpen className="h-6 w-6 text-primary" />
           <h1 className="text-xl font-bold text-foreground">Documentação do Sistema ORBIT</h1>
-          <Badge variant="secondary">v1.0</Badge>
+          <Badge variant="secondary">v1.1</Badge>
         </div>
         <Button onClick={() => window.print()} className="no-print gap-2">
           <FileDown className="h-4 w-4" /> Exportar PDF
@@ -174,18 +175,18 @@ export default function DocumentacaoPage() {
                   ["pe_users", "Usuários vinculados a organizações", "organization_id", "✅"],
                   ["pe_roles", "Roles dinâmicos por organização", "organization_id", "✅"],
                   ["pe_invitations", "Convites pendentes para usuários", "organization_id", "✅"],
-                  ["pe_audit_log", "Log de auditoria do PE", "organization_id", "✅"],
+                  ["pe_audit_log", "Log de auditoria do PE (before/after JSON)", "organization_id", "✅"],
                   ["clientes", "Empresas prospectadas", "organization_id", "✅"],
                   ["contatos", "Contatos vinculados a clientes", "organization_id", "✅"],
-                  ["origens", "Fontes de origem de clientes", "organization_id", "✅"],
+                  ["origens", "Fontes de origem de clientes (soft-delete: is_active)", "organization_id", "✅"],
                   ["cliente_origem", "Relação N:N cliente↔origem", "organization_id", "✅"],
-                  ["segmentos", "Segmentos de mercado", "organization_id", "✅"],
-                  ["funil_etapas", "Etapas do funil de vendas", "organization_id", "✅"],
-                  ["oportunidades", "Negócios/oportunidades", "organization_id", "✅"],
-                  ["oportunidade_itens", "Itens/produtos de uma oportunidade", "organization_id", "✅"],
+                  ["segmentos", "Segmentos de mercado (soft-delete: is_active)", "organization_id", "✅"],
+                  ["funil_etapas", "Etapas do funil de vendas (soft-delete: is_active)", "organization_id", "✅"],
+                  ["oportunidades", "Negócios/oportunidades — inclui etapa_nome_snapshot", "organization_id", "✅"],
+                  ["oportunidade_itens", "Itens/produtos de oportunidade — inclui produto_nome_snapshot", "organization_id", "✅"],
                   ["interacoes", "Registro de interações com clientes", "organization_id", "✅"],
                   ["tarefas", "Tarefas e follow-ups", "organization_id", "✅"],
-                  ["produtos", "Catálogo de produtos/serviços", "organization_id", "✅"],
+                  ["produtos", "Catálogo de produtos/serviços (soft-delete: is_active)", "organization_id", "✅"],
                 ].map(([t, d, k, r]) => <TableRow key={t}><TableCell className="font-mono text-xs">{t}</TableCell><TableCell className="text-muted-foreground">{d}</TableCell><TableCell><Badge variant="outline">{k}</Badge></TableCell><TableCell>{r}</TableCell></TableRow>)}
               </TableBody></Table>
             </CardContent></Card>
@@ -254,10 +255,13 @@ export default function DocumentacaoPage() {
             <Card><CardContent className="pt-6">
               <Table><TableHeader><TableRow><TableHead>Função</TableHead><TableHead>Descrição</TableHead><TableHead>Categoria</TableHead></TableRow></TableHeader><TableBody>
                 {[
+                  ["accept-empresa-invite", "Aceita convite de empresa SaaS e vincula usuário", "Auth"],
                   ["accept-invitation", "Aceita convite de organização PE e vincula o usuário", "Auth"],
                   ["add-empresa-user", "Adiciona usuário a uma empresa Orbit", "Auth"],
                   ["create-empresa", "Cria nova empresa/tenant no Orbit", "Admin"],
+                  ["create-empresa-invite", "Cria convite para nova empresa SaaS com token seguro", "Admin"],
                   ["create-master-user", "Cria usuário master (super_admin)", "Admin"],
+                  ["fetch-cnpj", "Consulta dados de CNPJ via BrasilAPI", "Admin"],
                   ["invite-org-user", "Envia convite para nova organização PE", "Auth"],
                   ["orbit-ai-agent", "Processa mensagens com agente IA e gera respostas", "IA"],
                   ["orbit-ai-suggest", "Sugere respostas baseadas no contexto da conversa", "IA"],
@@ -270,6 +274,7 @@ export default function DocumentacaoPage() {
                   ["request-campaign-approval", "Solicita aprovação de campanha ao admin", "Campaigns"],
                   ["send-orbit-campaign", "Executa disparo de campanha aprovada", "Campaigns"],
                   ["send-vendedor-notification", "Notifica vendedor sobre nova atribuição", "Notifications"],
+                  ["validate-invite", "Valida token de convite SaaS e retorna dados da empresa", "Auth"],
                 ].map(([f, d, c]) => <TableRow key={f}><TableCell className="font-mono text-xs">{f}</TableCell><TableCell className="text-muted-foreground">{d}</TableCell><TableCell><Badge variant="secondary">{c}</Badge></TableCell></TableRow>)}
               </TableBody></Table>
             </CardContent></Card>
@@ -304,6 +309,7 @@ export default function DocumentacaoPage() {
                   ["pe_is_super_admin()", "BOOLEAN", "Verifica se o usuário é super_admin global"],
                   ["pe_user_can_write(org_id)", "BOOLEAN", "Verifica permissão de escrita na organização"],
                   ["pe_user_is_org_admin(org_id)", "BOOLEAN", "Verifica se é admin da organização"],
+                  ["pe_user_is_sales_or_sdr(org_id)", "BOOLEAN", "Verifica se o usuário tem role vendedor ou SDR na organização"],
                 ].map(([f, r, u]) => <TableRow key={f}><TableCell className="font-mono text-xs">{f}</TableCell><TableCell><Badge variant="outline">{r}</Badge></TableCell><TableCell className="text-muted-foreground">{u}</TableCell></TableRow>)}
               </TableBody></Table>
             </CardContent></Card>
@@ -347,13 +353,38 @@ export default function DocumentacaoPage() {
             <Separator />
             <Card><CardContent className="pt-6 space-y-4">
               <div>
-                <h3 className="font-semibold text-foreground mb-2">Índices Compostos</h3>
+                <h3 className="font-semibold text-foreground mb-2">Índices Multi-Tenant (organization_id)</h3>
                 <Table><TableHeader><TableRow><TableHead>Índice</TableHead><TableHead>Tabela</TableHead><TableHead>Colunas</TableHead></TableRow></TableHeader><TableBody>
-                  <TableRow>
-                    <TableCell className="font-mono text-xs">idx_tarefas_org_status_due</TableCell>
-                    <TableCell className="font-mono text-xs">tarefas</TableCell>
-                    <TableCell className="text-muted-foreground">organization_id, status, due_date</TableCell>
-                  </TableRow>
+                  {[
+                    ["idx_clientes_org", "clientes", "organization_id"],
+                    ["idx_contatos_org", "contatos", "organization_id"],
+                    ["idx_oportunidades_org", "oportunidades", "organization_id"],
+                    ["idx_oportunidade_itens_org", "oportunidade_itens", "organization_id"],
+                    ["idx_tarefas_org", "tarefas", "organization_id"],
+                    ["idx_interacoes_org", "interacoes", "organization_id"],
+                    ["idx_produtos_org", "produtos", "organization_id"],
+                    ["idx_segmentos_org", "segmentos", "organization_id"],
+                    ["idx_origens_org", "origens", "organization_id"],
+                    ["idx_funil_etapas_org", "funil_etapas", "organization_id"],
+                    ["idx_cliente_origem_org", "cliente_origem", "organization_id"],
+                    ["idx_pe_users_org", "pe_users", "organization_id"],
+                    ["idx_pe_audit_log_org", "pe_audit_log", "organization_id"],
+                  ].map(([i, t, c]) => <TableRow key={i}><TableCell className="font-mono text-xs">{i}</TableCell><TableCell className="font-mono text-xs">{t}</TableCell><TableCell className="text-muted-foreground">{c}</TableCell></TableRow>)}
+                </TableBody></Table>
+              </div>
+              <Separator />
+              <div>
+                <h3 className="font-semibold text-foreground mb-2">Índices Compostos e Únicos</h3>
+                <Table><TableHeader><TableRow><TableHead>Índice</TableHead><TableHead>Tabela</TableHead><TableHead>Colunas</TableHead></TableRow></TableHeader><TableBody>
+                  {[
+                    ["idx_tarefas_org_status_due", "tarefas", "organization_id, status, due_date"],
+                    ["idx_oportunidades_org_etapa", "oportunidades", "organization_id, etapa_id"],
+                    ["idx_contatos_org_cliente", "contatos", "organization_id, cliente_id"],
+                    ["idx_interacoes_org_cliente", "interacoes", "organization_id, cliente_id"],
+                    ["idx_cliente_origem_unique", "cliente_origem", "cliente_id, origem_id (UNIQUE)"],
+                    ["idx_clientes_razao_normalizada", "clientes", "organization_id, razao_social_normalizada"],
+                    ["idx_contatos_email_normalizado", "contatos", "organization_id, email_normalizado"],
+                  ].map(([i, t, c]) => <TableRow key={i}><TableCell className="font-mono text-xs">{i}</TableCell><TableCell className="font-mono text-xs">{t}</TableCell><TableCell className="text-muted-foreground">{c}</TableCell></TableRow>)}
                 </TableBody></Table>
               </div>
               <Separator />
@@ -366,15 +397,83 @@ export default function DocumentacaoPage() {
                   <li>Créditos de enriquecimento com controle diário</li>
                   <li>Limites diários de envio WhatsApp por empresa</li>
                   <li>Fila assíncrona para enriquecimento em lote</li>
+                  <li>Soft-delete para entidades de configuração (produtos, segmentos, origens, etapas)</li>
                 </ul>
               </div>
+            </CardContent></Card>
+          </section>
+
+          {/* 9. Integridade de Dados (PE) */}
+          <section id="integridade-dados" className="doc-section space-y-4">
+            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-primary" /> 9. Integridade de Dados (PE)</h2>
+            <Separator />
+
+            <Card><CardHeader><CardTitle className="text-lg">Política de Soft-Delete</CardTitle></CardHeader><CardContent className="space-y-3">
+              <p className="text-muted-foreground leading-relaxed">Entidades de configuração utilizam exclusão lógica (<code className="text-xs bg-secondary px-1.5 py-0.5 rounded">is_active = false</code>) em vez de DELETE físico, preservando integridade referencial e histórico.</p>
+              <Table><TableHeader><TableRow><TableHead>Tabela</TableHead><TableHead>Coluna</TableHead><TableHead>Comportamento</TableHead></TableRow></TableHeader><TableBody>
+                {[
+                  ["produtos", "is_active", "Desativação impede seleção em novos itens; itens existentes mantêm referência"],
+                  ["segmentos", "is_active", "Desativação impede seleção em novos clientes; clientes existentes mantêm vínculo"],
+                  ["origens", "is_active", "Desativação impede novas vinculações; relações cliente_origem existentes mantidas"],
+                  ["funil_etapas", "is_active", "Desativação remove do Kanban; oportunidades existentes mantêm etapa com snapshot"],
+                ].map(([t, c, b]) => <TableRow key={t}><TableCell className="font-mono text-xs">{t}</TableCell><TableCell className="font-mono text-xs">{c}</TableCell><TableCell className="text-muted-foreground">{b}</TableCell></TableRow>)}
+              </TableBody></Table>
+              <p className="text-sm text-muted-foreground">Todas as listagens e selects filtram <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">is_active = true</code> por padrão.</p>
+            </CardContent></Card>
+
+            <Card><CardHeader><CardTitle className="text-lg">Cobertura do Audit Log (pe_audit_log)</CardTitle></CardHeader><CardContent>
+              <p className="text-muted-foreground mb-3">Cada ação grava <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">actor_user_id</code>, <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">entity_type</code>, <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">entity_id</code> e <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">metadata</code> (JSON com before/after quando aplicável).</p>
+              <Table><TableHeader><TableRow><TableHead>Action Code</TableHead><TableHead>Entidade</TableHead><TableHead>Operação</TableHead><TableHead>Before/After</TableHead></TableRow></TableHeader><TableBody>
+                {[
+                  ["CLIENTE_CREATED", "cliente", "Criação", "—"],
+                  ["CLIENTE_UPDATED", "cliente", "Atualização", "✅ before + after"],
+                  ["CONTATO_CREATED", "contato", "Criação", "—"],
+                  ["CONTATO_UPDATED", "contato", "Atualização", "✅ before + after"],
+                  ["CONTATO_DELETED", "contato", "Exclusão", "✅ before"],
+                  ["CLIENTE_ORIGEM_LINKED", "cliente_origem", "Vínculo criado", "—"],
+                  ["CLIENTE_ORIGEM_UNLINKED", "cliente_origem", "Vínculo removido", "✅ before"],
+                  ["PRODUTO_CREATED", "produto", "Criação", "—"],
+                  ["PRODUTO_UPDATED", "produto", "Atualização", "✅ before + after"],
+                  ["PRODUTO_DEACTIVATED", "produto", "Desativação (soft-delete)", "✅ before"],
+                  ["SEGMENTO_CREATED", "segmento", "Criação", "—"],
+                  ["SEGMENTO_UPDATED", "segmento", "Atualização", "✅ before + after"],
+                  ["SEGMENTO_DEACTIVATED", "segmento", "Desativação (soft-delete)", "✅ before"],
+                  ["ORIGEM_CREATED", "origem", "Criação", "—"],
+                  ["ORIGEM_UPDATED", "origem", "Atualização", "✅ before + after"],
+                  ["ORIGEM_DEACTIVATED", "origem", "Desativação (soft-delete)", "✅ before"],
+                  ["FUNIL_ETAPA_CREATED", "funil_etapa", "Criação", "—"],
+                  ["FUNIL_ETAPA_UPDATED", "funil_etapa", "Atualização", "✅ before + after"],
+                  ["FUNIL_ETAPA_DEACTIVATED", "funil_etapa", "Desativação (soft-delete)", "✅ before"],
+                  ["OPORTUNIDADE_CREATED", "oportunidade", "Criação", "—"],
+                  ["OPORTUNIDADE_UPDATED", "oportunidade", "Atualização", "✅ before + after"],
+                  ["OPORTUNIDADE_MOVED", "oportunidade", "Mudança de etapa", "✅ etapa_id + status"],
+                  ["ITEM_CREATED", "oportunidade_item", "Criação", "—"],
+                  ["ITEM_UPDATED", "oportunidade_item", "Atualização", "✅ before + after"],
+                  ["ITEM_DELETED", "oportunidade_item", "Exclusão", "✅ before"],
+                  ["TAREFA_CREATED", "tarefa", "Criação", "—"],
+                  ["TAREFA_UPDATED", "tarefa", "Atualização", "✅ before + after"],
+                  ["TAREFA_DONE", "tarefa", "Conclusão", "—"],
+                  ["INTERACAO_CREATED", "interacao", "Criação", "—"],
+                ].map(([a, e, o, b]) => <TableRow key={a}><TableCell className="font-mono text-xs">{a}</TableCell><TableCell className="text-muted-foreground">{e}</TableCell><TableCell className="text-muted-foreground">{o}</TableCell><TableCell>{b}</TableCell></TableRow>)}
+              </TableBody></Table>
+            </CardContent></Card>
+
+            <Card><CardHeader><CardTitle className="text-lg">Snapshots Históricos</CardTitle></CardHeader><CardContent className="space-y-3">
+              <p className="text-muted-foreground leading-relaxed">Triggers de banco de dados capturam o nome de entidades-mestre no momento da criação/atualização, garantindo que renomeações futuras não alterem registros históricos.</p>
+              <Table><TableHeader><TableRow><TableHead>Coluna Snapshot</TableHead><TableHead>Tabela</TableHead><TableHead>Trigger</TableHead><TableHead>Quando Atualiza</TableHead></TableRow></TableHeader><TableBody>
+                {[
+                  ["produto_nome_snapshot", "oportunidade_itens", "trg_snapshot_produto_nome", "INSERT e UPDATE de produto_id"],
+                  ["etapa_nome_snapshot", "oportunidades", "trg_snapshot_etapa_nome", "INSERT e UPDATE de etapa_id"],
+                ].map(([c, t, tr, q]) => <TableRow key={c}><TableCell className="font-mono text-xs">{c}</TableCell><TableCell className="font-mono text-xs">{t}</TableCell><TableCell className="font-mono text-xs">{tr}</TableCell><TableCell className="text-muted-foreground">{q}</TableCell></TableRow>)}
+              </TableBody></Table>
+              <p className="text-sm text-muted-foreground">A UI exibe o snapshot (nome histórico) em vez do join com a tabela-mestre quando aplicável, garantindo fidelidade ao estado no momento do registro.</p>
             </CardContent></Card>
           </section>
 
           {/* Footer */}
           <div className="text-center text-sm text-muted-foreground pt-8 pb-16 no-print">
             <Separator className="mb-8" />
-            Documentação gerada automaticamente — ORBIT CRM v1.0
+            Documentação gerada automaticamente — ORBIT CRM v1.1
           </div>
         </main>
       </div>
