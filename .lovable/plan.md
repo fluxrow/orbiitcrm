@@ -1,60 +1,77 @@
 
 
-# Fluxo de Autenticacao no /demo
+# Adicionar header do hotsite em todas as paginas publicas (nao autenticadas)
 
-## Situacao Atual
+## Paginas afetadas
 
-Quando o usuario acessa `/demo`, o `TenantLayout` verifica se esta logado. Se nao estiver, redireciona para `/auth`. Depois do login em `/auth`, o redirect resolve o slug da empresa ou manda para `/demo/dashboard`.
-
-## Problema
-
-O usuario quer que ao acessar `/demo`:
-1. Se ja estiver logado, entre direto como usuario do sistema
-2. Se nao estiver logado, mostre um formulario de cadastro/login inline (sem redirecionar para `/auth`)
+Rotas publicas que devem ter o header:
+- `/` (LandingPage) — ja tem
+- `/auth` (AuthPage)
+- `/trial` (TrialPage)
+- `/demo` (DemoAuthGate, antes do login)
+- `/documentacao` (DocumentacaoPage)
+- `/invite/:token` (AcceptInvitePage)
+- `/accept-invite` (AcceptInviteSaasPage)
+- `/setup` (SetupPage)
 
 ## Plano
 
-### Alteracao 1: `src/pages/tenant/TenantLayout.tsx`
+### 1. Criar `src/components/HotsiteHeader.tsx`
 
-Quando `isDemo=true` e o usuario nao esta logado, em vez de redirecionar para `/auth`, renderizar um componente de autenticacao inline (login + cadastro) diretamente na pagina `/demo`.
+Extrair o header fixo da `LandingPage.tsx` (logo, nav desktop com links Produto/Recursos/Planos/FAQ, botoes Acessar Demo/Entrar/Começar Trial, menu mobile hamburger) para um componente reutilizavel.
 
-Criar um componente `DemoAuthGate` que:
-- Mostra formulario com duas abas: "Entrar" e "Criar Conta"
-- Campos de cadastro: nome, email, senha
-- Campos de login: email, senha
-- Usa as funcoes `signIn`/`signUp` do `useAuth`
-- Apos autenticacao, o `TenantLayout` detecta o usuario e renderiza o `Outlet` normalmente
+- Links de ancora (`#como-funciona`, `#recursos`, etc.) passam a usar `navigate("/#como-funciona")` para funcionar de qualquer pagina
+- Manter estilo `fixed top-0`, `glass-card`, altura `h-16`
 
-### Alteracao 2: `src/pages/tenant/TenantLayout.tsx` (TenantContent)
+### 2. Criar `src/layouts/PublicLayout.tsx`
 
-Mudar a logica do bloco `if (!user)`:
-
+Layout wrapper que renderiza:
 ```text
-ANTES:
-  if (!user) return <Navigate to="/auth" replace />;
-
-DEPOIS:
-  if (!user && tenant.isDemo) return <DemoAuthGate />;
-  if (!user) return <Navigate to="/auth" replace />;
+<HotsiteHeader />
+<div className="pt-16">  ← compensa header fixo
+  <Outlet />
+</div>
 ```
 
-Para tenants com slug (nao-demo), mantém o redirect para `/auth`.
+### 3. Atualizar `src/App.tsx`
 
-### Componente DemoAuthGate (inline no mesmo arquivo)
+Agrupar as rotas publicas dentro do `PublicLayout`:
 
-- Logo Orbit no topo
-- Titulo "Acesse o Orbit CRM"
-- Formulario com toggle login/cadastro
-- Campos: nome (so cadastro), email, senha
-- Botao submit
-- Estilizado com `glass-card`, consistente com o design existente do AuthPage
-- Usa `useAuth()` para `signIn` e `signUp`
+```text
+<Route element={<PublicLayout />}>
+  <Route path="/" element={<LandingPage />} />
+  <Route path="/auth" element={<AuthPage />} />
+  <Route path="/trial" element={<TrialPage />} />
+  <Route path="/documentacao" element={<DocumentacaoPage />} />
+  <Route path="/setup" element={<SetupPage />} />
+  <Route path="/invite/:token" element={<AcceptInvitePage />} />
+  <Route path="/accept-invite" element={<AcceptInviteSaasPage />} />
+</Route>
+```
 
-### Resumo de Arquivos
+### 4. Atualizar `src/pages/LandingPage.tsx`
 
-| Tipo | Arquivo |
+- Remover o header inline (ja vem do `PublicLayout`)
+- Remover o `pt-32` do hero e ajustar para `pt-16` (o `pt-16` do layout ja compensa o header, hero precisa apenas de spacing interno)
+
+### 5. Atualizar `src/pages/tenant/TenantLayout.tsx`
+
+Quando `isDemo && !user` (DemoAuthGate), renderizar `<HotsiteHeader />` acima do formulario de auth, com `pt-16` no conteudo.
+
+### 6. Ajustar paginas individuais
+
+- `AuthPage.tsx`: remover `min-h-screen` (o layout ja cuida) ou manter — nao conflita
+- `TrialPage.tsx`: idem
+
+### Resumo de arquivos
+
+| Acao | Arquivo |
 |---|---|
-| Edit | `src/pages/tenant/TenantLayout.tsx` |
+| Criar | `src/components/HotsiteHeader.tsx` |
+| Criar | `src/layouts/PublicLayout.tsx` |
+| Editar | `src/App.tsx` |
+| Editar | `src/pages/LandingPage.tsx` |
+| Editar | `src/pages/tenant/TenantLayout.tsx` |
 
-Nenhuma alteracao de banco de dados necessaria -- o trigger `handle_new_user` e `handle_new_user_pe` ja criam automaticamente os registros em `profiles` e `pe_users` ao cadastrar.
+Nenhuma alteracao de banco de dados.
 
