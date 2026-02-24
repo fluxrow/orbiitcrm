@@ -1,108 +1,60 @@
 
 
-# Landing Page + Pagina /trial -- Plano de Implementacao
+# Fluxo de Autenticacao no /demo
 
-## Resumo
+## Situacao Atual
 
-Criar a landing page publica em `/` (substituindo o redirect para `/auth`) e uma pagina `/trial` com formulario de solicitacao. Ambas publicas, sem autenticacao, usando o design system existente (dark theme, cores primary/accent, glass-card).
+Quando o usuario acessa `/demo`, o `TenantLayout` verifica se esta logado. Se nao estiver, redireciona para `/auth`. Depois do login em `/auth`, o redirect resolve o slug da empresa ou manda para `/demo/dashboard`.
 
-## Parte 1: Arquivos Novos
+## Problema
 
-### 1.1 `src/pages/LandingPage.tsx`
+O usuario quer que ao acessar `/demo`:
+1. Se ja estiver logado, entre direto como usuario do sistema
+2. Se nao estiver logado, mostre um formulario de cadastro/login inline (sem redirecionar para `/auth`)
 
-Pagina unica com todas as secoes:
+## Plano
 
-1. **Header fixo** -- Logo "Orbit", menu (scroll-to-section), botoes "Acessar Demo", "Comecar Trial", "Entrar"
-2. **Hero** -- Titulo gradient, subtexto, 3 bullets com icones, CTAs primario/secundario
-3. **Como funciona** -- 4 cards/timeline (Capte leads, IA qualifica, Funil, Campanhas)
-4. **Recursos** -- Grid 8 cards com icones Lucide (CRM, Funil Kanban, Tarefas, Interacoes, Email, WhatsApp, Distribuicao, Relatorios). IG/FB e Busca de Leads marcados com badge "Plus"
-5. **Planos** -- 4 cards comparativos (Demo, Basic, Professional, Plus) com precos placeholder (R$ XX/mes), listas de features, CTAs diferenciados
-6. **Acesso rapido** -- Input para slug + botao "Acessar" que navega para `/{slug}/dashboard`
-7. **FAQ** -- Accordion com 7 perguntas usando componente existente
-8. **Footer** -- Marca, links placeholder, copyright
+### Alteracao 1: `src/pages/tenant/TenantLayout.tsx`
 
-Componentes utilizados: Button, Card, Badge, Accordion, Input (todos ja existem).
+Quando `isDemo=true` e o usuario nao esta logado, em vez de redirecionar para `/auth`, renderizar um componente de autenticacao inline (login + cadastro) diretamente na pagina `/demo`.
 
-### 1.2 `src/pages/TrialPage.tsx`
+Criar um componente `DemoAuthGate` que:
+- Mostra formulario com duas abas: "Entrar" e "Criar Conta"
+- Campos de cadastro: nome, email, senha
+- Campos de login: email, senha
+- Usa as funcoes `signIn`/`signUp` do `useAuth`
+- Apos autenticacao, o `TenantLayout` detecta o usuario e renderiza o `Outlet` normalmente
 
-Pagina publica `/trial` com formulario:
-- Campos: nome, empresa, email, telefone, plano desejado (select: basic/professional/plus)
-- Botao "Solicitar Trial"
-- Ao enviar: insere na tabela `trial_requests` e mostra mensagem de sucesso
-- Validacao com zod (campos obrigatorios, email valido)
+### Alteracao 2: `src/pages/tenant/TenantLayout.tsx` (TenantContent)
 
-## Parte 2: Database Migration
-
-### Tabela `trial_requests`
-
-```sql
-CREATE TABLE trial_requests (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  nome text NOT NULL,
-  empresa text NOT NULL,
-  email text NOT NULL,
-  telefone text,
-  plan_code text NOT NULL DEFAULT 'basic',
-  status text NOT NULL DEFAULT 'pending',
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
-ALTER TABLE trial_requests ENABLE ROW LEVEL SECURITY;
-
--- Permitir insercao anonima (formulario publico)
-CREATE POLICY "Anyone can insert trial requests"
-  ON trial_requests FOR INSERT
-  WITH CHECK (true);
-
--- Apenas super_admin pode ler
-CREATE POLICY "Super admins can read trial requests"
-  ON trial_requests FOR SELECT
-  USING (public.has_role(auth.uid(), 'super_admin'));
-```
-
-## Parte 3: Alteracao em `src/App.tsx`
-
-Substituir a rota `"/"`:
+Mudar a logica do bloco `if (!user)`:
 
 ```text
-ANTES:  <Route path="/" element={<Navigate to="/auth" replace />} />
-DEPOIS: <Route path="/" element={<LandingPage />} />
+ANTES:
+  if (!user) return <Navigate to="/auth" replace />;
+
+DEPOIS:
+  if (!user && tenant.isDemo) return <DemoAuthGate />;
+  if (!user) return <Navigate to="/auth" replace />;
 ```
 
-Adicionar rota `/trial`:
+Para tenants com slug (nao-demo), mantém o redirect para `/auth`.
 
-```text
-<Route path="/trial" element={<TrialPage />} />
-```
+### Componente DemoAuthGate (inline no mesmo arquivo)
 
-Ambas antes das rotas reservadas, publicas (sem ProtectedRoute).
+- Logo Orbit no topo
+- Titulo "Acesse o Orbit CRM"
+- Formulario com toggle login/cadastro
+- Campos: nome (so cadastro), email, senha
+- Botao submit
+- Estilizado com `glass-card`, consistente com o design existente do AuthPage
+- Usa `useAuth()` para `signIn` e `signUp`
 
-## Parte 4: Detalhes de Design
-
-- Dark theme existente (bg `222 47% 6%`, primary cyan `187 92% 50%`)
-- `glass-card` e `gradient-text` ja definidos no CSS
-- Secoes com `max-w-7xl mx-auto` para conteudo centralizado
-- Cards de planos com destaque visual no "Professional" (borda primary, badge "Mais popular")
-- Scroll suave para navegacao do header (scroll-to-section com IDs)
-- Responsivo: grid 1 col mobile, 2-4 cols desktop
-
-## Parte 5: Icones Lucide Utilizados
-
-Users, Target, BarChart3, CheckCircle, Mail, MessageSquare, Kanban, Clock, ListChecks, Zap, Search, ArrowRight, Rocket, Shield, ChevronRight
-
-## Resumo de Arquivos
+### Resumo de Arquivos
 
 | Tipo | Arquivo |
 |---|---|
-| Novo | `src/pages/LandingPage.tsx` |
-| Novo | `src/pages/TrialPage.tsx` |
-| Migration | `trial_requests` table + RLS |
-| Edit | `src/App.tsx` (rota `/` e `/trial`) |
+| Edit | `src/pages/tenant/TenantLayout.tsx` |
 
-## Ordem de Execucao
-
-1. Migration SQL (tabela trial_requests)
-2. LandingPage.tsx
-3. TrialPage.tsx
-4. App.tsx (rotas)
+Nenhuma alteracao de banco de dados necessaria -- o trigger `handle_new_user` e `handle_new_user_pe` ja criam automaticamente os registros em `profiles` e `pe_users` ao cadastrar.
 
