@@ -71,17 +71,17 @@ export default function ClientesPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Buscar por nome, CNPJ ou domínio..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        <Select value={filters.status_geral || ""} onValueChange={v => setFilters(f => ({ ...f, status_geral: v || undefined }))}>
+        <Select value={filters.status_geral || "all"} onValueChange={v => setFilters(f => ({ ...f, status_geral: v === "all" ? undefined : v }))}>
           <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Todos</SelectItem>
+            <SelectItem value="all">Todos</SelectItem>
             {STATUS_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={filters.segmento_id || ""} onValueChange={v => setFilters(f => ({ ...f, segmento_id: v || undefined }))}>
+        <Select value={filters.segmento_id || "all"} onValueChange={v => setFilters(f => ({ ...f, segmento_id: v === "all" ? undefined : v }))}>
           <SelectTrigger className="w-[160px]"><SelectValue placeholder="Segmento" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Todos</SelectItem>
+            <SelectItem value="all">Todos</SelectItem>
             {(segmentos || []).map((s: any) => <SelectItem key={s.id} value={s.id}>{s.macro}{s.micro ? ` > ${s.micro}` : ""}</SelectItem>)}
           </SelectContent>
         </Select>
@@ -145,10 +145,10 @@ export default function ClientesPage() {
             <Input placeholder="Cidade" value={form.cidade} onChange={e => setForm(f => ({ ...f, cidade: e.target.value }))} />
             <Input placeholder="UF" value={form.uf} onChange={e => setForm(f => ({ ...f, uf: e.target.value }))} />
             <div className="col-span-2">
-              <Select value={form.segmento_id} onValueChange={v => setForm(f => ({ ...f, segmento_id: v }))}>
+              <Select value={form.segmento_id || "none"} onValueChange={v => setForm(f => ({ ...f, segmento_id: v === "none" ? "" : v }))}>
                 <SelectTrigger><SelectValue placeholder="Segmento" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Nenhum</SelectItem>
+                  <SelectItem value="none">Nenhum</SelectItem>
                   {(segmentos || []).map((s: any) => <SelectItem key={s.id} value={s.id}>{s.macro}{s.micro ? ` > ${s.micro}` : ""}</SelectItem>)}
                 </SelectContent>
               </Select>
