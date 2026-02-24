@@ -1,46 +1,38 @@
 
 
-# Fix: Pagina /demo em branco
+# Adicionar botao "Sair" na sidebar do Orbit
 
 ## Problema
-
-Na configuracao de rotas em `App.tsx`, a rota `/demo` tem apenas um filho com `path="*"`:
-
-```text
-<Route path="/demo" element={<TenantLayout isDemo />}>
-  <Route path="*" element={<OrbitRoutes />} />
-</Route>
-```
-
-Em React Router v6, `path="*"` nao corresponde ao caminho vazio (index). Quando o usuario acessa `/demo` exatamente, nenhum filho corresponde, e o `<Outlet />` do `TenantContent` renderiza nada -- tela em branco.
-
-Acessando `/demo/dashboard` diretamente funciona normalmente.
+A area de usuario no rodape da sidebar mostra "Usuario" e "Admin" estaticamente, sem opcao de deslogar. O usuario quer um botao de sair.
 
 ## Solucao
 
-Adicionar uma rota `index` que redireciona para `dashboard`:
+Editar `src/components/orbit/OrbitSidebar.tsx`:
+
+1. Importar `useAuth` para obter `user` e `signOut`
+2. Importar `useNavigate` para redirecionar apos logout
+3. Importar `LogOut` do lucide-react
+4. Mostrar nome/email real do usuario (iniciais no avatar, nome e email nos textos)
+5. Adicionar botao "Sair" com icone `LogOut` que chama `signOut()` e redireciona para `/`
+
+### Detalhes da area de usuario (rodape da sidebar)
 
 ```text
-<Route path="/demo" element={<TenantLayout isDemo />}>
-  <Route index element={<Navigate to="dashboard" replace />} />
-  <Route path="*" element={<OrbitRoutes />} />
-</Route>
+┌─────────────────────────────┐
+│  [Avatar]  Nome do Usuario  │
+│           email@example.com │
+│  [LogOut] Sair              │
+└─────────────────────────────┘
 ```
 
-Fazer o mesmo para a rota de slug `/:slug`:
+- Avatar: exibe inicial do nome ou email
+- Nome: `user.user_metadata?.nome` ou email
+- Subtexto: email do usuario
+- Botao "Sair": `variant="ghost"`, icone LogOut, chama `signOut()` e `navigate("/")`
 
-```text
-<Route path="/:slug" element={<TenantLayout />}>
-  <Route index element={<Navigate to="dashboard" replace />} />
-  <Route path="*" element={<OrbitRoutes />} />
-</Route>
-```
-
-## Arquivo
+### Arquivo
 
 | Acao | Arquivo |
 |---|---|
-| Editar | `src/App.tsx` — adicionar `<Route index>` nos dois blocos de tenant |
-
-Alteracao de 2 linhas. Sem alteracao de banco de dados.
+| Editar | `src/components/orbit/OrbitSidebar.tsx` |
 
