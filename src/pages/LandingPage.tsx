@@ -10,6 +10,7 @@ import {
   Kanban, Clock, ListChecks, Zap, Search, ArrowRight, Rocket,
   Shield, ChevronRight, Menu, X, Star, Instagram, Facebook
 } from "lucide-react";
+import orbitLogo from "@/assets/orbit-logo.png";
 
 const NAV_ITEMS = [
   { label: "Produto", href: "#como-funciona" },
@@ -118,7 +119,7 @@ export default function LandingPage() {
       {/* ── Header ── */}
       <header className="fixed top-0 inset-x-0 z-50 glass-card border-t-0 rounded-none border-x-0">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-4 h-16">
-          <span className="text-xl font-bold gradient-text tracking-tight">Orbit</span>
+          <img src={orbitLogo} alt="Orbit" className="h-8" />
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-6">
@@ -356,7 +357,7 @@ export default function LandingPage() {
       {/* ── Footer ── */}
       <footer className="border-t border-border py-10 px-4">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
-          <span className="font-bold gradient-text text-base">Orbit</span>
+          <img src={orbitLogo} alt="Orbit" className="h-6" />
           <div className="flex gap-6">
             <span className="hover:text-foreground cursor-pointer">Termos</span>
             <span className="hover:text-foreground cursor-pointer">Privacidade</span>
