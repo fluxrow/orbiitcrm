@@ -1,34 +1,43 @@
 
 
-# Fix: Super admin redirecionado para /demo apos login
+# Implementar Exportacao PDF da Documentacao PE Admin
 
-## Problema
-
-Na `AuthPage.tsx`, a funcao `resolveRedirect` (linha 33-59) verifica apenas `profile.empresa_id`. Como o usuario `vagner.terres@hotmail.com` tem `empresa_id = null` (correto para super admin), o codigo cai no fallback e redireciona para `/demo/dashboard`.
-
-```text
-resolveRedirect():
-  profile.empresa_id == null → navigate("/demo/dashboard")  ← BUG
-```
+## Contexto
+Ja existe uma pagina de documentacao geral em `/documentacao` (`DocumentacaoPage.tsx`) que usa `window.print()` para exportar PDF via navegador, com estilos `@media print` dedicados. O objetivo e criar uma pagina similar, focada exclusivamente no modulo PE Admin, acessivel dentro do layout `/pe-admin`.
 
 ## Solucao
 
-Antes de verificar `empresa_id`, checar se o usuario e super admin (via `user_roles` ou `pe_users.is_super_admin`). Se for, redirecionar para `/pe-admin`.
+Criar uma nova pagina `PeAdminDocPage.tsx` seguindo o mesmo padrao da `DocumentacaoPage.tsx` existente:
 
-Logica corrigida:
+- Conteudo focado no PE Admin: arquitetura multi-tenant, tabelas PE, hooks, roles, RLS, fluxos de convite, auditoria, tenant map
+- Header com botao "Exportar PDF" que chama `window.print()`
+- Sidebar com indice (Table of Contents) navegavel
+- Estilos `@media print` para formatacao limpa em PDF
+- Rota `/pe-admin/documentacao` dentro do `PeAdminLayout`
 
-```text
-resolveRedirect():
-  1. Checar user_roles → se tem 'super_admin' → navigate("/pe-admin")
-  2. Checar profile.empresa_id → se tem slug → navigate("/{slug}/dashboard")
-  3. Fallback → navigate("/demo/dashboard")
-```
+### Secoes do documento
 
-## Arquivo
+1. **Visao Geral do PE** — descricao, arquitetura multi-tenant, stack
+2. **Controle de Acesso** — super admin vs usuario comum, `pe_users`, `pe_roles`, fluxo de convite
+3. **Banco de Dados** — todas as 16 tabelas PE com descricao, tenant key e RLS
+4. **Modulos** — Organizations, Users, Clientes, Contatos, Funil, Oportunidades, Tarefas, Importacao, Tenant Map, Auditoria
+5. **Hooks e Integracao** — lista dos hooks (`usePeAuth`, `useOrganizations`, `useOportunidades`, etc.)
+6. **RLS e Seguranca** — funcoes `pe_is_super_admin`, `pe_get_user_org_id`, padrao de policies
+7. **Rotas** — mapa completo de rotas `/pe-admin/*`
+8. **Ponte Orbit↔PE** — `pe_tenant_map`, RPC `pe_provision_tenant`
 
-| Acao | Arquivo |
-|---|---|
-| Editar | `src/pages/AuthPage.tsx` — adicionar checagem de super admin antes do redirect |
+### Arquivos
 
-Alteracao pontual na funcao `resolveRedirect` (linhas 33-59). Sem alteracao de banco de dados.
+| Acao | Arquivo | Descricao |
+|---|---|---|
+| Criar | `src/pages/pe-admin/PeAdminDocPage.tsx` | Pagina de documentacao com export PDF |
+| Editar | `src/pages/pe-admin/PeAdminLayout.tsx` | Adicionar item "Documentacao" no nav + icone `BookOpen` |
+| Editar | `src/App.tsx` | Adicionar rota `/pe-admin/documentacao` |
+
+### Detalhes tecnicos
+
+- Reutiliza o padrao exato de `DocumentacaoPage.tsx`: `window.print()` + `@media print` CSS
+- Nao requer dependencia externa (html2pdf, jspdf, etc.)
+- Componentes shadcn/ui existentes: `Card`, `Table`, `Badge`, `Separator`, `ScrollArea`, `Button`
+- `IntersectionObserver` para highlight do indice ativo (mesmo padrao da doc existente)
 
