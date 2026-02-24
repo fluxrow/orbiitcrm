@@ -66,6 +66,7 @@ Deno.serve(async (req) => {
 
     const planCode = (saasEmpresa?.saas_plans as any)?.code || "demo";
     const isDemo = planCode === "demo";
+    const isPaid = ["basic", "professional", "plus"].includes(planCode);
 
     let cnpjNormalized: string | null = null;
     if (!isDemo) {
@@ -105,12 +106,19 @@ Deno.serve(async (req) => {
     if (body.dados_receita?.razao_social) empresaUpdate.nome = body.dados_receita.razao_social;
     await supabase.from("orbit_empresas").update(empresaUpdate).eq("id", invite.empresa_id);
 
+    // Trial/activation logic
     const now = new Date();
-    const saasUpdate: Record<string, unknown> = { status: "active", activated_at: now.toISOString() };
-    if (!isDemo) {
-      const trialDays = planCode === "plus" ? 30 : 14;
-      saasUpdate.trial_ends_at = new Date(now.getTime() + trialDays * 86400000).toISOString();
+    const saasUpdate: Record<string, unknown> = { activated_at: now.toISOString() };
+
+    if (isPaid) {
+      // Paid plans: 7-day trial
+      saasUpdate.status = "trial";
+      saasUpdate.trial_ends_at = new Date(now.getTime() + 7 * 86400000).toISOString();
+    } else {
+      // Demo: active immediately, no trial
+      saasUpdate.status = "active";
     }
+
     await supabase.from("saas_empresa").update(saasUpdate).eq("empresa_id", invite.empresa_id);
 
     await supabase.from("saas_invites").update({ used_at: new Date().toISOString(), used_by_user_id: userId }).eq("id", invite.id);
@@ -145,18 +153,39 @@ Deno.serve(async (req) => {
       } catch (e) { console.error("AI config error:", e); }
     }
 
+    // Generate slug for paid plans
+    let slug: string | null = null;
+    if (isPaid) {
+      try {
+        const empresaNome = body.dados_receita?.razao_social || body.dados_receita?.nome_fantasia || body.full_name.trim();
+        const { data: slugData } = await supabase.rpc("generate_unique_slug", { p_nome: empresaNome });
+        if (slugData) {
+          slug = slugData as string;
+          await supabase.from("orbit_empresas").update({
+            slug,
+            public_url: `https://orbit.fluxrow.pro/${slug}`,
+            slug_created_at: new Date().toISOString(),
+          }).eq("id", invite.empresa_id);
+        }
+      } catch (e) { console.error("Slug generation error:", e); }
+    }
+
     await supabase.from("pe_audit_log").insert({
       actor_user_id: userId, action: "EMPRESA_ACTIVATED",
       entity_type: "orbit_empresas", entity_id: invite.empresa_id,
-      metadata: { empresa_id: invite.empresa_id, plan_code: planCode, is_demo: isDemo, invite_id: invite.id },
+      metadata: { empresa_id: invite.empresa_id, plan_code: planCode, is_demo: isDemo, invite_id: invite.id, slug },
     });
+
+    const redirectUrl = slug ? `/${slug}/dashboard` : "/demo/dashboard";
 
     return ok({
       empresa_id: invite.empresa_id,
       user_id: userId,
       organization_id: organizationId,
       plan_code: planCode,
-      status: "active",
+      status: isPaid ? "trial" : "active",
+      slug,
+      redirect_url: redirectUrl,
     });
   } catch (err: unknown) {
     console.error("Unexpected error:", err);

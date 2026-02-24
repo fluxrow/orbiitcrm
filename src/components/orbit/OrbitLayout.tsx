@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { OrbitSidebar } from "./OrbitSidebar";
-import { useIsDemo } from "@/hooks/useIsDemo";
+import { useTenant } from "@/contexts/TenantContext";
 import { AlertCircle } from "lucide-react";
 
 interface OrbitLayoutProps {
@@ -8,7 +8,7 @@ interface OrbitLayoutProps {
 }
 
 export function OrbitLayout({ children }: OrbitLayoutProps) {
-  const { isDemo } = useIsDemo();
+  const { isDemo } = useTenant();
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">

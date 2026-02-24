@@ -1113,6 +1113,9 @@ export type Database = {
           max_usuarios: number | null
           nome: string
           plano: string | null
+          public_url: string | null
+          slug: string | null
+          slug_created_at: string | null
           telefone: string | null
           updated_at: string | null
         }
@@ -1128,6 +1131,9 @@ export type Database = {
           max_usuarios?: number | null
           nome: string
           plano?: string | null
+          public_url?: string | null
+          slug?: string | null
+          slug_created_at?: string | null
           telefone?: string | null
           updated_at?: string | null
         }
@@ -1143,6 +1149,9 @@ export type Database = {
           max_usuarios?: number | null
           nome?: string
           plano?: string | null
+          public_url?: string | null
+          slug?: string | null
+          slug_created_at?: string | null
           telefone?: string | null
           updated_at?: string | null
         }
@@ -2903,6 +2912,8 @@ export type Database = {
     }
     Functions: {
       extract_domain: { Args: { p: string }; Returns: string }
+      generate_unique_slug: { Args: { p_nome: string }; Returns: string }
+      get_empresa_by_slug: { Args: { p_slug: string }; Returns: Json }
       get_user_empresa_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
@@ -2914,6 +2925,7 @@ export type Database = {
       normalize_email: { Args: { p: string }; Returns: string }
       normalize_name: { Args: { p: string }; Returns: string }
       normalize_phone: { Args: { p: string }; Returns: string }
+      normalize_slug: { Args: { p: string }; Returns: string }
       pe_delete_tenant_map: {
         Args: { p_empresa_id: string }
         Returns: undefined

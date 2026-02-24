@@ -13,29 +13,29 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsAdmin } from "@/hooks/useUserRole";
-import { useIsDemo } from "@/hooks/useIsDemo";
-
-const navigation = [
-  { name: "Prospects", href: "/orbit/prospects", icon: Users },
-  { name: "Conversas", href: "/orbit/conversas", icon: MessageSquare },
-  { name: "Funil", href: "/orbit/funil", icon: Kanban },
-  { name: "Campanhas", href: "/orbit/campanhas", icon: Mail },
-  { name: "Templates", href: "/orbit/templates", icon: FileText },
-  { name: "Lead Finder", href: "/orbit/lead-finder", icon: Search },
-  { name: "Analytics", href: "/orbit/analytics", icon: BarChart3 },
-  { name: "Configurações", href: "/orbit/config", icon: Settings },
-];
+import { useTenant } from "@/contexts/TenantContext";
 
 export function OrbitSidebar() {
   const location = useLocation();
   const { isAdmin } = useIsAdmin();
-  const { isDemo } = useIsDemo();
+  const { basePath, isDemo } = useTenant();
+
+  const navigation = [
+    { name: "Prospects", href: `${basePath}/prospects`, icon: Users },
+    { name: "Conversas", href: `${basePath}/conversas`, icon: MessageSquare },
+    { name: "Funil", href: `${basePath}/funil`, icon: Kanban },
+    { name: "Campanhas", href: `${basePath}/campanhas`, icon: Mail },
+    { name: "Templates", href: `${basePath}/templates`, icon: FileText },
+    { name: "Lead Finder", href: `${basePath}/lead-finder`, icon: Search },
+    { name: "Analytics", href: `${basePath}/analytics`, icon: BarChart3 },
+    { name: "Configurações", href: `${basePath}/config`, icon: Settings },
+  ];
 
   return (
     <aside className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col">
       {/* Logo */}
       <div className="p-6 border-b border-sidebar-border">
-        <Link to="/orbit" className="flex items-center gap-3">
+        <Link to={`${basePath}/dashboard`} className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center">
             <Rocket className="w-5 h-5 text-primary-foreground" />
           </div>
@@ -69,10 +69,10 @@ export function OrbitSidebar() {
         })}
         {isAdmin && (
           <Link
-            to="/orbit/usuarios"
+            to={`${basePath}/usuarios`}
             className={cn(
               "nav-link",
-              location.pathname === "/orbit/usuarios" && "nav-link-active"
+              location.pathname === `${basePath}/usuarios` && "nav-link-active"
             )}
           >
             <UserCog className="w-5 h-5" />

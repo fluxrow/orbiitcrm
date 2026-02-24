@@ -17,10 +17,47 @@ export default function AuthPage() {
   const [nome, setNome] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [checkingSetup, setCheckingSetup] = useState(true);
+  const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
     checkIfSetupNeeded();
   }, []);
+
+  // Post-login redirect: resolve slug or demo
+  useEffect(() => {
+    if (!user || redirecting) return;
+    setRedirecting(true);
+    resolveRedirect();
+  }, [user]);
+
+  async function resolveRedirect() {
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("empresa_id")
+        .eq("id", user!.id)
+        .maybeSingle();
+
+      if (!profile?.empresa_id) {
+        navigate("/demo/dashboard", { replace: true });
+        return;
+      }
+
+      const { data: empresa } = await supabase
+        .from("orbit_empresas")
+        .select("slug")
+        .eq("id", profile.empresa_id)
+        .maybeSingle();
+
+      if (empresa?.slug) {
+        navigate(`/${empresa.slug}/dashboard`, { replace: true });
+      } else {
+        navigate("/demo/dashboard", { replace: true });
+      }
+    } catch {
+      navigate("/demo/dashboard", { replace: true });
+    }
+  }
 
   const checkIfSetupNeeded = async () => {
     try {
@@ -37,7 +74,6 @@ export default function AuthPage() {
       }
 
       if (!data || data.length === 0) {
-        // No super admin exists, redirect to setup
         navigate("/setup", { replace: true });
         return;
       }
@@ -49,7 +85,7 @@ export default function AuthPage() {
     }
   };
 
-  if (loading || checkingSetup) {
+  if (loading || checkingSetup || redirecting) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
@@ -58,7 +94,8 @@ export default function AuthPage() {
   }
 
   if (user) {
-    return <Navigate to="/orbit" replace />;
+    // Will be handled by the useEffect above
+    return null;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

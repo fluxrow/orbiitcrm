@@ -12,6 +12,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useTenant } from "@/contexts/TenantContext";
 
 const recentProspects = [
   {
@@ -61,6 +62,8 @@ const recentConversations = [
 ];
 
 export default function OrbitDashboard() {
+  const { basePath } = useTenant();
+
   return (
     <OrbitLayout>
       <PageHeader
@@ -105,7 +108,7 @@ export default function OrbitDashboard() {
         <div className="glass-card p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold">Prospects Recentes</h2>
-            <Link to="/orbit/prospects">
+            <Link to={`${basePath}/prospects`}>
               <Button variant="ghost" size="sm">
                 Ver todos
                 <ArrowRight className="w-4 h-4 ml-1" />
@@ -123,7 +126,7 @@ export default function OrbitDashboard() {
         <div className="glass-card p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold">Conversas Recentes</h2>
-            <Link to="/orbit/conversas">
+            <Link to={`${basePath}/conversas`}>
               <Button variant="ghost" size="sm">
                 Ver todas
                 <ArrowRight className="w-4 h-4 ml-1" />
