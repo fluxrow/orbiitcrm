@@ -14,6 +14,7 @@ import SetupPage from "./pages/SetupPage";
 import AcceptInvitePage from "./pages/AcceptInvitePage";
 import AcceptInviteSaasPage from "./pages/AcceptInviteSaasPage";
 import DocumentacaoPage from "./pages/DocumentacaoPage";
+import PublicLayout from "./layouts/PublicLayout";
 
 // Tenant Layout
 import TenantLayout from "./pages/tenant/TenantLayout";
@@ -129,14 +130,16 @@ function OrbitRedirect() {
 
 const AppRoutes = () => (
   <Routes>
-    {/* Public routes */}
-    <Route path="/auth" element={<AuthPage />} />
-    <Route path="/setup" element={<SetupPage />} />
-    <Route path="/invite/:token" element={<AcceptInvitePage />} />
-    <Route path="/accept-invite" element={<AcceptInviteSaasPage />} />
-    <Route path="/documentacao" element={<DocumentacaoPage />} />
-    <Route path="/trial" element={<TrialPage />} />
-    <Route path="/" element={<LandingPage />} />
+    {/* Public routes with hotsite header */}
+    <Route element={<PublicLayout />}>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/auth" element={<AuthPage />} />
+      <Route path="/trial" element={<TrialPage />} />
+      <Route path="/documentacao" element={<DocumentacaoPage />} />
+      <Route path="/setup" element={<SetupPage />} />
+      <Route path="/invite/:token" element={<AcceptInvitePage />} />
+      <Route path="/accept-invite" element={<AcceptInviteSaasPage />} />
+    </Route>
     
     {/* Compatibility redirect: /orbit/* → /demo/* */}
     <Route path="/orbit/*" element={<OrbitRedirect />} />
