@@ -341,6 +341,7 @@ export type Database = {
           oportunidade_id: string
           organization_id: string
           produto_id: string
+          produto_nome_snapshot: string | null
           quantidade: number
           status: string
           updated_at: string
@@ -355,6 +356,7 @@ export type Database = {
           oportunidade_id: string
           organization_id: string
           produto_id: string
+          produto_nome_snapshot?: string | null
           quantidade?: number
           status?: string
           updated_at?: string
@@ -369,6 +371,7 @@ export type Database = {
           oportunidade_id?: string
           organization_id?: string
           produto_id?: string
+          produto_nome_snapshot?: string | null
           quantidade?: number
           status?: string
           updated_at?: string
@@ -409,6 +412,7 @@ export type Database = {
           data_volta: string | null
           destino: string | null
           etapa_id: string
+          etapa_nome_snapshot: string | null
           id: string
           motivo_perda: string | null
           organization_id: string
@@ -429,6 +433,7 @@ export type Database = {
           data_volta?: string | null
           destino?: string | null
           etapa_id: string
+          etapa_nome_snapshot?: string | null
           id?: string
           motivo_perda?: string | null
           organization_id: string
@@ -449,6 +454,7 @@ export type Database = {
           data_volta?: string | null
           destino?: string | null
           etapa_id?: string
+          etapa_nome_snapshot?: string | null
           id?: string
           motivo_perda?: string | null
           organization_id?: string
