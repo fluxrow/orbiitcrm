@@ -176,7 +176,7 @@ export default function LandingPage() {
       {/* ── Hero ── */}
       <section className="pt-32 pb-20 px-4">
         <div className="max-w-4xl mx-auto text-center space-y-6">
-          <img src={orbitLogo} alt="Orbit" className="h-16 mx-auto" />
+          <img src={orbitLogo} alt="Orbit" className="h-28 mx-auto" />
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-tight">
             <span className="gradient-text">CRM + Automação Omnichannel</span>
             <br />
