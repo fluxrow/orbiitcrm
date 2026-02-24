@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { usePeAuth } from "@/hooks/usePeAuth";
-import { Building2, Users, FileText, LogOut, Menu, X, Shield, Briefcase, Contact, Tag, MapPin, Upload, Package, GitBranch, Target, CheckSquare, Link2 } from "lucide-react";
+import { Building2, Users, FileText, LogOut, Menu, X, Shield, Briefcase, Contact, Tag, MapPin, Upload, Package, GitBranch, Target, CheckSquare, Link2, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Navigate } from "react-router-dom";
 
@@ -20,6 +20,7 @@ const navItems = [
   { to: "/pe-admin/importacao", label: "Importação", icon: Upload },
   { to: "/pe-admin/tenants", label: "Tenant Map", icon: Link2 },
   { to: "/pe-admin/audit", label: "Auditoria", icon: FileText },
+  { to: "/pe-admin/documentacao", label: "Documentação", icon: BookOpen },
 ];
 
 export default function PeAdminLayout() {
