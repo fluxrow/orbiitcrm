@@ -15,6 +15,34 @@ interface CreateEmpresaRequest {
   admin_senha: string;
 }
 
+async function getResendApiKey(supabase: any): Promise<{ apiKey: string | null; fromEmail: string }> {
+  try {
+    const { data } = await supabase
+      .from("orbit_resend_config")
+      .select("api_key, from_email")
+      .is("empresa_id", null)
+      .maybeSingle();
+    if (data?.api_key) return { apiKey: data.api_key, fromEmail: data.from_email || "noreply@orbiitcrm.com" };
+  } catch (_e) { /* ignore */ }
+  const envKey = Deno.env.get("RESEND_API_KEY");
+  return { apiKey: envKey || null, fromEmail: "noreply@orbiitcrm.com" };
+}
+
+function buildWelcomeEmailHtml(empresaNome: string, planName: string, adminNome: string): string {
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;background:#f4f4f5;padding:40px 0;">
+<div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+  <h1 style="color:#18181b;font-size:22px;margin:0 0 16px;">Bem-vindo ao Orbit CRM! 🚀</h1>
+  <p style="color:#3f3f46;font-size:15px;line-height:1.6;">Olá <strong>${adminNome}</strong>,</p>
+  <p style="color:#3f3f46;font-size:15px;line-height:1.6;">Sua empresa <strong>${empresaNome}</strong> foi criada com sucesso no plano <strong>${planName}</strong>.</p>
+  <p style="color:#3f3f46;font-size:15px;line-height:1.6;">Você já pode fazer login e começar a usar o sistema.</p>
+  <hr style="border:none;border-top:1px solid #e4e4e7;margin:24px 0;">
+  <p style="color:#71717a;font-size:13px;">Equipe Orbit CRM</p>
+</div>
+</body></html>`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
 
@@ -54,13 +82,24 @@ Deno.serve(async (req) => {
       else provision = provisionData;
     } catch (e) { console.error("Exception provisioning tenant:", e); }
 
+    // --- FASE 1: Padronização de Trial ---
     const planCode = body.plano_saas || "demo";
+    const isPaid = ["basic", "professional", "plus"].includes(planCode);
+    let planName = planCode;
     try {
-      const { data: planRow } = await supabaseAdmin.from("saas_plans").select("id").eq("code", planCode).single();
+      const { data: planRow } = await supabaseAdmin.from("saas_plans").select("id, name").eq("code", planCode).single();
       if (planRow) {
-        await supabaseAdmin.from("saas_empresa").insert({
-          empresa_id: empresa.id, plan_id: planRow.id, status: "active", created_by_user_id: user.id,
-        });
+        planName = planRow.name;
+        const now = new Date();
+        const saasInsert: Record<string, unknown> = {
+          empresa_id: empresa.id, plan_id: planRow.id, created_by_user_id: user.id,
+          activated_at: now.toISOString(),
+          status: isPaid ? "trial" : "active",
+        };
+        if (isPaid) {
+          saasInsert.trial_ends_at = new Date(now.getTime() + 7 * 86400000).toISOString();
+        }
+        await supabaseAdmin.from("saas_empresa").insert(saasInsert);
       }
     } catch (e) { console.error("Exception creating saas_empresa:", e); }
 
@@ -90,6 +129,52 @@ Deno.serve(async (req) => {
       empresa_id: empresa.id, modo_automatico: true, tom_conversa: "profissional e amigável",
       horario_inicio: "08:00", horario_fim: "18:00",
     });
+
+    // --- FASE 2A: Audit log + Welcome Email ---
+    try {
+      await supabaseAdmin.from("pe_audit_log").insert({
+        actor_user_id: user.id, action: "EMPRESA_ACTIVATED",
+        entity_type: "orbit_empresas", entity_id: empresa.id,
+        metadata: { empresa_id: empresa.id, plan_code: planCode, admin_email: body.admin_email },
+      });
+
+      // Idempotency check
+      const { data: existingEmail } = await supabaseAdmin
+        .from("pe_audit_log")
+        .select("id")
+        .eq("action", "WELCOME_EMAIL_SENT")
+        .eq("entity_id", empresa.id)
+        .maybeSingle();
+
+      if (!existingEmail) {
+        const { apiKey, fromEmail } = await getResendApiKey(supabaseAdmin);
+        if (apiKey) {
+          const emailHtml = buildWelcomeEmailHtml(empresa.nome, planName, body.admin_nome);
+          const resendRes = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              from: fromEmail,
+              to: [body.admin_email],
+              subject: `Bem-vindo ao Orbit CRM — ${empresa.nome}`,
+              html: emailHtml,
+            }),
+          });
+          if (resendRes.ok) {
+            await supabaseAdmin.from("pe_audit_log").insert({
+              actor_user_id: user.id, action: "WELCOME_EMAIL_SENT",
+              entity_type: "orbit_empresas", entity_id: empresa.id,
+              metadata: { email: body.admin_email, plan_code: planCode },
+            });
+            console.log("Welcome email sent to", body.admin_email);
+          } else {
+            console.error("Resend error:", await resendRes.text());
+          }
+        } else {
+          console.warn("No Resend API key configured, skipping welcome email");
+        }
+      }
+    } catch (e) { console.error("Exception sending welcome email:", e); }
 
     return ok({ empresa, user: { id: authUser.user.id, email: authUser.user.email }, provision });
   } catch (error) {
