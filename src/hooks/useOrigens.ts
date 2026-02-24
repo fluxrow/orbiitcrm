@@ -45,11 +45,24 @@ export function useCreateOrigem() {
 
 export function useUpdateOrigem() {
   const qc = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: { id: string; nome?: string; descricao?: string; is_active?: boolean }) => {
+      const { data: before } = await supabase.from("origens" as any).select("*").eq("id", id).single();
       const { data, error } = await supabase.from("origens" as any).update(updates).eq("id", id).select().single();
       if (error) throw error;
+
+      if (before) {
+        await supabase.from("pe_audit_log" as any).insert({
+          organization_id: (before as any).organization_id,
+          actor_user_id: user?.id,
+          action: "ORIGEM_UPDATED",
+          entity_type: "origem",
+          entity_id: id,
+          metadata: { before, after: updates },
+        });
+      }
       return data;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["origens"] }); toast.success("Origem atualizada"); },
@@ -59,13 +72,26 @@ export function useUpdateOrigem() {
 
 export function useDeleteOrigem() {
   const qc = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("origens" as any).delete().eq("id", id);
+      const { data: before } = await supabase.from("origens" as any).select("*").eq("id", id).single();
+      const { error } = await supabase.from("origens" as any).update({ is_active: false }).eq("id", id);
       if (error) throw error;
+
+      if (before) {
+        await supabase.from("pe_audit_log" as any).insert({
+          organization_id: (before as any).organization_id,
+          actor_user_id: user?.id,
+          action: "ORIGEM_DEACTIVATED",
+          entity_type: "origem",
+          entity_id: id,
+          metadata: { before },
+        });
+      }
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["origens"] }); toast.success("Origem removida"); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["origens"] }); toast.success("Origem desativada"); },
     onError: (e: any) => toast.error(e.message),
   });
 }

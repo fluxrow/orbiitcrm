@@ -65,6 +65,7 @@ export function useCreateOportunidadeItem() {
 
 export function useUpdateOportunidadeItem() {
   const qc = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ id, oportunidade_id, ...updates }: {
@@ -77,17 +78,28 @@ export function useUpdateOportunidadeItem() {
       status?: string;
     }) => {
       const patch: any = { ...updates };
+      const { data: before } = await supabase.from("oportunidade_itens").select("*").eq("id", id).single();
       if (updates.quantidade !== undefined && updates.valor_unitario !== undefined) {
         patch.valor_total = updates.quantidade * updates.valor_unitario;
       } else if (updates.quantidade !== undefined || updates.valor_unitario !== undefined) {
-        const { data: current } = await supabase.from("oportunidade_itens").select("quantidade, valor_unitario").eq("id", id).single();
-        const qty = updates.quantidade ?? current?.quantidade ?? 1;
-        const unit = updates.valor_unitario ?? (current?.valor_unitario ? Number(current.valor_unitario) : 0);
+        const qty = updates.quantidade ?? before?.quantidade ?? 1;
+        const unit = updates.valor_unitario ?? (before?.valor_unitario ? Number(before.valor_unitario) : 0);
         patch.valor_total = qty * unit;
       }
 
       const { data, error } = await supabase.from("oportunidade_itens").update(patch).eq("id", id).select().single();
       if (error) throw error;
+
+      if (before) {
+        await supabase.from("pe_audit_log" as any).insert({
+          organization_id: before.organization_id,
+          actor_user_id: user?.id,
+          action: "ITEM_UPDATED",
+          entity_type: "oportunidade_item",
+          entity_id: id,
+          metadata: { before, after: patch, oportunidade_id },
+        });
+      }
       return data;
     },
     onSuccess: (_, vars) => {
@@ -102,11 +114,24 @@ export function useUpdateOportunidadeItem() {
 
 export function useDeleteOportunidadeItem() {
   const qc = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ id, oportunidade_id }: { id: string; oportunidade_id: string }) => {
+      const { data: before } = await supabase.from("oportunidade_itens").select("*").eq("id", id).single();
       const { error } = await supabase.from("oportunidade_itens").delete().eq("id", id);
       if (error) throw error;
+
+      if (before) {
+        await supabase.from("pe_audit_log" as any).insert({
+          organization_id: before.organization_id,
+          actor_user_id: user?.id,
+          action: "ITEM_DELETED",
+          entity_type: "oportunidade_item",
+          entity_id: id,
+          metadata: { before, oportunidade_id },
+        });
+      }
     },
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["oportunidade-itens", vars.oportunidade_id] });

@@ -63,11 +63,24 @@ export function useCreateProduto() {
 
 export function useUpdateProduto() {
   const qc = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: { id: string; nome?: string; codigo?: string; categoria?: string; is_active?: boolean }) => {
+      const { data: before } = await supabase.from("produtos").select("*").eq("id", id).single();
       const { data, error } = await supabase.from("produtos").update(updates).eq("id", id).select().single();
       if (error) throw error;
+
+      if (before) {
+        await supabase.from("pe_audit_log" as any).insert({
+          organization_id: (before as any).organization_id,
+          actor_user_id: user?.id,
+          action: "PRODUTO_UPDATED",
+          entity_type: "produto",
+          entity_id: id,
+          metadata: { before, after: updates },
+        });
+      }
       return data;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["produtos"] }); toast.success("Produto atualizado"); },
@@ -77,13 +90,28 @@ export function useUpdateProduto() {
 
 export function useDeleteProduto() {
   const qc = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("produtos").delete().eq("id", id);
+      // Fetch before state for audit
+      const { data: before } = await supabase.from("produtos").select("*").eq("id", id).single();
+      // Soft-delete instead of physical delete
+      const { error } = await supabase.from("produtos").update({ is_active: false }).eq("id", id);
       if (error) throw error;
+
+      if (before) {
+        await supabase.from("pe_audit_log" as any).insert({
+          organization_id: (before as any).organization_id,
+          actor_user_id: user?.id,
+          action: "PRODUTO_DEACTIVATED",
+          entity_type: "produto",
+          entity_id: id,
+          metadata: { before },
+        });
+      }
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["produtos"] }); toast.success("Produto removido"); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["produtos"] }); toast.success("Produto desativado"); },
     onError: (e: any) => toast.error(e.message),
   });
 }

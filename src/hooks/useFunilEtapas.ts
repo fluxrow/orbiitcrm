@@ -60,11 +60,24 @@ export function useCreateFunilEtapa() {
 
 export function useUpdateFunilEtapa() {
   const qc = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: { id: string; nome?: string; ordem?: number; tipo?: string; is_active?: boolean }) => {
+      const { data: before } = await supabase.from("funil_etapas").select("*").eq("id", id).single();
       const { data, error } = await supabase.from("funil_etapas").update(updates).eq("id", id).select().single();
       if (error) throw error;
+
+      if (before) {
+        await supabase.from("pe_audit_log" as any).insert({
+          organization_id: before.organization_id,
+          actor_user_id: user?.id,
+          action: "FUNIL_ETAPA_UPDATED",
+          entity_type: "funil_etapa",
+          entity_id: id,
+          metadata: { before, after: updates },
+        });
+      }
       return data;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["funil-etapas"] }); toast.success("Etapa atualizada"); },
@@ -74,13 +87,26 @@ export function useUpdateFunilEtapa() {
 
 export function useDeleteFunilEtapa() {
   const qc = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("funil_etapas").delete().eq("id", id);
+      const { data: before } = await supabase.from("funil_etapas").select("*").eq("id", id).single();
+      const { error } = await supabase.from("funil_etapas").update({ is_active: false }).eq("id", id);
       if (error) throw error;
+
+      if (before) {
+        await supabase.from("pe_audit_log" as any).insert({
+          organization_id: before.organization_id,
+          actor_user_id: user?.id,
+          action: "FUNIL_ETAPA_DEACTIVATED",
+          entity_type: "funil_etapa",
+          entity_id: id,
+          metadata: { before },
+        });
+      }
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["funil-etapas"] }); toast.success("Etapa removida"); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["funil-etapas"] }); toast.success("Etapa desativada"); },
     onError: (e: any) => toast.error(e.message),
   });
 }

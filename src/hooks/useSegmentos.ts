@@ -45,11 +45,24 @@ export function useCreateSegmento() {
 
 export function useUpdateSegmento() {
   const qc = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: { id: string; macro?: string; micro?: string; is_active?: boolean }) => {
+      const { data: before } = await supabase.from("segmentos" as any).select("*").eq("id", id).single();
       const { data, error } = await supabase.from("segmentos" as any).update(updates).eq("id", id).select().single();
       if (error) throw error;
+
+      if (before) {
+        await supabase.from("pe_audit_log" as any).insert({
+          organization_id: (before as any).organization_id,
+          actor_user_id: user?.id,
+          action: "SEGMENTO_UPDATED",
+          entity_type: "segmento",
+          entity_id: id,
+          metadata: { before, after: updates },
+        });
+      }
       return data;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["segmentos"] }); toast.success("Segmento atualizado"); },
@@ -59,13 +72,26 @@ export function useUpdateSegmento() {
 
 export function useDeleteSegmento() {
   const qc = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("segmentos" as any).delete().eq("id", id);
+      const { data: before } = await supabase.from("segmentos" as any).select("*").eq("id", id).single();
+      const { error } = await supabase.from("segmentos" as any).update({ is_active: false }).eq("id", id);
       if (error) throw error;
+
+      if (before) {
+        await supabase.from("pe_audit_log" as any).insert({
+          organization_id: (before as any).organization_id,
+          actor_user_id: user?.id,
+          action: "SEGMENTO_DEACTIVATED",
+          entity_type: "segmento",
+          entity_id: id,
+          metadata: { before },
+        });
+      }
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["segmentos"] }); toast.success("Segmento removido"); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["segmentos"] }); toast.success("Segmento desativado"); },
     onError: (e: any) => toast.error(e.message),
   });
 }
