@@ -22,6 +22,7 @@ export function useFunilEtapas() {
       let query = supabase
         .from("funil_etapas")
         .select("*")
+        .eq("is_active", true)
         .order("ordem");
 
       if (!isSuperAdmin && orgId) {

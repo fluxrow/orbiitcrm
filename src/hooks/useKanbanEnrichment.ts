@@ -10,7 +10,7 @@ export function useOportunidadesProdutos(orgId: string | null) {
 
       const { data, error } = await supabase
         .from("oportunidade_itens")
-        .select("oportunidade_id, produtos(nome)")
+        .select("oportunidade_id, produto_nome_snapshot, produtos(nome)")
         .eq("organization_id", orgId);
 
       if (error) throw error;
@@ -18,7 +18,7 @@ export function useOportunidadesProdutos(orgId: string | null) {
       const map = new Map<string, string[]>();
       for (const item of data || []) {
         const opId = item.oportunidade_id;
-        const nome = (item.produtos as any)?.nome;
+        const nome = item.produto_nome_snapshot || (item.produtos as any)?.nome;
         if (!opId || !nome) continue;
         const arr = map.get(opId) || [];
         if (!arr.includes(nome)) arr.push(nome);

@@ -76,14 +76,27 @@ export function useCreateContato() {
 
 export function useUpdateContato() {
   const qc = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: { id: string; [key: string]: any }) => {
       if (updates.email !== undefined) {
         updates.email_normalizado = updates.email ? updates.email.toLowerCase().trim() : null;
       }
+      const { data: before } = await supabase.from("contatos" as any).select("*").eq("id", id).single();
       const { data, error } = await supabase.from("contatos" as any).update(updates).eq("id", id).select().single();
       if (error) throw error;
+
+      if (before) {
+        await supabase.from("pe_audit_log" as any).insert({
+          organization_id: (before as any).organization_id,
+          actor_user_id: user?.id,
+          action: "CONTATO_UPDATED",
+          entity_type: "contato",
+          entity_id: id,
+          metadata: { before, after: updates },
+        });
+      }
       return data;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["contatos"] }); toast.success("Contato atualizado"); },

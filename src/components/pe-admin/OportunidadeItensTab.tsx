@@ -49,7 +49,7 @@ export function OportunidadeItensTab({ oportunidade }: Props) {
             <TableBody>
               {(itens || []).map((item: any) => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.produtos?.nome || "—"}</TableCell>
+                  <TableCell className="font-medium">{item.produto_nome_snapshot || item.produtos?.nome || "—"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{item.descricao || "—"}</TableCell>
                   <TableCell className="text-sm">{item.fornecedor || "—"}</TableCell>
                   <TableCell className="text-right">{item.quantidade}</TableCell>
