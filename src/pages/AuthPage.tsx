@@ -32,6 +32,20 @@ export default function AuthPage() {
 
   async function resolveRedirect() {
     try {
+      // 1. Check if super_admin → redirect to /pe-admin
+      const { data: roles } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user!.id)
+        .eq("role", "super_admin")
+        .limit(1);
+
+      if (roles && roles.length > 0) {
+        navigate("/pe-admin", { replace: true });
+        return;
+      }
+
+      // 2. Check empresa_id → redirect to /{slug}/dashboard
       const { data: profile } = await supabase
         .from("profiles")
         .select("empresa_id")
