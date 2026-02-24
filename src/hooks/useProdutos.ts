@@ -23,6 +23,7 @@ export function useProdutos(filters?: { categoria?: string }) {
       let query = supabase
         .from("produtos")
         .select("*")
+        .eq("is_active", true)
         .order("categoria")
         .order("nome");
 

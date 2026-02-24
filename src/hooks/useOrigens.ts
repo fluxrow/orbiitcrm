@@ -10,7 +10,7 @@ export function useOrigens() {
   return useQuery({
     queryKey: ["origens", orgId],
     queryFn: async () => {
-      let query = supabase.from("origens" as any).select("*").order("nome");
+      let query = supabase.from("origens" as any).select("*").eq("is_active", true).order("nome");
       if (!isSuperAdmin && orgId) {
         query = query.eq("organization_id", orgId);
       }

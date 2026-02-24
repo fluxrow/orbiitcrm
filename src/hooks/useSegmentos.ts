@@ -10,7 +10,7 @@ export function useSegmentos() {
   return useQuery({
     queryKey: ["segmentos", orgId],
     queryFn: async () => {
-      let query = supabase.from("segmentos" as any).select("*").order("macro").order("micro");
+      let query = supabase.from("segmentos" as any).select("*").eq("is_active", true).order("macro").order("micro");
       if (!isSuperAdmin && orgId) {
         query = query.eq("organization_id", orgId);
       }
