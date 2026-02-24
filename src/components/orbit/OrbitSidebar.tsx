@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Users,
   MessageSquare,
@@ -10,16 +10,30 @@ import {
   Rocket,
   BarChart3,
   UserCog,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import orbitLogo from "@/assets/orbit-logo.png";
 import { useIsAdmin } from "@/hooks/useUserRole";
 import { useTenant } from "@/contexts/TenantContext";
+import { useAuth } from "@/hooks/useAuth";
+import { Button } from "@/components/ui/button";
 
 export function OrbitSidebar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { isAdmin } = useIsAdmin();
   const { basePath, isDemo } = useTenant();
+  const { user, signOut } = useAuth();
+
+  const displayName = user?.user_metadata?.nome || user?.email || "Usuário";
+  const displayEmail = user?.email || "";
+  const initials = displayName.charAt(0).toUpperCase();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/");
+  };
 
   const navigation = [
     { name: "Prospects", href: `${basePath}/prospects`, icon: Users },
@@ -83,13 +97,22 @@ export function OrbitSidebar() {
       <div className="p-4 border-t border-sidebar-border">
         <div className="flex items-center gap-3 px-3 py-2">
           <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center">
-            <span className="text-sm font-medium text-primary">U</span>
+            <span className="text-sm font-medium text-primary">{initials}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">Usuário</p>
-            <p className="text-xs text-muted-foreground truncate">Admin</p>
+            <p className="text-sm font-medium truncate">{displayName}</p>
+            <p className="text-xs text-muted-foreground truncate">{displayEmail}</p>
           </div>
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start gap-2 mt-1 text-muted-foreground hover:text-foreground"
+          onClick={handleSignOut}
+        >
+          <LogOut className="w-4 h-4" />
+          Sair
+        </Button>
       </div>
     </aside>
   );
