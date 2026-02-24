@@ -9,6 +9,38 @@ async function hashToken(plaintext: string): Promise<string> {
     .join("");
 }
 
+async function getResendApiKey(supabase: any): Promise<{ apiKey: string | null; fromEmail: string }> {
+  try {
+    const { data } = await supabase
+      .from("orbit_resend_config")
+      .select("api_key, from_email")
+      .is("empresa_id", null)
+      .maybeSingle();
+    if (data?.api_key) return { apiKey: data.api_key, fromEmail: data.from_email || "noreply@orbiitcrm.com" };
+  } catch (_e) { /* ignore */ }
+  const envKey = Deno.env.get("RESEND_API_KEY");
+  return { apiKey: envKey || null, fromEmail: "noreply@orbiitcrm.com" };
+}
+
+function buildActivationEmailHtml(empresaNome: string, planName: string, userName: string, redirectUrl: string): string {
+  const fullUrl = `https://orbiitcrm.lovable.app${redirectUrl}`;
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;background:#f4f4f5;padding:40px 0;">
+<div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;padding:40px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+  <h1 style="color:#18181b;font-size:22px;margin:0 0 16px;">Conta ativada com sucesso! ✅</h1>
+  <p style="color:#3f3f46;font-size:15px;line-height:1.6;">Olá <strong>${userName}</strong>,</p>
+  <p style="color:#3f3f46;font-size:15px;line-height:1.6;">Sua conta na empresa <strong>${empresaNome}</strong> foi ativada no plano <strong>${planName}</strong>.</p>
+  <p style="color:#3f3f46;font-size:15px;line-height:1.6;">Clique no botão abaixo para acessar seu painel:</p>
+  <div style="text-align:center;margin:28px 0;">
+    <a href="${fullUrl}" style="background:#2563eb;color:#fff;text-decoration:none;padding:12px 32px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;">Acessar Dashboard</a>
+  </div>
+  <hr style="border:none;border-top:1px solid #e4e4e7;margin:24px 0;">
+  <p style="color:#71717a;font-size:13px;">Equipe Orbit CRM</p>
+</div>
+</body></html>`;
+}
+
 interface AcceptRequest {
   token: string;
   password: string;
@@ -65,6 +97,7 @@ Deno.serve(async (req) => {
       .single();
 
     const planCode = (saasEmpresa?.saas_plans as any)?.code || "demo";
+    const planName = (saasEmpresa?.saas_plans as any)?.name || planCode;
     const isDemo = planCode === "demo";
     const isPaid = ["basic", "professional", "plus"].includes(planCode);
 
@@ -111,11 +144,9 @@ Deno.serve(async (req) => {
     const saasUpdate: Record<string, unknown> = { activated_at: now.toISOString() };
 
     if (isPaid) {
-      // Paid plans: 7-day trial
       saasUpdate.status = "trial";
       saasUpdate.trial_ends_at = new Date(now.getTime() + 7 * 86400000).toISOString();
     } else {
-      // Demo: active immediately, no trial
       saasUpdate.status = "active";
     }
 
@@ -177,6 +208,46 @@ Deno.serve(async (req) => {
     });
 
     const redirectUrl = slug ? `/${slug}/dashboard` : "/demo/dashboard";
+
+    // --- FASE 2B: Activation Email ---
+    try {
+      const { data: existingEmail } = await supabase
+        .from("pe_audit_log")
+        .select("id")
+        .eq("action", "WELCOME_EMAIL_SENT")
+        .eq("entity_id", invite.empresa_id)
+        .maybeSingle();
+
+      if (!existingEmail) {
+        const empresaNome = body.dados_receita?.razao_social || body.full_name.trim();
+        const { apiKey, fromEmail } = await getResendApiKey(supabase);
+        if (apiKey) {
+          const emailHtml = buildActivationEmailHtml(empresaNome, planName, body.full_name.trim(), redirectUrl);
+          const resendRes = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              from: fromEmail,
+              to: [invite.email],
+              subject: `Conta ativada — ${empresaNome}`,
+              html: emailHtml,
+            }),
+          });
+          if (resendRes.ok) {
+            await supabase.from("pe_audit_log").insert({
+              actor_user_id: userId, action: "WELCOME_EMAIL_SENT",
+              entity_type: "orbit_empresas", entity_id: invite.empresa_id,
+              metadata: { email: invite.email, plan_code: planCode, slug },
+            });
+            console.log("Activation email sent to", invite.email);
+          } else {
+            console.error("Resend error:", await resendRes.text());
+          }
+        } else {
+          console.warn("No Resend API key configured, skipping activation email");
+        }
+      }
+    } catch (e) { console.error("Exception sending activation email:", e); }
 
     return ok({
       empresa_id: invite.empresa_id,
