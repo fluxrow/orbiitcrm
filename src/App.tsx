@@ -142,6 +142,7 @@ const AppRoutes = () => (
       <Route path="/documentacao" element={<DocumentacaoPage />} />
       <Route path="/setup" element={<SetupPage />} />
       <Route path="/invite/:token" element={<AcceptInvitePage />} />
+      <Route path="/accept-invite-pe/:token" element={<AcceptInvitePage />} />
       <Route path="/accept-invite" element={<AcceptInviteSaasPage />} />
     </Route>
     

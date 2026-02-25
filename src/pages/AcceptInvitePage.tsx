@@ -27,6 +27,7 @@ export default function AcceptInvitePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [accepted, setAccepted] = useState(false);
@@ -180,13 +181,20 @@ export default function AcceptInvitePage() {
                 <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Seu nome" />
               </div>
               <div>
-                <Label>Senha *</Label>
+                <Label>Senha * <span className="text-xs text-muted-foreground font-normal">(mínimo 6 caracteres)</span></Label>
                 <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Crie uma senha" minLength={6} />
+              </div>
+              <div>
+                <Label>Confirmar Senha *</Label>
+                <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Repita a senha" />
+                {confirmPassword && password !== confirmPassword && (
+                  <p className="text-sm text-destructive mt-1">As senhas não coincidem</p>
+                )}
               </div>
             </div>
           )}
 
-          <Button className="w-full" onClick={handleAccept} disabled={submitting || (!user && !password)}>
+          <Button className="w-full" onClick={handleAccept} disabled={submitting || (!user && (password.length < 6 || password !== confirmPassword))}>
             {submitting ? "Processando..." : "Aceitar Convite"}
           </Button>
         </div>
