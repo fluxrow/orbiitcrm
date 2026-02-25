@@ -52,7 +52,34 @@ export default function AuthPage() {
         .eq("id", user!.id)
         .maybeSingle();
 
-      if (!profile?.empresa_id) {
+      let empresaId = profile?.empresa_id;
+
+      // 2b. If no empresa_id on profile, try resolving via pe_users → tenant_map
+      if (!empresaId) {
+        const { data: peUser } = await supabase
+          .from("pe_users" as any)
+          .select("organization_id")
+          .eq("id", user!.id)
+          .maybeSingle();
+
+        if ((peUser as any)?.organization_id) {
+          const { data: tenantMap } = await supabase
+            .from("pe_tenant_map" as any)
+            .select("empresa_id")
+            .eq("organization_id", (peUser as any).organization_id)
+            .maybeSingle();
+
+          if ((tenantMap as any)?.empresa_id) {
+            empresaId = (tenantMap as any).empresa_id;
+            // Also fix profile for future logins
+            await supabase.from("profiles")
+              .update({ empresa_id: empresaId } as any)
+              .eq("id", user!.id);
+          }
+        }
+      }
+
+      if (!empresaId) {
         navigate("/demo/dashboard", { replace: true });
         return;
       }
@@ -60,7 +87,7 @@ export default function AuthPage() {
       const { data: empresa } = await supabase
         .from("orbit_empresas")
         .select("slug")
-        .eq("id", profile.empresa_id)
+        .eq("id", empresaId)
         .maybeSingle();
 
       if (empresa?.slug) {

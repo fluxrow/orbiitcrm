@@ -73,6 +73,19 @@ Deno.serve(async (req) => {
 
     await supabaseAdmin.from("pe_invitations").update({ status: "accepted" }).eq("id", invitation.id);
 
+    // Set profiles.empresa_id via pe_tenant_map so login redirect works
+    const { data: tenantMap } = await supabaseAdmin
+      .from("pe_tenant_map")
+      .select("empresa_id")
+      .eq("organization_id", invitation.organization_id)
+      .maybeSingle();
+
+    if (tenantMap?.empresa_id) {
+      await supabaseAdmin.from("profiles")
+        .update({ empresa_id: tenantMap.empresa_id })
+        .eq("id", userId);
+    }
+
     await supabaseAdmin.from("pe_audit_log").insert({
       organization_id: invitation.organization_id, actor_user_id: userId,
       action: "INVITE_ACCEPTED", entity_type: "invitation", entity_id: invitation.id,
