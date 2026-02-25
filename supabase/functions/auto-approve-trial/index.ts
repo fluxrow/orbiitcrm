@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
 
 interface TrialRequest {
+  trial_id?: string;
   nome: string;
   empresa: string;
   email: string;
@@ -91,17 +92,51 @@ Deno.serve(async (req) => {
 
     const email = body.email.trim().toLowerCase();
 
-    // Check duplicate: existing trial_request for same email
-    const { data: existingTrial } = await supabase
-      .from("trial_requests")
-      .select("id")
-      .eq("email", email)
-      .in("status", ["pending", "approved"])
-      .limit(1)
-      .maybeSingle();
+    let trialReqId: string;
 
-    if (existingTrial) {
-      return fail(ErrorCodes.VALIDATION_ERROR, "Já existe uma solicitação para este e-mail. Aguarde o processamento ou entre em contato.", 409);
+    if (body.trial_id) {
+      // Admin approval flow: skip trial_requests duplicate check, update existing record
+      const { error: updErr } = await supabase
+        .from("trial_requests")
+        .update({ status: "approved" })
+        .eq("id", body.trial_id);
+      if (updErr) {
+        console.error("trial_requests update error:", updErr);
+        return fail(ErrorCodes.INTERNAL_ERROR, "Erro ao atualizar solicitação", 500);
+      }
+      trialReqId = body.trial_id;
+    } else {
+      // Public form flow: check duplicates
+      const { data: existingTrial } = await supabase
+        .from("trial_requests")
+        .select("id")
+        .eq("email", email)
+        .in("status", ["pending", "approved"])
+        .limit(1)
+        .maybeSingle();
+
+      if (existingTrial) {
+        return fail(ErrorCodes.VALIDATION_ERROR, "Já existe uma solicitação para este e-mail. Aguarde o processamento ou entre em contato.", 409);
+      }
+
+      const { data: trialReq, error: trialErr } = await supabase
+        .from("trial_requests")
+        .insert({
+          nome: body.nome.trim(),
+          empresa: body.empresa.trim(),
+          email,
+          telefone: body.telefone?.trim() || null,
+          plan_code: body.plan_code,
+          status: "approved",
+        })
+        .select("id")
+        .single();
+
+      if (trialErr) {
+        console.error("trial_requests insert error:", trialErr);
+        return fail(ErrorCodes.INTERNAL_ERROR, "Erro ao registrar solicitação", 500);
+      }
+      trialReqId = trialReq.id;
     }
 
     // Check duplicate: existing invite for same email not yet used
@@ -115,25 +150,6 @@ Deno.serve(async (req) => {
 
     if (existingInvite) {
       return fail(ErrorCodes.VALIDATION_ERROR, "Já existe um convite pendente para este e-mail. Verifique sua caixa de entrada.", 409);
-    }
-
-    // 1) Save trial_request
-    const { data: trialReq, error: trialErr } = await supabase
-      .from("trial_requests")
-      .insert({
-        nome: body.nome.trim(),
-        empresa: body.empresa.trim(),
-        email,
-        telefone: body.telefone?.trim() || null,
-        plan_code: body.plan_code,
-        status: "approved",
-      })
-      .select("id")
-      .single();
-
-    if (trialErr) {
-      console.error("trial_requests insert error:", trialErr);
-      return fail(ErrorCodes.INTERNAL_ERROR, "Erro ao registrar solicitação", 500);
     }
 
     // 2) Get plan
@@ -230,7 +246,7 @@ Deno.serve(async (req) => {
         actor_user_id: createdByUserId,
         action: "TRIAL_AUTO_APPROVED",
         entity_type: "trial_requests",
-        entity_id: trialReq.id,
+        entity_id: trialReqId,
         metadata: {
           empresa_id: empresa.id,
           invite_id: invite.id,
