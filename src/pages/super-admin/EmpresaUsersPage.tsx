@@ -30,11 +30,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Plus, MoreHorizontal, Power, Shield } from "lucide-react";
+import { ArrowLeft, Plus, MoreHorizontal, Power, Shield, KeyRound } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import AddUserDialog from "@/components/super-admin/AddUserDialog";
+import SetPasswordDialog from "@/components/pe-admin/SetPasswordDialog";
 
 export default function EmpresaUsersPage() {
   const { id } = useParams<{ id: string }>();
@@ -44,6 +45,7 @@ export default function EmpresaUsersPage() {
   const toggleAtivo = useToggleUserAtivo();
   const changeRole = useChangeUserRole();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [passwordUser, setPasswordUser] = useState<{ id: string; nome: string } | null>(null);
 
   const handleToggleAtivo = async (userId: string, ativo: boolean) => {
     try {
@@ -189,6 +191,12 @@ export default function EmpresaUsersPage() {
                               <Power className="w-4 h-4 mr-2" />
                               {user.ativo ? "Desativar" : "Ativar"}
                             </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setPasswordUser({ id: user.id, nome: user.nome || user.email })}
+                            >
+                              <KeyRound className="w-4 h-4 mr-2" />
+                              Definir Senha
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -205,6 +213,15 @@ export default function EmpresaUsersPage() {
             open={dialogOpen}
             onOpenChange={setDialogOpen}
             empresaId={id}
+          />
+        )}
+
+        {passwordUser && (
+          <SetPasswordDialog
+            open={!!passwordUser}
+            onOpenChange={(open) => !open && setPasswordUser(null)}
+            userId={passwordUser.id}
+            userName={passwordUser.nome}
           />
         )}
       </div>
