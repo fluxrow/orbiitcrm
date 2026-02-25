@@ -1,50 +1,47 @@
 
 
-# Diagnóstico: Convites PE não enviam email
+# Permitir que Admins de Organização Adicionem Usuários Diretamente
 
-## Problema encontrado
+## Problema atual
 
-A Edge Function `invite-org-user` **cria o registro na tabela `pe_invitations`** mas **nunca envia um email** ao convidado. O token é gerado e retornado na resposta JSON, mas ninguém o recebe.
-
-Em contraste, o fluxo SaaS (`auto-approve-trial`) envia o email via Resend com o link de ativação. O fluxo PE simplesmente não tem essa etapa.
+Hoje, administradores de organização (ORG_ADMIN) só podem **convidar** usuários via email. O novo usuário precisa receber o email, clicar no link e criar sua senha. Isso é limitante quando o admin quer cadastrar alguém diretamente com nome, email e senha prontos.
 
 ## Solução
 
-Adicionar envio de email na Edge Function `invite-org-user` após criar o registro do convite, reutilizando a mesma infraestrutura de email (Resend via `orbit_resend_config` ou secret `RESEND_API_KEY`) já usada no fluxo SaaS.
+Criar um fluxo de **adição direta** de usuários, similar ao que já existe para Super Admins (`add-empresa-user`), mas adaptado para o contexto de organizações PE.
 
 ### Alterações
 
 | Arquivo | Alteração |
 |---|---|
-| `supabase/functions/invite-org-user/index.ts` | Adicionar lógica de envio de email com Resend após inserir o convite. Construir URL de aceitação (`/accept-invite-pe/{token}`) e enviar email HTML ao convidado com link, nome da organização e papel |
+| `supabase/functions/add-org-user/index.ts` | **Novo** -- Edge Function que cria um usuário diretamente (auth + pe_users + profiles) com permissão para ORG_ADMIN e Super Admin |
+| `supabase/config.toml` | Adicionar entrada `[functions.add-org-user]` com `verify_jwt = false` |
+| `src/hooks/useOrgUsers.ts` | Adicionar hook `useAddOrgUser` que chama a nova Edge Function |
+| `src/pages/org/OrgUsersPage.tsx` | Adicionar dialog "Adicionar Usuário" com campos nome, email, senha e papel, além do botão existente de convite |
 
 ### Detalhes técnicos
 
-A função passará a:
+**Edge Function `add-org-user`**:
 
-1. Buscar a configuração do Resend (`orbit_resend_config` global ou `RESEND_API_KEY`)
-2. Buscar o nome da organização para incluir no email
-3. Construir o link de convite: `{appUrl}/accept-invite-pe/{token}`
-4. Enviar email via Resend API com template HTML informando organização, papel e link
-5. Registrar no audit log se o email foi enviado ou não
-6. Retornar `email_sent: true/false` na resposta
-
-Se o Resend não estiver configurado, o convite será criado normalmente (como hoje) mas a resposta indicará `email_sent: false` para que o admin saiba que precisa compartilhar o link manualmente.
+1. Validar autenticação via header Authorization
+2. Verificar que o chamador é ORG_ADMIN da mesma organização ou Super Admin
+3. Verificar limite de usuários da empresa (via `pe_tenant_map` → `orbit_empresas.max_usuarios`)
+4. Criar usuário no auth com `admin.createUser` (email_confirm: true)
+5. Aguardar trigger `handle_new_user_pe` criar o registro em `pe_users`
+6. Atualizar `pe_users` com `organization_id`, `role_id`, `full_name`
+7. Atualizar `profiles.empresa_id` via `pe_tenant_map`
+8. Registrar no `pe_audit_log`
 
 ```text
-invite-org-user (atual):
-  Validar permissões → Inserir pe_invitations → Retornar { invitation, token }
-
-invite-org-user (corrigido):
-  Validar permissões → Inserir pe_invitations → Buscar Resend config
-  → Enviar email com link → Retornar { invitation, token, email_sent }
+Fluxo:
+  ORG_ADMIN clica "Adicionar" → Preenche nome/email/senha/papel
+  → POST add-org-user → Cria auth user → Atualiza pe_users + profiles
+  → Retorna sucesso → Lista atualizada
 ```
 
-### Template do email
+**UI - OrgUsersPage**:
 
-O email conterá:
-- Nome da organização convidando
-- Papel atribuído
-- Botão/link para aceitar o convite
-- Informação de validade (7 dias)
+- Substituir o botão único "Convidar" por dois botões: "Adicionar" e "Convidar"
+- Dialog "Adicionar Usuário" com campos: Nome, Email, Senha (min 6 chars), Papel (select dos pe_roles)
+- Manter dialog de convite existente como alternativa
 
