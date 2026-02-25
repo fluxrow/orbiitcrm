@@ -1,44 +1,41 @@
 
 
-# Corrigir Validação de Convite na Página de Aceite
+# Corrigir criação de Templates e adicionar geração por IA
 
 ## Problema
 
-A página `AcceptInvitePage.tsx` faz duas chamadas ao carregar:
-1. Chama a edge function `accept-invitation` com `preview: true` (linhas 42-49)
-2. **Ignora o resultado** e faz uma query direta ao banco via Supabase client (linhas 52-56)
+Na página `TemplatesPage.tsx`, os botões "Novo" e "Gerar IA" no header não possuem `onClick` — são apenas decorativos. Não existe nenhum dialog/modal para criar templates diretamente nessa página.
 
-A query direta falha porque as políticas RLS de `pe_invitations` só permitem leitura por **org admins** e **super admins**. Um usuário não autenticado (que é o caso típico de quem clica no link do convite) não tem permissão, então a query retorna erro e o convite aparece como "inválido".
-
-## Solução
-
-Refatorar `AcceptInvitePage.tsx` para usar **apenas a edge function** `accept-invitation` para buscar os dados do convite. A edge function já usa `SUPABASE_SERVICE_ROLE_KEY`, portanto ignora RLS.
-
-No entanto, a edge function `accept-invitation` atualmente não suporta um modo "preview" — ela sempre tenta aceitar o convite. Precisamos adicionar suporte a um parâmetro `preview: true` que retorna os dados do convite sem aceitá-lo.
+O `CampaignWizard.tsx` já tem um fluxo funcional de criação de template inline (linhas 104-131), incluindo a busca do `empresa_id` via tabela `profiles`. Vamos reutilizar esse padrão.
 
 ## Alterações
 
 | Arquivo | Alteração |
 |---|---|
-| `supabase/functions/accept-invitation/index.ts` | Adicionar tratamento do parâmetro `preview: true` — quando presente, retorna os dados do convite (email, org name, role name, status, expires_at) sem executar a aceitação |
-| `src/pages/AcceptInvitePage.tsx` | Remover a query direta ao banco (linhas 52-56). Usar apenas o resultado da edge function para preencher os dados do convite |
+| `src/pages/orbit/TemplatesPage.tsx` | Refatorar completamente: adicionar dialog de criação/edição de template, dialog de geração por IA, e conectar os botões "Novo" e "Gerar IA" |
+| `supabase/functions/orbit-ai-generate-template/index.ts` | Nova edge function que usa Lovable AI para gerar corpo de template baseado em parâmetros (canal, categoria, descrição do objetivo) |
+| `supabase/config.toml` | Adicionar configuração da nova edge function |
 
 ### Detalhes técnicos
 
-**Edge function — modo preview:**
-```
-POST /accept-invitation
-Body: { token: "xxx", preview: true }
-Response: { data: { email, organization_name, role_name, role_code, status, expires_at } }
-```
+**1. Dialog de criação manual de template:**
+- Campos: nome, categoria (geral/marketing/vendas/suporte), assunto (se email), corpo_texto
+- Usa `useCreateTemplate` do hook existente
+- Busca `empresa_id` via tabela `profiles` (mesmo padrão do CampaignWizard)
 
-Quando `preview: true`:
-- Busca o convite pelo token
-- Valida status e expiração
-- Retorna dados para exibição (sem criar usuário nem alterar status)
+**2. Dialog de geração por IA:**
+- Campos: canal (preenchido pela tab ativa), categoria, descrição/objetivo do template
+- Chama a edge function `orbit-ai-generate-template`
+- Retorna o template gerado que o usuário pode editar antes de salvar
+- Ao confirmar, salva usando `useCreateTemplate`
 
-**Página AcceptInvitePage:**
-- `fetchInvitation()` passa a usar apenas a resposta da edge function
-- Remove a query `.from("pe_invitations")` que é bloqueada por RLS
-- Mapeia os campos retornados para o estado local `invitation`
+**3. Edge function `orbit-ai-generate-template`:**
+- Recebe: `{ canal, categoria, objetivo, tom_conversa? }`
+- Usa Lovable AI (`google/gemini-3-flash-preview`) para gerar nome, assunto (se email) e corpo_texto
+- Busca `orbit_ai_config` para usar o tom de conversa configurado
+- Retorna o template gerado (sem salvar — o frontend salva)
+
+**4. Botões de edição nos cards de template:**
+- Adicionar botão de editar em cada card existente
+- Reutilizar o dialog de criação em modo edição com `useUpdateTemplate`
 
