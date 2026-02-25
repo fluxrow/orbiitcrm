@@ -1,61 +1,28 @@
 
 
-# Plano: Exibir Status de Cadastros e Pré-Cadastros no PE Admin
+# Diagnostico: Erro 401 no `invite-org-user`
 
-## Contexto
+## Causa identificada
 
-O PE Admin atualmente **nao tem visibilidade** sobre:
-- **Trial Requests** (pré-cadastros via `/trial`) - tabela `trial_requests` com status `pending`/`approved`
-- **SaaS Empresas** (cadastros provisionados) - tabela `saas_empresa` com status `invited`/`onboarding`/`trial`/`active`/`suspended`/`canceled`
+Os logs mostram que a funcao `invite-org-user` esta retornando **HTTP 401** em todas as chamadas POST recentes.
 
-Dados atuais no banco:
-- 3 registros em `trial_requests` (2 pending, 1 approved)
-- 1 registro em `saas_empresa` (Promotrip Corporate, status: invited, plano Plus)
+A funcao esta configurada com `verify_jwt = true` no `config.toml`, o que significa que o gateway valida o JWT **antes** de passar para o codigo da funcao. Se o token estiver expirado ou com problema, a requisicao e rejeitada com 401 antes mesmo do codigo executar.
 
-## O que sera implementado
+Porem, a funcao **ja faz sua propria validacao de autenticacao** nas linhas 8-17 (verifica header, cria client, chama `getUser()`). Isso e uma **dupla validacao** desnecessaria que impede a funcao de retornar mensagens de erro mais claras.
 
-### 1. Nova pagina: `/pe-admin/cadastros`
+## Padrao do projeto
 
-Uma pagina com **duas abas**:
+Outras funcoes criticas que fazem validacao manual de auth ja usam `verify_jwt = false`:
+- `create-empresa` 
+- `create-master-user`
+- `add-empresa-user`
+- `orbit-search-leads`
 
-**Aba "Pré-Cadastros" (Trial Requests)**
-- Tabela listando todos os registros de `trial_requests`
-- Colunas: Nome, Empresa, Email, Telefone, Plano, Status, Data
-- Badge colorido por status: `pending` (amarelo), `approved` (verde), `rejected` (vermelho)
-- Busca por nome/email/empresa
+## Correcao proposta
 
-**Aba "Cadastros SaaS" (Empresas Provisionadas)**
-- Tabela com join `saas_empresa` + `orbit_empresas` + `saas_plans`
-- Colunas: Empresa, Responsavel, Email, Plano, Status SaaS, Trial Expira, Ativada em
-- Badge colorido por status: `invited` (azul), `onboarding` (azul), `trial` (amarelo), `active` (verde), `suspended`/`canceled` (vermelho)
-
-### 2. Novo hook: `useTrialRequests`
-
-Query simples na tabela `trial_requests` ordenada por `created_at DESC`. Reutiliza o hook `useSaasEmpresas` existente para a aba de cadastros.
-
-### 3. Atualizar sidebar do PE Admin
-
-Adicionar novo item de navegacao "Cadastros" com icone `ClipboardList` apontando para `/pe-admin/cadastros`.
-
-### 4. Rota no App.tsx
-
-Adicionar `<Route path="cadastros" element={<CadastrosPage />} />` dentro do bloco PE Admin.
-
----
-
-## Arquivos afetados
-
-| Arquivo | Acao |
+| Arquivo | Alteracao |
 |---|---|
-| `src/pages/pe-admin/CadastrosPage.tsx` | **Novo** - pagina com tabs |
-| `src/hooks/useTrialRequests.ts` | **Novo** - hook para trial_requests |
-| `src/pages/pe-admin/PeAdminLayout.tsx` | Editar - adicionar nav item |
-| `src/App.tsx` | Editar - adicionar rota |
+| `supabase/config.toml` | Alterar `invite-org-user` para `verify_jwt = false` |
 
-## Detalhes tecnicos
-
-- Nenhuma alteracao de banco necessaria (RLS de `trial_requests` ja permite SELECT para super_admin)
-- `saas_empresa` tambem ja tem RLS para super_admin
-- Reutiliza `useSaasEmpresas` do hook existente `useSaasPlans.ts`
-- Usa componentes UI existentes: Tabs, Table, Card, Badge, Input
+Isso alinha com o padrao do projeto e permite que a funcao gerencie a autenticacao internamente, retornando erros mais descritivos em vez do 401 generico do gateway.
 
