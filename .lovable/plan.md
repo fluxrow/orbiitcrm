@@ -1,51 +1,37 @@
 
 
-# Impedir cadastros duplicados na area de trial
+# Fix: Admin "Ativar" blocked by duplicate check
 
-## Problema
-A imagem mostra 3 registros do mesmo usuario (mesmo email) na tabela de pre-cadastros. O sistema permite multiplas solicitacoes sem validacao de duplicidade.
+## Root Cause
 
-## Causa
-A Edge Function `auto-approve-trial` verifica duplicidade apenas em `saas_invites`, mas nao em `trial_requests`. Alem disso, o formulario publico `/trial` nao faz nenhuma validacao previa.
+The `handleApprove` in `CadastrosPage.tsx` calls `auto-approve-trial` with the trial data. The function then:
+1. Checks for existing `trial_requests` with same email + status pending/approved — **finds the current record itself**
+2. Returns 409 error "Já existe uma solicitação para este e-mail"
 
-## Correcoes propostas
+The duplicate check correctly prevents public form re-submissions, but incorrectly blocks the admin approval flow.
 
-### 1. Edge Function `auto-approve-trial` — Verificar duplicidade em `trial_requests`
-Antes de inserir, verificar se ja existe um `trial_request` com o mesmo email que esteja `pending` ou `approved`. Se existir, retornar erro informativo.
+## Solution
 
-```
-Linha ~92, apos normalizar o email:
-- Consultar trial_requests WHERE email = email AND status IN ('pending', 'approved')
-- Se encontrar, retornar erro: "Ja existe uma solicitacao para este e-mail."
-```
+Pass the existing `trial_request.id` to the edge function. When an ID is provided, skip the duplicate check and update the existing record instead of inserting a new one.
 
-### 2. Formulario `/trial` (TrialPage.tsx) — Feedback claro ao usuario
-O formulario ja exibe o erro retornado pela API. A correcao no backend ja sera suficiente para mostrar a mensagem adequada ao usuario.
+### Changes
 
-### 3. Limpeza dos registros duplicados existentes
-Opcao para o admin excluir manualmente os duplicados pela interface (ja possui RLS de DELETE para super_admin).
-
-## Detalhes tecnicos
-
-| Arquivo | Alteracao |
+| File | Change |
 |---|---|
-| `supabase/functions/auto-approve-trial/index.ts` | Adicionar verificacao de duplicidade em `trial_requests` por email + status antes da linha 107 |
+| `src/pages/pe-admin/CadastrosPage.tsx` | Add `trial_id: trial.id` to the request body for both `handleApprove` and `handleResend` |
+| `supabase/functions/auto-approve-trial/index.ts` | Accept optional `trial_id` param. When present, skip duplicate check on `trial_requests` and update the existing record to `approved` instead of inserting a new one |
 
-A verificacao sera inserida logo apos a checagem de `saas_invites` (linha 95-105), adicionando:
+### Edge Function Logic
 
-```typescript
-const { data: existingTrial } = await supabase
-  .from("trial_requests")
-  .select("id")
-  .eq("email", email)
-  .in("status", ["pending", "approved"])
-  .limit(1)
-  .maybeSingle();
-
-if (existingTrial) {
-  return fail(ErrorCodes.VALIDATION_ERROR, "Já existe uma solicitação para este e-mail. Aguarde o processamento ou entre em contato.", 409);
+```
+if (body.trial_id) {
+  // Admin approval flow: update existing record, skip trial_requests duplicate check
+  UPDATE trial_requests SET status = 'approved' WHERE id = trial_id
+} else {
+  // Public form flow: check duplicates, then INSERT new record
+  CHECK duplicates → INSERT trial_request
 }
 ```
 
-Isso impede duplicatas tanto via formulario publico quanto via botao "Ativar" do admin (que reutiliza a mesma funcao).
+The `saas_invites` duplicate check remains for both flows (prevents sending duplicate invites).
 
