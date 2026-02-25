@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, ChevronLeft, ChevronRight, Mail, MessageSquare, Check, Calendar } from "lucide-react";
-import { useOrbitTemplates } from "@/hooks/useOrbitTemplates";
+import { useOrbitTemplates, useCreateTemplate } from "@/hooks/useOrbitTemplates";
 import { useOrbitProspects } from "@/hooks/useOrbitProspects";
 import { useCreateCampaign } from "@/hooks/useOrbitCampaigns";
 import { supabase } from "@/integrations/supabase/client";
@@ -53,10 +53,14 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
   });
   const [isCreating, setIsCreating] = useState(false);
   const [estimatedRecipients, setEstimatedRecipients] = useState(0);
+  const [showNewTemplate, setShowNewTemplate] = useState(false);
+  const [newTemplate, setNewTemplate] = useState({ nome: "", categoria: "geral", assunto_email: "", corpo_texto: "" });
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
 
   const { data: templates } = useOrbitTemplates();
   const { data: prospects } = useOrbitProspects();
   const createCampaign = useCreateCampaign();
+  const createTemplate = useCreateTemplate();
 
   const filteredTemplates = templates?.filter(t => t.canal === data.canal && t.ativo) || [];
   const selectedTemplate = templates?.find(t => t.id === data.template_id);
@@ -91,7 +95,39 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
     if (currentStep === 3) {
       setEstimatedRecipients(calculateRecipients());
     }
+    if (currentStep === 2) {
+      setShowNewTemplate(false);
+    }
     setCurrentStep(prev => Math.min(prev + 1, 5));
+  };
+
+  const handleSaveTemplate = async () => {
+    try {
+      setIsSavingTemplate(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado");
+      const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
+      if (!profile?.empresa_id) throw new Error("Empresa não encontrada");
+
+      const created = await createTemplate.mutateAsync({
+        nome: newTemplate.nome,
+        canal: data.canal,
+        categoria: newTemplate.categoria,
+        assunto_email: data.canal === "email" ? newTemplate.assunto_email : null,
+        corpo_texto: newTemplate.corpo_texto,
+        empresa_id: profile.empresa_id,
+        ativo: true,
+      });
+
+      setData({ ...data, template_id: created.id });
+      setShowNewTemplate(false);
+      setNewTemplate({ nome: "", categoria: "geral", assunto_email: "", corpo_texto: "" });
+      toast.success("Template criado com sucesso!");
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao criar template");
+    } finally {
+      setIsSavingTemplate(false);
+    }
   };
 
   const handleBack = () => {
@@ -298,40 +334,85 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
           {/* Step 2: Template */}
           {currentStep === 2 && (
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Selecione um template de {data.canal === "email" ? "email" : "WhatsApp"}:
-              </p>
-              
-              {filteredTemplates.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <p>Nenhum template de {data.canal} encontrado.</p>
-                  <p className="text-sm">Crie um template na página de Templates.</p>
+              {showNewTemplate ? (
+                <div className="space-y-4">
+                  <p className="text-sm font-medium">Criar novo template de {data.canal === "email" ? "email" : "WhatsApp"}:</p>
+                  <div className="space-y-2">
+                    <Label>Nome do Template *</Label>
+                    <Input placeholder="Ex: Boas-vindas" value={newTemplate.nome} onChange={(e) => setNewTemplate({ ...newTemplate, nome: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Categoria</Label>
+                    <Select value={newTemplate.categoria} onValueChange={(v) => setNewTemplate({ ...newTemplate, categoria: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="geral">Geral</SelectItem>
+                        <SelectItem value="marketing">Marketing</SelectItem>
+                        <SelectItem value="vendas">Vendas</SelectItem>
+                        <SelectItem value="suporte">Suporte</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {data.canal === "email" && (
+                    <div className="space-y-2">
+                      <Label>Assunto do Email</Label>
+                      <Input placeholder="Ex: Oferta especial para você" value={newTemplate.assunto_email} onChange={(e) => setNewTemplate({ ...newTemplate, assunto_email: e.target.value })} />
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <Label>Corpo do Texto *</Label>
+                    <Textarea placeholder="Escreva o conteúdo do template..." rows={5} value={newTemplate.corpo_texto} onChange={(e) => setNewTemplate({ ...newTemplate, corpo_texto: e.target.value })} />
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button variant="outline" onClick={() => setShowNewTemplate(false)}>Cancelar</Button>
+                    <Button onClick={handleSaveTemplate} disabled={isSavingTemplate || !newTemplate.nome.trim() || !newTemplate.corpo_texto.trim()}>
+                      {isSavingTemplate ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Salvando...</> : "Salvar Template"}
+                    </Button>
+                  </div>
                 </div>
               ) : (
-                <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                  {filteredTemplates.map((template) => (
-                    <Card 
-                      key={template.id}
-                      className={`cursor-pointer transition-all ${data.template_id === template.id ? "border-primary ring-2 ring-primary" : ""}`}
-                      onClick={() => setData({ ...data, template_id: template.id })}
-                    >
-                      <CardContent className="p-4">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-medium">{template.nome}</p>
-                            {template.assunto_email && (
-                              <p className="text-sm text-muted-foreground">Assunto: {template.assunto_email}</p>
-                            )}
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {template.corpo_texto?.substring(0, 100)}...
-                            </p>
-                          </div>
-                          <Badge variant="outline">{template.categoria}</Badge>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                <>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">
+                      Selecione um template de {data.canal === "email" ? "email" : "WhatsApp"}:
+                    </p>
+                    <Button variant="outline" size="sm" onClick={() => setShowNewTemplate(true)}>
+                      + Criar novo
+                    </Button>
+                  </div>
+              
+                  {filteredTemplates.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <p>Nenhum template de {data.canal} encontrado.</p>
+                      <p className="text-sm">Clique em "Criar novo" acima para criar um template.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                      {filteredTemplates.map((template) => (
+                        <Card 
+                          key={template.id}
+                          className={`cursor-pointer transition-all ${data.template_id === template.id ? "border-primary ring-2 ring-primary" : ""}`}
+                          onClick={() => setData({ ...data, template_id: template.id })}
+                        >
+                          <CardContent className="p-4">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <p className="font-medium">{template.nome}</p>
+                                {template.assunto_email && (
+                                  <p className="text-sm text-muted-foreground">Assunto: {template.assunto_email}</p>
+                                )}
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {template.corpo_texto?.substring(0, 100)}...
+                                </p>
+                              </div>
+                              <Badge variant="outline">{template.categoria}</Badge>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
