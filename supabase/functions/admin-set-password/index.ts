@@ -20,9 +20,12 @@ Deno.serve(async (req) => {
     if (claimsError || !claimsData?.claims) return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401);
     const requesterId = claimsData.claims.sub as string;
 
-    // Check super_admin
+    // Check super_admin (legacy user_roles OR PE pe_users)
     const { data: requesterRoles } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", requesterId);
-    const isSuperAdmin = requesterRoles?.some((r: any) => r.role === "super_admin");
+    const legacySuperAdmin = requesterRoles?.some((r: any) => r.role === "super_admin");
+
+    const { data: peUser } = await supabaseAdmin.from("pe_users").select("is_super_admin").eq("id", requesterId).single();
+    const isSuperAdmin = legacySuperAdmin || peUser?.is_super_admin === true;
     if (!isSuperAdmin) return fail(ErrorCodes.FORBIDDEN, "Apenas super admins podem alterar senhas", 403);
 
     const body = await req.json();

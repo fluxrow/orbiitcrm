@@ -12,8 +12,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, MoreHorizontal, Plus, Mail, Clock } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, Plus, Mail, Clock, KeyRound, UserCheck } from "lucide-react";
 import { format } from "date-fns";
+import SetPasswordDialog from "@/components/pe-admin/SetPasswordDialog";
+import ActivateInviteDialog from "@/components/pe-admin/ActivateInviteDialog";
 
 export default function PeOrgUsersPage() {
   const { id: orgId } = useParams<{ id: string }>();
@@ -28,6 +30,8 @@ export default function PeOrgUsersPage() {
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({ email: "", role_code: "", full_name: "" });
+  const [pwdUser, setPwdUser] = useState<{ id: string; name: string } | null>(null);
+  const [activateInvite, setActivateInvite] = useState<any>(null);
 
   const pendingInvitations = invitations?.filter((i: any) => i.status === "pending") || [];
 
@@ -93,6 +97,9 @@ export default function PeOrgUsersPage() {
                         <Button variant="ghost" size="icon"><MoreHorizontal className="w-4 h-4" /></Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setPwdUser({ id: u.id, name: u.full_name || u.email })}>
+                          <KeyRound className="w-4 h-4 mr-2" /> Definir Senha
+                        </DropdownMenuItem>
                         {roles?.map((r: any) => (
                           <DropdownMenuItem
                             key={r.id}
@@ -128,7 +135,7 @@ export default function PeOrgUsersPage() {
                   <TableHead>Email</TableHead>
                   <TableHead>Papel</TableHead>
                   <TableHead>Expira em</TableHead>
-                  <TableHead className="w-12"></TableHead>
+                  <TableHead className="w-32"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -140,7 +147,15 @@ export default function PeOrgUsersPage() {
                     </TableCell>
                     <TableCell><Badge variant="outline">{inv.pe_roles?.name || "—"}</Badge></TableCell>
                     <TableCell className="text-muted-foreground">{format(new Date(inv.expires_at), "dd/MM/yyyy HH:mm")}</TableCell>
-                    <TableCell>
+                    <TableCell className="flex gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setActivateInvite(inv)}
+                        title="Ativar manualmente"
+                      >
+                        <UserCheck className="w-4 h-4 mr-1" /> Ativar
+                      </Button>
                       <Button variant="ghost" size="sm" onClick={() => cancelInvite.mutate({ id: inv.id, orgId: orgId! })}>
                         Cancelar
                       </Button>
@@ -188,6 +203,23 @@ export default function PeOrgUsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Set Password Dialog */}
+      {pwdUser && (
+        <SetPasswordDialog
+          open={!!pwdUser}
+          onOpenChange={(open) => !open && setPwdUser(null)}
+          userId={pwdUser.id}
+          userName={pwdUser.name}
+        />
+      )}
+
+      {/* Activate Invite Dialog */}
+      <ActivateInviteDialog
+        open={!!activateInvite}
+        onOpenChange={(open) => !open && setActivateInvite(null)}
+        invitation={activateInvite}
+      />
     </div>
   );
 }
