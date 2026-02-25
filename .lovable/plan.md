@@ -1,37 +1,72 @@
 
 
-# Fix: Admin "Ativar" blocked by duplicate check
+# Permitir que Super Admins criem senhas e ativem convites manualmente
 
-## Root Cause
+## Contexto
 
-The `handleApprove` in `CadastrosPage.tsx` calls `auto-approve-trial` with the trial data. The function then:
-1. Checks for existing `trial_requests` with same email + status pending/approved — **finds the current record itself**
-2. Returns 409 error "Já existe uma solicitação para este e-mail"
+O sistema ja possui:
+1. `SetPasswordDialog` + Edge Function `admin-set-password` — funciona para a area legacy (super-admin/EmpresaUsersPage). Precisa ser adicionado tambem nas paginas do PE Admin.
+2. Convites PE (`pe_invitations`) que so podem ser aceitos via link/token. Nao ha forma do Super Admin ativar manualmente um convite pendente.
 
-The duplicate check correctly prevents public form re-submissions, but incorrectly blocks the admin approval flow.
+## Alteracoes
 
-## Solution
+### 1. Pagina Usuarios Globais (`GlobalUsersPage.tsx`) — Adicionar acoes
 
-Pass the existing `trial_request.id` to the edge function. When an ID is provided, skip the duplicate check and update the existing record instead of inserting a new one.
+Atualmente a tabela e somente leitura. Adicionar:
+- Dropdown de acoes por usuario com opcao **"Definir Senha"** (reutiliza `SetPasswordDialog`)
+- Coluna de acoes na tabela
 
-### Changes
+### 2. Pagina Usuarios da Org (`PeOrgUsersPage.tsx`) — Adicionar "Definir Senha"
 
-| File | Change |
+No dropdown de acoes de cada usuario, adicionar item **"Definir Senha"** que abre o `SetPasswordDialog`.
+
+### 3. Ativacao manual de convites PE — Nova funcionalidade
+
+Adicionar na secao de "Convites Pendentes" do `PeOrgUsersPage.tsx` um botao **"Ativar Manualmente"** que:
+- Chama a Edge Function `accept-invitation` com o token do convite + uma senha definida pelo admin
+- Cria o usuario e vincula a organizacao sem que o convidado precise clicar no link
+
+Para isso:
+- Criar um dialog `ActivateInviteDialog` que pede a senha para o novo usuario
+- Chamar `accept-invitation` passando `token`, `password` e opcionalmente `full_name`
+
+**Problema:** o token armazenado em `pe_invitations` e texto puro (nao e hash como `saas_invites`), entao o Super Admin pode le-lo diretamente do banco.
+
+### 4. Edge Function `admin-set-password` — Ajustar autorizacao
+
+Atualmente verifica `user_roles.role = 'super_admin'` (sistema legacy). Precisa tambem verificar `pe_users.is_super_admin = true` para funcionar no contexto PE.
+
+## Detalhes tecnicos
+
+| Arquivo | Alteracao |
 |---|---|
-| `src/pages/pe-admin/CadastrosPage.tsx` | Add `trial_id: trial.id` to the request body for both `handleApprove` and `handleResend` |
-| `supabase/functions/auto-approve-trial/index.ts` | Accept optional `trial_id` param. When present, skip duplicate check on `trial_requests` and update the existing record to `approved` instead of inserting a new one |
+| `src/pages/pe-admin/GlobalUsersPage.tsx` | Adicionar coluna de acoes com dropdown contendo "Definir Senha"; importar e usar `SetPasswordDialog` |
+| `src/pages/pe-admin/PeOrgUsersPage.tsx` | Adicionar "Definir Senha" no dropdown de usuarios; adicionar botao "Ativar Manual" nos convites pendentes; criar dialog inline para ativacao |
+| `src/components/pe-admin/ActivateInviteDialog.tsx` | Novo componente: dialog que recebe invitation data, pede senha, chama `accept-invitation` com token + password |
+| `supabase/functions/admin-set-password/index.ts` | Adicionar verificacao alternativa via `pe_users.is_super_admin` alem do `user_roles` |
 
-### Edge Function Logic
+### Fluxo de ativacao manual de convite
 
+```text
+Super Admin clica "Ativar Manual" no convite pendente
+  → Abre dialog pedindo senha para o novo usuario
+  → Chama accept-invitation com { token, password, full_name }
+  → Edge Function cria auth user + vincula pe_users
+  → Convite marcado como accepted
+  → Lista atualizada
 ```
-if (body.trial_id) {
-  // Admin approval flow: update existing record, skip trial_requests duplicate check
-  UPDATE trial_requests SET status = 'approved' WHERE id = trial_id
-} else {
-  // Public form flow: check duplicates, then INSERT new record
-  CHECK duplicates → INSERT trial_request
-}
-```
 
-The `saas_invites` duplicate check remains for both flows (prevents sending duplicate invites).
+### Edge Function admin-set-password — Nova verificacao
+
+```typescript
+// Verificar super_admin no sistema PE tambem
+const { data: peUser } = await supabaseAdmin
+  .from("pe_users")
+  .select("is_super_admin")
+  .eq("id", requesterId)
+  .single();
+
+const isSuperAdmin = requesterRoles?.some(r => r.role === "super_admin") 
+  || peUser?.is_super_admin === true;
+```
 
