@@ -47,3 +47,32 @@ export function useCancelInvitation() {
     onError: (e: any) => toast.error(e.message),
   });
 }
+
+export function useResendInvitation() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, orgId, email, role_code, full_name }: {
+      id: string; orgId: string; email: string; role_code: string; full_name?: string;
+    }) => {
+      // Cancel old invitation
+      await supabase
+        .from("pe_invitations" as any)
+        .update({ status: "canceled" })
+        .eq("id", id);
+
+      // Create new invitation via edge function
+      const { data, error } = await supabase.functions.invoke("invite-org-user", {
+        body: { organization_id: orgId, email, role_code, full_name },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["org-invitations"] });
+      toast.success("Convite reenviado com sucesso");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+}
