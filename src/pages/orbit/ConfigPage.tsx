@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
+import { usePeAuth } from "@/hooks/usePeAuth";
+import ConfigUsersTab from "@/components/orbit/ConfigUsersTab";
+import { Users } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,6 +39,8 @@ interface ParsedProspect {
 }
 
 export default function ConfigPage() {
+  const { roleCode } = usePeAuth();
+  const isOrgAdmin = roleCode === "ORG_ADMIN";
   const { isDemo } = useIsDemo();
   const { data: aiConfig, isLoading: aiLoading } = useOrbitAIConfig();
   const { data: zapiConfig, isLoading: zapiLoading } = useOrbitZAPIConfig();
@@ -272,6 +277,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
           <TabsTrigger value="zapi"><MessageSquare className="h-4 w-4 mr-2" />Z-API</TabsTrigger>
           <TabsTrigger value="email"><Mail className="h-4 w-4 mr-2" />Email</TabsTrigger>
           <TabsTrigger value="import"><Upload className="h-4 w-4 mr-2" />Importar</TabsTrigger>
+          {isOrgAdmin && <TabsTrigger value="users"><Users className="h-4 w-4 mr-2" />Usuários</TabsTrigger>}
         </TabsList>
         <TabsContent value="ai">
           {aiLoading ? <Loader2 className="animate-spin" /> : (
@@ -1330,6 +1336,11 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
             </Card>
           </div>
         </TabsContent>
+        {isOrgAdmin && (
+          <TabsContent value="users">
+            <ConfigUsersTab />
+          </TabsContent>
+        )}
       </Tabs>
     </OrbitLayout>
   );
