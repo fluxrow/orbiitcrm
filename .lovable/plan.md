@@ -1,24 +1,30 @@
 
 
-# Adicionar botão "Reenviar Convite" nos Convites Pendentes
+# Melhorar tela de aceite de convite com confirmação de senha
 
-## Problema
-Na seção de convites pendentes (aba Usuários em Configurações), só existe o botão "Cancelar". Quando o email não chega ou o convite está próximo de expirar, o admin precisa cancelar e criar um novo convite manualmente.
+## Problema atual
 
-## Solução
+A tela de aceite de convite (`AcceptInvitePage`) tem apenas um campo de senha. Não há campo de confirmação de senha, o que pode levar a erros de digitação. Além disso, o email do convite PE usa a rota `/accept-invite-pe/:token`, mas essa rota não existe no App.tsx — somente `/invite/:token` está registrada.
 
-Adicionar um botão "Reenviar" ao lado do "Cancelar" em cada convite pendente. O reenvio vai chamar a Edge Function `invite-org-user` existente com os mesmos dados do convite original (o que cancela implicitamente o antigo ao criar um novo com token fresco e nova data de expiração).
-
-### Alterações
+## Alterações
 
 | Arquivo | Alteração |
 |---|---|
-| `src/hooks/usePeInvitations.ts` | Adicionar hook `useResendInvitation` que cancela o convite antigo e chama `invite-org-user` com os mesmos dados |
-| `src/components/orbit/ConfigUsersTab.tsx` | Adicionar botão "Reenviar" com ícone de email na tabela de convites pendentes |
+| `src/pages/AcceptInvitePage.tsx` | Adicionar campo "Confirmar Senha" com validação de correspondência. Exibir o email do convite de forma destacada como confirmação. Desabilitar botão até que as senhas coincidam e tenham no mínimo 6 caracteres. |
+| `src/App.tsx` | Adicionar rota `/accept-invite-pe/:token` apontando para `AcceptInvitePage`, corrigindo o link enviado no email de convite. |
 
-### Detalhes
+### Detalhes da UI
 
-**Hook `useResendInvitation`**: Recebe os dados do convite pendente (email, role_code, organization_id), cancela o convite antigo atualizando status para "canceled", e chama a Edge Function `invite-org-user` para criar um novo convite com token e expiração atualizados. Isso garante que o email é reenviado com um link válido.
+A tela de aceite passará a ter:
 
-**UI**: Na coluna de ações da tabela de convites pendentes, ao lado do botão "Cancelar", adicionar um botão "Reenviar" com ícone `RefreshCw` ou `Send`. Mostrará "Reenviando..." enquanto a mutação estiver em progresso.
+1. **Email confirmado** — já é exibido na seção de detalhes do convite (organização, papel, email)
+2. **Nome completo** — campo existente, mantido
+3. **Senha** — campo existente, com indicação de mínimo 6 caracteres
+4. **Confirmar Senha** — novo campo que deve coincidir com o campo de senha
+5. **Validação visual** — mensagem de erro abaixo do campo de confirmação quando as senhas não coincidem
+6. **Botão desabilitado** — enquanto senha < 6 caracteres ou senhas não conferem
+
+### Rota faltante
+
+O email de convite gera links para `/accept-invite-pe/:token`, mas essa rota não existe. Será adicionada no `App.tsx` para que o link do email funcione corretamente.
 
