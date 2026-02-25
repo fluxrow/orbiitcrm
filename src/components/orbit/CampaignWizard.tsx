@@ -8,7 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, ChevronLeft, ChevronRight, Mail, MessageSquare, Check, Calendar, Sparkles } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, Mail, MessageSquare, Check, Calendar, Sparkles, Send, Eye } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { handleApiResponse } from "@/lib/api-envelope";
 import { useOrbitTemplates, useCreateTemplate } from "@/hooks/useOrbitTemplates";
 import { useOrbitProspects } from "@/hooks/useOrbitProspects";
 import { useCreateCampaign } from "@/hooks/useOrbitCampaigns";
@@ -59,6 +61,10 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
   const [showAiGen, setShowAiGen] = useState(false);
   const [aiObjetivo, setAiObjetivo] = useState("");
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [showTestEmail, setShowTestEmail] = useState(false);
+  const [testEmail, setTestEmail] = useState("");
+  const [testVars, setTestVars] = useState<Record<string, string>>({});
+  const [isSendingTest, setIsSendingTest] = useState(false);
 
   const { data: templates } = useOrbitTemplates();
   const { data: prospects } = useOrbitProspects();
@@ -157,6 +163,55 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
       toast.error(err.message || "Erro ao gerar template com IA");
     } finally {
       setIsGeneratingAi(false);
+    }
+  };
+
+  const defaultVarValues: Record<string, string> = {
+    nome: "João Teste", empresa: "Empresa Exemplo", cidade: "São Paulo",
+    link: "https://exemplo.com", responsavel: "Maria Responsável", segmento: "Tecnologia",
+  };
+
+  const extractVariables = (text: string): string[] => {
+    const matches = text.match(/\{(\w+)\}/g);
+    if (!matches) return [];
+    return [...new Set(matches.map(m => m.replace(/[{}]/g, "")))];
+  };
+
+  const substituteVars = (text: string, vars: Record<string, string>) => {
+    return text.replace(/\{(\w+)\}/g, (_, key) => vars[key] || `{${key}}`);
+  };
+
+  const handleOpenTestEmail = () => {
+    if (!selectedTemplate) return;
+    const vars = extractVariables(selectedTemplate.corpo_texto || "");
+    const initial: Record<string, string> = {};
+    vars.forEach(v => { initial[v] = defaultVarValues[v] || ""; });
+    setTestVars(initial);
+    setShowTestEmail(true);
+  };
+
+  const handleSendTestEmail = async () => {
+    if (!testEmail.trim()) { toast.error("Informe o email de destino"); return; }
+    if (!selectedTemplate) return;
+    try {
+      setIsSendingTest(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado");
+      const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
+      
+      const bodyText = substituteVars(selectedTemplate.corpo_texto || "", testVars);
+      const subject = substituteVars(selectedTemplate.assunto_email || "Teste", testVars);
+      const html = bodyText.replace(/\n/g, "<br>");
+
+      const res = await supabase.functions.invoke("orbit-send-email", {
+        body: { to: testEmail, subject, html, empresa_id: profile?.empresa_id },
+      });
+      handleApiResponse(res);
+      toast.success("Email de teste enviado!");
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao enviar email de teste");
+    } finally {
+      setIsSendingTest(false);
     }
   };
 
@@ -464,6 +519,70 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
                           </CardContent>
                         </Card>
                       ))}
+                    </div>
+                  )}
+
+                  {/* Botão Enviar Email de Teste */}
+                  {data.template_id && data.canal === "email" && (
+                    <div className="pt-2">
+                      {!showTestEmail ? (
+                        <Button variant="outline" size="sm" onClick={handleOpenTestEmail}>
+                          <Mail className="h-4 w-4 mr-1" /> Enviar Email de Teste
+                        </Button>
+                      ) : (
+                        <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-medium">Enviar Email de Teste</p>
+                            <Button variant="ghost" size="sm" onClick={() => setShowTestEmail(false)}>✕</Button>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Email de Destino *</Label>
+                            <Input type="email" placeholder="teste@exemplo.com" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} />
+                          </div>
+                          <Tabs defaultValue="dados">
+                            <TabsList className="w-full">
+                              <TabsTrigger value="dados" className="flex-1">Dados de Teste</TabsTrigger>
+                              <TabsTrigger value="preview" className="flex-1"><Eye className="h-3 w-3 mr-1" />Preview</TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="dados">
+                              {Object.keys(testVars).length > 0 ? (
+                                <div className="grid grid-cols-2 gap-3">
+                                  {Object.entries(testVars).map(([key, val]) => (
+                                    <div key={key} className="space-y-1">
+                                      <Label className="text-xs">{`{${key}}`}</Label>
+                                      <Input value={val} onChange={(e) => setTestVars({ ...testVars, [key]: e.target.value })} />
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-muted-foreground py-2">Nenhuma variável encontrada no template.</p>
+                              )}
+                            </TabsContent>
+                            <TabsContent value="preview">
+                              <div className="space-y-2">
+                                {selectedTemplate?.assunto_email && (
+                                  <div>
+                                    <p className="text-xs font-medium text-muted-foreground">Assunto:</p>
+                                    <p className="text-sm font-medium">{substituteVars(selectedTemplate.assunto_email, testVars)}</p>
+                                  </div>
+                                )}
+                                <div>
+                                  <p className="text-xs font-medium text-muted-foreground">Corpo:</p>
+                                  <div className="bg-background border rounded p-3 text-sm whitespace-pre-wrap max-h-[200px] overflow-y-auto">
+                                    {substituteVars(selectedTemplate?.corpo_texto || "", testVars)}
+                                  </div>
+                                </div>
+                              </div>
+                            </TabsContent>
+                          </Tabs>
+                          <div className="flex justify-end">
+                            <Button size="sm" onClick={handleSendTestEmail} disabled={isSendingTest || !testEmail.trim()}>
+                              {isSendingTest ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
+                              {isSendingTest ? "Enviando..." : "Enviar Teste"}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </>
