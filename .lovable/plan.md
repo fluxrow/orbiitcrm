@@ -1,27 +1,44 @@
 
 
-# Aplicar logo Orbit em todos os locais (favicon, aba, social)
+# Corrigir Validação de Convite na Página de Aceite
 
-## Problema atual
+## Problema
 
-- O **favicon** (`public/favicon.ico`) ainda é o padrão Lovable
-- As **meta tags OG/Twitter** apontam para uma imagem social no storage do Lovable
-- O `twitter:site` referencia `@Lovable` em vez de Orbit
-- A logo Orbit (`src/assets/orbit-logo.png`) já é usada na sidebar e header, mas não no favicon nem nas meta tags
+A página `AcceptInvitePage.tsx` faz duas chamadas ao carregar:
+1. Chama a edge function `accept-invitation` com `preview: true` (linhas 42-49)
+2. **Ignora o resultado** e faz uma query direta ao banco via Supabase client (linhas 52-56)
+
+A query direta falha porque as políticas RLS de `pe_invitations` só permitem leitura por **org admins** e **super admins**. Um usuário não autenticado (que é o caso típico de quem clica no link do convite) não tem permissão, então a query retorna erro e o convite aparece como "inválido".
+
+## Solução
+
+Refatorar `AcceptInvitePage.tsx` para usar **apenas a edge function** `accept-invitation` para buscar os dados do convite. A edge function já usa `SUPABASE_SERVICE_ROLE_KEY`, portanto ignora RLS.
+
+No entanto, a edge function `accept-invitation` atualmente não suporta um modo "preview" — ela sempre tenta aceitar o convite. Precisamos adicionar suporte a um parâmetro `preview: true` que retorna os dados do convite sem aceitá-lo.
 
 ## Alterações
 
 | Arquivo | Alteração |
 |---|---|
-| `public/favicon.png` | Copiar `src/assets/orbit-logo.png` para `public/favicon.png` para uso como favicon |
-| `index.html` | Atualizar `<link rel="icon">` para apontar para `/favicon.png`. Remover referências `@Lovable` do `twitter:site`. Atualizar `og:image` e `twitter:image` para usar a logo Orbit local (`/favicon.png`). |
+| `supabase/functions/accept-invitation/index.ts` | Adicionar tratamento do parâmetro `preview: true` — quando presente, retorna os dados do convite (email, org name, role name, status, expires_at) sem executar a aceitação |
+| `src/pages/AcceptInvitePage.tsx` | Remover a query direta ao banco (linhas 52-56). Usar apenas o resultado da edge function para preencher os dados do convite |
 
-### Detalhes
+### Detalhes técnicos
 
-1. **Favicon**: Copiar `orbit-logo.png` para `public/favicon.png` e referenciar no `index.html` com `<link rel="icon" href="/favicon.png" type="image/png">`
-2. **Meta tags sociais**: Substituir as URLs de imagem do storage externo por `/favicon.png` (caminho relativo)
-3. **Twitter site**: Alterar de `@Lovable` para `@OrbitCRM` (ou remover)
-4. **Author**: Alterar de `Lovable` para `Orbit CRM`
+**Edge function — modo preview:**
+```
+POST /accept-invitation
+Body: { token: "xxx", preview: true }
+Response: { data: { email, organization_name, role_name, role_code, status, expires_at } }
+```
 
-Os locais que já usam `orbit-logo.png` no código (HotsiteHeader, OrbitSidebar, LandingPage, TenantLayout) já estão corretos e não precisam de alteração.
+Quando `preview: true`:
+- Busca o convite pelo token
+- Valida status e expiração
+- Retorna dados para exibição (sem criar usuário nem alterar status)
+
+**Página AcceptInvitePage:**
+- `fetchInvitation()` passa a usar apenas a resposta da edge function
+- Remove a query `.from("pe_invitations")` que é bloqueada por RLS
+- Mapeia os campos retornados para o estado local `invitation`
 
