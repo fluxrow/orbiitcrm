@@ -1,33 +1,24 @@
 
 
-# Adicionar aba "Usuários" nas Configurações para ORG_ADMIN
+# Adicionar botão "Reenviar Convite" nos Convites Pendentes
 
-## Objetivo
+## Problema
+Na seção de convites pendentes (aba Usuários em Configurações), só existe o botão "Cancelar". Quando o email não chega ou o convite está próximo de expirar, o admin precisa cancelar e criar um novo convite manualmente.
 
-Permitir que administradores da organização (ORG_ADMIN) gerenciem usuários diretamente pela página de Configurações (`/config`), adicionando uma nova aba "Usuários" ao lado das abas existentes (IA, Z-API, Email, Importar).
+## Solução
 
-## Alterações
+Adicionar um botão "Reenviar" ao lado do "Cancelar" em cada convite pendente. O reenvio vai chamar a Edge Function `invite-org-user` existente com os mesmos dados do convite original (o que cancela implicitamente o antigo ao criar um novo com token fresco e nova data de expiração).
+
+### Alterações
 
 | Arquivo | Alteração |
 |---|---|
-| `src/pages/orbit/ConfigPage.tsx` | Adicionar aba "Usuários" com a funcionalidade completa de listar, adicionar e convidar usuários da organização. Visível apenas para ORG_ADMIN. |
+| `src/hooks/usePeInvitations.ts` | Adicionar hook `useResendInvitation` que cancela o convite antigo e chama `invite-org-user` com os mesmos dados |
+| `src/components/orbit/ConfigUsersTab.tsx` | Adicionar botão "Reenviar" com ícone de email na tabela de convites pendentes |
 
 ### Detalhes
 
-A nova aba "Usuários" reutilizará os hooks já existentes:
-- `usePeAuth` para verificar se o usuário é ORG_ADMIN
-- `useOrgUsers` para listar usuários
-- `useAddOrgUser` para adicionar diretamente
-- `useInviteUser` para convidar por email
-- `useUpdateOrgUser` para alterar papel/status
-- `usePeRoles` para listar papéis disponíveis
-- `useOrgInvitations` / `useCancelInvitation` para convites pendentes
+**Hook `useResendInvitation`**: Recebe os dados do convite pendente (email, role_code, organization_id), cancela o convite antigo atualizando status para "canceled", e chama a Edge Function `invite-org-user` para criar um novo convite com token e expiração atualizados. Isso garante que o email é reenviado com um link válido.
 
-A aba só aparecerá no `TabsList` quando o usuário for ORG_ADMIN. O conteúdo incluirá:
-1. Tabela de usuários da organização (nome, email, papel, status) com ações (alterar papel, ativar/inativar)
-2. Botões "Adicionar" e "Convidar"
-3. Seção de convites pendentes
-4. Dialogs para adicionar usuário (nome, email, senha, papel) e convidar (nome, email, papel)
-
-Essencialmente, o mesmo conteúdo da página `/org/users` será incorporado como uma aba dentro de Configurações.
+**UI**: Na coluna de ações da tabela de convites pendentes, ao lado do botão "Cancelar", adicionar um botão "Reenviar" com ícone `RefreshCw` ou `Send`. Mostrará "Reenviando..." enquanto a mutação estiver em progresso.
 
