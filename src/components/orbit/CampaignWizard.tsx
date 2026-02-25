@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, ChevronLeft, ChevronRight, Mail, MessageSquare, Check, Calendar } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, Mail, MessageSquare, Check, Calendar, Sparkles } from "lucide-react";
 import { useOrbitTemplates, useCreateTemplate } from "@/hooks/useOrbitTemplates";
 import { useOrbitProspects } from "@/hooks/useOrbitProspects";
 import { useCreateCampaign } from "@/hooks/useOrbitCampaigns";
@@ -56,6 +56,9 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
   const [showNewTemplate, setShowNewTemplate] = useState(false);
   const [newTemplate, setNewTemplate] = useState({ nome: "", categoria: "geral", assunto_email: "", corpo_texto: "" });
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+  const [showAiGen, setShowAiGen] = useState(false);
+  const [aiObjetivo, setAiObjetivo] = useState("");
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
 
   const { data: templates } = useOrbitTemplates();
   const { data: prospects } = useOrbitProspects();
@@ -127,6 +130,33 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
       toast.error(error.message || "Erro ao criar template");
     } finally {
       setIsSavingTemplate(false);
+    }
+  };
+
+  const handleGenerateAiTemplate = async () => {
+    if (!aiObjetivo.trim()) { toast.error("Descreva o objetivo do template"); return; }
+    try {
+      setIsGeneratingAi(true);
+      const { data: result, error } = await supabase.functions.invoke("orbit-ai-generate-template", {
+        body: { canal: data.canal, categoria: newTemplate.categoria, objetivo: aiObjetivo },
+      });
+      if (error) {
+        throw new Error(result?.error?.message || error.message || "Erro na geração");
+      }
+      if (!result?.ok) throw new Error(result?.error?.message || "Erro na geração");
+      setNewTemplate({
+        nome: result.data.nome || "",
+        categoria: result.data.categoria || newTemplate.categoria,
+        assunto_email: result.data.assunto_email || "",
+        corpo_texto: result.data.corpo_texto || "",
+      });
+      setShowAiGen(false);
+      setShowNewTemplate(true);
+      toast.success("Template gerado! Revise e salve.");
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao gerar template com IA");
+    } finally {
+      setIsGeneratingAi(false);
     }
   };
 
@@ -376,10 +406,34 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
                     <p className="text-sm text-muted-foreground">
                       Selecione um template de {data.canal === "email" ? "email" : "WhatsApp"}:
                     </p>
-                    <Button variant="outline" size="sm" onClick={() => setShowNewTemplate(true)}>
-                      + Criar novo
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => { setAiObjetivo(""); setShowAiGen(true); }}>
+                        <Sparkles className="h-4 w-4 mr-1" />Gerar IA
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => setShowNewTemplate(true)}>
+                        + Criar novo
+                      </Button>
+                    </div>
                   </div>
+
+                  {showAiGen && (
+                    <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+                      <Label>Descreva o objetivo do template</Label>
+                      <Textarea
+                        placeholder="Ex: Follow-up após reunião de apresentação"
+                        value={aiObjetivo}
+                        onChange={(e) => setAiObjetivo(e.target.value)}
+                        rows={2}
+                      />
+                      <div className="flex gap-2 justify-end">
+                        <Button variant="ghost" size="sm" onClick={() => setShowAiGen(false)}>Cancelar</Button>
+                        <Button size="sm" onClick={handleGenerateAiTemplate} disabled={isGeneratingAi}>
+                          {isGeneratingAi ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                          {isGeneratingAi ? "Gerando..." : "Gerar"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
               
                   {filteredTemplates.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
