@@ -62,3 +62,6 @@ verify_jwt = false
 
 [functions.auto-approve-trial]
 verify_jwt = false
+
+[functions.admin-set-password]
+verify_jwt = false
