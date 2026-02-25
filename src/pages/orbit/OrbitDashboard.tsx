@@ -13,56 +13,61 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useTenant } from "@/contexts/TenantContext";
-
-const recentProspects = [
-  {
-    id: "1",
-    nome_razao: "Tech Solutions Ltda",
-    nome_fantasia: "TechSol",
-    cidade: "São Paulo",
-    segmento: "Tecnologia",
-    status: "novo" as const,
-    canal_origem: "whatsapp" as const,
-  },
-  {
-    id: "2",
-    nome_razao: "Indústria ABC S.A.",
-    cidade: "Campinas",
-    segmento: "Manufatura",
-    status: "em_contato" as const,
-    canal_origem: "email" as const,
-  },
-];
-
-const recentConversations = [
-  {
-    id: "1",
-    nome: "João Silva",
-    ultimaMensagem: "Perfeito, vamos agendar a reunião",
-    data: "10:30",
-    naoLidas: 2,
-    canal: "whatsapp" as const,
-  },
-  {
-    id: "2",
-    nome: "Maria Santos",
-    ultimaMensagem: "Enviamos a proposta por email",
-    data: "Ontem",
-    naoLidas: 0,
-    canal: "email" as const,
-  },
-  {
-    id: "3",
-    nome: "Pedro Costa",
-    ultimaMensagem: "Vi seu perfil e gostaria de saber mais",
-    data: "Ontem",
-    naoLidas: 1,
-    canal: "instagram" as const,
-  },
-];
+import { useOrbitProspects } from "@/hooks/useOrbitProspects";
+import { useOrbitConversas } from "@/hooks/useOrbitConversas";
+import { useOrbitDeals } from "@/hooks/useOrbitDeals";
+import { formatDistanceToNow } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 export default function OrbitDashboard() {
   const { basePath } = useTenant();
+  const { data: prospects, isLoading: loadingProspects } = useOrbitProspects();
+  const { data: conversas, isLoading: loadingConversas } = useOrbitConversas();
+  const { data: deals } = useOrbitDeals();
+
+  const totalProspects = prospects?.length ?? 0;
+  const conversasAtivas = conversas?.length ?? 0;
+
+  const pipelineTotal = deals?.reduce(
+    (sum, d) => sum + (Number(d.valor_estimado) || 0),
+    0
+  ) ?? 0;
+
+  const formatCurrency = (value: number) => {
+    if (value >= 1_000_000) return `R$ ${(value / 1_000_000).toFixed(1)}M`;
+    if (value >= 1_000) return `R$ ${(value / 1_000).toFixed(0)}K`;
+    return `R$ ${value.toFixed(0)}`;
+  };
+
+  const taxaConversao =
+    totalProspects > 0 && deals
+      ? ((deals.length / totalProspects) * 100).toFixed(1)
+      : "0";
+
+  // Map real prospects to ProspectCard format
+  const recentProspects = (prospects ?? []).slice(0, 3).map((p) => ({
+    id: p.id,
+    nome_razao: p.nome_razao,
+    nome_fantasia: p.nome_fantasia ?? undefined,
+    email_principal: p.email_principal ?? undefined,
+    telefone: p.telefone_whatsapp ?? undefined,
+    cidade: p.cidade ?? undefined,
+    segmento: p.segmento ?? undefined,
+    status: (p.status_qualificacao ?? "novo") as "novo" | "em_contato" | "qualificado" | "nao_qualificado",
+    canal_origem: (p.origem_contato ?? undefined) as "whatsapp" | "instagram" | "email" | "manual" | undefined,
+  }));
+
+  // Map real conversations to ConversationItem format
+  const recentConversations = (conversas ?? []).slice(0, 5).map((c) => ({
+    id: c.id,
+    nome: (c as any).prospect?.nome_razao ?? c.telefone_whatsapp,
+    ultimaMensagem: c.ultima_mensagem_preview ?? "",
+    data: c.ultima_mensagem_at
+      ? formatDistanceToNow(new Date(c.ultima_mensagem_at), { addSuffix: false, locale: ptBR })
+      : "",
+    naoLidas: c.mensagens_nao_lidas ?? 0,
+    canal: (c.canal ?? "whatsapp") as "whatsapp" | "instagram" | "email",
+  }));
 
   return (
     <OrbitLayout>
@@ -75,30 +80,30 @@ export default function OrbitDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatsCard
           title="Total de Leads"
-          value="1,234"
-          change="+12% vs mês anterior"
-          changeType="positive"
+          value={totalProspects.toLocaleString("pt-BR")}
+          change={`${totalProspects} cadastrados`}
+          changeType="neutral"
           icon={Users}
         />
         <StatsCard
           title="Conversas Ativas"
-          value="89"
-          change="+5 desde ontem"
-          changeType="positive"
+          value={conversasAtivas.toString()}
+          change={`${conversasAtivas} abertas`}
+          changeType="neutral"
           icon={MessageSquare}
         />
         <StatsCard
           title="Taxa de Conversão"
-          value="23.5%"
-          change="+2.1% vs mês anterior"
-          changeType="positive"
+          value={`${taxaConversao}%`}
+          change={deals ? `${deals.length} deals` : "0 deals"}
+          changeType="neutral"
           icon={TrendingUp}
         />
         <StatsCard
           title="Pipeline Total"
-          value="R$ 520K"
-          change="+15% vs mês anterior"
-          changeType="positive"
+          value={formatCurrency(pipelineTotal)}
+          change={deals ? `${deals.length} negócios` : "Sem negócios"}
+          changeType="neutral"
           icon={DollarSign}
         />
       </div>
@@ -116,9 +121,15 @@ export default function OrbitDashboard() {
             </Link>
           </div>
           <div className="space-y-3">
-            {recentProspects.map((prospect) => (
-              <ProspectCard key={prospect.id} prospect={prospect} />
-            ))}
+            {loadingProspects ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Carregando...</p>
+            ) : recentProspects.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Nenhum prospect cadastrado</p>
+            ) : (
+              recentProspects.map((prospect) => (
+                <ProspectCard key={prospect.id} prospect={prospect} />
+              ))
+            )}
           </div>
         </div>
 
@@ -134,9 +145,15 @@ export default function OrbitDashboard() {
             </Link>
           </div>
           <div className="space-y-1">
-            {recentConversations.map((conv) => (
-              <ConversationItem key={conv.id} conversation={conv} />
-            ))}
+            {loadingConversas ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Carregando...</p>
+            ) : recentConversations.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Nenhuma conversa ativa</p>
+            ) : (
+              recentConversations.map((conv) => (
+                <ConversationItem key={conv.id} conversation={conv} />
+              ))
+            )}
           </div>
         </div>
       </div>
