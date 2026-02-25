@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useOrganization } from "@/hooks/useOrganizations";
-import { useOrgUsers, useUpdateOrgUser, useInviteUser } from "@/hooks/useOrgUsers";
+import { useOrgUsers, useUpdateOrgUser, useInviteUser, useAddOrgUser } from "@/hooks/useOrgUsers";
 import { useOrgInvitations, useCancelInvitation } from "@/hooks/usePeInvitations";
 import { usePeRoles } from "@/hooks/usePeRoles";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, MoreHorizontal, Plus, Mail, Clock, KeyRound, UserCheck } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, Plus, Mail, Clock, KeyRound, UserCheck, UserPlus } from "lucide-react";
 import { format } from "date-fns";
 import SetPasswordDialog from "@/components/pe-admin/SetPasswordDialog";
 import ActivateInviteDialog from "@/components/pe-admin/ActivateInviteDialog";
@@ -26,10 +26,13 @@ export default function PeOrgUsersPage() {
   const { data: roles } = usePeRoles();
   const updateUser = useUpdateOrgUser();
   const inviteUser = useInviteUser();
+  const addUser = useAddOrgUser();
   const cancelInvite = useCancelInvitation();
 
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({ email: "", role_code: "", full_name: "" });
+  const [addForm, setAddForm] = useState({ email: "", password: "", role_code: "", full_name: "" });
   const [pwdUser, setPwdUser] = useState<{ id: string; name: string } | null>(null);
   const [activateInvite, setActivateInvite] = useState<any>(null);
 
@@ -42,6 +45,13 @@ export default function PeOrgUsersPage() {
     setInviteForm({ email: "", role_code: "", full_name: "" });
   };
 
+  const handleAdd = async () => {
+    if (!orgId) return;
+    await addUser.mutateAsync({ organization_id: orgId, ...addForm });
+    setAddOpen(false);
+    setAddForm({ email: "", password: "", role_code: "", full_name: "" });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -52,7 +62,10 @@ export default function PeOrgUsersPage() {
           <h1 className="text-2xl font-bold text-foreground">Usuários — {org?.name || "..."}</h1>
           <p className="text-sm text-muted-foreground">Gerencie os membros desta organização</p>
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex gap-2">
+          <Button variant="outline" onClick={() => setAddOpen(true)}>
+            <UserPlus className="w-4 h-4 mr-2" /> Adicionar
+          </Button>
           <Button onClick={() => setInviteOpen(true)}>
             <Plus className="w-4 h-4 mr-2" /> Convidar Usuário
           </Button>
@@ -204,6 +217,32 @@ export default function PeOrgUsersPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Add User Dialog */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Adicionar Usuário</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div><Label>Nome *</Label><Input value={addForm.full_name} onChange={(e) => setAddForm({ ...addForm, full_name: e.target.value })} placeholder="Nome completo" /></div>
+            <div><Label>Email *</Label><Input value={addForm.email} onChange={(e) => setAddForm({ ...addForm, email: e.target.value })} type="email" placeholder="email@exemplo.com" /></div>
+            <div><Label>Senha *</Label><Input value={addForm.password} onChange={(e) => setAddForm({ ...addForm, password: e.target.value })} type="password" placeholder="Mínimo 6 caracteres" /></div>
+            <div>
+              <Label>Papel *</Label>
+              <Select value={addForm.role_code} onValueChange={(v) => setAddForm({ ...addForm, role_code: v })}>
+                <SelectTrigger><SelectValue placeholder="Selecione o papel" /></SelectTrigger>
+                <SelectContent>
+                  {roles?.map((r: any) => (<SelectItem key={r.id} value={r.code}>{r.name}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancelar</Button>
+            <Button onClick={handleAdd} disabled={!addForm.email || !addForm.full_name || addForm.password.length < 6 || !addForm.role_code || addUser.isPending}>
+              {addUser.isPending ? "Adicionando..." : "Adicionar Usuário"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {/* Set Password Dialog */}
       {pwdUser && (
         <SetPasswordDialog
