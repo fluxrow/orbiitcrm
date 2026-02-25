@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { usePeAuth } from "@/hooks/usePeAuth";
 import { useOrgUsers, useUpdateOrgUser, useInviteUser, useAddOrgUser } from "@/hooks/useOrgUsers";
-import { useOrgInvitations, useCancelInvitation } from "@/hooks/usePeInvitations";
+import { useOrgInvitations, useCancelInvitation, useResendInvitation } from "@/hooks/usePeInvitations";
 import { usePeRoles } from "@/hooks/usePeRoles";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MoreHorizontal, UserPlus, Plus, Mail, Clock } from "lucide-react";
+import { MoreHorizontal, UserPlus, Plus, Mail, Clock, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 
 export default function ConfigUsersTab() {
@@ -23,6 +23,7 @@ export default function ConfigUsersTab() {
   const inviteUser = useInviteUser();
   const addUser = useAddOrgUser();
   const cancelInvite = useCancelInvitation();
+  const resendInvite = useResendInvitation();
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -138,7 +139,22 @@ export default function ConfigUsersTab() {
                     <TableCell className="flex items-center gap-2"><Mail className="w-4 h-4 text-muted-foreground" />{inv.email}</TableCell>
                     <TableCell><Badge variant="outline">{inv.pe_roles?.name || "—"}</Badge></TableCell>
                     <TableCell className="text-muted-foreground">{format(new Date(inv.expires_at), "dd/MM/yyyy HH:mm")}</TableCell>
-                    <TableCell>
+                    <TableCell className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => resendInvite.mutate({
+                          id: inv.id,
+                          orgId: orgId!,
+                          email: inv.email,
+                          role_code: inv.pe_roles?.code || "",
+                          full_name: inv.full_name,
+                        })}
+                        disabled={resendInvite.isPending}
+                      >
+                        <RefreshCw className="w-4 h-4 mr-1" />
+                        {resendInvite.isPending ? "Reenviando..." : "Reenviar"}
+                      </Button>
                       <Button variant="ghost" size="sm" onClick={() => cancelInvite.mutate({ id: inv.id, orgId: orgId! })}>Cancelar</Button>
                     </TableCell>
                   </TableRow>
