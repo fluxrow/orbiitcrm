@@ -123,7 +123,11 @@ export default function TemplatesPage() {
       const { data, error } = await supabase.functions.invoke("orbit-ai-generate-template", {
         body: { canal: tab, categoria: aiCategoria, objetivo: aiObjetivo },
       });
-      if (error) throw error;
+      if (error) {
+        // Try to extract real message from data envelope
+        const msg = data?.error?.message || error.message || "Erro na geração";
+        throw new Error(msg);
+      }
       if (!data?.ok) throw new Error(data?.error?.message || "Erro na geração");
       setAiResult({
         nome: data.data.nome,
