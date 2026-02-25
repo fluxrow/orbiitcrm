@@ -76,6 +76,7 @@ export default function CadastrosPage() {
     try {
       const response = await supabase.functions.invoke("auto-approve-trial", {
         body: {
+          trial_id: trial.id,
           nome: trial.nome,
           empresa: trial.empresa,
           email: trial.email,
@@ -102,6 +103,7 @@ export default function CadastrosPage() {
     try {
       const response = await supabase.functions.invoke("auto-approve-trial", {
         body: {
+          trial_id: trial.id,
           nome: trial.nome,
           empresa: trial.empresa,
           email: trial.email,
