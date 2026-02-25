@@ -1,30 +1,44 @@
 
 
-# Melhorar tela de aceite de convite com confirmação de senha
+# Criar Template Inline no Wizard de Campanha
 
-## Problema atual
+## Problema
 
-A tela de aceite de convite (`AcceptInvitePage`) tem apenas um campo de senha. Não há campo de confirmação de senha, o que pode levar a erros de digitação. Além disso, o email do convite PE usa a rota `/accept-invite-pe/:token`, mas essa rota não existe no App.tsx — somente `/invite/:token` está registrada.
+No passo 2 do wizard de criação de campanha (seleção de template), se não existir um template adequado, o usuário precisa sair do wizard, ir à página de Templates, criar um e depois voltar. Isso quebra o fluxo.
+
+## Solução
+
+Adicionar uma opção "Criar novo template" no passo 2 do `CampaignWizard`. Ao clicar, um formulário inline aparece permitindo preencher os campos do template (nome, categoria, assunto se email, corpo texto). O template é salvo no banco e automaticamente selecionado na campanha.
 
 ## Alterações
 
 | Arquivo | Alteração |
 |---|---|
-| `src/pages/AcceptInvitePage.tsx` | Adicionar campo "Confirmar Senha" com validação de correspondência. Exibir o email do convite de forma destacada como confirmação. Desabilitar botão até que as senhas coincidam e tenham no mínimo 6 caracteres. |
-| `src/App.tsx` | Adicionar rota `/accept-invite-pe/:token` apontando para `AcceptInvitePage`, corrigindo o link enviado no email de convite. |
+| `src/components/orbit/CampaignWizard.tsx` | No step 2, adicionar botão "Criar novo template" que alterna para um formulário inline. Usar o hook `useCreateTemplate` para salvar. Após salvar, selecionar automaticamente o novo template e voltar à visualização de lista. |
 
-### Detalhes da UI
+### Detalhes do formulário inline
 
-A tela de aceite passará a ter:
+O step 2 passará a ter dois modos:
 
-1. **Email confirmado** — já é exibido na seção de detalhes do convite (organização, papel, email)
-2. **Nome completo** — campo existente, mantido
-3. **Senha** — campo existente, com indicação de mínimo 6 caracteres
-4. **Confirmar Senha** — novo campo que deve coincidir com o campo de senha
-5. **Validação visual** — mensagem de erro abaixo do campo de confirmação quando as senhas não coincidem
-6. **Botão desabilitado** — enquanto senha < 6 caracteres ou senhas não conferem
+1. **Modo seleção** (atual) — lista de templates existentes + botão "Criar novo template" no topo
+2. **Modo criação** — formulário com campos:
+   - Nome do template (obrigatório)
+   - Categoria (select: geral, marketing, vendas, suporte)
+   - Assunto do email (apenas se canal = email)
+   - Corpo do texto (textarea, obrigatório)
+   - Botões "Salvar Template" e "Cancelar" (volta ao modo seleção)
 
-### Rota faltante
+Ao salvar, o hook `useCreateTemplate` (já existente em `useOrbitTemplates.ts`) é chamado com os dados + `empresa_id` + `canal` do wizard. O template criado é selecionado automaticamente como `template_id` da campanha, e o modo volta para seleção.
 
-O email de convite gera links para `/accept-invite-pe/:token`, mas essa rota não existe. Será adicionada no `App.tsx` para que o link do email funcione corretamente.
+A validação do `canProceed()` no step 2 continuará exigindo `template_id`, mas agora o usuário pode criá-lo sem sair do wizard.
+
+### Fluxo
+
+```text
+Step 2 → Lista templates + botão [+ Criar novo]
+         ↓ clica "Criar novo"
+         Formulário inline (nome, categoria, assunto, corpo)
+         ↓ clica "Salvar Template"
+         Template criado → selecionado automaticamente → volta à lista
+```
 
