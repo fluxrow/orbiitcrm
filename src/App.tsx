@@ -58,6 +58,7 @@ import OportunidadeDetailPage from "./pages/pe-admin/OportunidadeDetailPage";
 import TarefasPage from "./pages/pe-admin/TarefasPage";
 import TenantMapPage from "./pages/pe-admin/TenantMapPage";
 import PeAdminDocPage from "./pages/pe-admin/PeAdminDocPage";
+import CadastrosPage from "./pages/pe-admin/CadastrosPage";
 
 // Org Pages
 import OrgUsersPage from "./pages/org/OrgUsersPage";
@@ -178,6 +179,7 @@ const AppRoutes = () => (
       <Route path="oportunidades/kanban" element={<OportunidadesKanbanPage />} />
       <Route path="oportunidades/:id" element={<OportunidadeDetailPage />} />
       <Route path="tarefas" element={<TarefasPage />} />
+      <Route path="cadastros" element={<CadastrosPage />} />
       <Route path="tenants" element={<TenantMapPage />} />
       <Route path="audit" element={<PeAuditLogPage />} />
       <Route path="documentacao" element={<PeAdminDocPage />} />
