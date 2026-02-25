@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,7 +38,6 @@ export default function AcceptInvitePage() {
 
   const fetchInvitation = async () => {
     try {
-      // Use edge function to fetch (no auth required)
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/accept-invitation`,
         {
@@ -48,34 +47,30 @@ export default function AcceptInvitePage() {
         }
       );
 
-      // For preview, we'll just query directly using anon
-      const { data, error: fetchError } = await supabase
-        .from("pe_invitations" as any)
-        .select("*, organizations:organization_id(name), pe_roles:role_id(name, code)")
-        .eq("token", token)
-        .single();
+      const result = await res.json();
 
-      if (fetchError || !data) {
-        setError("Convite não encontrado ou inválido");
+      if (!res.ok || !result.ok) {
+        const errCode = result.error?.code;
+        if (errCode === "INVITE_USED") {
+          setError("Este convite já foi utilizado");
+        } else if (errCode === "INVITE_EXPIRED") {
+          setError("Este convite expirou");
+        } else {
+          setError("Convite não encontrado ou inválido");
+        }
         setLoading(false);
         return;
       }
 
-      const inv = data as any;
-
-      if (inv.status !== "pending") {
-        setError(`Este convite já foi ${inv.status === "accepted" ? "aceito" : inv.status === "expired" ? "expirado" : "cancelado"}`);
-        setLoading(false);
-        return;
-      }
-
-      if (new Date(inv.expires_at) < new Date()) {
-        setError("Este convite expirou");
-        setLoading(false);
-        return;
-      }
-
-      setInvitation(inv);
+      const inv = result.data;
+      setInvitation({
+        id: "",
+        email: inv.email,
+        status: inv.status,
+        expires_at: inv.expires_at,
+        organizations: { name: inv.organization_name },
+        pe_roles: { name: inv.role_name, code: inv.role_code },
+      });
       setLoading(false);
     } catch {
       setError("Erro ao carregar convite");

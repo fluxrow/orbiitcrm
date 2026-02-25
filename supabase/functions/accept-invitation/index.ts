@@ -7,7 +7,7 @@ Deno.serve(async (req) => {
   try {
     const supabaseAdmin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    const { token, password, full_name } = await req.json();
+    const { token, password, full_name, preview } = await req.json();
     if (!token) return fail(ErrorCodes.VALIDATION_ERROR, "Token is required");
 
     const { data: invitation, error: invError } = await supabaseAdmin
@@ -22,6 +22,18 @@ Deno.serve(async (req) => {
     if (new Date(invitation.expires_at) < new Date()) {
       await supabaseAdmin.from("pe_invitations").update({ status: "expired" }).eq("id", invitation.id);
       return fail(ErrorCodes.INVITE_EXPIRED, "Invitation has expired", 410);
+    }
+
+    // Preview mode: return invitation data without accepting
+    if (preview) {
+      return ok({
+        email: invitation.email,
+        organization_name: invitation.organizations?.name,
+        role_name: invitation.pe_roles?.name,
+        role_code: invitation.pe_roles?.code,
+        status: invitation.status,
+        expires_at: invitation.expires_at,
+      });
     }
 
     const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
