@@ -1,10 +1,17 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MoreHorizontal, KeyRound } from "lucide-react";
 import { format } from "date-fns";
+import SetPasswordDialog from "@/components/pe-admin/SetPasswordDialog";
 
 export default function GlobalUsersPage() {
+  const [pwdUser, setPwdUser] = useState<{ id: string; name: string } | null>(null);
+
   const { data: users, isLoading } = useQuery({
     queryKey: ["pe-all-users"],
     queryFn: async () => {
@@ -34,13 +41,14 @@ export default function GlobalUsersPage() {
               <TableHead>Papel</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Desde</TableHead>
+              <TableHead className="w-12"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
             ) : !users?.length ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Nenhum usuário</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhum usuário</TableCell></TableRow>
             ) : (
               users.map((u: any) => (
                 <TableRow key={u.id}>
@@ -57,12 +65,33 @@ export default function GlobalUsersPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{format(new Date(u.created_at), "dd/MM/yyyy")}</TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon"><MoreHorizontal className="w-4 h-4" /></Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setPwdUser({ id: u.id, name: u.full_name || u.email })}>
+                          <KeyRound className="w-4 h-4 mr-2" /> Definir Senha
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
                 </TableRow>
               ))
             )}
           </TableBody>
         </Table>
       </div>
+
+      {pwdUser && (
+        <SetPasswordDialog
+          open={!!pwdUser}
+          onOpenChange={(open) => !open && setPwdUser(null)}
+          userId={pwdUser.id}
+          userName={pwdUser.name}
+        />
+      )}
     </div>
   );
 }
