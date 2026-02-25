@@ -43,19 +43,33 @@ export default function TrialPage() {
   });
 
   const onSubmit = async (data: FormValues) => {
-    const { error } = await supabase.from("trial_requests" as any).insert([{
-      nome: data.nome,
-      empresa: data.empresa,
-      email: data.email,
-      telefone: data.telefone || null,
-      plan_code: data.plan_code,
-    }]);
+    try {
+      const { data: result, error } = await supabase.functions.invoke('auto-approve-trial', {
+        body: {
+          nome: data.nome,
+          empresa: data.empresa,
+          email: data.email,
+          telefone: data.telefone || null,
+          plan_code: data.plan_code,
+        },
+      });
 
-    if (error) {
+      if (error) {
+        const msg = (result as any)?.error?.message || "Tente novamente em alguns instantes.";
+        toast({ title: "Erro ao enviar", description: msg, variant: "destructive" });
+        return;
+      }
+
+      // Check for API-level error in response body
+      if (result && !result.success && result.error) {
+        toast({ title: "Erro", description: result.error.message || "Erro ao processar solicitação.", variant: "destructive" });
+        return;
+      }
+
+      setSubmitted(true);
+    } catch (e) {
       toast({ title: "Erro ao enviar", description: "Tente novamente em alguns instantes.", variant: "destructive" });
-      return;
     }
-    setSubmitted(true);
   };
 
   if (submitted) {
@@ -66,9 +80,9 @@ export default function TrialPage() {
             <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
               <CheckCircle className="w-8 h-8 text-primary" />
             </div>
-            <CardTitle className="text-2xl">Solicitação enviada!</CardTitle>
+            <CardTitle className="text-2xl">Conta criada com sucesso!</CardTitle>
             <CardDescription className="mt-2">
-              Recebemos sua solicitação de trial. Em breve nossa equipe entrará em contato pelo email informado para ativar sua conta.
+              Enviamos um e-mail de ativação para o endereço informado. Verifique sua caixa de entrada (e spam) e clique no link para criar sua senha e começar a usar o Orbit CRM.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
