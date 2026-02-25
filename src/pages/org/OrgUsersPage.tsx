@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { usePeAuth } from "@/hooks/usePeAuth";
-import { useOrgUsers, useUpdateOrgUser, useInviteUser } from "@/hooks/useOrgUsers";
+import { useOrgUsers, useUpdateOrgUser, useInviteUser, useAddOrgUser } from "@/hooks/useOrgUsers";
 import { useOrgInvitations, useCancelInvitation } from "@/hooks/usePeInvitations";
 import { usePeRoles } from "@/hooks/usePeRoles";
 import { useAuth } from "@/hooks/useAuth";
@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MoreHorizontal, Plus, Mail, Clock } from "lucide-react";
+import { MoreHorizontal, Plus, Mail, Clock, UserPlus } from "lucide-react";
 import { format } from "date-fns";
 
 export default function OrgUsersPage() {
@@ -24,10 +24,13 @@ export default function OrgUsersPage() {
   const { data: roles } = usePeRoles();
   const updateUser = useUpdateOrgUser();
   const inviteUser = useInviteUser();
+  const addUser = useAddOrgUser();
   const cancelInvite = useCancelInvitation();
 
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({ email: "", role_code: "", full_name: "" });
+  const [addForm, setAddForm] = useState({ email: "", password: "", role_code: "", full_name: "" });
 
   if (authLoading) {
     return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" /></div>;
@@ -45,6 +48,13 @@ export default function OrgUsersPage() {
     setInviteForm({ email: "", role_code: "", full_name: "" });
   };
 
+  const handleAdd = async () => {
+    if (!orgId) return;
+    await addUser.mutateAsync({ organization_id: orgId, ...addForm });
+    setAddOpen(false);
+    setAddForm({ email: "", password: "", role_code: "", full_name: "" });
+  };
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-5xl mx-auto space-y-6">
@@ -53,9 +63,14 @@ export default function OrgUsersPage() {
             <h1 className="text-2xl font-bold text-foreground">Usuários da Organização</h1>
             <p className="text-sm text-muted-foreground">Gerencie os membros da sua equipe</p>
           </div>
-          <Button onClick={() => setInviteOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" /> Convidar
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setAddOpen(true)}>
+              <UserPlus className="w-4 h-4 mr-2" /> Adicionar
+            </Button>
+            <Button onClick={() => setInviteOpen(true)}>
+              <Plus className="w-4 h-4 mr-2" /> Convidar
+            </Button>
+          </div>
         </div>
 
         <div className="border border-border rounded-lg">
@@ -165,6 +180,32 @@ export default function OrgUsersPage() {
               <Button variant="outline" onClick={() => setInviteOpen(false)}>Cancelar</Button>
               <Button onClick={handleInvite} disabled={!inviteForm.email || !inviteForm.role_code || inviteUser.isPending}>
                 {inviteUser.isPending ? "Enviando..." : "Enviar Convite"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={addOpen} onOpenChange={setAddOpen}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Adicionar Usuário</DialogTitle></DialogHeader>
+            <div className="space-y-4">
+              <div><Label>Nome *</Label><Input value={addForm.full_name} onChange={(e) => setAddForm({ ...addForm, full_name: e.target.value })} placeholder="Nome completo" /></div>
+              <div><Label>Email *</Label><Input value={addForm.email} onChange={(e) => setAddForm({ ...addForm, email: e.target.value })} type="email" placeholder="email@exemplo.com" /></div>
+              <div><Label>Senha *</Label><Input value={addForm.password} onChange={(e) => setAddForm({ ...addForm, password: e.target.value })} type="password" placeholder="Mínimo 6 caracteres" /></div>
+              <div>
+                <Label>Papel *</Label>
+                <Select value={addForm.role_code} onValueChange={(v) => setAddForm({ ...addForm, role_code: v })}>
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {roles?.map((r: any) => (<SelectItem key={r.id} value={r.code}>{r.name}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAddOpen(false)}>Cancelar</Button>
+              <Button onClick={handleAdd} disabled={!addForm.email || !addForm.full_name || addForm.password.length < 6 || !addForm.role_code || addUser.isPending}>
+                {addUser.isPending ? "Adicionando..." : "Adicionar Usuário"}
               </Button>
             </DialogFooter>
           </DialogContent>

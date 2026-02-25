@@ -52,6 +52,24 @@ export function useUpdateOrgUser() {
   });
 }
 
+export function useAddOrgUser() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: { organization_id: string; email: string; password: string; role_code: string; full_name?: string }) => {
+      const response = await supabase.functions.invoke("add-org-user", {
+        body: payload,
+      });
+      return handleApiResponse(response);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["org-users"] });
+      toast.success("Usuário adicionado com sucesso");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+}
+
 export function useInviteUser() {
   const qc = useQueryClient();
 
