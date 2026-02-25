@@ -1,44 +1,27 @@
 
 
-# Criar Template Inline no Wizard de Campanha
+# Aplicar logo Orbit em todos os locais (favicon, aba, social)
 
-## Problema
+## Problema atual
 
-No passo 2 do wizard de criação de campanha (seleção de template), se não existir um template adequado, o usuário precisa sair do wizard, ir à página de Templates, criar um e depois voltar. Isso quebra o fluxo.
-
-## Solução
-
-Adicionar uma opção "Criar novo template" no passo 2 do `CampaignWizard`. Ao clicar, um formulário inline aparece permitindo preencher os campos do template (nome, categoria, assunto se email, corpo texto). O template é salvo no banco e automaticamente selecionado na campanha.
+- O **favicon** (`public/favicon.ico`) ainda é o padrão Lovable
+- As **meta tags OG/Twitter** apontam para uma imagem social no storage do Lovable
+- O `twitter:site` referencia `@Lovable` em vez de Orbit
+- A logo Orbit (`src/assets/orbit-logo.png`) já é usada na sidebar e header, mas não no favicon nem nas meta tags
 
 ## Alterações
 
 | Arquivo | Alteração |
 |---|---|
-| `src/components/orbit/CampaignWizard.tsx` | No step 2, adicionar botão "Criar novo template" que alterna para um formulário inline. Usar o hook `useCreateTemplate` para salvar. Após salvar, selecionar automaticamente o novo template e voltar à visualização de lista. |
+| `public/favicon.png` | Copiar `src/assets/orbit-logo.png` para `public/favicon.png` para uso como favicon |
+| `index.html` | Atualizar `<link rel="icon">` para apontar para `/favicon.png`. Remover referências `@Lovable` do `twitter:site`. Atualizar `og:image` e `twitter:image` para usar a logo Orbit local (`/favicon.png`). |
 
-### Detalhes do formulário inline
+### Detalhes
 
-O step 2 passará a ter dois modos:
+1. **Favicon**: Copiar `orbit-logo.png` para `public/favicon.png` e referenciar no `index.html` com `<link rel="icon" href="/favicon.png" type="image/png">`
+2. **Meta tags sociais**: Substituir as URLs de imagem do storage externo por `/favicon.png` (caminho relativo)
+3. **Twitter site**: Alterar de `@Lovable` para `@OrbitCRM` (ou remover)
+4. **Author**: Alterar de `Lovable` para `Orbit CRM`
 
-1. **Modo seleção** (atual) — lista de templates existentes + botão "Criar novo template" no topo
-2. **Modo criação** — formulário com campos:
-   - Nome do template (obrigatório)
-   - Categoria (select: geral, marketing, vendas, suporte)
-   - Assunto do email (apenas se canal = email)
-   - Corpo do texto (textarea, obrigatório)
-   - Botões "Salvar Template" e "Cancelar" (volta ao modo seleção)
-
-Ao salvar, o hook `useCreateTemplate` (já existente em `useOrbitTemplates.ts`) é chamado com os dados + `empresa_id` + `canal` do wizard. O template criado é selecionado automaticamente como `template_id` da campanha, e o modo volta para seleção.
-
-A validação do `canProceed()` no step 2 continuará exigindo `template_id`, mas agora o usuário pode criá-lo sem sair do wizard.
-
-### Fluxo
-
-```text
-Step 2 → Lista templates + botão [+ Criar novo]
-         ↓ clica "Criar novo"
-         Formulário inline (nome, categoria, assunto, corpo)
-         ↓ clica "Salvar Template"
-         Template criado → selecionado automaticamente → volta à lista
-```
+Os locais que já usam `orbit-logo.png` no código (HotsiteHeader, OrbitSidebar, LandingPage, TenantLayout) já estão corretos e não precisam de alteração.
 
