@@ -170,7 +170,7 @@ export default function AuthPage() {
       <div className="w-full max-w-md">
         <div className="glass-card p-8">
           <div className="flex justify-center mb-8">
-            <img src={logo} alt="Orbit CRM" className="h-14 w-auto" />
+            <img src={logo} alt="Orbit CRM" className="h-28 w-auto" />
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
