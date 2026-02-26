@@ -56,7 +56,7 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [estimatedRecipients, setEstimatedRecipients] = useState(0);
   const [showNewTemplate, setShowNewTemplate] = useState(false);
-  const [newTemplate, setNewTemplate] = useState({ nome: "", categoria: "geral", assunto_email: "", corpo_texto: "" });
+  const [newTemplate, setNewTemplate] = useState({ nome: "", categoria: "geral", assunto_email: "", corpo_texto: "", imagem_url: "" });
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   const [showAiGen, setShowAiGen] = useState(false);
   const [aiObjetivo, setAiObjetivo] = useState("");
@@ -124,13 +124,14 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
         categoria: newTemplate.categoria,
         assunto_email: data.canal === "email" ? newTemplate.assunto_email : null,
         corpo_texto: newTemplate.corpo_texto,
+        imagem_url: newTemplate.imagem_url || null,
         empresa_id: profile.empresa_id,
         ativo: true,
       });
 
       setData({ ...data, template_id: created.id });
       setShowNewTemplate(false);
-      setNewTemplate({ nome: "", categoria: "geral", assunto_email: "", corpo_texto: "" });
+      setNewTemplate({ nome: "", categoria: "geral", assunto_email: "", corpo_texto: "", imagem_url: "" });
       toast.success("Template criado com sucesso!");
     } catch (error: any) {
       toast.error(error.message || "Erro ao criar template");
@@ -155,6 +156,7 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
         categoria: result.data.categoria || newTemplate.categoria,
         assunto_email: result.data.assunto_email || "",
         corpo_texto: result.data.corpo_texto || "",
+        imagem_url: "",
       });
       setShowAiGen(false);
       setShowNewTemplate(true);
@@ -201,7 +203,12 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
       
       const bodyText = substituteVars(selectedTemplate.corpo_texto || "", testVars);
       const subject = substituteVars(selectedTemplate.assunto_email || "Teste", testVars);
-      const html = bodyText.replace(/\n/g, "<br>");
+      const templateImg = (selectedTemplate as any).imagem_url || "";
+      let html = "";
+      if (templateImg) {
+        html += `<div style="margin-bottom:16px"><img src="${templateImg}" alt="Campanha" style="max-width:100%;height:auto;border-radius:8px" /></div>`;
+      }
+      html += bodyText.replace(/\n/g, "<br>");
 
       const res = await supabase.functions.invoke("orbit-send-email", {
         body: { to: testEmail, subject, html, empresa_id: profile?.empresa_id },
@@ -445,6 +452,11 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
                     </div>
                   )}
                   <div className="space-y-2">
+                    <Label>Imagem (opcional)</Label>
+                    <Input placeholder="https://exemplo.com/imagem.jpg" value={(newTemplate as any).imagem_url || ""} onChange={(e) => setNewTemplate({ ...newTemplate, imagem_url: e.target.value } as any)} />
+                    <p className="text-xs text-muted-foreground">Cole a URL de uma imagem ou faça upload na página de Templates</p>
+                  </div>
+                  <div className="space-y-2">
                     <Label>Corpo do Texto *</Label>
                     <Textarea placeholder="Escreva o conteúdo do template..." rows={5} value={newTemplate.corpo_texto} onChange={(e) => setNewTemplate({ ...newTemplate, corpo_texto: e.target.value })} />
                   </div>
@@ -564,6 +576,12 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
                                   <div>
                                     <p className="text-xs font-medium text-muted-foreground">Assunto:</p>
                                     <p className="text-sm font-medium">{substituteVars(selectedTemplate.assunto_email, testVars)}</p>
+                                  </div>
+                                )}
+                                {(selectedTemplate as any)?.imagem_url && (
+                                  <div>
+                                    <p className="text-xs font-medium text-muted-foreground">Imagem:</p>
+                                    <img src={(selectedTemplate as any).imagem_url} alt="Template" className="w-full max-h-40 object-cover rounded border" />
                                   </div>
                                 )}
                                 <div>

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Sparkles, Copy, Trash2, Pencil, MessageSquare, Mail, Loader2 } from "lucide-react";
+import { Plus, Sparkles, Copy, Trash2, Pencil, MessageSquare, Mail, Loader2, ImagePlus, X, Link } from "lucide-react";
 import { useOrbitTemplates, useCreateTemplate, useUpdateTemplate, useDeleteTemplate } from "@/hooks/useOrbitTemplates";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -26,9 +26,10 @@ interface TemplateForm {
   categoria: string;
   assunto_email: string;
   corpo_texto: string;
+  imagem_url: string;
 }
 
-const emptyForm: TemplateForm = { nome: "", categoria: "geral", assunto_email: "", corpo_texto: "" };
+const emptyForm: TemplateForm = { nome: "", categoria: "geral", assunto_email: "", corpo_texto: "", imagem_url: "" };
 
 export default function TemplatesPage() {
   const [tab, setTab] = useState("whatsapp");
@@ -37,13 +38,13 @@ export default function TemplatesPage() {
   const updateTemplate = useUpdateTemplate();
   const deleteTemplate = useDeleteTemplate();
 
-  // Dialog states
   const [showDialog, setShowDialog] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<TemplateForm>(emptyForm);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [imageMode, setImageMode] = useState<"upload" | "url">("upload");
 
-  // AI dialog states
   const [showAiDialog, setShowAiDialog] = useState(false);
   const [aiObjetivo, setAiObjetivo] = useState("");
   const [aiCategoria, setAiCategoria] = useState("geral");
@@ -52,9 +53,39 @@ export default function TemplatesPage() {
 
   const isEmail = tab === "email";
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Selecione um arquivo de imagem");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Imagem deve ter no máximo 5MB");
+      return;
+    }
+    try {
+      setIsUploading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Não autenticado");
+      const ext = file.name.split(".").pop();
+      const path = `${user.id}/${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("campaign-images").upload(path, file);
+      if (error) throw error;
+      const { data: { publicUrl } } = supabase.storage.from("campaign-images").getPublicUrl(path);
+      setForm({ ...form, imagem_url: publicUrl });
+      toast.success("Imagem carregada!");
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao fazer upload");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const openNew = () => {
     setEditingId(null);
     setForm(emptyForm);
+    setImageMode("upload");
     setShowDialog(true);
   };
 
@@ -65,7 +96,9 @@ export default function TemplatesPage() {
       categoria: t.categoria || "geral",
       assunto_email: t.assunto_email || "",
       corpo_texto: t.corpo_texto || "",
+      imagem_url: t.imagem_url || "",
     });
+    setImageMode(t.imagem_url ? "url" : "upload");
     setShowDialog(true);
   };
 
@@ -88,6 +121,7 @@ export default function TemplatesPage() {
           categoria: form.categoria,
           assunto_email: isEmail ? form.assunto_email : null,
           corpo_texto: form.corpo_texto,
+          imagem_url: form.imagem_url || null,
         });
         toast.success("Template atualizado!");
       } else {
@@ -97,6 +131,7 @@ export default function TemplatesPage() {
           categoria: form.categoria,
           assunto_email: isEmail ? form.assunto_email : null,
           corpo_texto: form.corpo_texto,
+          imagem_url: form.imagem_url || null,
           empresa_id: profile.empresa_id,
           ativo: true,
         });
@@ -124,7 +159,6 @@ export default function TemplatesPage() {
         body: { canal: tab, categoria: aiCategoria, objetivo: aiObjetivo },
       });
       if (error) {
-        // Try to extract real message from data envelope
         const msg = data?.error?.message || error.message || "Erro na geração";
         throw new Error(msg);
       }
@@ -134,6 +168,7 @@ export default function TemplatesPage() {
         categoria: data.data.categoria || aiCategoria,
         assunto_email: data.data.assunto_email || "",
         corpo_texto: data.data.corpo_texto || "",
+        imagem_url: "",
       });
     } catch (error: any) {
       toast.error(error.message || "Erro ao gerar template com IA");
@@ -188,6 +223,9 @@ export default function TemplatesPage() {
                     <h3 className="font-semibold">{t.nome}</h3>
                     <Badge variant="secondary">{t.categoria}</Badge>
                   </div>
+                  {(t as any).imagem_url && (
+                    <img src={(t as any).imagem_url} alt="Template" className="w-full h-32 object-cover rounded mb-3" />
+                  )}
                   {t.assunto_email && (
                     <p className="text-xs text-muted-foreground mb-2">Assunto: {t.assunto_email}</p>
                   )}
@@ -214,7 +252,7 @@ export default function TemplatesPage() {
 
       {/* Dialog de criação/edição */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar Template" : "Novo Template"}</DialogTitle>
           </DialogHeader>
@@ -238,6 +276,43 @@ export default function TemplatesPage() {
                 <Input value={form.assunto_email} onChange={(e) => setForm({ ...form, assunto_email: e.target.value })} placeholder="Assunto do email" />
               </div>
             )}
+
+            {/* Imagem */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label>Imagem (opcional)</Label>
+                <div className="flex gap-1">
+                  <Button type="button" variant={imageMode === "upload" ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => setImageMode("upload")}>
+                    <ImagePlus className="h-3 w-3 mr-1" />Upload
+                  </Button>
+                  <Button type="button" variant={imageMode === "url" ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => setImageMode("url")}>
+                    <Link className="h-3 w-3 mr-1" />URL
+                  </Button>
+                </div>
+              </div>
+
+              {form.imagem_url && (
+                <div className="relative mb-2">
+                  <img src={form.imagem_url} alt="Preview" className="w-full h-32 object-cover rounded border" />
+                  <Button type="button" variant="destructive" size="sm" className="absolute top-1 right-1 h-7 w-7 p-0" onClick={() => setForm({ ...form, imagem_url: "" })}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+
+              {!form.imagem_url && imageMode === "upload" && (
+                <div className="relative">
+                  <Input type="file" accept="image/*" onChange={handleImageUpload} disabled={isUploading} className="cursor-pointer" />
+                  {isUploading && <div className="absolute inset-0 flex items-center justify-center bg-background/80 rounded"><Loader2 className="h-4 w-4 animate-spin" /></div>}
+                </div>
+              )}
+
+              {!form.imagem_url && imageMode === "url" && (
+                <Input placeholder="https://exemplo.com/imagem.jpg" value={form.imagem_url} onChange={(e) => setForm({ ...form, imagem_url: e.target.value })} />
+              )}
+              <p className="text-xs text-muted-foreground mt-1">A imagem aparecerá antes do texto na mensagem</p>
+            </div>
+
             <div>
               <Label>Corpo do Template</Label>
               <Textarea value={form.corpo_texto} onChange={(e) => setForm({ ...form, corpo_texto: e.target.value })} placeholder="Digite o conteúdo do template..." rows={6} />
