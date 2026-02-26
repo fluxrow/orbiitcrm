@@ -1,6 +1,8 @@
+import { Navigate } from "react-router-dom";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
 import { useTenant } from "@/contexts/TenantContext";
+import { useIsAdmin } from "@/hooks/useUserRole";
 import { useSaasEmpresa, useSaasUsage } from "@/hooks/useSaasPlans";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -78,10 +80,15 @@ const FEATURE_LIST = [
 
 export default function MeuPlanoPage() {
   const { empresaId, planCode, saasStatus, trialEndsAt, empresaNome, isDemo, basePath } = useTenant();
+  const { isAdmin, isLoading: isAdminLoading } = useIsAdmin();
   const { data: saasEmpresa, isLoading } = useSaasEmpresa(empresaId || undefined);
   const currentPeriod = format(new Date(), "yyyy-MM");
   const { data: usage } = useSaasUsage(empresaId || undefined, currentPeriod);
   const navigate = useNavigate();
+
+  if (!isAdminLoading && !isAdmin) {
+    return <Navigate to={`${basePath}/dashboard`} replace />;
+  }
 
   const plan = saasEmpresa?.saas_plans;
   const features = (plan?.features || {}) as Record<string, boolean>;
