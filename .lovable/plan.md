@@ -1,176 +1,59 @@
 
 
-# Separação de Responsabilidades: Orbit (CRM) vs PE Admin (Admin SaaS)
+# Melhorar página "Meu Plano" no Orbit
 
 ## Contexto
 
-O PE Admin atualmente mistura módulos de CRM (clientes, contatos, segmentos, origens, produtos, funil, oportunidades, tarefas, importação) com módulos administrativos SaaS. A regra de produto exige que o PE Admin seja exclusivamente um painel de gestão SaaS.
+A página atual mostra apenas 3 cards básicos (plano, status, trial). Precisa exibir limites do plano, consumo do mês e um botão de contato/upgrade — tudo somente leitura, sem nenhum link para PE Admin.
 
-## FASE 1 — Remover módulos CRM do PE Admin
+## Alterações
 
-### 1.1 Limpar sidebar (`PeAdminLayout.tsx`)
+### Arquivo: `src/pages/orbit/MeuPlanoPage.tsx` (reescrita)
 
-Remover do array `navItems`:
-- `/pe-admin/clientes` (Assinantes)
-- `/pe-admin/contatos`
-- `/pe-admin/segmentos`
-- `/pe-admin/origens`
-- `/pe-admin/produtos`
-- `/pe-admin/funil`
-- `/pe-admin/oportunidades`
-- `/pe-admin/tarefas`
-- `/pe-admin/importacao`
+A página será reestruturada em seções:
 
-**Manter:**
-- Organizações
-- Usuários Globais
-- Cadastros (trials + SaaS)
-- Tenant Map
-- Auditoria
-- Documentação
+**1. Cabeçalho do plano** (card principal)
+- Nome do plano (Basic/Professional/Plus/Demo)
+- Nome da empresa
+- Badge de status (Ativo/Trial/Suspenso/Expirado/Pendente)
+- Se trial: data de expiração com contagem regressiva ("Expira em X dias")
 
-### 1.2 Remover rotas CRM do `App.tsx`
+**2. Limites e consumo** (grid de cards)
+Cards com barra de progresso mostrando uso atual vs limite do plano:
+- Usuários (max_users)
+- Prospects (max_prospects)  
+- E-mails/mês (email_monthly vs email_sent)
+- WhatsApp/mês (whatsapp_monthly vs whatsapp_sent)
+- Instagram/mês (ig_monthly vs ig_sent) — só se feature habilitada
+- Facebook/mês (fb_monthly vs fb_sent) — só se feature habilitada
+- Lead Finder/mês (lead_search_monthly vs lead_search_calls) — só se feature habilitada
 
-Substituir as 11 rotas CRM dentro de `<Route path="/pe-admin">` por uma rota catch-all que redireciona para `/pe-admin/cadastros`:
+Dados de consumo vêm do hook `useSaasUsage` com o período atual (`YYYY-MM`).
 
-```text
-Rotas removidas:
-  /pe-admin/clientes
-  /pe-admin/clientes/:id
-  /pe-admin/contatos
-  /pe-admin/segmentos
-  /pe-admin/origens
-  /pe-admin/importacao
-  /pe-admin/produtos
-  /pe-admin/funil
-  /pe-admin/oportunidades
-  /pe-admin/oportunidades/kanban
-  /pe-admin/oportunidades/:id
-  /pe-admin/tarefas
+**3. Features habilitadas** (lista com check/x)
+- WhatsApp, E-mail, Instagram, Facebook, Lead Finder, Agente IA
+- Ícone verde (habilitado) ou cinza (não disponível)
 
-Rotas mantidas:
-  /pe-admin → redirect /pe-admin/cadastros (novo index)
-  /pe-admin/organizations
-  /pe-admin/organizations/:id/users
-  /pe-admin/users
-  /pe-admin/cadastros
-  /pe-admin/tenants
-  /pe-admin/audit
-  /pe-admin/documentacao
-  /pe-admin/* → redirect /pe-admin/cadastros (catch-all)
-```
+**4. Botão de ação**
+- "Solicitar Upgrade" ou "Falar com Suporte"
+- Abre link `mailto:` ou WhatsApp para contato (sem nenhum redirecionamento para PE Admin)
+- Para planos demo: "Solicitar Acesso" apontando para página de trial
 
-### 1.3 Remover imports não utilizados do `App.tsx`
+### Dados necessários (hooks existentes)
 
-Remover imports das páginas CRM: `ClientesPage`, `ClienteDetailPage`, `ContatosPage`, `SegmentosPage`, `OrigensPage`, `ImportacaoPage`, `ProdutosPage`, `FunilEtapasPage`, `OportunidadesPage`, `OportunidadesKanbanPage`, `OportunidadeDetailPage`, `TarefasPage`.
-
-Os arquivos fonte dessas páginas **não serão deletados** (podem ser reutilizados futuramente no Orbit ou em outro contexto), apenas desconectados das rotas.
-
-## FASE 2 — Ajustar PE Admin como "Admin do SaaS"
-
-### 2.1 Empresas (já existe parcialmente em `CadastrosPage`)
-
-A página `/pe-admin/cadastros` já cobre:
-- Lista de empresas SaaS com status, plano, datas
-- Gerenciamento via `SaasManageDialog` (trocar plano, status, trial)
-- Aprovação de trials
-
-Nenhuma alteração de código necessária nesta fase, a funcionalidade já está implementada.
-
-### 2.2 Planos/Pacotes
-
-A gestão de planos (`saas_plans`) não tem CRUD dedicado no PE Admin. Será necessário **criar uma nova página** `/pe-admin/planos`:
-- Listar planos (code, name, features, limits)
-- Criar/editar plano
-- Usar hook `useSaasPlans` existente (precisa adicionar mutations de create/update)
-
-| Arquivo | Alteração |
+| Dado | Fonte |
 |---|---|
-| `src/pages/pe-admin/PlanosPage.tsx` | **Novo** — CRUD de `saas_plans` |
-| `src/hooks/useSaasPlans.ts` | Adicionar mutations `useCreateSaasPlan` e `useUpdateSaasPlan` |
-| `src/pages/pe-admin/PeAdminLayout.tsx` | Adicionar item de menu "Planos" |
-| `src/App.tsx` | Adicionar rota `/pe-admin/planos` |
+| Plano + features + limits | `useSaasEmpresa` (já traz `saas_plans` via join) |
+| Consumo mensal | `useSaasUsage(empresaId, period)` — hook já existe |
+| Status/trial | `useTenant()` — já disponível |
 
-### 2.3 Acessos (usuários por empresa)
+Nenhuma tabela nova, nenhuma migração, nenhum hook novo. Apenas reescrever o componente da página.
 
-A página de Usuários Globais (`/pe-admin/users`) já lista todos os `pe_users`. Para ver usuários por empresa, já existe `/pe-admin/organizations/:id/users`. A funcionalidade de bloquear/desbloquear pode ser adicionada como toggle de `is_active` na lista existente.
+### Detalhes técnicos
 
-| Arquivo | Alteração |
-|---|---|
-| `src/pages/pe-admin/GlobalUsersPage.tsx` | Adicionar coluna "Ativo" com toggle para `is_active` |
-
-### 2.4 Auditoria Admin
-
-A página `/pe-admin/audit` já existe com `pe_audit_log`. Nenhuma alteração necessária.
-
-## FASE 3 — Confirmar que Orbit mantém CRM
-
-### 3.1 Rotas Orbit (sem alteração)
-
-Todas as rotas CRM permanecem em `/demo/*` (e `/:slug/*`):
-- prospects, conversas, funil, campanhas, templates, lead-finder, analytics, config, meu-plano, usuarios
-
-### 3.2 "Promover para Funil (PE)"
-
-O botão de promoção em `ProspectDialog.tsx` será **removido**, pois referencia o módulo PE (CRM) que está sendo desconectado do PE Admin. A promoção de prospects deve futuramente ser um fluxo interno do Orbit (criar deal no funil do Orbit).
-
-| Arquivo | Alteração |
-|---|---|
-| `src/components/orbit/ProspectDialog.tsx` | Remover seção "Promover para Funil (PE)" e estados associados |
-
-## Detalhes Técnicos
-
-### Tabelas utilizadas por módulo PE Admin (pós-refactor)
-
-| Módulo | Tabela(s) |
-|---|---|
-| Cadastros (trials) | `trial_requests` |
-| Cadastros (SaaS) | `saas_empresa`, `saas_plans`, `orbit_empresas` |
-| Organizações | `organizations` |
-| Usuários Globais | `pe_users`, `pe_roles` |
-| Planos (novo) | `saas_plans` |
-| Tenant Map | `pe_tenant_map` |
-| Auditoria | `pe_audit_log` |
-
-### Novo menu `/pe-admin`
-
-```text
-┌─────────────────────┐
-│  PE Admin            │
-│  Super Admin         │
-├─────────────────────┤
-│  Cadastros           │  ← novo index
-│  Organizações        │
-│  Usuários Globais    │
-│  Planos              │  ← novo
-│  Tenant Map          │
-│  Auditoria           │
-│  Documentação        │
-├─────────────────────┤
-│  Sair                │
-└─────────────────────┘
-```
-
-### Checklist
-
-| Item | Status |
-|---|---|
-| Remover 9 módulos CRM do menu PE Admin | A fazer |
-| Remover 12 rotas CRM de App.tsx | A fazer |
-| Redirect catch-all para /pe-admin/cadastros | A fazer |
-| Criar página Planos (CRUD saas_plans) | A fazer |
-| Adicionar toggle ativo/inativo em Usuários Globais | A fazer |
-| Remover "Promover para Funil (PE)" do ProspectDialog | A fazer |
-| Build sem quebras | A verificar |
-
-### Arquivos alterados
-
-| Arquivo | Tipo |
-|---|---|
-| `src/App.tsx` | Edição (remover rotas + imports CRM, adicionar rota planos + catch-all) |
-| `src/pages/pe-admin/PeAdminLayout.tsx` | Edição (limpar navItems, adicionar Planos) |
-| `src/pages/pe-admin/PlanosPage.tsx` | **Novo** |
-| `src/hooks/useSaasPlans.ts` | Edição (adicionar mutations create/update) |
-| `src/pages/pe-admin/GlobalUsersPage.tsx` | Edição (toggle is_active) |
-| `src/components/orbit/ProspectDialog.tsx` | Edição (remover seção promoção PE) |
+- O período atual será calculado com `format(new Date(), 'yyyy-MM')`
+- Barras de progresso usam o componente `Progress` existente (`@/components/ui/progress`)
+- Cards de canais desabilitados (feature = false) ficam com visual esmaecido e label "Não incluso"
+- Quando consumo > 80% do limite, barra fica amarela; > 95% fica vermelha
+- Zero referências a rotas `/pe-admin/*`
 
