@@ -2,23 +2,15 @@ import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { usePeAuth } from "@/hooks/usePeAuth";
-import { Building2, Users, FileText, LogOut, Menu, X, Shield, Briefcase, Contact, Tag, MapPin, Upload, Package, GitBranch, Target, CheckSquare, Link2, BookOpen, ClipboardList } from "lucide-react";
+import { Building2, Users, FileText, LogOut, Menu, X, Shield, Link2, BookOpen, ClipboardList, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Navigate } from "react-router-dom";
 
 const navItems = [
+  { to: "/pe-admin/cadastros", label: "Cadastros", icon: ClipboardList },
   { to: "/pe-admin/organizations", label: "Organizações", icon: Building2 },
   { to: "/pe-admin/users", label: "Usuários Globais", icon: Users },
-  { to: "/pe-admin/clientes", label: "Assinantes", icon: Briefcase },
-  { to: "/pe-admin/contatos", label: "Contatos", icon: Contact },
-  { to: "/pe-admin/segmentos", label: "Segmentos", icon: Tag },
-  { to: "/pe-admin/origens", label: "Origens", icon: MapPin },
-  { to: "/pe-admin/produtos", label: "Produtos", icon: Package },
-  { to: "/pe-admin/funil", label: "Funil de Assinaturas", icon: GitBranch },
-  { to: "/pe-admin/oportunidades", label: "Assinaturas", icon: Target },
-  { to: "/pe-admin/tarefas", label: "Tarefas", icon: CheckSquare },
-  { to: "/pe-admin/importacao", label: "Importação", icon: Upload },
-  { to: "/pe-admin/cadastros", label: "Cadastros", icon: ClipboardList },
+  { to: "/pe-admin/planos", label: "Planos", icon: CreditCard },
   { to: "/pe-admin/tenants", label: "Tenant Map", icon: Link2 },
   { to: "/pe-admin/audit", label: "Auditoria", icon: FileText },
   { to: "/pe-admin/documentacao", label: "Documentação", icon: BookOpen },

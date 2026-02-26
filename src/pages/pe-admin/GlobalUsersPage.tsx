@@ -1,16 +1,34 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, KeyRound } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { format } from "date-fns";
+import { toast } from "sonner";
 import SetPasswordDialog from "@/components/pe-admin/SetPasswordDialog";
 
 export default function GlobalUsersPage() {
   const [pwdUser, setPwdUser] = useState<{ id: string; name: string } | null>(null);
+  const queryClient = useQueryClient();
+
+  const toggleActive = useMutation({
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      const { error } = await supabase
+        .from("pe_users" as any)
+        .update({ is_active })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pe-all-users"] });
+      toast.success("Status atualizado");
+    },
+    onError: () => toast.error("Erro ao atualizar status"),
+  });
 
   const { data: users, isLoading } = useQuery({
     queryKey: ["pe-all-users"],
@@ -60,9 +78,10 @@ export default function GlobalUsersPage() {
                   <TableCell className="text-muted-foreground">{u.organizations?.name || "—"}</TableCell>
                   <TableCell><Badge variant="outline">{u.pe_roles?.name || (u.is_super_admin ? "Global" : "—")}</Badge></TableCell>
                   <TableCell>
-                    <Badge variant={u.is_active ? "default" : "secondary"}>
-                      {u.is_active ? "Ativo" : "Inativo"}
-                    </Badge>
+                    <Switch
+                      checked={u.is_active}
+                      onCheckedChange={(checked) => toggleActive.mutate({ id: u.id, is_active: checked })}
+                    />
                   </TableCell>
                   <TableCell className="text-muted-foreground">{format(new Date(u.created_at), "dd/MM/yyyy")}</TableCell>
                   <TableCell>
