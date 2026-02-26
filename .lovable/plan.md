@@ -1,13 +1,16 @@
 
 
-# Substituir logotipo padrão do sistema
+# Substituir ícone de foguete pela logo na tela de login
 
 ## Alteração
 
-Copiar a imagem uploaded (`Logo_Orbit_em_fundo_gradiente_escuro.png`) para `src/assets/orbit-logo.png`, substituindo o arquivo atual. Como todos os componentes (Sidebar, Header, AuthPage, Landing) já importam de `@/assets/orbit-logo.png`, a troca será automática em todo o sistema.
+No arquivo `src/pages/AuthPage.tsx`:
 
-### Arquivo alterado
-- `src/assets/orbit-logo.png` — substituído pela nova imagem
+1. Remover import do ícone `Rocket` do lucide-react
+2. Adicionar import da imagem `orbit-logo.png`
+3. Substituir o bloco do ícone (div com gradiente + Rocket) por uma tag `<img>` exibindo a logo com tamanho adequado (ex: `h-14`)
+4. Remover o texto "ORBIT CRM" e subtítulo redundantes, já que a logo contém o branding — ou mantê-los se desejado
 
-Nenhuma alteração de código necessária.
+### Arquivo editado
+- `src/pages/AuthPage.tsx`
 
