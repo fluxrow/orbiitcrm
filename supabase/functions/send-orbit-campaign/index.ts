@@ -95,6 +95,9 @@ const handler = async (req: Request): Promise<Response> => {
       zapiConfig = data;
     }
 
+    // Get template image URL
+    const templateImageUrl = campaign.template?.imagem_url || null;
+
     for (const recipient of recipients) {
       try {
         const prospect = recipient.prospect;
@@ -142,6 +145,13 @@ const handler = async (req: Request): Promise<Response> => {
             ? `${resendConfig.from_name || "Orbit"} <${resendConfig.from_email}>`
             : "Orbit <onboarding@resend.dev>";
 
+          // Build HTML with image before text
+          let emailHtml = "";
+          if (templateImageUrl) {
+            emailHtml += `<div style="margin-bottom:16px"><img src="${templateImageUrl}" alt="Campanha" style="max-width:100%;height:auto;border-radius:8px" /></div>`;
+          }
+          emailHtml += html || `<p>${mensagem}</p>`;
+
           const emailRes = await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: { Authorization: `Bearer ${resendConfig.api_key}`, "Content-Type": "application/json" },
@@ -149,7 +159,7 @@ const handler = async (req: Request): Promise<Response> => {
               from: fromEmail,
               to: [prospect.email_principal],
               subject: assunto.replace(/{{nome}}/g, prospect.nome_razao || ""),
-              html: html || `<p>${mensagem}</p>`,
+              html: emailHtml,
             }),
           });
 
@@ -166,10 +176,23 @@ const handler = async (req: Request): Promise<Response> => {
           }
 
           const phone = prospect.telefone_whatsapp.replace(/\D/g, "");
-          const zapiRes = await fetch(
-            `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-text`,
-            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone, message: mensagem }) },
-          );
+          const zapiBaseUrl = `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}`;
+
+          // Send image first if present
+          if (templateImageUrl) {
+            await fetch(`${zapiBaseUrl}/send-image`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ phone, image: templateImageUrl, caption: "" }),
+            });
+          }
+
+          // Then send text
+          const zapiRes = await fetch(`${zapiBaseUrl}/send-text`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phone, message: mensagem }),
+          });
 
           if (!zapiRes.ok) {
             const err = await zapiRes.json();

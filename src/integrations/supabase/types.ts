@@ -1743,6 +1743,7 @@ export type Database = {
           created_at: string | null
           empresa_id: string | null
           id: string
+          imagem_url: string | null
           nome: string
           updated_at: string | null
           variaveis: string[] | null
@@ -1757,6 +1758,7 @@ export type Database = {
           created_at?: string | null
           empresa_id?: string | null
           id?: string
+          imagem_url?: string | null
           nome: string
           updated_at?: string | null
           variaveis?: string[] | null
@@ -1771,6 +1773,7 @@ export type Database = {
           created_at?: string | null
           empresa_id?: string | null
           id?: string
+          imagem_url?: string | null
           nome?: string
           updated_at?: string | null
           variaveis?: string[] | null
