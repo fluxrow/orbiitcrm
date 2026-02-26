@@ -100,6 +100,43 @@ export function useSaasUsage(empresaId: string | undefined, period: string) {
   });
 }
 
+export function useCreateSaasPlan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (plan: Omit<SaasPlan, "id" | "created_at" | "updated_at">) => {
+      const { data, error } = await supabase
+        .from("saas_plans" as any)
+        .insert(plan)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["saas-plans"] });
+    },
+  });
+}
+
+export function useUpdateSaasPlan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...updates }: { id: string } & Partial<Omit<SaasPlan, "id" | "created_at" | "updated_at">>) => {
+      const { data, error } = await supabase
+        .from("saas_plans" as any)
+        .update(updates)
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["saas-plans"] });
+    },
+  });
+}
+
 export function useUpdateSaasEmpresa() {
   const queryClient = useQueryClient();
   return useMutation({

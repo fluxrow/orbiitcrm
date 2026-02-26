@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
-import { useNavigate } from "react-router-dom";
+
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
@@ -20,7 +20,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -29,10 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useCreateProspect, useUpdateProspect } from "@/hooks/useOrbitProspects";
-import { usePromoteProspect } from "@/hooks/usePromoteProspect";
-import { usePeAuth } from "@/hooks/usePeAuth";
 import { toast } from "sonner";
-import { ArrowUpRight, Loader2, Settings } from "lucide-react";
 import type { Tables } from "@/integrations/supabase/types";
 
 const prospectSchema = z.object({
@@ -71,26 +67,10 @@ const ESTADOS = [
   "RS", "RO", "RR", "SC", "SP", "SE", "TO"
 ];
 
-const MATCH_LABELS: Record<string, string> = {
-  cnpj: "CNPJ",
-  domain: "Domínio",
-  name: "Nome",
-  new: "Novo cliente",
-  manual: "Manual",
-};
-
 export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogProps) {
   const createProspect = useCreateProspect();
   const updateProspect = useUpdateProspect();
-  const promoteProspect = usePromoteProspect();
-  const { isSuperAdmin } = usePeAuth();
-  const navigate = useNavigate();
   const isEditing = !!prospect;
-
-  const [showPromote, setShowPromote] = useState(false);
-  const [createOpp, setCreateOpp] = useState(true);
-  const [promoteResult, setPromoteResult] = useState<any>(null);
-  const [tenantMapError, setTenantMapError] = useState(false);
 
   const form = useForm<ProspectFormData>({
     resolver: zodResolver(prospectSchema),
@@ -111,9 +91,6 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
   });
 
   useEffect(() => {
-    setShowPromote(false);
-    setPromoteResult(null);
-    setTenantMapError(false);
     if (prospect) {
       form.reset({
         nome_razao: prospect.nome_razao || "",
@@ -159,35 +136,6 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
       onOpenChange(false);
     } catch (error) {
       toast.error("Erro ao salvar prospect");
-      console.error(error);
-    }
-  };
-
-  const handlePromote = async () => {
-    if (!prospect?.empresa_id) {
-      toast.error("Prospect sem empresa vinculada");
-      return;
-    }
-    try {
-      const result = await promoteProspect.mutateAsync({
-        empresa_id: prospect.empresa_id,
-        prospect_id: prospect.id,
-        create_opportunity: createOpp,
-      });
-      setPromoteResult(result);
-      toast.success("Prospect promovido para o funil PE!");
-    } catch (error: any) {
-      const msg = error?.message || "Erro ao promover";
-      if (msg.includes("tenant_map_missing")) {
-        setTenantMapError(true);
-        if (isSuperAdmin) {
-          toast.error("Mapeamento de tenant não configurado. Configure na página Tenant Map.");
-        } else {
-          toast.error("Mapeamento de tenant não configurado. Contate o administrador.");
-        }
-      } else {
-        toast.error(msg);
-      }
       console.error(error);
     }
   };
@@ -412,93 +360,6 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
                 </FormItem>
               )}
             />
-
-            {/* Promote to PE section */}
-            {isEditing && !promoteResult && (
-              <div className="border border-border rounded-lg p-4 space-y-3 bg-muted/30">
-                {!showPromote ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => setShowPromote(true)}
-                  >
-                    <ArrowUpRight className="h-4 w-4 mr-2" />
-                    Promover para Funil (PE)
-                  </Button>
-                ) : (
-                  <>
-                    <p className="text-sm text-muted-foreground">
-                      Isso criará (ou linkará) um Cliente e Contato no módulo PE com deduplicação inteligente.
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        id="create-opp"
-                        checked={createOpp}
-                        onCheckedChange={(v) => setCreateOpp(!!v)}
-                      />
-                      <label htmlFor="create-opp" className="text-sm cursor-pointer">
-                        Criar oportunidade automaticamente
-                      </label>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowPromote(false)}
-                      >
-                        Cancelar
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={handlePromote}
-                        disabled={promoteProspect.isPending}
-                      >
-                        {promoteProspect.isPending ? (
-                          <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Promovendo...</>
-                        ) : (
-                          "Confirmar Promoção"
-                        )}
-                      </Button>
-                    </div>
-                    {tenantMapError && (
-                      <div className="border border-destructive/30 rounded-lg p-3 bg-destructive/10 space-y-2">
-                        <p className="text-sm text-destructive font-medium">Mapeamento de tenant não configurado</p>
-                        {isSuperAdmin ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              onOpenChange(false);
-                              navigate("/pe-admin/tenants");
-                            }}
-                          >
-                            <Settings className="h-4 w-4 mr-1" />
-                            Configurar Mapeamento
-                          </Button>
-                        ) : (
-                          <p className="text-xs text-muted-foreground">Contate o Super Admin para configurar.</p>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* Result after promotion */}
-            {promoteResult && (
-              <div className="border border-primary/30 rounded-lg p-4 bg-primary/10 space-y-2">
-                <p className="text-sm font-medium text-primary">✓ Prospect promovido com sucesso!</p>
-                <div className="text-xs text-muted-foreground space-y-1">
-                  <p>Match: <span className="font-medium text-foreground">{MATCH_LABELS[promoteResult.match_type] || promoteResult.match_type}</span> ({promoteResult.match_confidence}%)</p>
-                  {promoteResult.oportunidade_id && <p>Oportunidade criada no funil PE</p>}
-                </div>
-              </div>
-            )}
 
             <div className="flex justify-end gap-2 pt-4">
               <Button

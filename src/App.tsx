@@ -44,21 +44,10 @@ import OrganizationsPage from "./pages/pe-admin/OrganizationsPage";
 import PeOrgUsersPage from "./pages/pe-admin/PeOrgUsersPage";
 import PeGlobalUsersPage from "./pages/pe-admin/GlobalUsersPage";
 import PeAuditLogPage from "./pages/pe-admin/AuditLogPage";
-import ClientesPage from "./pages/pe-admin/ClientesPage";
-import ClienteDetailPage from "./pages/pe-admin/ClienteDetailPage";
-import ContatosPage from "./pages/pe-admin/ContatosPage";
-import SegmentosPage from "./pages/pe-admin/SegmentosPage";
-import OrigensPage from "./pages/pe-admin/OrigensPage";
-import ImportacaoPage from "./pages/pe-admin/ImportacaoPage";
-import ProdutosPage from "./pages/pe-admin/ProdutosPage";
-import FunilEtapasPage from "./pages/pe-admin/FunilEtapasPage";
-import OportunidadesPage from "./pages/pe-admin/OportunidadesPage";
-import OportunidadesKanbanPage from "./pages/pe-admin/OportunidadesKanbanPage";
-import OportunidadeDetailPage from "./pages/pe-admin/OportunidadeDetailPage";
-import TarefasPage from "./pages/pe-admin/TarefasPage";
 import TenantMapPage from "./pages/pe-admin/TenantMapPage";
 import PeAdminDocPage from "./pages/pe-admin/PeAdminDocPage";
 import CadastrosPage from "./pages/pe-admin/CadastrosPage";
+import PlanosPage from "./pages/pe-admin/PlanosPage";
 
 // Org Pages
 import OrgUsersPage from "./pages/org/OrgUsersPage";
@@ -164,26 +153,16 @@ const AppRoutes = () => (
 
     {/* PE Admin Routes */}
     <Route path="/pe-admin" element={<PeAdminLayout />}>
-      <Route index element={<Navigate to="/pe-admin/organizations" replace />} />
+      <Route index element={<Navigate to="/pe-admin/cadastros" replace />} />
+      <Route path="cadastros" element={<CadastrosPage />} />
       <Route path="organizations" element={<OrganizationsPage />} />
       <Route path="organizations/:id/users" element={<PeOrgUsersPage />} />
       <Route path="users" element={<PeGlobalUsersPage />} />
-      <Route path="clientes" element={<ClientesPage />} />
-      <Route path="clientes/:id" element={<ClienteDetailPage />} />
-      <Route path="contatos" element={<ContatosPage />} />
-      <Route path="segmentos" element={<SegmentosPage />} />
-      <Route path="origens" element={<OrigensPage />} />
-      <Route path="importacao" element={<ImportacaoPage />} />
-      <Route path="produtos" element={<ProdutosPage />} />
-      <Route path="funil" element={<FunilEtapasPage />} />
-      <Route path="oportunidades" element={<OportunidadesPage />} />
-      <Route path="oportunidades/kanban" element={<OportunidadesKanbanPage />} />
-      <Route path="oportunidades/:id" element={<OportunidadeDetailPage />} />
-      <Route path="tarefas" element={<TarefasPage />} />
-      <Route path="cadastros" element={<CadastrosPage />} />
+      <Route path="planos" element={<PlanosPage />} />
       <Route path="tenants" element={<TenantMapPage />} />
       <Route path="audit" element={<PeAuditLogPage />} />
       <Route path="documentacao" element={<PeAdminDocPage />} />
+      <Route path="*" element={<Navigate to="/pe-admin/cadastros" replace />} />
     </Route>
 
     {/* Org Routes */}
