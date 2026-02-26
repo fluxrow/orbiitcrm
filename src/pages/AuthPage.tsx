@@ -4,7 +4,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Rocket, Mail, Lock, User } from "lucide-react";
+import { Mail, Lock, User } from "lucide-react";
+import logo from "@/assets/orbit-logo.png";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -168,14 +169,8 @@ export default function AuthPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="glass-card p-8">
-          <div className="flex items-center justify-center gap-3 mb-8">
-            <div className="w-12 h-12 rounded-xl gradient-primary flex items-center justify-center">
-              <Rocket className="w-6 h-6 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold gradient-text">ORBIT CRM</h1>
-              <p className="text-xs text-muted-foreground">Prospecção B2B</p>
-            </div>
+          <div className="flex justify-center mb-8">
+            <img src={logo} alt="Orbit CRM" className="h-14 w-auto" />
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
