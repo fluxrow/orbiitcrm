@@ -20,7 +20,7 @@ const handler = async (req: Request): Promise<Response> => {
     const { to, subject, html, empresa_id }: EmailRequest = await req.json();
 
     if (!to || !subject || !html) {
-      return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios: to, subject, html");
+      return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios: to, subject, html", 200);
     }
 
     // ── Plan enforcement ──
@@ -91,6 +91,7 @@ const handler = async (req: Request): Promise<Response> => {
       return fail(
         ErrorCodes.PROVIDER_NOT_CONFIGURED,
         "API Key do Resend não configurada. Configure a API Key nas configurações de email.",
+        200,
       );
     }
 
@@ -110,7 +111,7 @@ const handler = async (req: Request): Promise<Response> => {
       return fail(
         ErrorCodes.PROVIDER_SEND_FAILED,
         result.message || "Erro ao enviar email",
-        emailResponse.status,
+        200,
         { provider: "resend" },
       );
     }
@@ -128,7 +129,7 @@ const handler = async (req: Request): Promise<Response> => {
     return ok(result);
   } catch (error: any) {
     console.error("Erro ao enviar email:", error);
-    return fail(ErrorCodes.INTERNAL_ERROR, error.message, 500);
+    return fail(ErrorCodes.INTERNAL_ERROR, error.message, 200);
   }
 };
 

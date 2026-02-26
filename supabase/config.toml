@@ -19,7 +19,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.orbit-send-email]
-verify_jwt = true
+verify_jwt = false
 
 [functions.send-orbit-campaign]
 verify_jwt = true
