@@ -1,19 +1,16 @@
 
 
-# Corrigir limite de 1000 na importação de prospects
+# Corrigir página em branco - erro de resolução do `date-fns`
 
-## Problema
-A query de verificação de duplicados em `src/hooks/useImportProspects.ts` (linha 223) usa o limite padrão de 1000 linhas do banco de dados, impedindo a checagem completa de duplicados quando há mais de 1000 prospects existentes.
+## Diagnóstico
+A página está em branco porque o Vite não consegue resolver o pacote `date-fns`. O erro nos logs é:
+> "Failed to resolve entry for package `date-fns`. The package may have incorrect main/module/exports specified in its package.json."
 
-## Alterações
+Isso está quebrando **todos** os módulos que importam `date-fns`, causando erros 500 em cascata em múltiplas páginas.
 
-### 1. `src/hooks/useImportProspects.ts`
-- Adicionar paginação na query de duplicados para buscar **todos** os prospects existentes (não apenas os primeiros 1000)
-- Implementar loop que faz `select` com `.range(offset, offset+999)` até não haver mais registros
-- Otimizar inserção: usar batch insert (lotes de 100) em vez de inserção individual, melhorando performance para CSVs grandes
+## Causa provável
+A edição anterior no `package.json` (ao corrigir a importação de prospects) pode ter corrompido o `package-lock.json` ou a instalação do pacote.
 
-### Detalhes técnicos
-- A query de duplicados será paginada com `range()` para buscar todos os registros
-- As inserções serão agrupadas em batches de ~100 registros para reduzir chamadas ao banco
-- O restante da lógica (histórico, validação, dedup intra-import) permanece igual
+## Correção
+1. **Reinstalar o pacote `date-fns`** - Remover e re-adicionar a dependência no `package.json` para forçar uma reinstalação limpa, mantendo a versão `^4.1.0` que já existia antes.
 
