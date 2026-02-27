@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useTenant } from "@/contexts/TenantContext";
-import { useOrbitProspects } from "@/hooks/useOrbitProspects";
+import { useOrbitProspects, useOrbitProspectsCount } from "@/hooks/useOrbitProspects";
 import { useOrbitConversas } from "@/hooks/useOrbitConversas";
 import { useOrbitDeals } from "@/hooks/useOrbitDeals";
 import { formatDistanceToNow } from "date-fns";
@@ -22,10 +22,11 @@ import { ptBR } from "date-fns/locale";
 export default function OrbitDashboard() {
   const { basePath } = useTenant();
   const { data: prospects, isLoading: loadingProspects } = useOrbitProspects();
+  const { data: totalProspectsCount } = useOrbitProspectsCount();
   const { data: conversas, isLoading: loadingConversas } = useOrbitConversas();
   const { data: deals } = useOrbitDeals();
 
-  const totalProspects = prospects?.length ?? 0;
+  const totalProspects = totalProspectsCount ?? 0;
   const conversasAtivas = conversas?.length ?? 0;
 
   const pipelineTotal = deals?.reduce(
