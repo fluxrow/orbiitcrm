@@ -2025,6 +2025,7 @@ export type Database = {
           from_email: string | null
           from_name: string | null
           id: string
+          reply_to_email: string | null
           updated_at: string | null
         }
         Insert: {
@@ -2037,6 +2038,7 @@ export type Database = {
           from_email?: string | null
           from_name?: string | null
           id?: string
+          reply_to_email?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -2049,6 +2051,7 @@ export type Database = {
           from_email?: string | null
           from_name?: string | null
           id?: string
+          reply_to_email?: string | null
           updated_at?: string | null
         }
         Relationships: [
