@@ -1,22 +1,24 @@
 
 
-# Atualizar e-mail de envio das campanhas
+# Adicionar Reply-To nos e-mails enviados
 
-## Contexto
-
-Atualmente, a tabela `orbit_resend_config` tem o registro global com `from_email = noreplay@fluxrow.pro` e `from_name = Orbit CRM`. O usuário quer alterar para `noreplay@promotripcorporate.com`.
+## Problema
+Quando um destinatário responde a um e-mail de campanha ou teste, a resposta vai para o endereço de envio (noreplay@promotripcorporate.com). O usuário quer que respostas sejam direcionadas para `comercial@promotripcorporate.com`.
 
 ## Alterações
 
-1. **Atualizar o registro na tabela `orbit_resend_config`** via SQL:
-   - `from_email` → `noreplay@promotripcorporate.com`
-   - `from_name` → `Promotrip Corporate` (ou manter como está, confirmar com o contexto)
-   - `dominio_verificado` → `promotripcorporate.com`
+### 1. `supabase/functions/orbit-send-email/index.ts`
+- Adicionar campo `reply_to` no payload enviado ao Resend API (linha 104):
+  - `reply_to: "comercial@promotripcorporate.com"`
 
-⚠️ **Importante**: Para que os e-mails sejam entregues corretamente, o domínio `promotripcorporate.com` precisa estar verificado no Resend. A API Key atual está associada ao domínio `fluxrow.pro`. Se a conta Resend não tiver o domínio `promotripcorporate.com` configurado e verificado, os envios falharão.
+### 2. `supabase/functions/send-orbit-campaign/index.ts`
+- Adicionar campo `reply_to` no payload do envio de e-mail de campanhas (linhas 158-163):
+  - `reply_to: "comercial@promotripcorporate.com"`
 
-## Plano de execução
+### 3. Banco de dados (opcional/recomendado)
+- Adicionar coluna `reply_to_email` na tabela `orbit_resend_config` para tornar o endereço configurável pela interface, em vez de hardcoded. Atualizar o registro existente com `comercial@promotripcorporate.com`.
+- As edge functions lerão esse campo da config; se não existir, usam fallback hardcoded.
 
-1. Executar migration SQL para atualizar o `from_email` para `noreplay@promotripcorporate.com` e o `dominio_verificado` para `promotripcorporate.com` no registro existente
-2. O `from_name` será mantido ou ajustado conforme necessário
+## Técnico
+A API do Resend suporta o campo `reply_to` no corpo da requisição POST. Basta incluir `reply_to: ["comercial@promotripcorporate.com"]` no JSON enviado.
 
