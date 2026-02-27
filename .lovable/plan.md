@@ -1,16 +1,22 @@
 
 
-# Substituir ícone de foguete pela logo na tela de login
+# Atualizar e-mail de envio das campanhas
 
-## Alteração
+## Contexto
 
-No arquivo `src/pages/AuthPage.tsx`:
+Atualmente, a tabela `orbit_resend_config` tem o registro global com `from_email = noreplay@fluxrow.pro` e `from_name = Orbit CRM`. O usuário quer alterar para `noreplay@promotripcorporate.com`.
 
-1. Remover import do ícone `Rocket` do lucide-react
-2. Adicionar import da imagem `orbit-logo.png`
-3. Substituir o bloco do ícone (div com gradiente + Rocket) por uma tag `<img>` exibindo a logo com tamanho adequado (ex: `h-14`)
-4. Remover o texto "ORBIT CRM" e subtítulo redundantes, já que a logo contém o branding — ou mantê-los se desejado
+## Alterações
 
-### Arquivo editado
-- `src/pages/AuthPage.tsx`
+1. **Atualizar o registro na tabela `orbit_resend_config`** via SQL:
+   - `from_email` → `noreplay@promotripcorporate.com`
+   - `from_name` → `Promotrip Corporate` (ou manter como está, confirmar com o contexto)
+   - `dominio_verificado` → `promotripcorporate.com`
+
+⚠️ **Importante**: Para que os e-mails sejam entregues corretamente, o domínio `promotripcorporate.com` precisa estar verificado no Resend. A API Key atual está associada ao domínio `fluxrow.pro`. Se a conta Resend não tiver o domínio `promotripcorporate.com` configurado e verificado, os envios falharão.
+
+## Plano de execução
+
+1. Executar migration SQL para atualizar o `from_email` para `noreplay@promotripcorporate.com` e o `dominio_verificado` para `promotripcorporate.com` no registro existente
+2. O `from_name` será mantido ou ajustado conforme necessário
 
