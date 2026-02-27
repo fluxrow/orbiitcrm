@@ -1,21 +1,39 @@
 
 
-# Remover prospects duplicados por nome
+# Adicionar upload de imagens no Wizard de Campanhas
 
-## Problema
-Existem 118 nomes de prospects repetidos, totalizando 213 registros que poderiam ser removidos (mantendo 1 de cada). A dedup atual só verifica email e telefone, mas esses registros duplicados têm nomes idênticos sem email/telefone preenchido ou com dados diferentes.
+## Situação atual
+- O wizard tem um campo de URL de imagem no formulário de novo template (apenas texto)
+- A TemplatesPage já tem lógica de upload para o bucket `campaign-images`
+- O edge function `send-orbit-campaign` já envia imagens tanto para email (inline HTML) quanto WhatsApp (Z-API `/send-image`)
+- Falta: upload direto de arquivo no wizard + preview da imagem selecionada
 
-## Proposta
+## Alterações
 
-### 1. Limpeza dos duplicados existentes (migração SQL)
-- Criar uma query que, para cada grupo de `nome_razao` + `empresa_id` duplicados, mantenha apenas o registro mais recente (ou o que tem mais dados preenchidos) e exclua os demais
-- Isso remove os ~213 registros duplicados de uma vez
+### 1. `src/components/orbit/CampaignWizard.tsx`
+- Substituir o campo de input de URL por um componente de upload de imagem com drag-and-drop ou botão de seleção
+- Adicionar estado `isUploadingImage` para feedback visual
+- Implementar função `handleImageUpload` que faz upload para o bucket `campaign-images` (mesma lógica da TemplatesPage)
+- Mostrar preview da imagem após upload com botão para remover
+- Manter campo de URL como alternativa (aba ou fallback)
+- Na revisão (Step 5), mostrar preview da imagem se houver
 
-### 2. Melhorar dedup na importação (`src/hooks/useImportProspects.ts`)
-- Adicionar `nome_razao` normalizado (lowercase, sem acentos) como terceiro critério de dedup, além de email e telefone
-- Ao importar, se já existe um prospect com o mesmo nome normalizado na mesma empresa, marcar como duplicado
+### 2. Preview de imagem no template selecionado (Step 2)
+- Quando o usuário seleciona um template que já tem `imagem_url`, mostrar um thumbnail na listagem de templates
 
 ### Detalhes técnicos
-- A limpeza usará `ROW_NUMBER() OVER (PARTITION BY empresa_id, lower(trim(nome_razao)) ORDER BY updated_at DESC)` para identificar duplicados, mantendo o mais recente
-- Na importação, será adicionado um `Set<string>` de nomes normalizados, similar ao que já existe para emails e telefones
+```typescript
+// Upload handler (reutilizando padrão existente)
+const handleImageUpload = async (file: File) => {
+  const { data: { user } } = await supabase.auth.getUser();
+  const ext = file.name.split(".").pop();
+  const path = `${user.id}/${Date.now()}.${ext}`;
+  await supabase.storage.from("campaign-images").upload(path, file);
+  const { data: { publicUrl } } = supabase.storage.from("campaign-images").getPublicUrl(path);
+  setNewTemplate({ ...newTemplate, imagem_url: publicUrl });
+};
+```
+
+- O bucket `campaign-images` já existe e é público, nenhuma alteração de backend necessária
+- Sem mudanças nos edge functions (já tratam imagens corretamente)
 
