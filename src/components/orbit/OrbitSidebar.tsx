@@ -81,18 +81,6 @@ export function OrbitSidebar() {
             </Link>
           );
         })}
-        {isAdmin && (
-          <Link
-            to={`${basePath}/usuarios`}
-            className={cn(
-              "nav-link",
-              location.pathname === `${basePath}/usuarios` && "nav-link-active"
-            )}
-          >
-            <UserCog className="w-5 h-5" />
-            <span>Usuários</span>
-          </Link>
-        )}
       </nav>
 
       {/* User info */}
