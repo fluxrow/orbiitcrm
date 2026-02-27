@@ -1,38 +1,21 @@
 
 
-# Corrigir contagem de prospects limitada a 1000
+# Remover prospects duplicados por nome
 
 ## Problema
-O dashboard calcula `totalProspects = prospects?.length` usando dados retornados por `useOrbitProspects()`, que faz um `select("*")` sem paginação. O Supabase limita queries a 1000 linhas por padrão, então o valor sempre para em 1000.
+Existem 118 nomes de prospects repetidos, totalizando 213 registros que poderiam ser removidos (mantendo 1 de cada). A dedup atual só verifica email e telefone, mas esses registros duplicados têm nomes idênticos sem email/telefone preenchido ou com dados diferentes.
 
-## Correção
+## Proposta
 
-### 1. Criar hook dedicado para contagem — `useOrbitProspectsCount`
-- Usar `supabase.from('orbit_prospects').select('*', { count: 'exact', head: true })` que retorna apenas a contagem total sem transferir dados
-- Retornar o `count` do response header em vez de carregar todos os registros na memória
+### 1. Limpeza dos duplicados existentes (migração SQL)
+- Criar uma query que, para cada grupo de `nome_razao` + `empresa_id` duplicados, mantenha apenas o registro mais recente (ou o que tem mais dados preenchidos) e exclua os demais
+- Isso remove os ~213 registros duplicados de uma vez
 
-### 2. `src/pages/orbit/OrbitDashboard.tsx`
-- Usar o novo `useOrbitProspectsCount()` para exibir o "Total de Leads" correto
-- Manter `useOrbitProspects()` apenas para listar os 3 prospects recentes (já com `.slice(0,3)`)
-
-### 3. `src/hooks/useOrbitProspects.ts`
-- Adicionar a função `useOrbitProspectsCount` exportada
-- Adicionar `.limit()` na query principal de `useOrbitProspects` para evitar carregar milhares de registros quando só precisamos dos recentes no dashboard
+### 2. Melhorar dedup na importação (`src/hooks/useImportProspects.ts`)
+- Adicionar `nome_razao` normalizado (lowercase, sem acentos) como terceiro critério de dedup, além de email e telefone
+- Ao importar, se já existe um prospect com o mesmo nome normalizado na mesma empresa, marcar como duplicado
 
 ### Detalhes técnicos
-```typescript
-// Novo hook — consulta leve que retorna apenas a contagem
-export function useOrbitProspectsCount() {
-  return useQuery({
-    queryKey: ["orbit_prospects_count"],
-    queryFn: async () => {
-      const { count, error } = await supabase
-        .from("orbit_prospects")
-        .select("*", { count: "exact", head: true });
-      if (error) throw error;
-      return count ?? 0;
-    },
-  });
-}
-```
+- A limpeza usará `ROW_NUMBER() OVER (PARTITION BY empresa_id, lower(trim(nome_razao)) ORDER BY updated_at DESC)` para identificar duplicados, mantendo o mais recente
+- Na importação, será adicionado um `Set<string>` de nomes normalizados, similar ao que já existe para emails e telefones
 
