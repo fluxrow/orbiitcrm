@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, ChevronLeft, ChevronRight, Mail, MessageSquare, Check, Calendar, Sparkles, Send, Eye } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, Mail, MessageSquare, Check, Calendar, Sparkles, Send, Eye, Upload, X, Image } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { handleApiResponse } from "@/lib/api-envelope";
 import { useOrbitTemplates, useCreateTemplate } from "@/hooks/useOrbitTemplates";
@@ -65,6 +65,7 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
   const [testEmail, setTestEmail] = useState("");
   const [testVars, setTestVars] = useState<Record<string, string>>({});
   const [isSendingTest, setIsSendingTest] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   const { data: templates } = useOrbitTemplates();
   const { data: prospects } = useOrbitProspects();
@@ -219,6 +220,25 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
       toast.error(err.message || "Erro ao enviar email de teste");
     } finally {
       setIsSendingTest(false);
+    }
+  };
+
+  const handleImageUpload = async (file: File) => {
+    try {
+      setIsUploadingImage(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado");
+      const ext = file.name.split(".").pop();
+      const path = `${user.id}/${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from("campaign-images").upload(path, file);
+      if (uploadError) throw uploadError;
+      const { data: urlData } = supabase.storage.from("campaign-images").getPublicUrl(path);
+      setNewTemplate(prev => ({ ...prev, imagem_url: urlData.publicUrl }));
+      toast.success("Imagem enviada!");
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao enviar imagem");
+    } finally {
+      setIsUploadingImage(false);
     }
   };
 
@@ -453,8 +473,76 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
                   )}
                   <div className="space-y-2">
                     <Label>Imagem (opcional)</Label>
-                    <Input placeholder="https://exemplo.com/imagem.jpg" value={(newTemplate as any).imagem_url || ""} onChange={(e) => setNewTemplate({ ...newTemplate, imagem_url: e.target.value } as any)} />
-                    <p className="text-xs text-muted-foreground">Cole a URL de uma imagem ou faça upload na página de Templates</p>
+                    {newTemplate.imagem_url ? (
+                      <div className="relative inline-block">
+                        <img src={newTemplate.imagem_url} alt="Preview" className="w-full max-h-40 object-cover rounded border" />
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          className="absolute top-1 right-1 h-6 w-6"
+                          onClick={() => setNewTemplate({ ...newTemplate, imagem_url: "" })}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div
+                          className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 transition-colors"
+                          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                          onDrop={async (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const file = e.dataTransfer.files?.[0];
+                            if (file && file.type.startsWith("image/")) {
+                              await handleImageUpload(file);
+                            } else {
+                              toast.error("Selecione um arquivo de imagem");
+                            }
+                          }}
+                          onClick={() => {
+                            const input = document.createElement("input");
+                            input.type = "file";
+                            input.accept = "image/*";
+                            input.onchange = async (e) => {
+                              const file = (e.target as HTMLInputElement).files?.[0];
+                              if (file) await handleImageUpload(file);
+                            };
+                            input.click();
+                          }}
+                        >
+                          {isUploadingImage ? (
+                            <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                              <Loader2 className="h-5 w-5 animate-spin" />
+                              <span className="text-sm">Enviando...</span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                              <Upload className="h-6 w-6" />
+                              <span className="text-sm">Clique ou arraste uma imagem</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">ou cole a URL:</span>
+                          <Input
+                            placeholder="https://exemplo.com/imagem.jpg"
+                            className="h-8 text-xs"
+                            onBlur={(e) => {
+                              if (e.target.value.trim()) {
+                                setNewTemplate({ ...newTemplate, imagem_url: e.target.value.trim() });
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                const val = (e.target as HTMLInputElement).value.trim();
+                                if (val) setNewTemplate({ ...newTemplate, imagem_url: val });
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label>Corpo do Texto *</Label>
@@ -516,17 +604,22 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
                           onClick={() => setData({ ...data, template_id: template.id })}
                         >
                           <CardContent className="p-4">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <p className="font-medium">{template.nome}</p>
-                                {template.assunto_email && (
-                                  <p className="text-sm text-muted-foreground">Assunto: {template.assunto_email}</p>
+                            <div className="flex justify-between items-start gap-3">
+                              <div className="flex gap-3 flex-1 min-w-0">
+                                {(template as any).imagem_url && (
+                                  <img src={(template as any).imagem_url} alt="" className="w-12 h-12 rounded object-cover flex-shrink-0 border" />
                                 )}
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {template.corpo_texto?.substring(0, 100)}...
-                                </p>
+                                <div className="min-w-0">
+                                  <p className="font-medium">{template.nome}</p>
+                                  {template.assunto_email && (
+                                    <p className="text-sm text-muted-foreground">Assunto: {template.assunto_email}</p>
+                                  )}
+                                  <p className="text-xs text-muted-foreground mt-1 truncate">
+                                    {template.corpo_texto?.substring(0, 100)}...
+                                  </p>
+                                </div>
                               </div>
-                              <Badge variant="outline">{template.categoria}</Badge>
+                              <Badge variant="outline" className="flex-shrink-0">{template.categoria}</Badge>
                             </div>
                           </CardContent>
                         </Card>
@@ -741,6 +834,12 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
                   <span className="text-muted-foreground">Template:</span>
                   <span className="font-medium">{selectedTemplate?.nome || "N/A"}</span>
                 </div>
+                {(selectedTemplate as any)?.imagem_url && (
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground text-sm">Imagem:</span>
+                    <img src={(selectedTemplate as any).imagem_url} alt="Campanha" className="w-full max-h-32 object-cover rounded border" />
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Destinatários:</span>
                   <span className="font-medium">{estimatedRecipients}</span>
