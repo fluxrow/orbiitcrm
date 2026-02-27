@@ -13,6 +13,19 @@ interface ProspectFilters {
   responsavel_id?: string;
 }
 
+export function useOrbitProspectsCount() {
+  return useQuery({
+    queryKey: ["orbit_prospects_count"],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("orbit_prospects")
+        .select("*", { count: "exact", head: true });
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+}
+
 export function useOrbitProspects(filters?: ProspectFilters) {
   return useQuery({
     queryKey: ["orbit_prospects", filters],
