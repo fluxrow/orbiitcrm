@@ -58,6 +58,16 @@ const COLUMN_MAP: Record<string, keyof ParsedProspect> = {
   'tags': 'tags',
 };
 
+function normalizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9 ]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
 function detectSeparator(firstLine: string): string {
   const semicolonCount = (firstLine.match(/;/g) || []).length;
   const commaCount = (firstLine.match(/,/g) || []).length;
@@ -218,6 +228,7 @@ export function useImportProspects() {
       // Check for duplicates if needed
       let existingEmails: Set<string> = new Set();
       let existingPhones: Set<string> = new Set();
+      let existingNames: Set<string> = new Set();
 
       if (ignoreDuplicates) {
         // Paginate to fetch ALL existing prospects (bypass 1000 row default limit)
@@ -228,7 +239,7 @@ export function useImportProspects() {
         while (hasMore) {
           const { data: page } = await supabase
             .from('orbit_prospects')
-            .select('email_principal, telefone_whatsapp')
+            .select('nome_razao, email_principal, telefone_whatsapp')
             .eq('empresa_id', profile.empresa_id)
             .range(from, from + pageSize - 1);
 
@@ -238,6 +249,9 @@ export function useImportProspects() {
               if (p.telefone_whatsapp) {
                 const cleaned = p.telefone_whatsapp.replace(/\D/g, '');
                 if (cleaned) existingPhones.add(cleaned);
+              }
+              if (p.nome_razao) {
+                existingNames.add(normalizeName(p.nome_razao));
               }
             });
             from += pageSize;
@@ -257,6 +271,7 @@ export function useImportProspects() {
         if (ignoreDuplicates) {
           const email = prospect.email_principal?.toLowerCase();
           const phone = prospect.telefone_whatsapp?.replace(/\D/g, '');
+          const normalizedName = normalizeName(prospect.nome_razao);
 
           if (email && existingEmails.has(email)) {
             errorDetails.push({ row: i + 2, field: 'email', message: 'Email já existe' });
@@ -268,10 +283,16 @@ export function useImportProspects() {
             errors++;
             continue;
           }
+          if (normalizedName && existingNames.has(normalizedName)) {
+            errorDetails.push({ row: i + 2, field: 'nome_razao', message: 'Nome já existe' });
+            errors++;
+            continue;
+          }
 
           // Add to sets to avoid intra-import duplicates
           if (email) existingEmails.add(email);
           if (phone) existingPhones.add(phone);
+          if (normalizedName) existingNames.add(normalizedName);
         }
 
         validProspects.push({
