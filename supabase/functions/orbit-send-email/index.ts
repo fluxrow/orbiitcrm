@@ -101,7 +101,13 @@ const handler = async (req: Request): Promise<Response> => {
         Authorization: `Bearer ${resendApiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ from: fromEmail, to: [to], subject, html }),
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [to],
+        subject,
+        html,
+        reply_to: resendConfig?.reply_to_email ? [resendConfig.reply_to_email] : undefined,
+      }),
     });
 
     const result = await emailResponse.json();

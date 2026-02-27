@@ -160,6 +160,7 @@ const handler = async (req: Request): Promise<Response> => {
               to: [prospect.email_principal],
               subject: assunto.replace(/{{nome}}/g, prospect.nome_razao || ""),
               html: emailHtml,
+              reply_to: resendConfig?.reply_to_email ? [resendConfig.reply_to_email] : undefined,
             }),
           });
 
