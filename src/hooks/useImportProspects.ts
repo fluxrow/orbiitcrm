@@ -220,22 +220,40 @@ export function useImportProspects() {
       let existingPhones: Set<string> = new Set();
 
       if (ignoreDuplicates) {
-        const { data: existing } = await supabase
-          .from('orbit_prospects')
-          .select('email_principal, telefone_whatsapp')
-          .eq('empresa_id', profile.empresa_id);
+        // Paginate to fetch ALL existing prospects (bypass 1000 row default limit)
+        let from = 0;
+        const pageSize = 1000;
+        let hasMore = true;
 
-        if (existing) {
-          existingEmails = new Set(existing.map(p => p.email_principal?.toLowerCase()).filter(Boolean));
-          existingPhones = new Set(existing.map(p => p.telefone_whatsapp?.replace(/\D/g, '')).filter(Boolean));
+        while (hasMore) {
+          const { data: page } = await supabase
+            .from('orbit_prospects')
+            .select('email_principal, telefone_whatsapp')
+            .eq('empresa_id', profile.empresa_id)
+            .range(from, from + pageSize - 1);
+
+          if (page && page.length > 0) {
+            page.forEach(p => {
+              if (p.email_principal) existingEmails.add(p.email_principal.toLowerCase());
+              if (p.telefone_whatsapp) {
+                const cleaned = p.telefone_whatsapp.replace(/\D/g, '');
+                if (cleaned) existingPhones.add(cleaned);
+              }
+            });
+            from += pageSize;
+            hasMore = page.length === pageSize;
+          } else {
+            hasMore = false;
+          }
         }
       }
 
-      // Process prospects
+      // Filter out duplicates and build valid prospects list
+      const validProspects: { index: number; data: ProspectInsert }[] = [];
+
       for (let i = 0; i < prospects.length; i++) {
         const prospect = prospects[i];
 
-        // Check duplicates
         if (ignoreDuplicates) {
           const email = prospect.email_principal?.toLowerCase();
           const phone = prospect.telefone_whatsapp?.replace(/\D/g, '');
@@ -250,38 +268,57 @@ export function useImportProspects() {
             errors++;
             continue;
           }
+
+          // Add to sets to avoid intra-import duplicates
+          if (email) existingEmails.add(email);
+          if (phone) existingPhones.add(phone);
         }
 
-        const prospectData: ProspectInsert = {
-          empresa_id: profile.empresa_id,
-          nome_razao: prospect.nome_razao,
-          nome_fantasia: prospect.nome_fantasia || null,
-          tipo: prospect.tipo || 'pessoa',
-          cnpj_cpf: prospect.cnpj_cpf || null,
-          email_principal: prospect.email_principal || null,
-          telefone_whatsapp: prospect.telefone_whatsapp || null,
-          cidade: prospect.cidade || null,
-          estado: prospect.estado || null,
-          segmento: prospect.segmento || null,
-          origem_lead: prospect.origem_lead || null,
-          observacoes: prospect.observacoes || null,
-          tags: prospect.tags || [],
-          origem_contato: 'IMPORTACAO',
-          status_qualificacao: 'novo',
-        };
+        validProspects.push({
+          index: i,
+          data: {
+            empresa_id: profile.empresa_id,
+            nome_razao: prospect.nome_razao,
+            nome_fantasia: prospect.nome_fantasia || null,
+            tipo: prospect.tipo || 'pessoa',
+            cnpj_cpf: prospect.cnpj_cpf || null,
+            email_principal: prospect.email_principal || null,
+            telefone_whatsapp: prospect.telefone_whatsapp || null,
+            cidade: prospect.cidade || null,
+            estado: prospect.estado || null,
+            segmento: prospect.segmento || null,
+            origem_lead: prospect.origem_lead || null,
+            observacoes: prospect.observacoes || null,
+            tags: prospect.tags || [],
+            origem_contato: 'IMPORTACAO',
+            status_qualificacao: 'novo',
+          },
+        });
+      }
 
-        const { error } = await supabase
+      // Batch insert in chunks of 100
+      const BATCH_SIZE = 100;
+      for (let b = 0; b < validProspects.length; b += BATCH_SIZE) {
+        const batch = validProspects.slice(b, b + BATCH_SIZE);
+        const { error, data } = await supabase
           .from('orbit_prospects')
-          .insert(prospectData);
+          .insert(batch.map(item => item.data));
 
         if (error) {
-          errorDetails.push({ row: i + 2, field: 'banco', message: error.message });
-          errors++;
+          // If batch fails, try individual inserts as fallback
+          for (const item of batch) {
+            const { error: singleError } = await supabase
+              .from('orbit_prospects')
+              .insert(item.data);
+            if (singleError) {
+              errorDetails.push({ row: item.index + 2, field: 'banco', message: singleError.message });
+              errors++;
+            } else {
+              success++;
+            }
+          }
         } else {
-          success++;
-          // Add to existing sets to avoid duplicates within same import
-          if (prospect.email_principal) existingEmails.add(prospect.email_principal.toLowerCase());
-          if (prospect.telefone_whatsapp) existingPhones.add(prospect.telefone_whatsapp.replace(/\D/g, ''));
+          success += batch.length;
         }
       }
 
