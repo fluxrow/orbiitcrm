@@ -3003,6 +3003,8 @@ export type Database = {
         Args: { p_org_id: string; p_user_id: string }
         Returns: boolean
       }
+      pe_user_is_orbit_admin: { Args: { p_user_id: string }; Returns: boolean }
+      pe_user_is_orbit_member: { Args: { p_user_id: string }; Returns: boolean }
       pe_user_is_org_admin: {
         Args: { p_org_id: string; p_user_id: string }
         Returns: boolean
