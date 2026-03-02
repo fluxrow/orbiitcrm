@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
 import { usePeAuth } from "@/hooks/usePeAuth";
+import { useTenant } from "@/contexts/TenantContext";
 import ConfigUsersTab from "@/components/orbit/ConfigUsersTab";
 import { Users } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -40,9 +41,10 @@ interface ParsedProspect {
 
 export default function ConfigPage() {
   const { roleCode } = usePeAuth();
+  const { empresaId } = useTenant();
   const isOrgAdmin = roleCode === "ORG_ADMIN";
   const { isDemo } = useIsDemo();
-  const { data: aiConfig, isLoading: aiLoading } = useOrbitAIConfig();
+  const { data: aiConfig, isLoading: aiLoading } = useOrbitAIConfig(empresaId);
   const { data: zapiConfig, isLoading: zapiLoading } = useOrbitZAPIConfig();
   const { data: resendConfig, isLoading: resendLoading } = useOrbitResendConfig();
   const { data: importHistory, isLoading: historyLoading } = useImportHistory();
@@ -126,7 +128,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
     }); 
   }, [resendConfig]);
 
-  const saveAI = async () => { await updateAI.mutateAsync({ id: aiConfig?.id, ...aiForm }); toast.success("Salvo!"); };
+  const saveAI = async () => { await updateAI.mutateAsync({ id: aiConfig?.id, ...aiForm, empresa_id: empresaId }); toast.success("Salvo!"); };
   const saveZAPI = async () => { await updateZAPI.mutateAsync({ id: zapiConfig?.id, ...zapiForm }); toast.success("Salvo!"); };
   
   const saveResendApiKey = async () => { 
