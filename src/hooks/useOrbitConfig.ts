@@ -7,17 +7,19 @@ type AIConfigUpdate = TablesUpdate<"orbit_ai_config">;
 type ResendConfig = Tables<"orbit_resend_config">;
 type ResendConfigUpdate = TablesUpdate<"orbit_resend_config">;
 
-export function useOrbitAIConfig() {
+export function useOrbitAIConfig(empresaId?: string | null) {
   return useQuery({
-    queryKey: ["orbit_ai_config"],
+    queryKey: ["orbit_ai_config", empresaId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("orbit_ai_config")
-        .select("*")
-        .maybeSingle();
+      let query = supabase.from("orbit_ai_config").select("*");
+      if (empresaId) {
+        query = query.eq("empresa_id", empresaId);
+      }
+      const { data, error } = await query.maybeSingle();
       if (error) throw error;
       return data;
     },
+    enabled: !!empresaId,
   });
 }
 
@@ -25,12 +27,14 @@ export function useUpdateAIConfig() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (updates: AIConfigUpdate) => {
-      // First check if config exists
-      const { data: existing } = await supabase
-        .from("orbit_ai_config")
-        .select("id")
-        .maybeSingle();
+    mutationFn: async (updates: AIConfigUpdate & { empresa_id?: string | null }) => {
+      const empresaId = updates.empresa_id;
+      // First check if config exists for this empresa
+      let existingQuery = supabase.from("orbit_ai_config").select("id");
+      if (empresaId) {
+        existingQuery = existingQuery.eq("empresa_id", empresaId);
+      }
+      const { data: existing } = await existingQuery.maybeSingle();
 
       if (existing) {
         const { data, error } = await supabase
@@ -44,7 +48,7 @@ export function useUpdateAIConfig() {
       } else {
         const { data, error } = await supabase
           .from("orbit_ai_config")
-          .insert(updates as any)
+          .insert({ ...updates, empresa_id: empresaId } as any)
           .select()
           .single();
         if (error) throw error;
