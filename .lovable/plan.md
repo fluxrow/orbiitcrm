@@ -1,39 +1,25 @@
 
 
-# Adicionar upload de imagens no Wizard de Campanhas
+# Corrigir salvamento do treinamento do agente IA
 
-## Situação atual
-- O wizard tem um campo de URL de imagem no formulário de novo template (apenas texto)
-- A TemplatesPage já tem lógica de upload para o bucket `campaign-images`
-- O edge function `send-orbit-campaign` já envia imagens tanto para email (inline HTML) quanto WhatsApp (Z-API `/send-image`)
-- Falta: upload direto de arquivo no wizard + preview da imagem selecionada
+## Causa raiz
+A linha existente na tabela `orbit_ai_config` tem `empresa_id = NULL`. A política RLS de UPDATE exige `empresa_id = get_user_empresa_id(auth.uid())`, então NULL nunca passa na comparação e o update é silenciosamente ignorado pelo banco.
 
-## Alterações
+## Correção
 
-### 1. `src/components/orbit/CampaignWizard.tsx`
-- Substituir o campo de input de URL por um componente de upload de imagem com drag-and-drop ou botão de seleção
-- Adicionar estado `isUploadingImage` para feedback visual
-- Implementar função `handleImageUpload` que faz upload para o bucket `campaign-images` (mesma lógica da TemplatesPage)
-- Mostrar preview da imagem após upload com botão para remover
-- Manter campo de URL como alternativa (aba ou fallback)
-- Na revisão (Step 5), mostrar preview da imagem se houver
+### 1. Corrigir o registro existente (SQL data fix)
+- Atualizar o registro existente para associar ao `empresa_id` correto (buscar da tabela `profiles` do usuário que o criou, ou da empresa existente)
 
-### 2. Preview de imagem no template selecionado (Step 2)
-- Quando o usuário seleciona um template que já tem `imagem_url`, mostrar um thumbnail na listagem de templates
+### 2. `src/pages/orbit/ConfigPage.tsx` — incluir `empresa_id` no save
+- Na função `saveAI`, passar `empresa_id` do perfil do usuário logado para garantir que tanto updates quanto inserts incluam o campo
+- Usar o `empresa_id` já disponível via `usePeAuth()` ou buscando do `profiles`
+
+### 3. `src/hooks/useOrbitConfig.ts` — filtrar por empresa
+- Na query `useOrbitAIConfig`, adicionar `.eq("empresa_id", empresa_id)` para garantir multi-tenancy correto
+- Na mutation `useUpdateAIConfig`, incluir `empresa_id` no insert quando criando novo registro
 
 ### Detalhes técnicos
-```typescript
-// Upload handler (reutilizando padrão existente)
-const handleImageUpload = async (file: File) => {
-  const { data: { user } } = await supabase.auth.getUser();
-  const ext = file.name.split(".").pop();
-  const path = `${user.id}/${Date.now()}.${ext}`;
-  await supabase.storage.from("campaign-images").upload(path, file);
-  const { data: { publicUrl } } = supabase.storage.from("campaign-images").getPublicUrl(path);
-  setNewTemplate({ ...newTemplate, imagem_url: publicUrl });
-};
-```
-
-- O bucket `campaign-images` já existe e é público, nenhuma alteração de backend necessária
-- Sem mudanças nos edge functions (já tratam imagens corretamente)
+O problema é que `NULL = 'uuid-value'` retorna `FALSE` em SQL, então o RLS bloqueia silenciosamente. A correção precisa:
+1. Fix do dado existente via UPDATE direto
+2. Garantir que `empresa_id` seja sempre enviado nas operações de save
 
