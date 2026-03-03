@@ -1,48 +1,39 @@
 
 
-# Migrar permissões Orbit para usar papéis PE nativos
+# Diagnóstico: Orbit Mensagens e Integração Z-API
 
-## Situação atual
+## Problemas encontrados
 
-As políticas RLS das tabelas Orbit usam dois mecanismos diferentes:
+### 1. Bug visual: direção das mensagens invertida
+O frontend compara `m.direcao === "outbound"` mas o banco armazena `"OUT"` e `"IN"`. Resultado: **todas as mensagens aparecem alinhadas à esquerda** (como se fossem recebidas), mesmo as enviadas.
 
-| Tabela | Escrita | Verificação de papel |
-|--------|---------|---------------------|
-| `orbit_message_templates` | `has_role('admin') OR has_role('vendedor')` | Via `user_roles` (legado) |
-| `orbit_campaigns` | Qualquer usuário da empresa | Sem verificação de papel |
-| `orbit_prospects` | Qualquer usuário da empresa | Sem verificação de papel |
+**Arquivo:** `src/pages/orbit/ConversasPage.tsx` (linha 61)
 
-O `has_role()` consulta a tabela `user_roles`, que depende do trigger de sincronização com `pe_users`. A proposta é eliminar essa dependência e usar diretamente os papéis do PE.
+### 2. Z-API não configurada
+A tabela `orbit_zapi_config` está **vazia**. Sem configuração, o `orbit-send-message` não consegue enviar via Z-API e as mensagens ficam com status `"pendente"` eternamente.
 
-## Plano
+### 3. Conversas sem `empresa_id`
+As 2 conversas existentes têm `empresa_id = NULL`. Isso significa que usuários não-super-admin **não conseguem ver essas conversas** por causa das políticas RLS que filtram por `empresa_id = get_user_empresa_id(auth.uid())`.
 
-### 1. Criar funções helper PE para contexto Orbit
-Duas novas funções `SECURITY DEFINER` que consultam diretamente `pe_users` + `pe_roles`:
+### 4. `orbit-send-message` não inclui `empresa_id` no insert da mensagem
+A edge function insere em `orbit_mensagens` sem preencher `empresa_id`, o que causa o mesmo problema de visibilidade via RLS.
 
-- **`pe_user_is_orbit_admin(user_id)`** -- retorna `true` se o usuário tem role `ORG_ADMIN` ou `ORG_MANAGER` no PE
-- **`pe_user_is_orbit_member(user_id)`** -- retorna `true` se o usuário tem qualquer role PE (ADMIN, MANAGER, SALES, SDR) - exclui VIEWER
+---
 
-### 2. Atualizar políticas RLS
+## Plano de correção
 
-**`orbit_message_templates`:**
-- DROP a policy "Admins can manage own empresa templates"
-- CREATE nova policy usando `pe_user_is_orbit_admin(auth.uid()) OR pe_user_is_orbit_member(auth.uid())` + `empresa_id = get_user_empresa_id(auth.uid())`
+### Correção 1 — Frontend: direção das mensagens
+Trocar `"outbound"` por `"OUT"` no `ConversasPage.tsx` (2 ocorrências na linha 61).
 
-**`orbit_campaigns`:**
-- DROP "Users can manage own empresa campaigns"
-- CREATE nova policy restrita a admins: `pe_user_is_orbit_admin(auth.uid()) AND empresa_id = get_user_empresa_id(auth.uid())`
-- CREATE policy para vendedores com acesso de leitura + inserção (SDR/SALES)
+### Correção 2 — Edge function: incluir `empresa_id`
+No `orbit-send-message`, passar `empresa_id` do profile ao inserir na `orbit_mensagens` e ao atualizar `orbit_conversas`.
 
-**`orbit_prospects`:**
-- DROP as 3 policies de INSERT/UPDATE/DELETE
-- CREATE novas policies usando `pe_user_is_orbit_member(auth.uid())` + `empresa_id = get_user_empresa_id(auth.uid())`
+### Correção 3 — Dados existentes: corrigir `empresa_id` nulo
+Migração SQL para preencher `empresa_id` das conversas e mensagens existentes que estão com valor nulo, usando o `empresa_id` do prospect associado ou do perfil do usuário.
 
-As policies de SELECT e super_admin permanecem inalteradas.
+### Correção 4 — Webhook: garantir `empresa_id` nas mensagens
+O `orbit-webhook` já resolve `empresa_id` mas **não o inclui no insert de `orbit_mensagens`** (linha 231). Corrigir para incluir.
 
-### 3. Sem alterações no frontend
-O código frontend não verifica papéis diretamente para essas operações - as permissões são aplicadas pelo banco via RLS.
-
-### Detalhes técnicos
-
-As novas funções consultam `pe_users JOIN pe_roles` diretamente, eliminando a dependência da tabela `user_roles` e do trigger de sincronização para estas tabelas. A função `pe_is_super_admin()` já existente continua sendo usada para as policies de super admin.
+### Sem alteração na Z-API
+A configuração da Z-API precisa ser feita pelo administrador na tela de Configurações (instance_id, token, client_token). Isso não é um bug — é uma configuração pendente.
 
