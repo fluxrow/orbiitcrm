@@ -1,33 +1,29 @@
 
 
-# Fix: Conversão de timezone não funciona no Deno
+# Diagnóstico: Mensagens humanas não chegam no WhatsApp
 
-## Problema
+## Problema identificado
 
-A correção anterior usou `new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }))`, que não funciona corretamente no runtime Deno das edge functions. O agente IA continua enviando a mensagem de "fora do horário" às 15:12 BRT porque o timezone não está sendo convertido.
+As mensagens enviadas pela IA têm `status: "enviada"` e `provider_message_id` preenchido. As duas mensagens que você enviou manualmente ("Boa Tarde tudo bem?" e "Gostaria de um café la pelas 23:30?") foram salvas no banco com `status: "pendente"` e **sem** `provider_message_id` — ou seja, a chamada à Z-API foi pulada.
 
-Os logs confirmam: a função processou às 18:12 UTC (= 15:12 BRT), mas enviou a mensagem de fora do horário.
-
-## Solução
-
-Usar `Intl.DateTimeFormat` com opções explícitas para extrair hora e minuto no timezone correto. Esta API é bem suportada no Deno:
-
-```typescript
-const formatter = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/Sao_Paulo",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-const parts = formatter.formatToParts(new Date());
-const hh = parts.find(p => p.type === "hour")!.value;
-const mm = parts.find(p => p.type === "minute")!.value;
-const currentTime = `${hh}:${mm}`;
+O código pula o envio Z-API quando alguma dessas condições falha (linha 91):
+```
+if (zapiConfig?.instance_id && zapiConfig?.token && telefone)
 ```
 
-### Alteração
+Os dados no banco estão corretos (Z-API configurada, telefone presente). A causa mais provável é que o **deploy anterior não aplicou corretamente** ou que houve um erro silencioso. A ausência total de logs da função confirma isso.
 
-Arquivo: `supabase/functions/orbit-ai-agent/index.ts`, linhas 57-65.
+## Correção
 
-Substituir a lógica de conversão de timezone pelo `Intl.DateTimeFormat` e adicionar um log para diagnóstico.
+1. **Adicionar logs de diagnóstico** no `orbit-send-message` para rastrear cada etapa: autenticação, profile, Z-API config, telefone recebido, e resultado do envio.
+
+2. **Redesenhar o fluxo para buscar o telefone do banco** caso o frontend não o envie — a função já recebe `conversa_id`, então pode buscar o `telefone_whatsapp` direto da tabela `orbit_conversas`, eliminando a dependência do parâmetro do frontend.
+
+3. **Redeployar** a função.
+
+### Alterações em `supabase/functions/orbit-send-message/index.ts`
+
+- Após receber os parâmetros, se `telefone` estiver vazio, buscar da tabela `orbit_conversas` pelo `conversa_id`
+- Adicionar `console.log` em pontos-chave: parâmetros recebidos, Z-API config encontrada, resultado do fetch
+- Garantir que o status nunca fique "pendente" sem razão — se Z-API não está configurada, salvar como "falhou" com motivo claro
 
