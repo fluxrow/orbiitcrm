@@ -1,39 +1,39 @@
 
 
-# Diagnóstico: Orbit Mensagens e Integração Z-API
+# Botão "Testar Conexão" inativo na Z-API
 
-## Problemas encontrados
+## Causa raiz
 
-### 1. Bug visual: direção das mensagens invertida
-O frontend compara `m.direcao === "outbound"` mas o banco armazena `"OUT"` e `"IN"`. Resultado: **todas as mensagens aparecem alinhadas à esquerda** (como se fossem recebidas), mesmo as enviadas.
+O problema **não é** o botão em si — ele fica desabilitado quando `instance_id` e `token` estão vazios. A causa real é que o usuário **não consegue salvar** a configuração da Z-API porque a política RLS de escrita usa `has_role(auth.uid(), 'admin')` (sistema legado), que não está sincronizando corretamente com os papéis PE.
 
-**Arquivo:** `src/pages/orbit/ConversasPage.tsx` (linha 61)
+Os logs do banco confirmam: `new row violates row-level security policy for table "orbit_zapi_config"` — repetido múltiplas vezes.
 
-### 2. Z-API não configurada
-A tabela `orbit_zapi_config` está **vazia**. Sem configuração, o `orbit-send-message` não consegue enviar via Z-API e as mensagens ficam com status `"pendente"` eternamente.
+## Correções necessárias
 
-### 3. Conversas sem `empresa_id`
-As 2 conversas existentes têm `empresa_id = NULL`. Isso significa que usuários não-super-admin **não conseguem ver essas conversas** por causa das políticas RLS que filtram por `empresa_id = get_user_empresa_id(auth.uid())`.
+### 1. Migrar RLS da `orbit_zapi_config` para usar papéis PE nativos
+Mesmo padrão aplicado nas tabelas de templates/campaigns/prospects:
 
-### 4. `orbit-send-message` não inclui `empresa_id` no insert da mensagem
-A edge function insere em `orbit_mensagens` sem preencher `empresa_id`, o que causa o mesmo problema de visibilidade via RLS.
+- DROP policy "Admins can manage own empresa zapi_config" (usa `has_role` legado)
+- CREATE nova policy usando `pe_user_is_orbit_admin(auth.uid())` + `empresa_id = get_user_empresa_id(auth.uid())`
 
----
+### 2. Corrigir hook `useOrbitZAPIConfig` para filtrar por `empresa_id`
+O hook atual faz `.maybeSingle()` sem filtro de empresa. Precisa receber `empresaId` e filtrar por ele, igual ao `useOrbitAIConfig`.
 
-## Plano de correção
+### 3. Corrigir `useUpdateZAPIConfig` para incluir `empresa_id`
+O hook de update/insert também não usa `empresa_id`, causando violação da política RLS que exige match de empresa.
 
-### Correção 1 — Frontend: direção das mensagens
-Trocar `"outbound"` por `"OUT"` no `ConversasPage.tsx` (2 ocorrências na linha 61).
+### Detalhes técnicos
 
-### Correção 2 — Edge function: incluir `empresa_id`
-No `orbit-send-message`, passar `empresa_id` do profile ao inserir na `orbit_mensagens` e ao atualizar `orbit_conversas`.
+**Migração SQL:**
+```sql
+DROP POLICY "Admins can manage own empresa zapi_config" ON orbit_zapi_config;
+CREATE POLICY "Orbit admins can manage own empresa zapi_config"
+  ON orbit_zapi_config FOR ALL TO authenticated
+  USING (pe_user_is_orbit_admin(auth.uid()) AND empresa_id = get_user_empresa_id(auth.uid()))
+  WITH CHECK (pe_user_is_orbit_admin(auth.uid()) AND empresa_id = get_user_empresa_id(auth.uid()));
+```
 
-### Correção 3 — Dados existentes: corrigir `empresa_id` nulo
-Migração SQL para preencher `empresa_id` das conversas e mensagens existentes que estão com valor nulo, usando o `empresa_id` do prospect associado ou do perfil do usuário.
+**Hook `useOrbitZAPIConfig`:** Adicionar parâmetro `empresaId` e filtrar `.eq("empresa_id", empresaId)`.
 
-### Correção 4 — Webhook: garantir `empresa_id` nas mensagens
-O `orbit-webhook` já resolve `empresa_id` mas **não o inclui no insert de `orbit_mensagens`** (linha 231). Corrigir para incluir.
-
-### Sem alteração na Z-API
-A configuração da Z-API precisa ser feita pelo administrador na tela de Configurações (instance_id, token, client_token). Isso não é um bug — é uma configuração pendente.
+**Hook `useUpdateZAPIConfig`:** Receber e incluir `empresa_id` no insert/update, similar ao `useUpdateAIConfig`.
 
