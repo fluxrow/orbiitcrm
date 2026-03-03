@@ -284,6 +284,7 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: st
         canal: "whatsapp",
         status: "simulated",
         provider_message_id: null,
+        empresa_id: empresaId,
       });
 
       await supabase
@@ -330,6 +331,7 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: st
         canal: "whatsapp",
         status: response.ok ? "enviada" : "falhou",
         provider_message_id: result.messageId,
+        empresa_id: empresaId,
       });
 
       await supabase
@@ -348,6 +350,7 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: st
         mensagem,
         canal: "whatsapp",
         status: "pendente",
+        empresa_id: empresaId,
       });
     }
   } catch (error) {
