@@ -169,10 +169,36 @@ serve(async (req) => {
         .single();
 
       if (prospectError) {
-        console.error("[orbit-webhook] Erro ao criar prospect:", prospectError);
-        throw prospectError;
+        // Handle duplicate phone (prospect exists with NULL or different empresa_id)
+        if (prospectError.code === "23505") {
+          console.log("[orbit-webhook] Prospect duplicado, buscando existente sem filtro empresa_id");
+          const { data: existingProspect } = await supabase
+            .from("orbit_prospects")
+            .select("*")
+            .eq("telefone_whatsapp", normalizedPhone)
+            .maybeSingle();
+
+          if (existingProspect) {
+            // Update empresa_id if missing
+            if (!existingProspect.empresa_id && empresaId) {
+              await supabase
+                .from("orbit_prospects")
+                .update({ empresa_id: empresaId })
+                .eq("id", existingProspect.id);
+              existingProspect.empresa_id = empresaId;
+            }
+            prospect = existingProspect;
+          } else {
+            console.error("[orbit-webhook] Prospect duplicado mas não encontrado:", prospectError);
+            throw prospectError;
+          }
+        } else {
+          console.error("[orbit-webhook] Erro ao criar prospect:", prospectError);
+          throw prospectError;
+        }
+      } else {
+        prospect = newProspect;
       }
-      prospect = newProspect;
     }
 
     // 2. Find or create conversation (with empresa_id)
