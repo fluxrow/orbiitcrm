@@ -84,11 +84,9 @@ serve(async (req) => {
     if (isDemo) {
       messageStatus = "simulated";
     } else {
-      const { data: zapiConfig } = await supabase
-        .from("orbit_zapi_config")
-        .select("*")
-        .eq("ativo", true)
-        .maybeSingle();
+      let zapiQuery = supabase.from("orbit_zapi_config").select("*").eq("ativo", true);
+      if (profile?.empresa_id) zapiQuery = zapiQuery.eq("empresa_id", profile.empresa_id);
+      const { data: zapiConfig } = await zapiQuery.maybeSingle();
 
       if (zapiConfig?.instance_id && zapiConfig?.token && telefone) {
         try {
