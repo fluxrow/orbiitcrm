@@ -1,38 +1,33 @@
 
 
-# Horário do servidor vs horário local
+# Fix: Conversão de timezone não funciona no Deno
 
-## Problema encontrado
+## Problema
 
-O servidor (edge functions) roda em **UTC**. Agora são:
-- **UTC**: 18:13
-- **São Paulo (BRT)**: 15:13
+A correção anterior usou `new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }))`, que não funciona corretamente no runtime Deno das edge functions. O agente IA continua enviando a mensagem de "fora do horário" às 15:12 BRT porque o timezone não está sendo convertido.
 
-No `orbit-ai-agent`, a verificação de horário usa `new Date()` que retorna UTC. Quando são 18:13 UTC, o código interpreta como "fora do horário" (limite 18:00), mesmo que em São Paulo sejam apenas 15:13 — dentro do horário.
+Os logs confirmam: a função processou às 18:12 UTC (= 15:12 BRT), mas enviou a mensagem de fora do horário.
 
-Por isso a IA enviou a mensagem de fora do horário: _"Nosso horário de atendimento é das 08h às 18h"_.
+## Solução
 
-## Correção
-
-Converter o horário atual para o fuso do Brasil antes de comparar. O `orbit-ai-agent` precisa calcular o horário no timezone correto.
-
-### Código proposto (orbit-ai-agent, linhas 57-62)
+Usar `Intl.DateTimeFormat` com opções explícitas para extrair hora e minuto no timezone correto. Esta API é bem suportada no Deno:
 
 ```typescript
-// Verificar horário de atendimento no fuso de São Paulo
-const now = new Date();
-const brasilTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-const hh = brasilTime.getHours().toString().padStart(2, "0");
-const mm = brasilTime.getMinutes().toString().padStart(2, "0");
+const formatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/Sao_Paulo",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+const parts = formatter.formatToParts(new Date());
+const hh = parts.find(p => p.type === "hour")!.value;
+const mm = parts.find(p => p.type === "minute")!.value;
 const currentTime = `${hh}:${mm}`;
-const startTime = (aiConfig.horario_inicio || "08:00").substring(0, 5);
-const endTime = (aiConfig.horario_fim || "18:00").substring(0, 5);
-const isWithinHours = currentTime >= startTime && currentTime <= endTime;
 ```
 
-### Consideração adicional
+### Alteração
 
-O `horario_inicio` e `horario_fim` vêm do banco como `"08:00:00"` (com segundos). A comparação com string `"18:13"` contra `"18:00:00"` pode dar resultado errado por conta do comprimento. A correção inclui truncar para 5 caracteres (`HH:MM`).
+Arquivo: `supabase/functions/orbit-ai-agent/index.ts`, linhas 57-65.
 
-Opcionalmente, podemos adicionar um campo `timezone` na tabela `orbit_ai_config` para que cada empresa configure seu fuso. Por enquanto, fixamos `America/Sao_Paulo`.
+Substituir a lógica de conversão de timezone pelo `Intl.DateTimeFormat` e adicionar um log para diagnóstico.
 
