@@ -45,7 +45,7 @@ export default function ConfigPage() {
   const isOrgAdmin = roleCode === "ORG_ADMIN";
   const { isDemo } = useIsDemo();
   const { data: aiConfig, isLoading: aiLoading } = useOrbitAIConfig(empresaId);
-  const { data: zapiConfig, isLoading: zapiLoading } = useOrbitZAPIConfig();
+  const { data: zapiConfig, isLoading: zapiLoading } = useOrbitZAPIConfig(empresaId);
   const { data: resendConfig, isLoading: resendLoading } = useOrbitResendConfig();
   const { data: importHistory, isLoading: historyLoading } = useImportHistory();
   const updateAI = useUpdateAIConfig();
@@ -129,7 +129,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
   }, [resendConfig]);
 
   const saveAI = async () => { await updateAI.mutateAsync({ id: aiConfig?.id, ...aiForm, empresa_id: empresaId }); toast.success("Salvo!"); };
-  const saveZAPI = async () => { await updateZAPI.mutateAsync({ id: zapiConfig?.id, ...zapiForm }); toast.success("Salvo!"); };
+  const saveZAPI = async () => { await updateZAPI.mutateAsync({ id: zapiConfig?.id, ...zapiForm, empresa_id: empresaId }); toast.success("Salvo!"); };
   
   const saveResendApiKey = async () => { 
     await updateResend.mutateAsync({ 
