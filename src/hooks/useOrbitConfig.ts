@@ -61,17 +61,19 @@ export function useUpdateAIConfig() {
   });
 }
 
-export function useOrbitZAPIConfig() {
+export function useOrbitZAPIConfig(empresaId?: string | null) {
   return useQuery({
-    queryKey: ["orbit_zapi_config"],
+    queryKey: ["orbit_zapi_config", empresaId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("orbit_zapi_config")
-        .select("*")
-        .maybeSingle();
+      let query = supabase.from("orbit_zapi_config").select("*");
+      if (empresaId) {
+        query = query.eq("empresa_id", empresaId);
+      }
+      const { data, error } = await query.maybeSingle();
       if (error) throw error;
       return data;
     },
+    enabled: !!empresaId,
   });
 }
 
@@ -79,11 +81,13 @@ export function useUpdateZAPIConfig() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (updates: any) => {
-      const { data: existing } = await supabase
-        .from("orbit_zapi_config")
-        .select("id")
-        .maybeSingle();
+    mutationFn: async (updates: any & { empresa_id?: string | null }) => {
+      const empresaId = updates.empresa_id;
+      let existingQuery = supabase.from("orbit_zapi_config").select("id");
+      if (empresaId) {
+        existingQuery = existingQuery.eq("empresa_id", empresaId);
+      }
+      const { data: existing } = await existingQuery.maybeSingle();
 
       if (existing) {
         const { data, error } = await supabase
@@ -97,7 +101,7 @@ export function useUpdateZAPIConfig() {
       } else {
         const { data, error } = await supabase
           .from("orbit_zapi_config")
-          .insert(updates)
+          .insert({ ...updates, empresa_id: empresaId })
           .select()
           .single();
         if (error) throw error;
