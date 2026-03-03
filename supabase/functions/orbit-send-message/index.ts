@@ -124,6 +124,7 @@ serve(async (req) => {
         canal: canal || "whatsapp",
         status: messageStatus,
         provider_message_id: providerId,
+        empresa_id: profile?.empresa_id || null,
       })
       .select()
       .single();

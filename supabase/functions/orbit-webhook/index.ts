@@ -235,6 +235,7 @@ serve(async (req) => {
       provider_message_id: messageId,
       canal: "whatsapp",
       status: fromMe ? "enviada" : "recebida",
+      empresa_id: empresaId,
     });
 
     // 5. Update conversation
