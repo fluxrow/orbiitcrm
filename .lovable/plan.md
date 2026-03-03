@@ -1,31 +1,53 @@
 
 
-# Diagnóstico: IA não responde mensagens recebidas
+# IA não responde + Erro ao assumir conversa
 
-## Problemas encontrados (3 causas encadeadas)
+## Problemas identificados (3)
 
-### 1. Webhook crasha ao encontrar prospect existente sem `empresa_id`
-O prospect `554196204249` foi criado antes das correções e tem `empresa_id = NULL`. O webhook filtra por `empresa_id = c4ea82e5...`, não encontra, tenta inserir um novo e **crasha com erro de unique constraint** (`idx_prospect_telefone`). O fluxo inteiro para aqui — a IA nunca é chamada.
+### 1. Z-API ainda com `ativo = false`
+A correção de auto-ativação só funciona na **próxima vez** que o usuário salvar. O registro existente continua com `ativo = false`, então tanto o AI agent quanto o `orbit-send-message` não encontram config Z-API ativa. Precisa de um UPDATE direto no banco.
 
-### 2. Z-API está marcada como `ativo = false`
-A configuração Z-API foi salva com `ativo = false`. O AI agent busca Z-API com `.eq("ativo", true)` e não encontra nada. Resultado: "Z-API não configurado, salvando apenas no banco" — a resposta da IA fica salva mas **nunca é enviada** via WhatsApp.
+### 2. `orbit-send-message` não filtra por `empresa_id`
+Linhas 87-91: a query de Z-API config não filtra por `empresa_id`, mesmo bug que já corrigimos no AI agent. Além disso, o `handleSend` na ConversasPage não passa o `telefone` da conversa, então a condição `&& telefone` (linha 93) falha mesmo quando a config é encontrada.
 
-### 3. AI agent não filtra Z-API por `empresa_id`
-A query na `sendWhatsAppMessage` busca qualquer config ativa sem filtrar por empresa, o que pode causar cross-tenant no futuro.
+### 3. "Assumir conversa" passa `user_id: ""`
+Na ConversasPage linha 59, o botão "Assumir" chama `assume.mutateAsync({ conversa_id: active.id, user_id: "" })` — string vazia em vez do ID real do usuário logado. Isso causa erro no update do banco.
 
----
+## Correções
 
-## Plano de correção
+### Correção 1 — Dados: ativar Z-API config existente
+```sql
+UPDATE orbit_zapi_config SET ativo = true 
+WHERE empresa_id = 'c4ea82e5-ec19-4d1a-b752-cfadec363fca';
+```
 
-### Correção 1 — Webhook: tratar prospect duplicado (catch 23505)
-No `orbit-webhook`, quando o insert de prospect falhar com código `23505`, fazer fallback para buscar o prospect existente **sem filtro de empresa_id** e atualizar o `empresa_id` se necessário.
+### Correção 2 — `orbit-send-message`: filtrar Z-API por `empresa_id`
+Adicionar filtro `.eq("empresa_id", profile.empresa_id)` na query de Z-API config (mesmo padrão do AI agent).
 
-### Correção 2 — Migração: corrigir prospect existente
-SQL para atualizar o prospect `554196204249` que está com `empresa_id = NULL`.
+### Correção 3 — ConversasPage: passar `telefone` no envio + `user_id` correto no assumir
+- `handleSend`: incluir `telefone: active.telefone_whatsapp` na chamada de `sendMessage`
+- Botão "Assumir": importar `useAuth`, usar `user.id` em vez de string vazia
 
-### Correção 3 — AI agent: filtrar Z-API por `empresa_id`
-Na função `sendWhatsAppMessage`, adicionar filtro `.eq("empresa_id", empresaId)` na query de `orbit_zapi_config`, passando o `empresaId` do prospect.
+### Detalhes técnicos
 
-### Correção 4 — UI: ativar Z-API automaticamente ao salvar
-No `ConfigPage`, quando o usuário salvar a configuração Z-API, garantir que o campo `ativo` seja `true` se `instance_id` e `token` estão preenchidos.
+**ConversasPage.tsx:**
+```tsx
+// Importar useAuth
+import { useAuth } from "@/hooks/useAuth";
+// No componente:
+const { user } = useAuth();
+
+// handleSend — passar telefone
+sendMessage.mutateAsync({ conversa_id: activeId, mensagem: msg, telefone: active?.telefone_whatsapp })
+
+// Assumir — passar user_id real
+assume.mutateAsync({ conversa_id: active.id, user_id: user?.id || "" })
+```
+
+**orbit-send-message (linhas 87-91):**
+```typescript
+let zapiQuery = supabase.from("orbit_zapi_config").select("*").eq("ativo", true);
+if (profile?.empresa_id) zapiQuery = zapiQuery.eq("empresa_id", profile.empresa_id);
+const { data: zapiConfig } = await zapiQuery.maybeSingle();
+```
 
