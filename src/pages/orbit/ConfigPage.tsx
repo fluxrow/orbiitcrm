@@ -129,7 +129,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
   }, [resendConfig]);
 
   const saveAI = async () => { await updateAI.mutateAsync({ id: aiConfig?.id, ...aiForm, empresa_id: empresaId }); toast.success("Salvo!"); };
-  const saveZAPI = async () => { await updateZAPI.mutateAsync({ id: zapiConfig?.id, ...zapiForm, empresa_id: empresaId }); toast.success("Salvo!"); };
+  const saveZAPI = async () => { await updateZAPI.mutateAsync({ id: zapiConfig?.id, ...zapiForm, empresa_id: empresaId, ativo: !!(zapiForm as any).instance_id && !!(zapiForm as any).token }); toast.success("Salvo!"); };
   
   const saveResendApiKey = async () => { 
     await updateResend.mutateAsync({ 

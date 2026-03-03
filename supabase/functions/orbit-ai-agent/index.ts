@@ -63,7 +63,7 @@ serve(async (req) => {
 
     if (!isWithinHours && !aiConfig.responder_fora_horario) {
       if (aiConfig.mensagem_fora_horario) {
-        await sendWhatsAppMessage(supabase, telefone, aiConfig.mensagem_fora_horario, conversa_id, isDemo);
+        await sendWhatsAppMessage(supabase, telefone, aiConfig.mensagem_fora_horario, conversa_id, isDemo, empresaId);
       }
       return new Response(JSON.stringify({ ok: true, outside_hours: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -257,7 +257,7 @@ IMPORTANTE: Responda em JSON com esta estrutura:
     }
 
     // Enviar resposta via WhatsApp (or simulate for demo)
-    await sendWhatsAppMessage(supabase, telefone, resposta, conversa_id, isDemo);
+    await sendWhatsAppMessage(supabase, telefone, resposta, conversa_id, isDemo, empresaId);
 
     return new Response(JSON.stringify({ ok: true, resposta, parsed, simulated: isDemo }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -272,7 +272,7 @@ IMPORTANTE: Responda em JSON com esta estrutura:
   }
 });
 
-async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: string, conversa_id: string, isDemo: boolean) {
+async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: string, conversa_id: string, isDemo: boolean, empresaId?: string | null) {
   try {
     if (isDemo) {
       // Demo mode: save message as simulated, don't call Z-API
@@ -296,12 +296,13 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: st
       return;
     }
 
-    // Production mode: call Z-API
-    const { data: zapiConfig } = await supabase
+    // Production mode: call Z-API filtered by empresa_id
+    let zapiQuery = supabase
       .from("orbit_zapi_config")
       .select("*")
-      .eq("ativo", true)
-      .maybeSingle();
+      .eq("ativo", true);
+    if (empresaId) zapiQuery = zapiQuery.eq("empresa_id", empresaId);
+    const { data: zapiConfig } = await zapiQuery.maybeSingle();
 
     if (zapiConfig?.instance_id && zapiConfig?.token) {
       const response = await fetch(
