@@ -54,11 +54,14 @@ serve(async (req) => {
       });
     }
 
-    // Verificar horário de atendimento
+    // Verificar horário de atendimento no fuso de São Paulo
     const now = new Date();
-    const currentTime = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false });
-    const startTime = aiConfig.horario_inicio || "08:00";
-    const endTime = aiConfig.horario_fim || "18:00";
+    const brasilTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+    const hh = brasilTime.getHours().toString().padStart(2, "0");
+    const mm = brasilTime.getMinutes().toString().padStart(2, "0");
+    const currentTime = `${hh}:${mm}`;
+    const startTime = (aiConfig.horario_inicio || "08:00").substring(0, 5);
+    const endTime = (aiConfig.horario_fim || "18:00").substring(0, 5);
     const isWithinHours = currentTime >= startTime && currentTime <= endTime;
 
     if (!isWithinHours && !aiConfig.responder_fora_horario) {
