@@ -22,10 +22,24 @@ serve(async (req) => {
       return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401);
     }
 
-    const { conversa_id, mensagem, telefone, canal } = await req.json();
+    const body = await req.json();
+    let { conversa_id, mensagem, telefone, canal } = body;
+
+    console.log("[orbit-send-message] Params recebidos:", JSON.stringify({ conversa_id, mensagem: mensagem?.substring(0, 30), telefone, canal }));
 
     if (!conversa_id || !mensagem) {
       return fail(ErrorCodes.VALIDATION_ERROR, "conversa_id e mensagem são obrigatórios");
+    }
+
+    // Se telefone não veio do frontend, buscar da conversa
+    if (!telefone) {
+      const { data: conversa } = await supabase
+        .from("orbit_conversas")
+        .select("telefone_whatsapp")
+        .eq("id", conversa_id)
+        .maybeSingle();
+      telefone = conversa?.telefone_whatsapp || null;
+      console.log("[orbit-send-message] Telefone buscado da conversa:", telefone);
     }
 
     const userId = claims.user.id;
@@ -34,6 +48,8 @@ serve(async (req) => {
       .select("empresa_id")
       .eq("id", userId)
       .maybeSingle();
+
+    console.log("[orbit-send-message] Profile:", JSON.stringify({ userId, empresa_id: profile?.empresa_id }));
 
     // ── Plan enforcement ──
     if (profile?.empresa_id) {
@@ -80,6 +96,7 @@ serve(async (req) => {
 
     let messageStatus = "pendente";
     let providerId = null;
+    let failReason: string | null = null;
 
     if (isDemo) {
       messageStatus = "simulated";
@@ -88,27 +105,47 @@ serve(async (req) => {
       if (profile?.empresa_id) zapiQuery = zapiQuery.eq("empresa_id", profile.empresa_id);
       const { data: zapiConfig } = await zapiQuery.maybeSingle();
 
+      console.log("[orbit-send-message] Z-API config:", JSON.stringify({
+        found: !!zapiConfig,
+        instance_id: zapiConfig?.instance_id ? "SET" : "EMPTY",
+        token: zapiConfig?.token ? "SET" : "EMPTY",
+        telefone: telefone || "EMPTY",
+      }));
+
       if (zapiConfig?.instance_id && zapiConfig?.token && telefone) {
         try {
-          const response = await fetch(
-            `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-text`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Client-Token": zapiConfig.client_token || "",
-              },
-              body: JSON.stringify({ phone: telefone, message: mensagem }),
-            }
-          );
+          const zapiUrl = `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-text`;
+          console.log("[orbit-send-message] Enviando via Z-API para:", telefone);
+
+          const response = await fetch(zapiUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Client-Token": zapiConfig.client_token || "",
+            },
+            body: JSON.stringify({ phone: telefone, message: mensagem }),
+          });
 
           const result = await response.json();
+          console.log("[orbit-send-message] Z-API response:", JSON.stringify({ ok: response.ok, status: response.status, messageId: result.messageId }));
+
           messageStatus = response.ok ? "enviada" : "falhou";
           providerId = result.messageId;
+          if (!response.ok) failReason = `Z-API ${response.status}: ${JSON.stringify(result)}`;
         } catch (error) {
           console.error("[orbit-send-message] Erro Z-API:", error);
           messageStatus = "falhou";
+          failReason = `Z-API exception: ${error instanceof Error ? error.message : String(error)}`;
         }
+      } else {
+        // Não tem config ou telefone — marcar como falhou com motivo
+        messageStatus = "falhou";
+        const missing: string[] = [];
+        if (!zapiConfig?.instance_id) missing.push("instance_id");
+        if (!zapiConfig?.token) missing.push("token");
+        if (!telefone) missing.push("telefone");
+        failReason = `Faltando: ${missing.join(", ")}`;
+        console.warn("[orbit-send-message] Envio impossível:", failReason);
       }
     }
 
@@ -123,11 +160,14 @@ serve(async (req) => {
         status: messageStatus,
         provider_message_id: providerId,
         empresa_id: profile?.empresa_id || null,
+        erro: failReason,
       })
       .select()
       .single();
 
     if (msgError) throw msgError;
+
+    console.log("[orbit-send-message] Mensagem salva:", JSON.stringify({ id: novaMensagem.id, status: messageStatus }));
 
     // ── Increment usage after successful save ──
     if (profile?.empresa_id && messageStatus !== "falhou") {
