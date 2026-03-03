@@ -1,34 +1,38 @@
 
 
-# Mensagens da IA não aparecem na tela de Conversas
+# Horário do servidor vs horário local
 
-## Causa raiz
+## Problema encontrado
 
-As mensagens OUT (respostas da IA) estão sendo inseridas pelo `orbit-ai-agent` **sem o campo `empresa_id`**. A RLS da tabela `orbit_mensagens` exige `empresa_id = get_user_empresa_id(auth.uid())` para SELECT, então mensagens com `empresa_id = NULL` ficam invisíveis para o usuário.
+O servidor (edge functions) roda em **UTC**. Agora são:
+- **UTC**: 18:13
+- **São Paulo (BRT)**: 15:13
 
-Confirmado pela query: todas as mensagens IN têm `empresa_id = c4ea82e5...`, mas todas as OUT têm `empresa_id = NULL`.
+No `orbit-ai-agent`, a verificação de horário usa `new Date()` que retorna UTC. Quando são 18:13 UTC, o código interpreta como "fora do horário" (limite 18:00), mesmo que em São Paulo sejam apenas 15:13 — dentro do horário.
 
-O `orbit-send-message` já foi corrigido (linha 125: `empresa_id: profile?.empresa_id`), mas o `orbit-ai-agent` nunca foi — todos os 3 inserts na função `sendWhatsAppMessage` não incluem `empresa_id`.
+Por isso a IA enviou a mensagem de fora do horário: _"Nosso horário de atendimento é das 08h às 18h"_.
 
-## Correções
+## Correção
 
-### 1. `orbit-ai-agent` — adicionar `empresa_id` nos 3 inserts de mensagem
+Converter o horário atual para o fuso do Brasil antes de comparar. O `orbit-ai-agent` precisa calcular o horário no timezone correto.
 
-Na função `sendWhatsAppMessage`, o parâmetro `empresaId` já é recebido mas não é usado nos inserts. Adicionar `empresa_id: empresaId` nos 3 locais:
-- Linha 280 (demo mode insert)
-- Linha 326 (production mode insert)  
-- Linha 345 (fallback insert sem Z-API)
+### Código proposto (orbit-ai-agent, linhas 57-62)
 
-### 2. Migração SQL — corrigir mensagens existentes com `empresa_id = NULL`
-
-```sql
-UPDATE orbit_mensagens m
-SET empresa_id = c.empresa_id
-FROM orbit_conversas c
-WHERE m.conversa_id = c.id
-  AND m.empresa_id IS NULL
-  AND c.empresa_id IS NOT NULL;
+```typescript
+// Verificar horário de atendimento no fuso de São Paulo
+const now = new Date();
+const brasilTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+const hh = brasilTime.getHours().toString().padStart(2, "0");
+const mm = brasilTime.getMinutes().toString().padStart(2, "0");
+const currentTime = `${hh}:${mm}`;
+const startTime = (aiConfig.horario_inicio || "08:00").substring(0, 5);
+const endTime = (aiConfig.horario_fim || "18:00").substring(0, 5);
+const isWithinHours = currentTime >= startTime && currentTime <= endTime;
 ```
 
-Isso corrige todas as mensagens já existentes para que apareçam imediatamente.
+### Consideração adicional
+
+O `horario_inicio` e `horario_fim` vêm do banco como `"08:00:00"` (com segundos). A comparação com string `"18:13"` contra `"18:00:00"` pode dar resultado errado por conta do comprimento. A correção inclui truncar para 5 caracteres (`HH:MM`).
+
+Opcionalmente, podemos adicionar um campo `timezone` na tabela `orbit_ai_config` para que cada empresa configure seu fuso. Por enquanto, fixamos `America/Sao_Paulo`.
 
