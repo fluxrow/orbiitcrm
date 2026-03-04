@@ -2064,6 +2064,39 @@ export type Database = {
           },
         ]
       }
+      orbit_send_groups: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          descricao: string | null
+          empresa_id: string
+          id: string
+          nome: string
+          prospect_ids: string[]
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          descricao?: string | null
+          empresa_id: string
+          id?: string
+          nome: string
+          prospect_ids?: string[]
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          descricao?: string | null
+          empresa_id?: string
+          id?: string
+          nome?: string
+          prospect_ids?: string[]
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       orbit_transferencias: {
         Row: {
           created_at: string | null
