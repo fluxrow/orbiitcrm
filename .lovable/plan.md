@@ -1,29 +1,44 @@
 
 
-# Diagnóstico: Mensagens humanas não chegam no WhatsApp
+# Fix: "Erro ao salvar prospect" -- empresa_id ausente no INSERT
 
-## Problema identificado
+## Problema
 
-As mensagens enviadas pela IA têm `status: "enviada"` e `provider_message_id` preenchido. As duas mensagens que você enviou manualmente ("Boa Tarde tudo bem?" e "Gostaria de um café la pelas 23:30?") foram salvas no banco com `status: "pendente"` e **sem** `provider_message_id` — ou seja, a chamada à Z-API foi pulada.
-
-O código pula o envio Z-API quando alguma dessas condições falha (linha 91):
-```
-if (zapiConfig?.instance_id && zapiConfig?.token && telefone)
-```
-
-Os dados no banco estão corretos (Z-API configurada, telefone presente). A causa mais provável é que o **deploy anterior não aplicou corretamente** ou que houve um erro silencioso. A ausência total de logs da função confirma isso.
+O `ProspectDialog` ao criar um prospect não envia o campo `empresa_id`. A política RLS de INSERT exige que `empresa_id = get_user_empresa_id(auth.uid())`, então o banco rejeita a inserção.
 
 ## Correção
 
-1. **Adicionar logs de diagnóstico** no `orbit-send-message` para rastrear cada etapa: autenticação, profile, Z-API config, telefone recebido, e resultado do envio.
+No `ProspectDialog.tsx`, buscar o `empresa_id` do perfil do usuário logado e incluí-lo no `createProspect.mutateAsync()`.
 
-2. **Redesenhar o fluxo para buscar o telefone do banco** caso o frontend não o envie — a função já recebe `conversa_id`, então pode buscar o `telefone_whatsapp` direto da tabela `orbit_conversas`, eliminando a dependência do parâmetro do frontend.
+### Alteração em `src/components/orbit/ProspectDialog.tsx`
 
-3. **Redeployar** a função.
+1. Importar `supabase` e usar `useQuery` (ou um efeito) para buscar o `empresa_id` do perfil do usuário autenticado
+2. Na chamada `createProspect.mutateAsync(...)`, adicionar `empresa_id` ao objeto
 
-### Alterações em `supabase/functions/orbit-send-message/index.ts`
+Abordagem mais simples: buscar o perfil inline com uma query:
 
-- Após receber os parâmetros, se `telefone` estiver vazio, buscar da tabela `orbit_conversas` pelo `conversa_id`
-- Adicionar `console.log` em pontos-chave: parâmetros recebidos, Z-API config encontrada, resultado do fetch
-- Garantir que o status nunca fique "pendente" sem razão — se Z-API não está configurada, salvar como "falhou" com motivo claro
+```typescript
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+
+// Dentro do componente:
+const { data: profile } = useQuery({
+  queryKey: ["my-profile-empresa"],
+  queryFn: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
+    return data;
+  },
+});
+
+// No onSubmit, linha 133:
+await createProspect.mutateAsync({
+  ...data,
+  nome_razao: data.nome_razao,
+  empresa_id: profile?.empresa_id,
+});
+```
+
+Isso garante que o `empresa_id` correto seja enviado, satisfazendo a política RLS.
 
