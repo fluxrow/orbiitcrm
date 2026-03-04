@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,12 +9,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, ChevronLeft, ChevronRight, Mail, MessageSquare, Check, Calendar, Sparkles, Send, Eye, Upload, X, Image } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Slider } from "@/components/ui/slider";
+import { Loader2, ChevronLeft, ChevronRight, Mail, MessageSquare, Check, Calendar, Sparkles, Send, Eye, Upload, X, Image, Search, Users, Filter, UserCheck, Plus, Trash2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { handleApiResponse } from "@/lib/api-envelope";
 import { useOrbitTemplates, useCreateTemplate } from "@/hooks/useOrbitTemplates";
 import { useOrbitProspects } from "@/hooks/useOrbitProspects";
 import { useCreateCampaign } from "@/hooks/useOrbitCampaigns";
+import { useOrbitSendGroups, useCreateSendGroup, useDeleteSendGroup } from "@/hooks/useOrbitSendGroups";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -31,8 +35,16 @@ interface CampaignData {
     status_qualificacao?: string[];
     segmento?: string;
     cidade?: string;
+    estado?: string;
+    origem_contato?: string;
+    origem_lead?: string;
     tags?: string[];
+    score_min?: number;
+    responsavel_id?: string;
+    apenas_consentimento?: boolean;
   };
+  selected_prospect_ids?: string[];
+  selected_group_ids?: string[];
   agendada_para?: string;
 }
 
@@ -67,39 +79,128 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupProspectIds, setNewGroupProspectIds] = useState<string[]>([]);
+  const [individualSearch, setIndividualSearch] = useState("");
+  const [groupProspectSearch, setGroupProspectSearch] = useState("");
+
   const { data: templates } = useOrbitTemplates();
   const { data: prospects } = useOrbitProspects();
   const createCampaign = useCreateCampaign();
   const createTemplate = useCreateTemplate();
+  const { data: sendGroups } = useOrbitSendGroups();
+  const createSendGroup = useCreateSendGroup();
+  const deleteSendGroup = useDeleteSendGroup();
+
+  // Fetch profiles for responsavel filter
+  const { data: companyProfiles } = useQuery({
+    queryKey: ["company-profiles-for-filter"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("profiles").select("id, nome, email").eq("ativo", true);
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Derived distinct values from prospects
+  const distinctValues = useMemo(() => {
+    if (!prospects) return { segmentos: [], estados: [], origens_contato: [], origens_lead: [], tags: [] };
+    const segmentos = [...new Set(prospects.map(p => p.segmento).filter(Boolean))] as string[];
+    const estados = [...new Set(prospects.map(p => p.estado).filter(Boolean))] as string[];
+    const origens_contato = [...new Set(prospects.map(p => p.origem_contato).filter(Boolean))] as string[];
+    const origens_lead = [...new Set(prospects.map(p => p.origem_lead).filter(Boolean))] as string[];
+    const allTags = prospects.flatMap(p => (p.tags as string[]) || []);
+    const tags = [...new Set(allTags.filter(Boolean))] as string[];
+    return { segmentos, estados, origens_contato, origens_lead, tags };
+  }, [prospects]);
 
   const filteredTemplates = templates?.filter(t => t.canal === data.canal && t.ativo) || [];
   const selectedTemplate = templates?.find(t => t.id === data.template_id);
 
-  // Calcular destinatários estimados
-  const calculateRecipients = () => {
-    if (!prospects) return 0;
-    
-    let filtered = prospects;
-    
-    if (data.filtros.status_qualificacao?.length) {
-      filtered = filtered.filter(p => data.filtros.status_qualificacao?.includes(p.status_qualificacao || ""));
+  // Apply all filters to prospects
+  const applyFilters = (list: typeof prospects) => {
+    if (!list) return [];
+    let filtered = [...list];
+
+    const f = data.filtros;
+    if (f.status_qualificacao?.length) {
+      filtered = filtered.filter(p => f.status_qualificacao?.includes(p.status_qualificacao || ""));
     }
-    if (data.filtros.segmento) {
-      filtered = filtered.filter(p => p.segmento === data.filtros.segmento);
+    if (f.segmento) {
+      filtered = filtered.filter(p => p.segmento === f.segmento);
     }
-    if (data.filtros.cidade) {
-      filtered = filtered.filter(p => p.cidade?.toLowerCase().includes(data.filtros.cidade?.toLowerCase() || ""));
+    if (f.cidade) {
+      filtered = filtered.filter(p => p.cidade?.toLowerCase().includes(f.cidade?.toLowerCase() || ""));
     }
-    
+    if (f.estado) {
+      filtered = filtered.filter(p => p.estado === f.estado);
+    }
+    if (f.origem_contato) {
+      filtered = filtered.filter(p => p.origem_contato === f.origem_contato);
+    }
+    if (f.origem_lead) {
+      filtered = filtered.filter(p => p.origem_lead === f.origem_lead);
+    }
+    if (f.tags?.length) {
+      filtered = filtered.filter(p => {
+        const pTags = (p.tags as string[]) || [];
+        return f.tags!.some(t => pTags.includes(t));
+      });
+    }
+    if (f.score_min !== undefined && f.score_min > 0) {
+      filtered = filtered.filter(p => (p.score || 0) >= f.score_min!);
+    }
+    if (f.responsavel_id) {
+      filtered = filtered.filter(p => p.responsavel_id === f.responsavel_id);
+    }
+    if (f.apenas_consentimento) {
+      if (data.canal === "email") {
+        filtered = filtered.filter(p => p.consentimento_email);
+      } else {
+        filtered = filtered.filter(p => p.consentimento_whatsapp);
+      }
+    }
+
     // Filtrar por contato disponível
     if (data.canal === "email") {
       filtered = filtered.filter(p => p.email_principal && !p.optout_email);
     } else {
       filtered = filtered.filter(p => p.telefone_whatsapp && !p.optout_whatsapp);
     }
-    
-    return filtered.length;
+
+    return filtered;
   };
+
+  // Combine all sources and deduplicate
+  const calculateAllRecipientIds = (): string[] => {
+    const ids = new Set<string>();
+
+    // 1. From filters
+    const fromFilters = applyFilters(prospects);
+    fromFilters.forEach(p => ids.add(p.id));
+
+    // 2. Individual selection
+    data.selected_prospect_ids?.forEach(id => ids.add(id));
+
+    // 3. From groups
+    if (data.selected_group_ids?.length && sendGroups) {
+      sendGroups
+        .filter(g => data.selected_group_ids!.includes(g.id))
+        .forEach(g => (g.prospect_ids || []).forEach(id => ids.add(id)));
+    }
+
+    // Filter the combined set to only include prospects with valid contact info
+    if (!prospects) return [...ids];
+    return [...ids].filter(id => {
+      const p = prospects.find(pr => pr.id === id);
+      if (!p) return false;
+      if (data.canal === "email") return p.email_principal && !p.optout_email;
+      return p.telefone_whatsapp && !p.optout_whatsapp;
+    });
+  };
+
+  const calculateRecipients = () => calculateAllRecipientIds().length;
 
   const handleNext = () => {
     if (currentStep === 3) {
@@ -276,31 +377,12 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
         created_by: user.id,
       });
 
-      // Criar recipients
+      // Criar recipients using unified calculation
       if (prospects && campaign) {
-        let filteredProspects = prospects;
-        
-        if (data.filtros.status_qualificacao?.length) {
-          filteredProspects = filteredProspects.filter(p => 
-            data.filtros.status_qualificacao?.includes(p.status_qualificacao || "")
-          );
-        }
-        if (data.filtros.segmento) {
-          filteredProspects = filteredProspects.filter(p => p.segmento === data.filtros.segmento);
-        }
-        if (data.filtros.cidade) {
-          filteredProspects = filteredProspects.filter(p => 
-            p.cidade?.toLowerCase().includes(data.filtros.cidade?.toLowerCase() || "")
-          );
-        }
-        
-        if (data.canal === "email") {
-          filteredProspects = filteredProspects.filter(p => p.email_principal && !p.optout_email);
-        } else {
-          filteredProspects = filteredProspects.filter(p => p.telefone_whatsapp && !p.optout_whatsapp);
-        }
+        const recipientIds = calculateAllRecipientIds();
+        const recipientProspects = prospects.filter(p => recipientIds.includes(p.id));
 
-        const recipients = filteredProspects.map(p => ({
+        const recipients = recipientProspects.map(p => ({
           campaign_id: campaign.id,
           empresa_id: profile.empresa_id,
           prospect_id: p.id,
@@ -333,8 +415,14 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
       publico_origem: "prospects",
       template_id: "",
       filtros: {},
+      selected_prospect_ids: [],
+      selected_group_ids: [],
     });
     setEstimatedRecipients(0);
+    setIndividualSearch("");
+    setShowCreateGroup(false);
+    setNewGroupName("");
+    setNewGroupProspectIds([]);
   };
 
   const canProceed = () => {
@@ -701,64 +789,379 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
             </div>
           )}
 
-          {/* Step 3: Filtros */}
+          {/* Step 3: Destinatários */}
           {currentStep === 3 && (
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Filtre os destinatários (deixe em branco para enviar a todos):
-              </p>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Status de Qualificação</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {["novo", "em_qualificacao", "qualificado"].map((status) => (
-                      <label key={status} className="flex items-center gap-2 cursor-pointer">
-                        <Checkbox 
-                          checked={data.filtros.status_qualificacao?.includes(status)}
-                          onCheckedChange={(checked) => {
-                            const current = data.filtros.status_qualificacao || [];
-                            setData({
-                              ...data,
-                              filtros: {
-                                ...data.filtros,
-                                status_qualificacao: checked 
-                                  ? [...current, status]
-                                  : current.filter(s => s !== status)
-                              }
-                            });
-                          }}
-                        />
-                        <span className="text-sm capitalize">{status.replace("_", " ")}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Segmento</Label>
-                  <Input 
-                    placeholder="Ex: Tecnologia"
-                    value={data.filtros.segmento || ""}
-                    onChange={(e) => setData({ 
-                      ...data, 
-                      filtros: { ...data.filtros, segmento: e.target.value } 
-                    })}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Cidade</Label>
-                  <Input 
-                    placeholder="Ex: São Paulo"
-                    value={data.filtros.cidade || ""}
-                    onChange={(e) => setData({ 
-                      ...data, 
-                      filtros: { ...data.filtros, cidade: e.target.value } 
-                    })}
-                  />
-                </div>
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Selecione os destinatários da campanha:
+                </p>
+                <Badge variant="secondary" className="text-xs">
+                  {calculateRecipients()} destinatários
+                </Badge>
               </div>
+
+              <Tabs defaultValue="filtros" className="w-full">
+                <TabsList className="w-full">
+                  <TabsTrigger value="filtros" className="flex-1 gap-1"><Filter className="h-3 w-3" />Filtros</TabsTrigger>
+                  <TabsTrigger value="individual" className="flex-1 gap-1"><UserCheck className="h-3 w-3" />Individual</TabsTrigger>
+                  <TabsTrigger value="grupos" className="flex-1 gap-1"><Users className="h-3 w-3" />Grupos</TabsTrigger>
+                </TabsList>
+
+                {/* Aba Filtros */}
+                <TabsContent value="filtros">
+                  <ScrollArea className="h-[320px] pr-3">
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Status de Qualificação</Label>
+                        <div className="flex flex-wrap gap-2">
+                          {["novo", "em_qualificacao", "qualificado", "desqualificado"].map((status) => (
+                            <label key={status} className="flex items-center gap-2 cursor-pointer">
+                              <Checkbox
+                                checked={data.filtros.status_qualificacao?.includes(status)}
+                                onCheckedChange={(checked) => {
+                                  const current = data.filtros.status_qualificacao || [];
+                                  setData({
+                                    ...data,
+                                    filtros: {
+                                      ...data.filtros,
+                                      status_qualificacao: checked
+                                        ? [...current, status]
+                                        : current.filter(s => s !== status)
+                                    }
+                                  });
+                                }}
+                              />
+                              <span className="text-sm capitalize">{status.replace("_", " ")}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label>Segmento</Label>
+                          <Select value={data.filtros.segmento || ""} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, segmento: v || undefined } })}>
+                            <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="">Todos</SelectItem>
+                              {distinctValues.segmentos.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Estado</Label>
+                          <Select value={data.filtros.estado || ""} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, estado: v || undefined } })}>
+                            <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="">Todos</SelectItem>
+                              {distinctValues.estados.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Cidade</Label>
+                        <Input
+                          placeholder="Ex: São Paulo"
+                          value={data.filtros.cidade || ""}
+                          onChange={(e) => setData({ ...data, filtros: { ...data.filtros, cidade: e.target.value } })}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label>Origem do Contato</Label>
+                          <Select value={data.filtros.origem_contato || ""} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, origem_contato: v || undefined } })}>
+                            <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="">Todas</SelectItem>
+                              {distinctValues.origens_contato.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Origem do Lead</Label>
+                          <Select value={data.filtros.origem_lead || ""} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, origem_lead: v || undefined } })}>
+                            <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="">Todas</SelectItem>
+                              {distinctValues.origens_lead.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Tags</Label>
+                        <div className="flex flex-wrap gap-1">
+                          {distinctValues.tags.map(tag => {
+                            const selected = data.filtros.tags?.includes(tag);
+                            return (
+                              <Badge
+                                key={tag}
+                                variant={selected ? "default" : "outline"}
+                                className="cursor-pointer text-xs"
+                                onClick={() => {
+                                  const current = data.filtros.tags || [];
+                                  setData({
+                                    ...data,
+                                    filtros: {
+                                      ...data.filtros,
+                                      tags: selected ? current.filter(t => t !== tag) : [...current, tag]
+                                    }
+                                  });
+                                }}
+                              >
+                                {tag}
+                              </Badge>
+                            );
+                          })}
+                          {distinctValues.tags.length === 0 && <span className="text-xs text-muted-foreground">Nenhuma tag encontrada</span>}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Score Mínimo: {data.filtros.score_min || 0}</Label>
+                        <Slider
+                          value={[data.filtros.score_min || 0]}
+                          min={0}
+                          max={100}
+                          step={5}
+                          onValueChange={([v]) => setData({ ...data, filtros: { ...data.filtros, score_min: v } })}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Responsável</Label>
+                        <Select value={data.filtros.responsavel_id || ""} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, responsavel_id: v || undefined } })}>
+                          <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">Todos</SelectItem>
+                            {companyProfiles?.map(p => <SelectItem key={p.id} value={p.id}>{p.nome || p.email}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                          checked={data.filtros.apenas_consentimento || false}
+                          onCheckedChange={(checked) => setData({ ...data, filtros: { ...data.filtros, apenas_consentimento: !!checked } })}
+                        />
+                        <span className="text-sm">Apenas com consentimento de {data.canal === "email" ? "email" : "WhatsApp"}</span>
+                      </label>
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+
+                {/* Aba Seleção Individual */}
+                <TabsContent value="individual">
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Buscar por nome, email ou telefone..."
+                        className="pl-9"
+                        value={individualSearch}
+                        onChange={(e) => setIndividualSearch(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => {
+                        if (!prospects) return;
+                        const validIds = prospects
+                          .filter(p => data.canal === "email" ? (p.email_principal && !p.optout_email) : (p.telefone_whatsapp && !p.optout_whatsapp))
+                          .map(p => p.id);
+                        setData({ ...data, selected_prospect_ids: validIds });
+                      }}>
+                        Selecionar todos
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => setData({ ...data, selected_prospect_ids: [] })}>
+                        Limpar seleção
+                      </Button>
+                      <Badge variant="secondary" className="ml-auto self-center text-xs">
+                        {data.selected_prospect_ids?.length || 0} selecionados
+                      </Badge>
+                    </div>
+                    <ScrollArea className="h-[250px]">
+                      <div className="space-y-1">
+                        {prospects?.filter(p => {
+                          if (!individualSearch) return true;
+                          const q = individualSearch.toLowerCase();
+                          return (p.nome_razao?.toLowerCase().includes(q) || p.email_principal?.toLowerCase().includes(q) || p.telefone_whatsapp?.includes(q));
+                        }).map(p => {
+                          const isSelected = data.selected_prospect_ids?.includes(p.id);
+                          const hasContact = data.canal === "email" ? (p.email_principal && !p.optout_email) : (p.telefone_whatsapp && !p.optout_whatsapp);
+                          return (
+                            <label key={p.id} className={`flex items-center gap-3 p-2 rounded cursor-pointer hover:bg-muted/50 ${!hasContact ? "opacity-50" : ""}`}>
+                              <Checkbox
+                                checked={isSelected}
+                                disabled={!hasContact}
+                                onCheckedChange={(checked) => {
+                                  const current = data.selected_prospect_ids || [];
+                                  setData({
+                                    ...data,
+                                    selected_prospect_ids: checked ? [...current, p.id] : current.filter(id => id !== p.id)
+                                  });
+                                }}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">{p.nome_razao}</p>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {data.canal === "email" ? (p.email_principal || "Sem email") : (p.telefone_whatsapp || "Sem telefone")}
+                                </p>
+                              </div>
+                              <Badge variant="outline" className="text-xs flex-shrink-0 capitalize">
+                                {(p.status_qualificacao || "novo").replace("_", " ")}
+                              </Badge>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                </TabsContent>
+
+                {/* Aba Grupos */}
+                <TabsContent value="grupos">
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <p className="text-sm text-muted-foreground">Selecione grupos de envio:</p>
+                      <Button variant="outline" size="sm" onClick={() => setShowCreateGroup(true)}>
+                        <Plus className="h-3 w-3 mr-1" />Criar Grupo
+                      </Button>
+                    </div>
+
+                    {sendGroups && sendGroups.length > 0 ? (
+                      <ScrollArea className="h-[280px]">
+                        <div className="space-y-2">
+                          {sendGroups.map(group => {
+                            const isSelected = data.selected_group_ids?.includes(group.id);
+                            return (
+                              <Card key={group.id} className={`transition-all ${isSelected ? "border-primary ring-1 ring-primary" : ""}`}>
+                                <CardContent className="p-3 flex items-center gap-3">
+                                  <Checkbox
+                                    checked={isSelected}
+                                    onCheckedChange={(checked) => {
+                                      const current = data.selected_group_ids || [];
+                                      setData({
+                                        ...data,
+                                        selected_group_ids: checked ? [...current, group.id] : current.filter(id => id !== group.id)
+                                      });
+                                    }}
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium">{group.nome}</p>
+                                    {group.descricao && <p className="text-xs text-muted-foreground truncate">{group.descricao}</p>}
+                                  </div>
+                                  <Badge variant="secondary" className="text-xs">
+                                    {(group.prospect_ids || []).length} prospects
+                                  </Badge>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-destructive"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      deleteSendGroup.mutate(group.id);
+                                    }}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </CardContent>
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      </ScrollArea>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">Nenhum grupo criado ainda.</p>
+                      </div>
+                    )}
+
+                    {/* Create Group Dialog */}
+                    {showCreateGroup && (
+                      <Dialog open={showCreateGroup} onOpenChange={setShowCreateGroup}>
+                        <DialogContent className="max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>Criar Grupo de Envio</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <Label>Nome do Grupo *</Label>
+                              <Input placeholder="Ex: VIPs" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Prospects ({newGroupProspectIds.length} selecionados)</Label>
+                              <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                  placeholder="Buscar..."
+                                  className="pl-9"
+                                  value={groupProspectSearch}
+                                  onChange={(e) => setGroupProspectSearch(e.target.value)}
+                                />
+                              </div>
+                              <ScrollArea className="h-[200px] border rounded-md p-2">
+                                {prospects?.filter(p => {
+                                  if (!groupProspectSearch) return true;
+                                  const q = groupProspectSearch.toLowerCase();
+                                  return p.nome_razao?.toLowerCase().includes(q);
+                                }).map(p => (
+                                  <label key={p.id} className="flex items-center gap-2 p-1.5 cursor-pointer hover:bg-muted/50 rounded">
+                                    <Checkbox
+                                      checked={newGroupProspectIds.includes(p.id)}
+                                      onCheckedChange={(checked) => {
+                                        setNewGroupProspectIds(prev => checked ? [...prev, p.id] : prev.filter(id => id !== p.id));
+                                      }}
+                                    />
+                                    <span className="text-sm truncate">{p.nome_razao}</span>
+                                  </label>
+                                ))}
+                              </ScrollArea>
+                            </div>
+                          </div>
+                          <DialogFooter>
+                            <Button variant="outline" onClick={() => setShowCreateGroup(false)}>Cancelar</Button>
+                            <Button
+                              disabled={!newGroupName.trim() || newGroupProspectIds.length === 0 || createSendGroup.isPending}
+                              onClick={async () => {
+                                try {
+                                  const { data: { user } } = await supabase.auth.getUser();
+                                  if (!user) return;
+                                  const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
+                                  if (!profile?.empresa_id) return;
+                                  await createSendGroup.mutateAsync({
+                                    empresa_id: profile.empresa_id,
+                                    nome: newGroupName,
+                                    prospect_ids: newGroupProspectIds,
+                                    created_by: user.id,
+                                  });
+                                  toast.success("Grupo criado!");
+                                  setShowCreateGroup(false);
+                                  setNewGroupName("");
+                                  setNewGroupProspectIds([]);
+                                  setGroupProspectSearch("");
+                                } catch (err: any) {
+                                  toast.error(err.message || "Erro ao criar grupo");
+                                }
+                              }}
+                            >
+                              {createSendGroup.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                              Criar Grupo
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+                    )}
+                  </div>
+                </TabsContent>
+              </Tabs>
             </div>
           )}
 
