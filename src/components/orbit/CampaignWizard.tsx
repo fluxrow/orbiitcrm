@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -81,6 +81,7 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
 
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupDesc, setNewGroupDesc] = useState("");
   const [newGroupProspectIds, setNewGroupProspectIds] = useState<string[]>([]);
   const [individualSearch, setIndividualSearch] = useState("");
   const [groupProspectSearch, setGroupProspectSearch] = useState("");
@@ -422,6 +423,7 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
     setIndividualSearch("");
     setShowCreateGroup(false);
     setNewGroupName("");
+    setNewGroupDesc("");
     setNewGroupProspectIds([]);
   };
 
@@ -1223,43 +1225,95 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
 
       {/* Create Group Dialog - rendered outside wizard to avoid z-index/overflow issues */}
       <Dialog open={showCreateGroup} onOpenChange={setShowCreateGroup}>
-        <DialogContent className="max-w-md z-[60] max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl z-[60] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Criar Grupo de Envio</DialogTitle>
+            <DialogDescription>Selecione os prospects que farão parte deste grupo.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Nome do Grupo *</Label>
-              <Input placeholder="Ex: VIPs" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Nome do Grupo *</Label>
+                <Input placeholder="Ex: VIPs" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Descrição (opcional)</Label>
+                <Input placeholder="Ex: Clientes premium região sul" value={newGroupDesc} onChange={(e) => setNewGroupDesc(e.target.value)} />
+              </div>
             </div>
             <div className="space-y-2">
-              <Label>Prospects ({newGroupProspectIds.length} selecionados)</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar..."
-                  className="pl-9"
-                  value={groupProspectSearch}
-                  onChange={(e) => setGroupProspectSearch(e.target.value)}
-                />
-              </div>
-              <ScrollArea className="h-[180px] border rounded-md p-2">
-                {prospects?.filter(p => {
+              {(() => {
+                const filtered = prospects?.filter(p => {
                   if (!groupProspectSearch) return true;
                   const q = groupProspectSearch.toLowerCase();
-                  return p.nome_razao?.toLowerCase().includes(q);
-                }).map(p => (
-                  <label key={p.id} className="flex items-center gap-2 p-1.5 cursor-pointer hover:bg-muted/50 rounded">
-                    <Checkbox
-                      checked={newGroupProspectIds.includes(p.id)}
-                      onCheckedChange={(checked) => {
-                        setNewGroupProspectIds(prev => checked ? [...prev, p.id] : prev.filter(id => id !== p.id));
-                      }}
-                    />
-                    <span className="text-sm truncate">{p.nome_razao}</span>
-                  </label>
-                ))}
-              </ScrollArea>
+                  return p.nome_razao?.toLowerCase().includes(q) || p.email_principal?.toLowerCase().includes(q) || p.telefone_whatsapp?.toLowerCase().includes(q);
+                }) ?? [];
+                return (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <Label>Prospects — {newGroupProspectIds.length} selecionados de {filtered.length} exibidos</Label>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => setNewGroupProspectIds(filtered.map(p => p.id))}
+                        >
+                          Selecionar todos
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => setNewGroupProspectIds([])}
+                          disabled={newGroupProspectIds.length === 0}
+                        >
+                          Limpar
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Buscar por nome, email ou telefone..."
+                        className="pl-9"
+                        value={groupProspectSearch}
+                        onChange={(e) => setGroupProspectSearch(e.target.value)}
+                      />
+                    </div>
+                    <ScrollArea className="h-[350px] border rounded-md">
+                      <div className="p-1">
+                        {filtered.map(p => (
+                          <label key={p.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/50 rounded-md transition-colors">
+                            <Checkbox
+                              checked={newGroupProspectIds.includes(p.id)}
+                              onCheckedChange={(checked) => {
+                                setNewGroupProspectIds(prev => checked ? [...prev, p.id] : prev.filter(id => id !== p.id));
+                              }}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <span className="text-sm font-medium truncate block">{p.nome_razao}</span>
+                              <span className="text-xs text-muted-foreground truncate block">
+                                {[p.email_principal, p.telefone_whatsapp].filter(Boolean).join(" · ") || "Sem contato"}
+                              </span>
+                            </div>
+                            {p.status_qualificacao && (
+                              <Badge variant="secondary" className="text-[10px] shrink-0">
+                                {p.status_qualificacao}
+                              </Badge>
+                            )}
+                          </label>
+                        ))}
+                        {filtered.length === 0 && (
+                          <p className="text-sm text-muted-foreground text-center py-8">Nenhum prospect encontrado.</p>
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </>
+                );
+              })()}
             </div>
           </div>
           <DialogFooter>
@@ -1275,12 +1329,14 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
                   await createSendGroup.mutateAsync({
                     empresa_id: profile.empresa_id,
                     nome: newGroupName,
+                    descricao: newGroupDesc || undefined,
                     prospect_ids: newGroupProspectIds,
                     created_by: user.id,
                   });
                   toast.success("Grupo criado!");
                   setShowCreateGroup(false);
                   setNewGroupName("");
+                  setNewGroupDesc("");
                   setNewGroupProspectIds([]);
                   setGroupProspectSearch("");
                 } catch (err: any) {
