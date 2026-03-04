@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -72,6 +74,16 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
   const updateProspect = useUpdateProspect();
   const isEditing = !!prospect;
 
+  const { data: myProfile } = useQuery({
+    queryKey: ["my-profile-empresa"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
+      return data;
+    },
+  });
+
   const form = useForm<ProspectFormData>({
     resolver: zodResolver(prospectSchema),
     defaultValues: {
@@ -130,7 +142,7 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
         await updateProspect.mutateAsync({ id: prospect.id, ...data });
         toast.success("Prospect atualizado com sucesso!");
       } else {
-        await createProspect.mutateAsync({ ...data, nome_razao: data.nome_razao });
+        await createProspect.mutateAsync({ ...data, nome_razao: data.nome_razao, empresa_id: myProfile?.empresa_id });
         toast.success("Prospect criado com sucesso!");
       }
       onOpenChange(false);
