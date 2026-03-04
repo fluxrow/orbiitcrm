@@ -437,6 +437,7 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
@@ -1084,81 +1085,6 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
                       </div>
                     )}
 
-                    {/* Create Group Dialog */}
-                    {showCreateGroup && (
-                      <Dialog open={showCreateGroup} onOpenChange={setShowCreateGroup}>
-                        <DialogContent className="max-w-md">
-                          <DialogHeader>
-                            <DialogTitle>Criar Grupo de Envio</DialogTitle>
-                          </DialogHeader>
-                          <div className="space-y-4">
-                            <div className="space-y-2">
-                              <Label>Nome do Grupo *</Label>
-                              <Input placeholder="Ex: VIPs" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Prospects ({newGroupProspectIds.length} selecionados)</Label>
-                              <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                <Input
-                                  placeholder="Buscar..."
-                                  className="pl-9"
-                                  value={groupProspectSearch}
-                                  onChange={(e) => setGroupProspectSearch(e.target.value)}
-                                />
-                              </div>
-                              <ScrollArea className="h-[200px] border rounded-md p-2">
-                                {prospects?.filter(p => {
-                                  if (!groupProspectSearch) return true;
-                                  const q = groupProspectSearch.toLowerCase();
-                                  return p.nome_razao?.toLowerCase().includes(q);
-                                }).map(p => (
-                                  <label key={p.id} className="flex items-center gap-2 p-1.5 cursor-pointer hover:bg-muted/50 rounded">
-                                    <Checkbox
-                                      checked={newGroupProspectIds.includes(p.id)}
-                                      onCheckedChange={(checked) => {
-                                        setNewGroupProspectIds(prev => checked ? [...prev, p.id] : prev.filter(id => id !== p.id));
-                                      }}
-                                    />
-                                    <span className="text-sm truncate">{p.nome_razao}</span>
-                                  </label>
-                                ))}
-                              </ScrollArea>
-                            </div>
-                          </div>
-                          <DialogFooter>
-                            <Button variant="outline" onClick={() => setShowCreateGroup(false)}>Cancelar</Button>
-                            <Button
-                              disabled={!newGroupName.trim() || newGroupProspectIds.length === 0 || createSendGroup.isPending}
-                              onClick={async () => {
-                                try {
-                                  const { data: { user } } = await supabase.auth.getUser();
-                                  if (!user) return;
-                                  const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
-                                  if (!profile?.empresa_id) return;
-                                  await createSendGroup.mutateAsync({
-                                    empresa_id: profile.empresa_id,
-                                    nome: newGroupName,
-                                    prospect_ids: newGroupProspectIds,
-                                    created_by: user.id,
-                                  });
-                                  toast.success("Grupo criado!");
-                                  setShowCreateGroup(false);
-                                  setNewGroupName("");
-                                  setNewGroupProspectIds([]);
-                                  setGroupProspectSearch("");
-                                } catch (err: any) {
-                                  toast.error(err.message || "Erro ao criar grupo");
-                                }
-                              }}
-                            >
-                              {createSendGroup.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-                              Criar Grupo
-                            </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
-                    )}
                   </div>
                 </TabsContent>
               </Tabs>
@@ -1294,5 +1220,80 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
         </div>
       </DialogContent>
     </Dialog>
+
+      {/* Create Group Dialog - rendered outside wizard to avoid z-index/overflow issues */}
+      <Dialog open={showCreateGroup} onOpenChange={setShowCreateGroup}>
+        <DialogContent className="max-w-md z-[60] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Criar Grupo de Envio</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nome do Grupo *</Label>
+              <Input placeholder="Ex: VIPs" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Prospects ({newGroupProspectIds.length} selecionados)</Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar..."
+                  className="pl-9"
+                  value={groupProspectSearch}
+                  onChange={(e) => setGroupProspectSearch(e.target.value)}
+                />
+              </div>
+              <ScrollArea className="h-[180px] border rounded-md p-2">
+                {prospects?.filter(p => {
+                  if (!groupProspectSearch) return true;
+                  const q = groupProspectSearch.toLowerCase();
+                  return p.nome_razao?.toLowerCase().includes(q);
+                }).map(p => (
+                  <label key={p.id} className="flex items-center gap-2 p-1.5 cursor-pointer hover:bg-muted/50 rounded">
+                    <Checkbox
+                      checked={newGroupProspectIds.includes(p.id)}
+                      onCheckedChange={(checked) => {
+                        setNewGroupProspectIds(prev => checked ? [...prev, p.id] : prev.filter(id => id !== p.id));
+                      }}
+                    />
+                    <span className="text-sm truncate">{p.nome_razao}</span>
+                  </label>
+                ))}
+              </ScrollArea>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateGroup(false)}>Cancelar</Button>
+            <Button
+              disabled={!newGroupName.trim() || newGroupProspectIds.length === 0 || createSendGroup.isPending}
+              onClick={async () => {
+                try {
+                  const { data: { user } } = await supabase.auth.getUser();
+                  if (!user) return;
+                  const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
+                  if (!profile?.empresa_id) return;
+                  await createSendGroup.mutateAsync({
+                    empresa_id: profile.empresa_id,
+                    nome: newGroupName,
+                    prospect_ids: newGroupProspectIds,
+                    created_by: user.id,
+                  });
+                  toast.success("Grupo criado!");
+                  setShowCreateGroup(false);
+                  setNewGroupName("");
+                  setNewGroupProspectIds([]);
+                  setGroupProspectSearch("");
+                } catch (err: any) {
+                  toast.error(err.message || "Erro ao criar grupo");
+                }
+              }}
+            >
+              {createSendGroup.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Criar Grupo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
