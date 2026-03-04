@@ -1,22 +1,13 @@
 
 
-# Fix: Popup "Criar Grupo de Envio" estourando
+# Melhorar Dialog de Grupos de Envio
 
-## Problema
+## Alterações em `src/components/orbit/CampaignWizard.tsx`
 
-O Dialog "Criar Grupo de Envio" está renderizado **dentro** do wizard (que já é um modal/dialog), causando problemas de overflow e z-index — o popup estoura visualmente.
-
-## Correção
-
-Em `src/components/orbit/CampaignWizard.tsx`:
-
-1. **Mover o Dialog para fora do fluxo de abas** — renderizá-lo no nível raiz do componente (fora do conteúdo do wizard) para evitar problemas de z-index e overflow com modais aninhados.
-
-2. **Adicionar `z-[60]` ao DialogContent** para garantir que fique acima do wizard (z-50).
-
-3. **Adicionar `max-h-[80vh] overflow-y-auto`** ao conteúdo do dialog para que não ultrapasse a viewport em telas menores.
-
-4. **Limitar a ScrollArea** da lista de prospects a `h-[180px]` para manter o dialog compacto.
-
-Alteração localizada em ~10 linhas no mesmo arquivo.
+1. **Aumentar o dialog**: `max-w-md` → `max-w-2xl` para dar mais espaço
+2. **Expandir a lista de prospects**: `h-[180px]` → `h-[350px]` para ver mais contatos
+3. **Mostrar mais info por prospect**: exibir email/telefone e status ao lado do nome
+4. **Adicionar "Selecionar todos" / "Limpar"** acima da lista
+5. **Adicionar descrição opcional** ao grupo
+6. **Contador visível** dos filtrados vs selecionados no header da lista
 
