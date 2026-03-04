@@ -841,10 +841,10 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-2">
                           <Label>Segmento</Label>
-                          <Select value={data.filtros.segmento || ""} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, segmento: v || undefined } })}>
+                          <Select value={data.filtros.segmento || "__all__"} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, segmento: v === "__all__" ? undefined : v } })}>
                             <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">Todos</SelectItem>
+                              <SelectItem value="__all__">Todos</SelectItem>
                               {distinctValues.segmentos.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                             </SelectContent>
                           </Select>
@@ -852,10 +852,10 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
 
                         <div className="space-y-2">
                           <Label>Estado</Label>
-                          <Select value={data.filtros.estado || ""} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, estado: v || undefined } })}>
+                          <Select value={data.filtros.estado || "__all__"} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, estado: v === "__all__" ? undefined : v } })}>
                             <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">Todos</SelectItem>
+                              <SelectItem value="__all__">Todos</SelectItem>
                               {distinctValues.estados.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                             </SelectContent>
                           </Select>
@@ -874,10 +874,10 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-2">
                           <Label>Origem do Contato</Label>
-                          <Select value={data.filtros.origem_contato || ""} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, origem_contato: v || undefined } })}>
+                          <Select value={data.filtros.origem_contato || "__all__"} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, origem_contato: v === "__all__" ? undefined : v } })}>
                             <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">Todas</SelectItem>
+                              <SelectItem value="__all__">Todas</SelectItem>
                               {distinctValues.origens_contato.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                             </SelectContent>
                           </Select>
@@ -885,10 +885,10 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
 
                         <div className="space-y-2">
                           <Label>Origem do Lead</Label>
-                          <Select value={data.filtros.origem_lead || ""} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, origem_lead: v || undefined } })}>
+                          <Select value={data.filtros.origem_lead || "__all__"} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, origem_lead: v === "__all__" ? undefined : v } })}>
                             <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">Todas</SelectItem>
+                              <SelectItem value="__all__">Todas</SelectItem>
                               {distinctValues.origens_lead.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                             </SelectContent>
                           </Select>
@@ -937,10 +937,10 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
 
                       <div className="space-y-2">
                         <Label>Responsável</Label>
-                        <Select value={data.filtros.responsavel_id || ""} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, responsavel_id: v || undefined } })}>
+                        <Select value={data.filtros.responsavel_id || "__all__"} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, responsavel_id: v === "__all__" ? undefined : v } })}>
                           <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">Todos</SelectItem>
+                            <SelectItem value="__all__">Todos</SelectItem>
                             {companyProfiles?.map(p => <SelectItem key={p.id} value={p.id}>{p.nome || p.email}</SelectItem>)}
                           </SelectContent>
                         </Select>
