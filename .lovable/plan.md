@@ -1,66 +1,50 @@
 
 
-# Filtros avançados na página Prospects
+# Ajustar botão de Mensagem nos cards de Prospect
 
-## Resumo
+## Problema
+O botão fica `disabled` quando `whatsapp` é nulo ou `whatsapp_status === "invalido"`, mesmo que exista `telefone` como fallback.
 
-Adicionar 4 novos filtros (WhatsApp, WhatsApp verificado, Email, Contato disponível) com chips de filtros ativos e botão X para remoção rápida. Todos client-side, aplicados sobre os dados já carregados.
+## Mudanças
 
-## Abordagem
+### 1. `src/components/orbit/ProspectActionCard.tsx`
 
-Os filtros serão aplicados **client-side** no `useMemo` de `filtered`, pois os dados já são carregados integralmente via paginação. Isso evita complexidade de queries Supabase com `is.null` / `neq` combinados e mantém a UX instantânea.
-
-## Mudanças em `src/pages/orbit/ProspectsPage.tsx`
-
-### 1. Novos estados de filtro
-
+**Alterar lógica de habilitação (linha 45):**
 ```typescript
-const [whatsappFilter, setWhatsappFilter] = useState("all");       // all | com | sem
-const [whatsappStatusFilter, setWhatsappStatusFilter] = useState("all"); // all | valido | nao_verificado | invalido
-const [emailFilter, setEmailFilter] = useState("all");             // all | com | sem
-const [contatoFilter, setContatoFilter] = useState("all");         // all | whatsapp | email | ambos | nenhum
+// De:
+const hasWhatsapp = !!prospect.whatsapp && prospect.whatsapp_status !== "invalido";
+
+// Para:
+const hasAnyPhone = !!(prospect.whatsapp || prospect.telefone);
 ```
 
-### 2. Novos Selects no painel de filtros (linha 165–184)
+**Atualizar disabled e tooltip (linhas 130-135):**
+- `disabled={!hasAnyPhone}`
+- Tooltip: se `hasAnyPhone` → "Iniciar conversa" (com aviso se não verificado), senão → "Sem número disponível"
+- Se `whatsapp_status !== "valido"` e tem número, mostrar ícone de aviso sutil no botão
 
-Adicionar 4 novos `<Select>` após os existentes, antes do contador:
-- **WhatsApp**: Todos / Com WhatsApp / Sem WhatsApp
-- **WhatsApp verificado**: Todos / Verificado / Não verificado / Inválido
-- **Email**: Todos / Com email / Sem email
-- **Contato disponível**: Todos / WhatsApp / Email / Ambos / Nenhum
+### 2. `src/pages/orbit/ProspectsPage.tsx`
 
-### 3. Lógica de filtragem no `useMemo` (linha 93–105)
-
-Adicionar filtros após o filtro de origem:
-
-- `whatsappFilter === "com"` → `p.whatsapp != null && p.whatsapp !== ""`
-- `whatsappFilter === "sem"` → `p.whatsapp == null || p.whatsapp === ""`
-- `whatsappStatusFilter !== "all"` → `p.whatsapp_status === valor`
-- `emailFilter === "com"` → `p.email_principal != null && p.email_principal !== ""`
-- `emailFilter === "sem"` → `p.email_principal == null || p.email_principal === ""`
-- `contatoFilter`:
-  - `whatsapp` → `whatsapp_status === "valido"`
-  - `email` → email preenchido
-  - `ambos` → ambas condições
-  - `nenhum` → sem WhatsApp válido E sem email
-
-### 4. Chips de filtros ativos (entre filtros e grid)
-
-Renderizar badges/chips para cada filtro ativo (valor !== "all") com label descritivo e botão X que reseta para "all". Usar o componente `Badge` existente com um botão X inline.
-
-```
-[WhatsApp: Com WhatsApp ×] [Email: Com email ×] [Status WA: Verificado ×]
+**Alterar handler `onWhatsApp` (linhas 289-293):**
+```typescript
+onWhatsApp={(pr) => {
+  const raw = pr.whatsapp || pr.telefone;
+  if (!raw) return;
+  let num = raw.replace(/\D/g, "");
+  if (num.length >= 10 && num.length <= 11 && !num.startsWith("55")) {
+    num = "55" + num;
+  }
+  if (pr.whatsapp_status !== "valido") {
+    toast.info("⚠ WhatsApp não verificado. Tentando iniciar conversa...");
+  }
+  window.open(`https://wa.me/${num}`, "_blank");
+}}
 ```
 
-Helper para mapear valores para labels legíveis.
-
-### 5. Resetar página ao mudar filtros
-
-Cada `onValueChange` dos novos Selects chama `setPage(0)`.
-
-## Arquivo alterado
+## Arquivos alterados
 
 | Arquivo | Ação |
 |---|---|
-| `src/pages/orbit/ProspectsPage.tsx` | 4 novos filtros, chips ativos, lógica de filtragem |
+| `ProspectActionCard.tsx` | Mudar `hasWhatsapp` para considerar `telefone` como fallback |
+| `ProspectsPage.tsx` | Normalizar número com fallback `telefone` + aviso se não verificado |
 
