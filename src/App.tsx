@@ -31,6 +31,7 @@ import ConfigPage from "./pages/orbit/ConfigPage";
 import AnalyticsPage from "./pages/orbit/AnalyticsPage";
 import MeuPlanoPage from "./pages/orbit/MeuPlanoPage";
 import UsuariosEmpresaPage from "./pages/orbit/UsuariosEmpresaPage";
+import TarefasPage from "./pages/orbit/TarefasPage";
 
 // Super Admin Pages (legacy)
 import SuperAdminDashboard from "./pages/super-admin/SuperAdminDashboard";
@@ -109,6 +110,7 @@ function OrbitRoutes() {
       <Route path="lead-finder" element={<LeadFinderPage />} />
       <Route path="config" element={<ConfigPage />} />
       <Route path="analytics" element={<AnalyticsPage />} />
+      <Route path="tarefas" element={<TarefasPage />} />
       <Route path="meu-plano" element={<MeuPlanoPage />} />
       <Route path="usuarios" element={<UsuariosEmpresaPage />} />
     </Routes>
