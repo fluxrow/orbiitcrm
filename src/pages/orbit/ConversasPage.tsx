@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ export default function ConversasPage() {
   const [tab, setTab] = useState("all");
   const [search, setSearch] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
+  const [searchParams] = useSearchParams();
 
   const { data: conversas, isLoading } = useOrbitConversas();
   const { data: mensagens } = useOrbitMensagens(activeId || undefined);
@@ -29,6 +31,11 @@ export default function ConversasPage() {
 
   const filtered = conversas?.filter((c) => (tab === "all" || c.canal === tab) && (!search || c.telefone_whatsapp.includes(search)));
   const active = conversas?.find((c) => c.id === activeId);
+
+  useEffect(() => {
+    const idParam = searchParams.get("id");
+    if (idParam) setActiveId(idParam);
+  }, [searchParams]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [mensagens]);
 

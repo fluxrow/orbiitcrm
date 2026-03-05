@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
 import { ProspectDialog } from "@/components/orbit/ProspectDialog";
@@ -40,6 +41,7 @@ const SORT_OPTIONS = [
 const PAGE_SIZE = 50;
 
 export default function ProspectsPage() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [origemFilter, setOrigemFilter] = useState("all");
@@ -286,18 +288,38 @@ export default function ProspectsPage() {
                   isSelected={selectedIds.has(p.id)}
                   onToggleSelect={handleToggleSelect}
                   onEdit={handleEdit}
-                   onWhatsApp={(pr) => {
-                     const raw = pr.whatsapp || pr.telefone;
-                     if (raw) {
-                       let num = raw.replace(/\D/g, "");
-                       if (num.length >= 10 && num.length <= 11 && !num.startsWith("55")) {
-                         num = "55" + num;
-                       }
-                       if (pr.whatsapp_status !== "valido") {
-                         toast.info("⚠ WhatsApp não verificado. Tentando iniciar conversa...");
-                       }
-                       window.open(`https://wa.me/${num}`, "_blank");
+                  onWhatsApp={async (pr) => {
+                    const raw = pr.whatsapp || pr.telefone;
+                    if (!raw) return;
+                    let num = raw.replace(/\D/g, "");
+                    if (num.length >= 10 && num.length <= 11 && !num.startsWith("55")) {
+                      num = "55" + num;
                     }
+
+                    let { data: conversa } = await supabase
+                      .from("orbit_conversas")
+                      .select("id")
+                      .eq("prospect_id", pr.id)
+                      .eq("status", "aberta")
+                      .maybeSingle();
+
+                    if (!conversa) {
+                      const { data: nova, error } = await supabase
+                        .from("orbit_conversas")
+                        .insert({
+                          empresa_id: pr.empresa_id,
+                          prospect_id: pr.id,
+                          canal: "whatsapp",
+                          telefone_whatsapp: num,
+                          status: "aberta",
+                        })
+                        .select("id")
+                        .single();
+                      if (error) { toast.error("Erro ao criar conversa"); return; }
+                      conversa = nova;
+                    }
+
+                    navigate(`../conversas?id=${conversa!.id}`);
                   }}
                   onEmail={(pr) => {
                     if (pr.email_principal) {
