@@ -2097,6 +2097,81 @@ export type Database = {
         }
         Relationships: []
       }
+      orbit_tasks: {
+        Row: {
+          assigned_to: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          deal_id: string | null
+          descricao: string | null
+          due_date: string | null
+          due_time: string | null
+          empresa_id: string
+          id: string
+          notificar_responsavel: boolean | null
+          prioridade: string
+          prospect_id: string | null
+          status: string
+          tipo_tarefa: string
+          titulo: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          deal_id?: string | null
+          descricao?: string | null
+          due_date?: string | null
+          due_time?: string | null
+          empresa_id: string
+          id?: string
+          notificar_responsavel?: boolean | null
+          prioridade?: string
+          prospect_id?: string | null
+          status?: string
+          tipo_tarefa?: string
+          titulo: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_to?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          deal_id?: string | null
+          descricao?: string | null
+          due_date?: string | null
+          due_time?: string | null
+          empresa_id?: string
+          id?: string
+          notificar_responsavel?: boolean | null
+          prioridade?: string
+          prospect_id?: string | null
+          status?: string
+          tipo_tarefa?: string
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_tasks_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_tasks_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_transferencias: {
         Row: {
           created_at: string | null

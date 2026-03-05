@@ -12,6 +12,7 @@ import {
   UserCog,
   LogOut,
   CreditCard,
+  CheckSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import orbitLogo from "@/assets/orbit-logo.png";
@@ -44,6 +45,7 @@ export function OrbitSidebar() {
     { name: "Templates", href: `${basePath}/templates`, icon: FileText },
     { name: "Lead Finder", href: `${basePath}/lead-finder`, icon: Search },
     { name: "Analytics", href: `${basePath}/analytics`, icon: BarChart3 },
+    { name: "Tarefas", href: `${basePath}/tarefas`, icon: CheckSquare },
     ...(isAdmin ? [{ name: "Meu Plano", href: `${basePath}/meu-plano`, icon: CreditCard }] : []),
     { name: "Configurações", href: `${basePath}/config`, icon: Settings },
   ];

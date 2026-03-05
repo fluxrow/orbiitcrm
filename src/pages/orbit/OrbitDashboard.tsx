@@ -10,13 +10,15 @@ import {
   TrendingUp,
   DollarSign,
   ArrowRight,
+  CheckSquare,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useTenant } from "@/contexts/TenantContext";
 import { useOrbitProspects, useOrbitProspectsCount } from "@/hooks/useOrbitProspects";
 import { useOrbitConversas } from "@/hooks/useOrbitConversas";
 import { useOrbitDeals } from "@/hooks/useOrbitDeals";
-import { formatDistanceToNow } from "date-fns";
+import { useOrbitTasks } from "@/hooks/useOrbitTasks";
+import { formatDistanceToNow, isPast, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 export default function OrbitDashboard() {
@@ -25,6 +27,7 @@ export default function OrbitDashboard() {
   const { data: totalProspectsCount } = useOrbitProspectsCount();
   const { data: conversas, isLoading: loadingConversas } = useOrbitConversas();
   const { data: deals } = useOrbitDeals();
+  const { data: allTasks } = useOrbitTasks();
 
   const totalProspects = totalProspectsCount ?? 0;
   const conversasAtivas = conversas?.length ?? 0;
@@ -157,6 +160,45 @@ export default function OrbitDashboard() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Tasks Widget */}
+      <div className="glass-card p-5 mt-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold flex items-center gap-2">
+            <CheckSquare className="w-4 h-4" /> Minhas Tarefas
+          </h2>
+          <Link to={`${basePath}/tarefas`}>
+            <Button variant="ghost" size="sm">
+              Ver todas <ArrowRight className="w-4 h-4 ml-1" />
+            </Button>
+          </Link>
+        </div>
+        {(() => {
+          const pendingTasks = (allTasks || []).filter((t: any) => t.status !== "completed");
+          const overdue = pendingTasks.filter((t: any) => t.due_date && isPast(new Date(t.due_date + "T23:59:59")) && !isToday(new Date(t.due_date)));
+          const todayTasks = pendingTasks.filter((t: any) => t.due_date && isToday(new Date(t.due_date)));
+          const upcoming = pendingTasks.filter((t: any) => !t.due_date || (!isPast(new Date(t.due_date + "T23:59:59")) && !isToday(new Date(t.due_date)))).slice(0, 3);
+
+          if (pendingTasks.length === 0) {
+            return <p className="text-sm text-muted-foreground text-center py-4">Nenhuma tarefa pendente 🎉</p>;
+          }
+
+          return (
+            <div className="space-y-2">
+              {overdue.length > 0 && (
+                <div className="text-xs font-medium text-destructive mb-1">⚠️ {overdue.length} tarefa(s) atrasada(s)</div>
+              )}
+              {[...overdue.slice(0, 2), ...todayTasks.slice(0, 3), ...upcoming].slice(0, 5).map((t: any) => (
+                <div key={t.id} className="flex items-center gap-3 p-2 rounded-md bg-muted/30 text-sm">
+                  <span className="text-xs">{t.due_date && isPast(new Date(t.due_date + "T23:59:59")) && !isToday(new Date(t.due_date)) ? "🔴" : isToday(new Date(t.due_date)) ? "🟡" : "⚪"}</span>
+                  <span className="flex-1 truncate">{t.titulo}</span>
+                  {t.prospect?.nome_razao && <span className="text-xs text-muted-foreground truncate max-w-[120px]">{t.prospect.nome_razao}</span>}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
     </OrbitLayout>
   );
