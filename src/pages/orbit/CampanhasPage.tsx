@@ -23,6 +23,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   enviando: { label: "Enviando", className: "bg-purple-500/20 text-purple-400" },
   concluida: { label: "Concluída", className: "bg-green-500/20 text-green-400" },
   pausada: { label: "Pausada", className: "bg-orange-500/20 text-orange-400" },
+  pausada_por_limite: { label: "Limite Diário Atingido", className: "bg-amber-600/20 text-amber-500" },
   cancelada: { label: "Cancelada", className: "bg-red-500/20 text-red-400" },
 };
 
@@ -141,7 +142,7 @@ export default function CampanhasPage() {
         body: { campaign_id: campaignId }
       });
 
-      const result = handleApiResponse<{ enviados: number; validados_enviados: number; ignorados_sem_numero: number; ignorados_sem_whatsapp: number; ignorados_whatsapp_invalido: number; falhas: number }>(response);
+      const result = handleApiResponse<{ enviados: number; validados_enviados: number; ignorados_sem_numero: number; ignorados_sem_whatsapp: number; ignorados_whatsapp_invalido: number; falhas: number; pausada_por_limite?: boolean; remaining_pending?: number }>(response);
       const parts = [
         `✅ Enviados: ${result.enviados}`,
         result.validados_enviados ? `🔍 Validados+Enviados: ${result.validados_enviados}` : null,
@@ -149,6 +150,7 @@ export default function CampanhasPage() {
         result.ignorados_sem_whatsapp ? `⚠️ Sem WhatsApp: ${result.ignorados_sem_whatsapp}` : null,
         result.ignorados_whatsapp_invalido ? `❌ Inválidos (cache): ${result.ignorados_whatsapp_invalido}` : null,
         result.falhas ? `🔴 Erros: ${result.falhas}` : null,
+        result.pausada_por_limite ? `⏸️ Limite diário atingido (${result.remaining_pending} pendentes)` : null,
       ].filter(Boolean);
       toast.success(parts.join(" | "));
       refetch();
@@ -235,9 +237,9 @@ export default function CampanhasPage() {
       });
     }
 
-    if (status === "pausada") {
+    if (status === "pausada" || status === "pausada_por_limite") {
       actions.push({ 
-        label: "Retomar", 
+        label: status === "pausada_por_limite" ? "Retomar (Limite Resetado)" : "Retomar", 
         icon: Play, 
         action: () => handleSend(campaign.id) 
       });
@@ -289,6 +291,7 @@ export default function CampanhasPage() {
             <SelectItem value="enviando">Enviando</SelectItem>
             <SelectItem value="concluida">Concluída</SelectItem>
             <SelectItem value="pausada">Pausada</SelectItem>
+            <SelectItem value="pausada_por_limite">Limite Diário</SelectItem>
             <SelectItem value="cancelada">Cancelada</SelectItem>
           </SelectContent>
         </Select>

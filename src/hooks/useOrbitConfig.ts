@@ -237,6 +237,78 @@ export function useUpdateResendConfig() {
   });
 }
 
+// WhatsApp Sending Config Hooks
+export function useWhatsAppSendingConfig(empresaId?: string | null) {
+  return useQuery({
+    queryKey: ["orbit_whatsapp_sending_config", empresaId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("orbit_whatsapp_sending_config")
+        .select("*")
+        .eq("empresa_id", empresaId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!empresaId,
+  });
+}
+
+export function useUpdateWhatsAppSendingConfig() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (updates: any & { empresa_id: string }) => {
+      const empresaId = updates.empresa_id;
+      const { data: existing } = await supabase
+        .from("orbit_whatsapp_sending_config")
+        .select("id")
+        .eq("empresa_id", empresaId)
+        .maybeSingle();
+
+      if (existing) {
+        const { data, error } = await supabase
+          .from("orbit_whatsapp_sending_config")
+          .update(updates)
+          .eq("id", existing.id)
+          .select()
+          .single();
+        if (error) throw error;
+        return data;
+      } else {
+        const { data, error } = await supabase
+          .from("orbit_whatsapp_sending_config")
+          .insert(updates)
+          .select()
+          .single();
+        if (error) throw error;
+        return data;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orbit_whatsapp_sending_config"] });
+    },
+  });
+}
+
+export function useWhatsAppDailyUsage(empresaId?: string | null) {
+  return useQuery({
+    queryKey: ["orbit_whatsapp_daily_usage", empresaId],
+    queryFn: async () => {
+      const today = new Date().toISOString().split("T")[0];
+      const { data, error } = await supabase
+        .from("orbit_whatsapp_daily_usage")
+        .select("*")
+        .eq("empresa_id", empresaId!)
+        .eq("usage_date", today)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!empresaId,
+  });
+}
+
 // Test Resend Connection Hook
 export function useTestResendConnection() {
   return useMutation({
