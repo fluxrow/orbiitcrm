@@ -11,13 +11,14 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Slider } from "@/components/ui/slider";
-import { Loader2, ChevronLeft, ChevronRight, Mail, MessageSquare, Check, Calendar, Sparkles, Send, Eye, Upload, X, Image, Search, Users, Filter, UserCheck, Plus, Trash2 } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, Mail, MessageSquare, Check, Calendar, Sparkles, Send, Eye, Upload, X, Search } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { handleApiResponse } from "@/lib/api-envelope";
 import { useOrbitTemplates, useCreateTemplate } from "@/hooks/useOrbitTemplates";
 import { useOrbitProspects } from "@/hooks/useOrbitProspects";
 import { useCreateCampaign } from "@/hooks/useOrbitCampaigns";
 import { useOrbitSendGroups, useCreateSendGroup, useDeleteSendGroup } from "@/hooks/useOrbitSendGroups";
+import { RecipientSelector } from "./RecipientSelector";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -79,20 +80,13 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
-  const [showCreateGroup, setShowCreateGroup] = useState(false);
-  const [newGroupName, setNewGroupName] = useState("");
-  const [newGroupDesc, setNewGroupDesc] = useState("");
-  const [newGroupProspectIds, setNewGroupProspectIds] = useState<string[]>([]);
   const [individualSearch, setIndividualSearch] = useState("");
-  const [groupProspectSearch, setGroupProspectSearch] = useState("");
 
   const { data: templates } = useOrbitTemplates();
   const { data: prospects } = useOrbitProspects();
   const createCampaign = useCreateCampaign();
   const createTemplate = useCreateTemplate();
   const { data: sendGroups } = useOrbitSendGroups();
-  const createSendGroup = useCreateSendGroup();
-  const deleteSendGroup = useDeleteSendGroup();
 
   // Fetch profiles for responsavel filter
   const { data: companyProfiles } = useQuery({
@@ -421,10 +415,6 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
     });
     setEstimatedRecipients(0);
     setIndividualSearch("");
-    setShowCreateGroup(false);
-    setNewGroupName("");
-    setNewGroupDesc("");
-    setNewGroupProspectIds([]);
   };
 
   const canProceed = () => {
@@ -439,9 +429,8 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
   };
 
   return (
-    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-5xl">
         <DialogHeader>
           <DialogTitle>Nova Campanha</DialogTitle>
         </DialogHeader>
@@ -794,303 +783,16 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
 
           {/* Step 3: Destinatários */}
           {currentStep === 3 && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
-                  Selecione os destinatários da campanha:
-                </p>
-                <Badge variant="secondary" className="text-xs">
-                  {calculateRecipients()} destinatários
-                </Badge>
-              </div>
-
-              <Tabs defaultValue="filtros" className="w-full">
-                <TabsList className="w-full">
-                  <TabsTrigger value="filtros" className="flex-1 gap-1"><Filter className="h-3 w-3" />Filtros</TabsTrigger>
-                  <TabsTrigger value="individual" className="flex-1 gap-1"><UserCheck className="h-3 w-3" />Individual</TabsTrigger>
-                  <TabsTrigger value="grupos" className="flex-1 gap-1"><Users className="h-3 w-3" />Grupos</TabsTrigger>
-                </TabsList>
-
-                {/* Aba Filtros */}
-                <TabsContent value="filtros">
-                  <ScrollArea className="h-[320px] pr-3">
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label>Status de Qualificação</Label>
-                        <div className="flex flex-wrap gap-2">
-                          {["novo", "em_qualificacao", "qualificado", "desqualificado"].map((status) => (
-                            <label key={status} className="flex items-center gap-2 cursor-pointer">
-                              <Checkbox
-                                checked={data.filtros.status_qualificacao?.includes(status)}
-                                onCheckedChange={(checked) => {
-                                  const current = data.filtros.status_qualificacao || [];
-                                  setData({
-                                    ...data,
-                                    filtros: {
-                                      ...data.filtros,
-                                      status_qualificacao: checked
-                                        ? [...current, status]
-                                        : current.filter(s => s !== status)
-                                    }
-                                  });
-                                }}
-                              />
-                              <span className="text-sm capitalize">{status.replace("_", " ")}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-2">
-                          <Label>Segmento</Label>
-                          <Select value={data.filtros.segmento || "__all__"} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, segmento: v === "__all__" ? undefined : v } })}>
-                            <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__all__">Todos</SelectItem>
-                              {distinctValues.segmentos.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Estado</Label>
-                          <Select value={data.filtros.estado || "__all__"} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, estado: v === "__all__" ? undefined : v } })}>
-                            <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__all__">Todos</SelectItem>
-                              {distinctValues.estados.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Cidade</Label>
-                        <Input
-                          placeholder="Ex: São Paulo"
-                          value={data.filtros.cidade || ""}
-                          onChange={(e) => setData({ ...data, filtros: { ...data.filtros, cidade: e.target.value } })}
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-2">
-                          <Label>Origem do Contato</Label>
-                          <Select value={data.filtros.origem_contato || "__all__"} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, origem_contato: v === "__all__" ? undefined : v } })}>
-                            <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__all__">Todas</SelectItem>
-                              {distinctValues.origens_contato.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Origem do Lead</Label>
-                          <Select value={data.filtros.origem_lead || "__all__"} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, origem_lead: v === "__all__" ? undefined : v } })}>
-                            <SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__all__">Todas</SelectItem>
-                              {distinctValues.origens_lead.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Tags</Label>
-                        <div className="flex flex-wrap gap-1">
-                          {distinctValues.tags.map(tag => {
-                            const selected = data.filtros.tags?.includes(tag);
-                            return (
-                              <Badge
-                                key={tag}
-                                variant={selected ? "default" : "outline"}
-                                className="cursor-pointer text-xs"
-                                onClick={() => {
-                                  const current = data.filtros.tags || [];
-                                  setData({
-                                    ...data,
-                                    filtros: {
-                                      ...data.filtros,
-                                      tags: selected ? current.filter(t => t !== tag) : [...current, tag]
-                                    }
-                                  });
-                                }}
-                              >
-                                {tag}
-                              </Badge>
-                            );
-                          })}
-                          {distinctValues.tags.length === 0 && <span className="text-xs text-muted-foreground">Nenhuma tag encontrada</span>}
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Score Mínimo: {data.filtros.score_min || 0}</Label>
-                        <Slider
-                          value={[data.filtros.score_min || 0]}
-                          min={0}
-                          max={100}
-                          step={5}
-                          onValueChange={([v]) => setData({ ...data, filtros: { ...data.filtros, score_min: v } })}
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Responsável</Label>
-                        <Select value={data.filtros.responsavel_id || "__all__"} onValueChange={(v) => setData({ ...data, filtros: { ...data.filtros, responsavel_id: v === "__all__" ? undefined : v } })}>
-                          <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__all__">Todos</SelectItem>
-                            {companyProfiles?.map(p => <SelectItem key={p.id} value={p.id}>{p.nome || p.email}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <Checkbox
-                          checked={data.filtros.apenas_consentimento || false}
-                          onCheckedChange={(checked) => setData({ ...data, filtros: { ...data.filtros, apenas_consentimento: !!checked } })}
-                        />
-                        <span className="text-sm">Apenas com consentimento de {data.canal === "email" ? "email" : "WhatsApp"}</span>
-                      </label>
-                    </div>
-                  </ScrollArea>
-                </TabsContent>
-
-                {/* Aba Seleção Individual */}
-                <TabsContent value="individual">
-                  <div className="space-y-3">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="Buscar por nome, email ou telefone..."
-                        className="pl-9"
-                        value={individualSearch}
-                        onChange={(e) => setIndividualSearch(e.target.value)}
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => {
-                        if (!prospects) return;
-                        const validIds = prospects
-                          .filter(p => data.canal === "email" ? (p.email_principal && !p.optout_email) : (p.telefone_whatsapp && !p.optout_whatsapp))
-                          .map(p => p.id);
-                        setData({ ...data, selected_prospect_ids: validIds });
-                      }}>
-                        Selecionar todos
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => setData({ ...data, selected_prospect_ids: [] })}>
-                        Limpar seleção
-                      </Button>
-                      <Badge variant="secondary" className="ml-auto self-center text-xs">
-                        {data.selected_prospect_ids?.length || 0} selecionados
-                      </Badge>
-                    </div>
-                    <ScrollArea className="h-[250px]">
-                      <div className="space-y-1">
-                        {prospects?.filter(p => {
-                          if (!individualSearch) return true;
-                          const q = individualSearch.toLowerCase();
-                          return (p.nome_razao?.toLowerCase().includes(q) || p.email_principal?.toLowerCase().includes(q) || p.telefone_whatsapp?.includes(q));
-                        }).map(p => {
-                          const isSelected = data.selected_prospect_ids?.includes(p.id);
-                          const hasContact = data.canal === "email" ? (p.email_principal && !p.optout_email) : (p.telefone_whatsapp && !p.optout_whatsapp);
-                          return (
-                            <label key={p.id} className={`flex items-center gap-3 p-2 rounded cursor-pointer hover:bg-muted/50 ${!hasContact ? "opacity-50" : ""}`}>
-                              <Checkbox
-                                checked={isSelected}
-                                disabled={!hasContact}
-                                onCheckedChange={(checked) => {
-                                  const current = data.selected_prospect_ids || [];
-                                  setData({
-                                    ...data,
-                                    selected_prospect_ids: checked ? [...current, p.id] : current.filter(id => id !== p.id)
-                                  });
-                                }}
-                              />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium truncate">{p.nome_razao}</p>
-                                <p className="text-xs text-muted-foreground truncate">
-                                  {data.canal === "email" ? (p.email_principal || "Sem email") : (p.telefone_whatsapp || "Sem telefone")}
-                                </p>
-                              </div>
-                              <Badge variant="outline" className="text-xs flex-shrink-0 capitalize">
-                                {(p.status_qualificacao || "novo").replace("_", " ")}
-                              </Badge>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </ScrollArea>
-                  </div>
-                </TabsContent>
-
-                {/* Aba Grupos */}
-                <TabsContent value="grupos">
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <p className="text-sm text-muted-foreground">Selecione grupos de envio:</p>
-                      <Button variant="outline" size="sm" onClick={() => setShowCreateGroup(true)}>
-                        <Plus className="h-3 w-3 mr-1" />Criar Grupo
-                      </Button>
-                    </div>
-
-                    {sendGroups && sendGroups.length > 0 ? (
-                      <ScrollArea className="h-[280px]">
-                        <div className="space-y-2">
-                          {sendGroups.map(group => {
-                            const isSelected = data.selected_group_ids?.includes(group.id);
-                            return (
-                              <Card key={group.id} className={`transition-all ${isSelected ? "border-primary ring-1 ring-primary" : ""}`}>
-                                <CardContent className="p-3 flex items-center gap-3">
-                                  <Checkbox
-                                    checked={isSelected}
-                                    onCheckedChange={(checked) => {
-                                      const current = data.selected_group_ids || [];
-                                      setData({
-                                        ...data,
-                                        selected_group_ids: checked ? [...current, group.id] : current.filter(id => id !== group.id)
-                                      });
-                                    }}
-                                  />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium">{group.nome}</p>
-                                    {group.descricao && <p className="text-xs text-muted-foreground truncate">{group.descricao}</p>}
-                                  </div>
-                                  <Badge variant="secondary" className="text-xs">
-                                    {(group.prospect_ids || []).length} prospects
-                                  </Badge>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7 text-destructive"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      deleteSendGroup.mutate(group.id);
-                                    }}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
-                                </CardContent>
-                              </Card>
-                            );
-                          })}
-                        </div>
-                      </ScrollArea>
-                    ) : (
-                      <div className="text-center py-8 text-muted-foreground">
-                        <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                        <p className="text-sm">Nenhum grupo criado ainda.</p>
-                      </div>
-                    )}
-
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </div>
+            <RecipientSelector
+              canal={data.canal}
+              filtros={data.filtros}
+              onFiltrosChange={(f) => setData({ ...data, filtros: f })}
+              selectedProspectIds={data.selected_prospect_ids || []}
+              onSelectedProspectIdsChange={(ids) => setData({ ...data, selected_prospect_ids: ids })}
+              selectedGroupIds={data.selected_group_ids || []}
+              onSelectedGroupIdsChange={(ids) => setData({ ...data, selected_group_ids: ids })}
+              totalRecipients={calculateRecipients()}
+            />
           )}
 
           {/* Step 4: Agendamento */}
@@ -1222,134 +924,5 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
         </div>
       </DialogContent>
     </Dialog>
-
-      {/* Create Group Dialog - rendered outside wizard to avoid z-index/overflow issues */}
-      <Dialog open={showCreateGroup} onOpenChange={setShowCreateGroup}>
-        <DialogContent className="sm:max-w-2xl z-[60] max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Criar Grupo de Envio</DialogTitle>
-            <DialogDescription>Selecione os prospects que farão parte deste grupo.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Nome do Grupo *</Label>
-                <Input placeholder="Ex: VIPs" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Descrição (opcional)</Label>
-                <Input placeholder="Ex: Clientes premium região sul" value={newGroupDesc} onChange={(e) => setNewGroupDesc(e.target.value)} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              {(() => {
-                const filtered = prospects?.filter(p => {
-                  if (!groupProspectSearch) return true;
-                  const q = groupProspectSearch.toLowerCase();
-                  return p.nome_razao?.toLowerCase().includes(q) || p.email_principal?.toLowerCase().includes(q) || p.telefone_whatsapp?.toLowerCase().includes(q);
-                }) ?? [];
-                return (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <Label>Prospects — {newGroupProspectIds.length} selecionados de {filtered.length} exibidos</Label>
-                      <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => setNewGroupProspectIds(filtered.map(p => p.id))}
-                        >
-                          Selecionar todos
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => setNewGroupProspectIds([])}
-                          disabled={newGroupProspectIds.length === 0}
-                        >
-                          Limpar
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="Buscar por nome, email ou telefone..."
-                        className="pl-9"
-                        value={groupProspectSearch}
-                        onChange={(e) => setGroupProspectSearch(e.target.value)}
-                      />
-                    </div>
-                    <ScrollArea className="h-[350px] border rounded-md">
-                      <div className="p-1">
-                        {filtered.map(p => (
-                          <label key={p.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/50 rounded-md transition-colors">
-                            <Checkbox
-                              checked={newGroupProspectIds.includes(p.id)}
-                              onCheckedChange={(checked) => {
-                                setNewGroupProspectIds(prev => checked ? [...prev, p.id] : prev.filter(id => id !== p.id));
-                              }}
-                            />
-                            <div className="flex-1 min-w-0">
-                              <span className="text-sm font-medium truncate block">{p.nome_razao}</span>
-                              <span className="text-xs text-muted-foreground truncate block">
-                                {[p.email_principal, p.telefone_whatsapp].filter(Boolean).join(" · ") || "Sem contato"}
-                              </span>
-                            </div>
-                            {p.status_qualificacao && (
-                              <Badge variant="secondary" className="text-[10px] shrink-0">
-                                {p.status_qualificacao}
-                              </Badge>
-                            )}
-                          </label>
-                        ))}
-                        {filtered.length === 0 && (
-                          <p className="text-sm text-muted-foreground text-center py-8">Nenhum prospect encontrado.</p>
-                        )}
-                      </div>
-                    </ScrollArea>
-                  </>
-                );
-              })()}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateGroup(false)}>Cancelar</Button>
-            <Button
-              disabled={!newGroupName.trim() || newGroupProspectIds.length === 0 || createSendGroup.isPending}
-              onClick={async () => {
-                try {
-                  const { data: { user } } = await supabase.auth.getUser();
-                  if (!user) return;
-                  const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
-                  if (!profile?.empresa_id) return;
-                  await createSendGroup.mutateAsync({
-                    empresa_id: profile.empresa_id,
-                    nome: newGroupName,
-                    descricao: newGroupDesc || undefined,
-                    prospect_ids: newGroupProspectIds,
-                    created_by: user.id,
-                  });
-                  toast.success("Grupo criado!");
-                  setShowCreateGroup(false);
-                  setNewGroupName("");
-                  setNewGroupDesc("");
-                  setNewGroupProspectIds([]);
-                  setGroupProspectSearch("");
-                } catch (err: any) {
-                  toast.error(err.message || "Erro ao criar grupo");
-                }
-              }}
-            >
-              {createSendGroup.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-              Criar Grupo
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
   );
 }

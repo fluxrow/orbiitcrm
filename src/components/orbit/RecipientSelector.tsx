@@ -1,0 +1,682 @@
+import { useState, useMemo } from "react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
+import {
+  Search, Filter, X, Mail, Phone, Building2, User, ChevronDown, ChevronUp,
+  UserCheck, Users, Plus, Trash2, ArrowUpDown, AlertTriangle,
+} from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useOrbitProspects } from "@/hooks/useOrbitProspects";
+import { useOrbitSendGroups, useCreateSendGroup, useDeleteSendGroup } from "@/hooks/useOrbitSendGroups";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
+
+type Canal = "email" | "whatsapp";
+
+interface CampaignFilters {
+  status_qualificacao?: string[];
+  segmento?: string;
+  cidade?: string;
+  estado?: string;
+  origem_contato?: string;
+  origem_lead?: string;
+  tags?: string[];
+  score_min?: number;
+  responsavel_id?: string;
+  apenas_consentimento?: boolean;
+  tem_email?: boolean;
+  tem_telefone?: boolean;
+  tipo?: string;
+}
+
+interface RecipientSelectorProps {
+  canal: Canal;
+  filtros: CampaignFilters;
+  onFiltrosChange: (f: CampaignFilters) => void;
+  selectedProspectIds: string[];
+  onSelectedProspectIdsChange: (ids: string[]) => void;
+  selectedGroupIds: string[];
+  onSelectedGroupIdsChange: (ids: string[]) => void;
+  totalRecipients: number;
+}
+
+type SortKey = "nome" | "empresa" | "created_at";
+type SortDir = "asc" | "desc";
+
+const PAGE_SIZE = 50;
+
+export function RecipientSelector({
+  canal,
+  filtros,
+  onFiltrosChange,
+  selectedProspectIds,
+  onSelectedProspectIdsChange,
+  selectedGroupIds,
+  onSelectedGroupIdsChange,
+  totalRecipients,
+}: RecipientSelectorProps) {
+  const [search, setSearch] = useState("");
+  const [showFilters, setShowFilters] = useState(true);
+  const [sortKey, setSortKey] = useState<SortKey>("nome");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [page, setPage] = useState(1);
+  const [activeTab, setActiveTab] = useState("individual");
+
+  // Group dialog state
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupDesc, setNewGroupDesc] = useState("");
+  const [newGroupProspectIds, setNewGroupProspectIds] = useState<string[]>([]);
+  const [groupProspectSearch, setGroupProspectSearch] = useState("");
+
+  const { data: prospects } = useOrbitProspects();
+  const { data: sendGroups } = useOrbitSendGroups();
+  const createSendGroup = useCreateSendGroup();
+  const deleteSendGroup = useDeleteSendGroup();
+
+  const { data: companyProfiles } = useQuery({
+    queryKey: ["company-profiles-for-filter"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("profiles").select("id, nome, email").eq("ativo", true);
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const distinctValues = useMemo(() => {
+    if (!prospects) return { segmentos: [], estados: [], cidades: [], origens_contato: [], origens_lead: [], tags: [] };
+    return {
+      segmentos: [...new Set(prospects.map(p => p.segmento).filter(Boolean))] as string[],
+      estados: [...new Set(prospects.map(p => p.estado).filter(Boolean))] as string[],
+      cidades: [...new Set(prospects.map(p => p.cidade).filter(Boolean))] as string[],
+      origens_contato: [...new Set(prospects.map(p => p.origem_contato).filter(Boolean))] as string[],
+      origens_lead: [...new Set(prospects.map(p => p.origem_lead).filter(Boolean))] as string[],
+      tags: [...new Set(prospects.flatMap(p => (p.tags as string[]) || []).filter(Boolean))] as string[],
+    };
+  }, [prospects]);
+
+  // Apply filters + search
+  const filteredProspects = useMemo(() => {
+    if (!prospects) return [];
+    let list = [...prospects];
+
+    // Search
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(p =>
+        p.nome_razao?.toLowerCase().includes(q) ||
+        p.nome_fantasia?.toLowerCase().includes(q) ||
+        p.email_principal?.toLowerCase().includes(q) ||
+        p.telefone_whatsapp?.includes(q) ||
+        p.segmento?.toLowerCase().includes(q)
+      );
+    }
+
+    // Filters
+    if (filtros.status_qualificacao?.length) {
+      list = list.filter(p => filtros.status_qualificacao!.includes(p.status_qualificacao || ""));
+    }
+    if (filtros.segmento) list = list.filter(p => p.segmento === filtros.segmento);
+    if (filtros.estado) list = list.filter(p => p.estado === filtros.estado);
+    if (filtros.cidade) list = list.filter(p => p.cidade?.toLowerCase().includes(filtros.cidade!.toLowerCase()));
+    if (filtros.origem_contato) list = list.filter(p => p.origem_contato === filtros.origem_contato);
+    if (filtros.origem_lead) list = list.filter(p => p.origem_lead === filtros.origem_lead);
+    if (filtros.tags?.length) {
+      list = list.filter(p => {
+        const pTags = (p.tags as string[]) || [];
+        return filtros.tags!.some(t => pTags.includes(t));
+      });
+    }
+    if (filtros.score_min && filtros.score_min > 0) {
+      list = list.filter(p => (p.score || 0) >= filtros.score_min!);
+    }
+    if (filtros.responsavel_id) list = list.filter(p => p.responsavel_id === filtros.responsavel_id);
+    if (filtros.apenas_consentimento) {
+      list = canal === "email" ? list.filter(p => p.consentimento_email) : list.filter(p => p.consentimento_whatsapp);
+    }
+    if (filtros.tem_email) list = list.filter(p => !!p.email_principal);
+    if (filtros.tem_telefone) list = list.filter(p => !!p.telefone_whatsapp);
+    if (filtros.tipo) list = list.filter(p => p.tipo === filtros.tipo);
+
+    // Sort
+    list.sort((a, b) => {
+      let va = "", vb = "";
+      if (sortKey === "nome") { va = a.nome_razao || ""; vb = b.nome_razao || ""; }
+      else if (sortKey === "empresa") { va = a.nome_fantasia || a.nome_razao || ""; vb = b.nome_fantasia || b.nome_razao || ""; }
+      else { va = a.created_at || ""; vb = b.created_at || ""; }
+      const cmp = va.localeCompare(vb);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+
+    return list;
+  }, [prospects, search, filtros, sortKey, sortDir, canal]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredProspects.length / PAGE_SIZE));
+  const pagedProspects = filteredProspects.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const clearFilters = () => {
+    onFiltrosChange({});
+    setSearch("");
+    setPage(1);
+  };
+
+  const hasActiveFilters = !!(
+    filtros.status_qualificacao?.length || filtros.segmento || filtros.estado || filtros.cidade ||
+    filtros.origem_contato || filtros.origem_lead || filtros.tags?.length || (filtros.score_min && filtros.score_min > 0) ||
+    filtros.responsavel_id || filtros.apenas_consentimento || filtros.tem_email || filtros.tem_telefone || filtros.tipo
+  );
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+
+  const hasContact = (p: any) => canal === "email" ? (p.email_principal && !p.optout_email) : (p.telefone_whatsapp && !p.optout_whatsapp);
+
+  const selectAllVisible = () => {
+    const validIds = pagedProspects.filter(hasContact).map(p => p.id);
+    const merged = [...new Set([...selectedProspectIds, ...validIds])];
+    onSelectedProspectIdsChange(merged);
+  };
+
+  const selectAllFiltered = () => {
+    const validIds = filteredProspects.filter(hasContact).map(p => p.id);
+    onSelectedProspectIdsChange(validIds);
+  };
+
+  return (
+    <>
+      <div className="flex flex-col h-[520px]">
+        {/* Top bar */}
+        <div className="flex flex-col gap-2 pb-3 border-b border-border mb-3">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por nome, empresa, email ou telefone..."
+                className="pl-9 h-10"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              />
+            </div>
+            <Button
+              variant={showFilters ? "secondary" : "outline"}
+              size="sm"
+              className="gap-1.5 shrink-0"
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              <Filter className="h-3.5 w-3.5" />
+              Filtros
+              {hasActiveFilters && <span className="ml-1 h-2 w-2 rounded-full bg-primary" />}
+            </Button>
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" className="text-xs shrink-0" onClick={clearFilters}>
+                <X className="h-3 w-3 mr-1" /> Limpar
+              </Button>
+            )}
+          </div>
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>{filteredProspects.length} leads encontrados</span>
+            <div className="flex items-center gap-3">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="h-auto">
+                <TabsList className="h-7 p-0.5">
+                  <TabsTrigger value="individual" className="h-6 text-xs px-2 gap-1"><UserCheck className="h-3 w-3" />Individual</TabsTrigger>
+                  <TabsTrigger value="grupos" className="h-6 text-xs px-2 gap-1"><Users className="h-3 w-3" />Grupos</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+          </div>
+        </div>
+
+        {activeTab === "individual" ? (
+          <div className="flex flex-1 gap-3 min-h-0">
+            {/* Left filter panel */}
+            {showFilters && (
+              <ScrollArea className="w-[220px] shrink-0 border rounded-lg p-3 bg-muted/20">
+                <div className="space-y-4 pr-2">
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</Label>
+                    {["novo", "em_qualificacao", "qualificado", "desqualificado"].map(s => (
+                      <label key={s} className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                          className="h-3.5 w-3.5"
+                          checked={filtros.status_qualificacao?.includes(s)}
+                          onCheckedChange={(c) => {
+                            const curr = filtros.status_qualificacao || [];
+                            onFiltrosChange({ ...filtros, status_qualificacao: c ? [...curr, s] : curr.filter(x => x !== s) });
+                            setPage(1);
+                          }}
+                        />
+                        <span className="text-xs capitalize">{s.replace("_", " ")}</span>
+                      </label>
+                    ))}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Contato</Label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox className="h-3.5 w-3.5" checked={filtros.tem_email || false} onCheckedChange={(c) => { onFiltrosChange({ ...filtros, tem_email: !!c }); setPage(1); }} />
+                      <Mail className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-xs">Com email</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox className="h-3.5 w-3.5" checked={filtros.tem_telefone || false} onCheckedChange={(c) => { onFiltrosChange({ ...filtros, tem_telefone: !!c }); setPage(1); }} />
+                      <Phone className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-xs">Com telefone</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox className="h-3.5 w-3.5" checked={filtros.apenas_consentimento || false} onCheckedChange={(c) => { onFiltrosChange({ ...filtros, apenas_consentimento: !!c }); setPage(1); }} />
+                      <span className="text-xs">Com consentimento</span>
+                    </label>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tipo</Label>
+                    <Select value={filtros.tipo || "__all__"} onValueChange={(v) => { onFiltrosChange({ ...filtros, tipo: v === "__all__" ? undefined : v }); setPage(1); }}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">Todos</SelectItem>
+                        <SelectItem value="empresa">Empresa</SelectItem>
+                        <SelectItem value="pessoa">Pessoa</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Segmento</Label>
+                    <Select value={filtros.segmento || "__all__"} onValueChange={(v) => { onFiltrosChange({ ...filtros, segmento: v === "__all__" ? undefined : v }); setPage(1); }}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">Todos</SelectItem>
+                        {distinctValues.segmentos.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Estado</Label>
+                    <Select value={filtros.estado || "__all__"} onValueChange={(v) => { onFiltrosChange({ ...filtros, estado: v === "__all__" ? undefined : v }); setPage(1); }}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">Todos</SelectItem>
+                        {distinctValues.estados.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cidade</Label>
+                    <Input
+                      placeholder="Filtrar cidade..."
+                      className="h-8 text-xs"
+                      value={filtros.cidade || ""}
+                      onChange={(e) => { onFiltrosChange({ ...filtros, cidade: e.target.value || undefined }); setPage(1); }}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Responsável</Label>
+                    <Select value={filtros.responsavel_id || "__all__"} onValueChange={(v) => { onFiltrosChange({ ...filtros, responsavel_id: v === "__all__" ? undefined : v }); setPage(1); }}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">Todos</SelectItem>
+                        {companyProfiles?.map(p => <SelectItem key={p.id} value={p.id}>{p.nome || p.email}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Score mín: {filtros.score_min || 0}</Label>
+                    <Slider
+                      value={[filtros.score_min || 0]}
+                      min={0} max={100} step={5}
+                      onValueChange={([v]) => { onFiltrosChange({ ...filtros, score_min: v }); setPage(1); }}
+                    />
+                  </div>
+
+                  {distinctValues.tags.length > 0 && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tags</Label>
+                      <div className="flex flex-wrap gap-1">
+                        {distinctValues.tags.map(tag => {
+                          const sel = filtros.tags?.includes(tag);
+                          return (
+                            <Badge
+                              key={tag}
+                              variant={sel ? "default" : "outline"}
+                              className="cursor-pointer text-[10px] px-1.5 py-0"
+                              onClick={() => {
+                                const curr = filtros.tags || [];
+                                onFiltrosChange({ ...filtros, tags: sel ? curr.filter(t => t !== tag) : [...curr, tag] });
+                                setPage(1);
+                              }}
+                            >
+                              {tag}
+                            </Badge>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            )}
+
+            {/* Right: lead list */}
+            <div className="flex-1 flex flex-col min-w-0">
+              {/* Sort bar */}
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs text-muted-foreground">Ordenar:</span>
+                {([["nome", "Nome"], ["empresa", "Empresa"], ["created_at", "Data"]] as [SortKey, string][]).map(([key, label]) => (
+                  <Button
+                    key={key}
+                    variant={sortKey === key ? "secondary" : "ghost"}
+                    size="sm"
+                    className="h-6 text-xs px-2 gap-1"
+                    onClick={() => toggleSort(key)}
+                  >
+                    {label}
+                    {sortKey === key && (sortDir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+                  </Button>
+                ))}
+              </div>
+
+              <ScrollArea className="flex-1">
+                <div className="space-y-1.5 pr-2">
+                  {pagedProspects.map(p => {
+                    const isSelected = selectedProspectIds.includes(p.id);
+                    const valid = hasContact(p);
+                    const noPhone = !p.telefone_whatsapp;
+                    const noEmail = !p.email_principal;
+                    const tags = (p.tags as string[]) || [];
+
+                    return (
+                      <div
+                        key={p.id}
+                        className={`
+                          group flex items-start gap-3 p-3 rounded-lg border transition-all cursor-pointer
+                          ${isSelected ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "border-border/50 hover:border-primary/30 hover:bg-muted/30"}
+                          ${!valid ? "opacity-50" : ""}
+                        `}
+                        onClick={() => {
+                          if (!valid) return;
+                          onSelectedProspectIdsChange(
+                            isSelected ? selectedProspectIds.filter(id => id !== p.id) : [...selectedProspectIds, p.id]
+                          );
+                        }}
+                      >
+                        <Checkbox
+                          checked={isSelected}
+                          disabled={!valid}
+                          className="mt-0.5 h-4.5 w-4.5"
+                          onCheckedChange={(checked) => {
+                            onSelectedProspectIdsChange(
+                              checked ? [...selectedProspectIds, p.id] : selectedProspectIds.filter(id => id !== p.id)
+                            );
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="font-medium text-sm truncate">{p.nome_razao}</span>
+                            {!valid && canal === "whatsapp" && noPhone && (
+                              <span className="text-destructive" title="Sem telefone">
+                                <AlertTriangle className="h-3 w-3" />
+                              </span>
+                            )}
+                            {!valid && canal === "email" && noEmail && (
+                              <span className="text-destructive" title="Sem email">
+                                <AlertTriangle className="h-3 w-3" />
+                              </span>
+                            )}
+                          </div>
+
+                          {p.nome_fantasia && p.nome_fantasia !== p.nome_razao && (
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5">
+                              <Building2 className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{p.nome_fantasia}</span>
+                            </div>
+                          )}
+
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                            {p.telefone_whatsapp && (
+                              <span className="flex items-center gap-1">
+                                <Phone className="h-3 w-3 shrink-0" />
+                                {p.telefone_whatsapp}
+                              </span>
+                            )}
+                            {p.email_principal && (
+                              <span className="flex items-center gap-1 truncate max-w-[200px]">
+                                <Mail className="h-3 w-3 shrink-0" />
+                                {p.email_principal}
+                              </span>
+                            )}
+                          </div>
+
+                          {tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {tags.slice(0, 3).map(t => (
+                                <Badge key={t} variant="outline" className="text-[10px] px-1.5 py-0 h-4">{t}</Badge>
+                              ))}
+                              {tags.length > 3 && <span className="text-[10px] text-muted-foreground">+{tags.length - 3}</span>}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <Badge variant="outline" className="text-[10px] capitalize">
+                            {(p.status_qualificacao || "novo").replace("_", " ")}
+                          </Badge>
+                          {p.score !== null && p.score !== undefined && p.score > 0 && (
+                            <span className="text-[10px] text-muted-foreground">Score: {p.score}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {filteredProspects.length === 0 && (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <Search className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">Nenhum lead encontrado com esses filtros.</p>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-2 mt-2 border-t border-border">
+                  <span className="text-xs text-muted-foreground">
+                    Pág. {page} de {totalPages}
+                  </span>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Anterior</Button>
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Próxima</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          /* Grupos tab */
+          <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex justify-between items-center mb-3">
+              <p className="text-sm text-muted-foreground">Selecione grupos de envio:</p>
+              <Button variant="outline" size="sm" onClick={() => setShowCreateGroup(true)}>
+                <Plus className="h-3 w-3 mr-1" />Criar Grupo
+              </Button>
+            </div>
+            {sendGroups && sendGroups.length > 0 ? (
+              <ScrollArea className="flex-1">
+                <div className="space-y-2 pr-2">
+                  {sendGroups.map(group => {
+                    const isSelected = selectedGroupIds.includes(group.id);
+                    return (
+                      <Card key={group.id} className={`transition-all ${isSelected ? "border-primary ring-1 ring-primary" : ""}`}>
+                        <CardContent className="p-3 flex items-center gap-3">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={(checked) => {
+                              onSelectedGroupIdsChange(
+                                checked ? [...selectedGroupIds, group.id] : selectedGroupIds.filter(id => id !== group.id)
+                              );
+                            }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium">{group.nome}</p>
+                            {group.descricao && <p className="text-xs text-muted-foreground truncate">{group.descricao}</p>}
+                          </div>
+                          <Badge variant="secondary" className="text-xs">{(group.prospect_ids || []).length} prospects</Badge>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={(e) => { e.stopPropagation(); deleteSendGroup.mutate(group.id); }}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                <Users className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Nenhum grupo criado ainda.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Bottom selection bar */}
+        {selectedProspectIds.length > 0 && (
+          <div className="flex items-center justify-between pt-3 mt-2 border-t border-border bg-primary/5 -mx-1 px-3 py-2 rounded-lg">
+            <div className="flex items-center gap-2">
+              <UserCheck className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium">{totalRecipients} destinatários no total</span>
+              <span className="text-xs text-muted-foreground">({selectedProspectIds.length} individuais)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={selectAllFiltered}>
+                Selecionar todos ({filteredProspects.filter(hasContact).length})
+              </Button>
+              <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive" onClick={() => onSelectedProspectIdsChange([])}>
+                Limpar seleção
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {selectedProspectIds.length === 0 && activeTab === "individual" && (
+          <div className="flex items-center justify-between pt-3 mt-2 border-t border-border">
+            <span className="text-xs text-muted-foreground">{totalRecipients} destinatários no total</span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={selectAllVisible}>
+                Selecionar página
+              </Button>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={selectAllFiltered}>
+                Selecionar todos ({filteredProspects.filter(hasContact).length})
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Create Group Dialog */}
+      <Dialog open={showCreateGroup} onOpenChange={setShowCreateGroup}>
+        <DialogContent className="sm:max-w-2xl z-[60] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Criar Grupo de Envio</DialogTitle>
+            <DialogDescription>Selecione os prospects que farão parte deste grupo.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Nome do Grupo *</Label>
+                <Input placeholder="Ex: VIPs" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Descrição (opcional)</Label>
+                <Input placeholder="Ex: Clientes premium região sul" value={newGroupDesc} onChange={(e) => setNewGroupDesc(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              {(() => {
+                const filtered = prospects?.filter(p => {
+                  if (!groupProspectSearch) return true;
+                  const q = groupProspectSearch.toLowerCase();
+                  return p.nome_razao?.toLowerCase().includes(q) || p.email_principal?.toLowerCase().includes(q) || p.telefone_whatsapp?.toLowerCase().includes(q);
+                }) ?? [];
+                return (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <Label>Prospects — {newGroupProspectIds.length} selecionados de {filtered.length} exibidos</Label>
+                      <div className="flex gap-2">
+                        <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setNewGroupProspectIds(filtered.map(p => p.id))}>Selecionar todos</Button>
+                        <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setNewGroupProspectIds([])} disabled={newGroupProspectIds.length === 0}>Limpar</Button>
+                      </div>
+                    </div>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input placeholder="Buscar..." className="pl-9" value={groupProspectSearch} onChange={(e) => setGroupProspectSearch(e.target.value)} />
+                    </div>
+                    <ScrollArea className="h-[350px] border rounded-md">
+                      <div className="p-1">
+                        {filtered.map(p => (
+                          <label key={p.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/50 rounded-md transition-colors">
+                            <Checkbox checked={newGroupProspectIds.includes(p.id)} onCheckedChange={(checked) => setNewGroupProspectIds(prev => checked ? [...prev, p.id] : prev.filter(id => id !== p.id))} />
+                            <div className="flex-1 min-w-0">
+                              <span className="text-sm font-medium truncate block">{p.nome_razao}</span>
+                              <span className="text-xs text-muted-foreground truncate block">{[p.email_principal, p.telefone_whatsapp].filter(Boolean).join(" · ") || "Sem contato"}</span>
+                            </div>
+                            {p.status_qualificacao && <Badge variant="secondary" className="text-[10px] shrink-0">{p.status_qualificacao}</Badge>}
+                          </label>
+                        ))}
+                        {filtered.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">Nenhum prospect encontrado.</p>}
+                      </div>
+                    </ScrollArea>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateGroup(false)}>Cancelar</Button>
+            <Button
+              disabled={!newGroupName.trim() || newGroupProspectIds.length === 0 || createSendGroup.isPending}
+              onClick={async () => {
+                try {
+                  const { data: { user } } = await supabase.auth.getUser();
+                  if (!user) return;
+                  const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
+                  if (!profile?.empresa_id) return;
+                  await createSendGroup.mutateAsync({ empresa_id: profile.empresa_id, nome: newGroupName, descricao: newGroupDesc || undefined, prospect_ids: newGroupProspectIds, created_by: user.id });
+                  toast.success("Grupo criado!");
+                  setShowCreateGroup(false);
+                  setNewGroupName("");
+                  setNewGroupDesc("");
+                  setNewGroupProspectIds([]);
+                  setGroupProspectSearch("");
+                } catch (err: any) {
+                  toast.error(err.message || "Erro ao criar grupo");
+                }
+              }}
+            >
+              {createSendGroup.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Criar Grupo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
