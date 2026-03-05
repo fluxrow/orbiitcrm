@@ -13,7 +13,7 @@ import {
   UserCheck, Users, Plus, Trash2, ArrowUpDown, AlertTriangle,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useOrbitProspects } from "@/hooks/useOrbitProspects";
+import { useOrbitProspects, useOrbitProspectsCount } from "@/hooks/useOrbitProspects";
 import { useOrbitSendGroups, useCreateSendGroup, useDeleteSendGroup } from "@/hooks/useOrbitSendGroups";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -80,6 +80,7 @@ export function RecipientSelector({
   const [groupProspectSearch, setGroupProspectSearch] = useState("");
 
   const { data: prospects } = useOrbitProspects();
+  const { data: totalProspectsCount } = useOrbitProspectsCount();
   const { data: sendGroups } = useOrbitSendGroups();
   const createSendGroup = useCreateSendGroup();
   const deleteSendGroup = useDeleteSendGroup();
@@ -226,7 +227,11 @@ export function RecipientSelector({
             )}
           </div>
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>{filteredProspects.length} leads encontrados</span>
+            <span>
+              {filteredProspects.length === (prospects?.length ?? 0) && !search && !hasActiveFilters
+                ? `${totalProspectsCount ?? filteredProspects.length} leads no total`
+                : `${filteredProspects.length} de ${totalProspectsCount ?? prospects?.length ?? 0} leads`}
+            </span>
             <div className="flex items-center gap-3">
               <Tabs value={activeTab} onValueChange={setActiveTab} className="h-auto">
                 <TabsList className="h-7 p-0.5">
