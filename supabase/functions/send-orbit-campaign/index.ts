@@ -115,7 +115,7 @@ const handler = async (req: Request): Promise<Response> => {
           "{{nome}}": prospect.nome_razao || "",
           "{{nome_fantasia}}": prospect.nome_fantasia || "",
           "{{email}}": prospect.email_principal || "",
-          "{{telefone}}": prospect.telefone_whatsapp || "",
+          "{{telefone}}": prospect.telefone || prospect.whatsapp || "",
           "{{cidade}}": prospect.cidade || "",
           "{{segmento}}": prospect.segmento || "",
         };
@@ -170,13 +170,13 @@ const handler = async (req: Request): Promise<Response> => {
           }
           enviados++;
         } else {
-          if (!zapiConfig?.instance_id || !zapiConfig?.token || !prospect.telefone_whatsapp) {
-            await supabase.from("orbit_campaign_recipients").update({ status: "falhou", erro: "Z-API não configurado ou prospect sem telefone" }).eq("id", recipient.id);
+          if (!zapiConfig?.instance_id || !zapiConfig?.token || !prospect.whatsapp) {
+            await supabase.from("orbit_campaign_recipients").update({ status: "falhou", erro: "Z-API não configurado ou prospect sem WhatsApp" }).eq("id", recipient.id);
             falhas++;
             continue;
           }
 
-          const phone = prospect.telefone_whatsapp.replace(/\D/g, "");
+          const phone = prospect.whatsapp.replace(/\D/g, "");
           const zapiBaseUrl = `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}`;
 
           // Send image first if present

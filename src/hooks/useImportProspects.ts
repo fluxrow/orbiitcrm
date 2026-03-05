@@ -16,7 +16,9 @@ interface ParsedProspect {
   tipo?: string;
   cnpj_cpf?: string;
   email_principal?: string;
-  telefone_whatsapp?: string;
+  telefone?: string;
+  whatsapp?: string;
+  whatsapp_status?: string;
   cidade?: string;
   estado?: string;
   segmento?: string;
@@ -40,10 +42,10 @@ const COLUMN_MAP: Record<string, keyof ParsedProspect> = {
   'email': 'email_principal',
   'email_principal': 'email_principal',
   'e-mail': 'email_principal',
-  'telefone': 'telefone_whatsapp',
-  'whatsapp': 'telefone_whatsapp',
-  'telefone_whatsapp': 'telefone_whatsapp',
-  'celular': 'telefone_whatsapp',
+  'telefone': 'telefone',
+  'telefone_whatsapp': 'telefone',
+  'whatsapp': 'whatsapp',
+  'celular': 'whatsapp',
   'cidade': 'cidade',
   'estado': 'estado',
   'uf': 'estado',
@@ -79,7 +81,7 @@ function normalizeColumnName(col: string): string {
     .toLowerCase()
     .trim()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9_]/g, '_');
 }
 
@@ -101,6 +103,46 @@ function parseCSVLine(line: string, separator: string): string[] {
   }
   result.push(current.trim());
   return result;
+}
+
+/**
+ * Normaliza número removendo não-dígitos.
+ * Se tiver 10 dígitos (DDD+8) → telefone fixo/celular antigo.
+ * Se tiver 11 dígitos (DDD+9) → whatsapp.
+ * Se tiver outro tamanho, mantém no campo original.
+ */
+function normalizePhoneFields(prospect: Partial<ParsedProspect>): void {
+  // If we have a generic telefone field, classify it
+  const rawPhone = prospect.telefone;
+  const rawWhatsapp = prospect.whatsapp;
+
+  if (rawPhone && !rawWhatsapp) {
+    const digits = rawPhone.replace(/\D/g, '');
+    if (digits.length === 11) {
+      // 11 digits = DDD+9, it's a WhatsApp number
+      prospect.whatsapp = digits;
+      prospect.whatsapp_status = 'nao_verificado';
+      prospect.telefone = undefined;
+    } else if (digits.length === 10) {
+      prospect.telefone = digits;
+    } else {
+      // Keep as-is in telefone
+      prospect.telefone = digits || undefined;
+    }
+  }
+
+  if (rawWhatsapp) {
+    const digits = rawWhatsapp.replace(/\D/g, '');
+    prospect.whatsapp = digits || undefined;
+    if (digits) {
+      prospect.whatsapp_status = 'nao_verificado';
+    }
+  }
+
+  // Clean telefone digits too
+  if (prospect.telefone) {
+    prospect.telefone = prospect.telefone.replace(/\D/g, '') || undefined;
+  }
 }
 
 export function parseCSV(csvText: string): { prospects: ParsedProspect[]; errors: { row: number; field: string; message: string }[] } {
@@ -156,6 +198,9 @@ export function parseCSV(csvText: string): { prospects: ParsedProspect[]; errors
       }
     }
 
+    // Normalize phone fields (10 digits → telefone, 11 digits → whatsapp)
+    normalizePhoneFields(prospect);
+
     prospects.push(prospect as ParsedProspect);
   }
 
@@ -170,6 +215,7 @@ export function generateCSVTemplate(): string {
     'cnpj_cpf',
     'email',
     'telefone',
+    'whatsapp',
     'cidade',
     'estado',
     'segmento',
@@ -184,6 +230,7 @@ export function generateCSVTemplate(): string {
     'empresa',
     '12.345.678/0001-90',
     'contato@exemplo.com.br',
+    '(11) 3456-7890',
     '(11) 99999-9999',
     'São Paulo',
     'SP',
@@ -239,15 +286,19 @@ export function useImportProspects() {
         while (hasMore) {
           const { data: page } = await supabase
             .from('orbit_prospects')
-            .select('nome_razao, email_principal, telefone_whatsapp')
+            .select('nome_razao, email_principal, telefone, whatsapp')
             .eq('empresa_id', profile.empresa_id)
             .range(from, from + pageSize - 1);
 
           if (page && page.length > 0) {
             page.forEach(p => {
               if (p.email_principal) existingEmails.add(p.email_principal.toLowerCase());
-              if (p.telefone_whatsapp) {
-                const cleaned = p.telefone_whatsapp.replace(/\D/g, '');
+              if (p.telefone) {
+                const cleaned = p.telefone.replace(/\D/g, '');
+                if (cleaned) existingPhones.add(cleaned);
+              }
+              if (p.whatsapp) {
+                const cleaned = p.whatsapp.replace(/\D/g, '');
                 if (cleaned) existingPhones.add(cleaned);
               }
               if (p.nome_razao) {
@@ -270,7 +321,7 @@ export function useImportProspects() {
 
         if (ignoreDuplicates) {
           const email = prospect.email_principal?.toLowerCase();
-          const phone = prospect.telefone_whatsapp?.replace(/\D/g, '');
+          const phone = prospect.telefone?.replace(/\D/g, '') || prospect.whatsapp?.replace(/\D/g, '');
           const normalizedName = normalizeName(prospect.nome_razao);
 
           if (email && existingEmails.has(email)) {
@@ -304,7 +355,9 @@ export function useImportProspects() {
             tipo: prospect.tipo || 'pessoa',
             cnpj_cpf: prospect.cnpj_cpf || null,
             email_principal: prospect.email_principal || null,
-            telefone_whatsapp: prospect.telefone_whatsapp || null,
+            telefone: prospect.telefone || null,
+            whatsapp: prospect.whatsapp || null,
+            whatsapp_status: prospect.whatsapp ? (prospect.whatsapp_status || 'nao_verificado') : 'nao_verificado',
             cidade: prospect.cidade || null,
             estado: prospect.estado || null,
             segmento: prospect.segmento || null,

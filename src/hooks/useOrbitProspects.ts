@@ -36,7 +36,7 @@ export function useOrbitProspects(filters?: ProspectFilters) {
         .order("created_at", { ascending: false });
 
       if (filters?.search) {
-        query = query.or(`nome_razao.ilike.%${filters.search}%,nome_fantasia.ilike.%${filters.search}%,email_principal.ilike.%${filters.search}%,telefone_whatsapp.ilike.%${filters.search}%`);
+        query = query.or(`nome_razao.ilike.%${filters.search}%,nome_fantasia.ilike.%${filters.search}%,email_principal.ilike.%${filters.search}%,telefone.ilike.%${filters.search}%,whatsapp.ilike.%${filters.search}%`);
       }
 
       if (filters?.status_qualificacao && filters.status_qualificacao !== "all") {

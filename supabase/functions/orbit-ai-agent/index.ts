@@ -142,7 +142,8 @@ Campos faltantes: ${camposFaltantes.join(", ") || "nenhum - cadastro completo"}
 Dados do prospect:
 - Nome: ${prospect?.nome_razao || "não informado"}
 - Email: ${prospect?.email_principal || "não informado"}
-- Telefone: ${prospect?.telefone_whatsapp || telefone}
+- Telefone: ${prospect?.telefone || "não informado"}
+- WhatsApp: ${prospect?.whatsapp || telefone}
 - Cidade: ${prospect?.cidade || "não informada"}
 - Segmento: ${prospect?.segmento || "não informado"}
 

@@ -123,7 +123,7 @@ serve(async (req) => {
     let prospectQuery = supabase
       .from("orbit_prospects")
       .select("*")
-      .eq("telefone_whatsapp", normalizedPhone);
+      .eq("whatsapp", normalizedPhone);
     if (empresaId) prospectQuery = prospectQuery.eq("empresa_id", empresaId);
 
     let { data: prospect } = await prospectQuery.maybeSingle();
@@ -156,7 +156,9 @@ serve(async (req) => {
 
       const insertData: any = {
         nome_razao: `WhatsApp ${normalizedPhone}`,
-        telefone_whatsapp: normalizedPhone,
+        telefone: normalizedPhone,
+        whatsapp: normalizedPhone,
+        whatsapp_status: "nao_verificado",
         origem_contato: "PROSPECTS",
         status_qualificacao: "novo",
       };
@@ -175,7 +177,7 @@ serve(async (req) => {
           const { data: existingProspect } = await supabase
             .from("orbit_prospects")
             .select("*")
-            .eq("telefone_whatsapp", normalizedPhone)
+            .eq("whatsapp", normalizedPhone)
             .maybeSingle();
 
           if (existingProspect) {

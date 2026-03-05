@@ -39,7 +39,8 @@ const handler = async (req: Request): Promise<Response> => {
       `Um prospect foi ${acao}:\n\n` +
       `👤 *Nome:* ${prospect.nome_razao}\n` +
       (prospect.nome_fantasia ? `🏢 *Fantasia:* ${prospect.nome_fantasia}\n` : "") +
-      (prospect.telefone_whatsapp ? `📱 *Telefone:* ${prospect.telefone_whatsapp}\n` : "") +
+      (prospect.telefone ? `📱 *Telefone:* ${prospect.telefone}\n` : "") +
+      (prospect.whatsapp ? `💬 *WhatsApp:* ${prospect.whatsapp}\n` : "") +
       (prospect.email_principal ? `📧 *Email:* ${prospect.email_principal}\n` : "") +
       (prospect.cidade ? `📍 *Cidade:* ${prospect.cidade}${prospect.estado ? ` - ${prospect.estado}` : ""}\n` : "") +
       (prospect.segmento ? `🏷️ *Segmento:* ${prospect.segmento}\n` : "") +
