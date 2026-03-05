@@ -14,6 +14,7 @@ import {
   Search, Plus, Loader2, ChevronLeft, ChevronRight, X,
   GitBranch, Send, Trash2, Tag,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { useOrbitProspects, useDeleteProspect } from "@/hooks/useOrbitProspects";
 import { useOrbitPeLinks } from "@/hooks/usePromoteProspect";
 import { useAuth } from "@/hooks/useAuth";
@@ -43,6 +44,10 @@ export default function ProspectsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [origemFilter, setOrigemFilter] = useState("all");
   const [sortBy, setSortBy] = useState("recent");
+  const [whatsappFilter, setWhatsappFilter] = useState("all");
+  const [whatsappStatusFilter, setWhatsappStatusFilter] = useState("all");
+  const [emailFilter, setEmailFilter] = useState("all");
+  const [contatoFilter, setContatoFilter] = useState("all");
   const [page, setPage] = useState(0);
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -97,12 +102,24 @@ export default function ProspectsPage() {
       result = result.filter((p: any) => (p.origem_contato || p.origem_lead) === origemFilter);
     }
 
+    if (whatsappFilter === "com") result = result.filter((p: any) => p.whatsapp != null && p.whatsapp !== "");
+    if (whatsappFilter === "sem") result = result.filter((p: any) => p.whatsapp == null || p.whatsapp === "");
+
+    if (whatsappStatusFilter !== "all") result = result.filter((p: any) => p.whatsapp_status === whatsappStatusFilter);
+
+    if (emailFilter === "com") result = result.filter((p: any) => p.email_principal != null && p.email_principal !== "");
+    if (emailFilter === "sem") result = result.filter((p: any) => p.email_principal == null || p.email_principal === "");
+
+    if (contatoFilter === "whatsapp") result = result.filter((p: any) => p.whatsapp_status === "valido");
+    if (contatoFilter === "email") result = result.filter((p: any) => p.email_principal != null && p.email_principal !== "");
+    if (contatoFilter === "ambos") result = result.filter((p: any) => p.whatsapp_status === "valido" && p.email_principal != null && p.email_principal !== "");
+    if (contatoFilter === "nenhum") result = result.filter((p: any) => (p.whatsapp == null || p.whatsapp_status !== "valido") && (p.email_principal == null || p.email_principal === ""));
+
     if (sortBy === "oldest") result.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     else if (sortBy === "name") result.sort((a: any, b: any) => (a.nome_razao || "").localeCompare(b.nome_razao || ""));
-    // 'recent' is default from API
 
     return result;
-  }, [prospects, origemFilter, sortBy]);
+  }, [prospects, origemFilter, whatsappFilter, whatsappStatusFilter, emailFilter, contatoFilter, sortBy]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -178,10 +195,79 @@ export default function ProspectsPage() {
               <SelectTrigger className="w-[160px]"><SelectValue placeholder="Ordenar" /></SelectTrigger>
               <SelectContent>{SORT_OPTIONS.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
             </Select>
+            <Select value={whatsappFilter} onValueChange={(v) => { setWhatsappFilter(v); setPage(0); }}>
+              <SelectTrigger className="w-[160px]"><SelectValue placeholder="WhatsApp" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">WhatsApp: Todos</SelectItem>
+                <SelectItem value="com">Com WhatsApp</SelectItem>
+                <SelectItem value="sem">Sem WhatsApp</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={whatsappStatusFilter} onValueChange={(v) => { setWhatsappStatusFilter(v); setPage(0); }}>
+              <SelectTrigger className="w-[180px]"><SelectValue placeholder="WA verificado" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">WA verificado: Todos</SelectItem>
+                <SelectItem value="valido">Verificado</SelectItem>
+                <SelectItem value="nao_verificado">Não verificado</SelectItem>
+                <SelectItem value="invalido">Inválido</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={emailFilter} onValueChange={(v) => { setEmailFilter(v); setPage(0); }}>
+              <SelectTrigger className="w-[160px]"><SelectValue placeholder="Email" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Email: Todos</SelectItem>
+                <SelectItem value="com">Com email</SelectItem>
+                <SelectItem value="sem">Sem email</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={contatoFilter} onValueChange={(v) => { setContatoFilter(v); setPage(0); }}>
+              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Contato disponível" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Contato: Todos</SelectItem>
+                <SelectItem value="whatsapp">WhatsApp válido</SelectItem>
+                <SelectItem value="email">Email</SelectItem>
+                <SelectItem value="ambos">Ambos</SelectItem>
+                <SelectItem value="nenhum">Nenhum</SelectItem>
+              </SelectContent>
+            </Select>
             <div className="ml-auto text-sm text-muted-foreground flex items-center">
               {filtered.length} prospect{filtered.length !== 1 ? "s" : ""}
             </div>
           </div>
+
+          {/* Active filter chips */}
+          {(() => {
+            const chips: { label: string; onRemove: () => void }[] = [];
+            const labelMap: Record<string, Record<string, string>> = {
+              whatsapp: { com: "Com WhatsApp", sem: "Sem WhatsApp" },
+              whatsappStatus: { valido: "Verificado", nao_verificado: "Não verificado", invalido: "Inválido" },
+              email: { com: "Com email", sem: "Sem email" },
+              contato: { whatsapp: "WhatsApp válido", email: "Email", ambos: "Ambos", nenhum: "Nenhum" },
+              status: Object.fromEntries(STATUS_OPTIONS.filter(s => s.value !== "all").map(s => [s.value, s.label])),
+            };
+            if (statusFilter !== "all") chips.push({ label: `Status: ${labelMap.status[statusFilter] || statusFilter}`, onRemove: () => setStatusFilter("all") });
+            if (origemFilter !== "all") chips.push({ label: `Origem: ${origemFilter}`, onRemove: () => setOrigemFilter("all") });
+            if (whatsappFilter !== "all") chips.push({ label: `WhatsApp: ${labelMap.whatsapp[whatsappFilter]}`, onRemove: () => setWhatsappFilter("all") });
+            if (whatsappStatusFilter !== "all") chips.push({ label: `WA Status: ${labelMap.whatsappStatus[whatsappStatusFilter]}`, onRemove: () => setWhatsappStatusFilter("all") });
+            if (emailFilter !== "all") chips.push({ label: `Email: ${labelMap.email[emailFilter]}`, onRemove: () => setEmailFilter("all") });
+            if (contatoFilter !== "all") chips.push({ label: `Contato: ${labelMap.contato[contatoFilter]}`, onRemove: () => setContatoFilter("all") });
+            if (chips.length === 0) return null;
+            return (
+              <div className="flex flex-wrap gap-2">
+                {chips.map((c) => (
+                  <Badge key={c.label} variant="secondary" className="gap-1 pr-1">
+                    {c.label}
+                    <button onClick={() => { c.onRemove(); setPage(0); }} className="ml-1 hover:bg-muted rounded-full p-0.5">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+                <button onClick={() => { setStatusFilter("all"); setOrigemFilter("all"); setWhatsappFilter("all"); setWhatsappStatusFilter("all"); setEmailFilter("all"); setContatoFilter("all"); setPage(0); }} className="text-xs text-muted-foreground hover:text-foreground underline">
+                  Limpar todos
+                </button>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Grid */}
