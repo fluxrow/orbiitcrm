@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Check, Edit, User, Calendar, ExternalLink, Clock } from "lucide-react";
@@ -33,13 +34,23 @@ const tipoIcons: Record<string, string> = {
 };
 
 export function OrbitTaskCard({ task, onComplete, onEdit, onOpenProspect }: OrbitTaskCardProps) {
+  const [isDragging, setIsDragging] = useState(false);
   const isOverdue = task.due_date && isPast(new Date(task.due_date + "T23:59:59")) && task.status !== "completed";
   const isDueToday = task.due_date && isToday(new Date(task.due_date));
   const isCompleted = task.status === "completed";
 
   return (
-    <div className={cn(
-      "rounded-lg border p-3 space-y-2 transition-all hover:shadow-md",
+    <div
+      draggable={!isCompleted}
+      onDragStart={(e) => {
+        e.dataTransfer.setData("taskId", task.id);
+        e.dataTransfer.effectAllowed = "move";
+        setIsDragging(true);
+      }}
+      onDragEnd={() => setIsDragging(false)}
+      className={cn(
+      "rounded-lg border p-3 space-y-2 transition-all hover:shadow-md cursor-grab active:cursor-grabbing",
+      isDragging && "opacity-50",
       isCompleted && "opacity-60 bg-muted/30",
       isOverdue && "border-destructive/50 bg-destructive/5",
       isDueToday && !isOverdue && "border-primary/50 bg-primary/5",

@@ -6,11 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Search, Kanban, List, Calendar as CalendarIcon } from "lucide-react";
-import { useOrbitTasks, useCompleteOrbitTask } from "@/hooks/useOrbitTasks";
+import { useOrbitTasks, useCompleteOrbitTask, useUpdateOrbitTask } from "@/hooks/useOrbitTasks";
 import { OrbitTaskKanban } from "@/components/orbit/OrbitTaskKanban";
 import { OrbitTaskCard } from "@/components/orbit/OrbitTaskCard";
 import { OrbitTaskDialog } from "@/components/orbit/OrbitTaskDialog";
-import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay } from "date-fns";
+import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, addDays, nextFriday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 import { useTenant } from "@/contexts/TenantContext";
@@ -31,6 +31,7 @@ export default function TarefasPage() {
     prioridade: prioridadeFilter !== "all" ? prioridadeFilter : undefined,
   });
   const completeTask = useCompleteOrbitTask();
+  const updateTask = useUpdateOrbitTask();
 
   const handleComplete = (task: any) => {
     completeTask.mutate({ id: task.id, prospect_id: task.prospect_id, empresa_id: task.empresa_id });
@@ -48,6 +49,29 @@ export default function TarefasPage() {
   const handleNewTask = () => {
     setEditingTask(null);
     setDialogOpen(true);
+  };
+
+  const handleMoveTask = (taskId: string, targetColumn: string) => {
+    if (targetColumn === "overdue") return;
+    const task = (tasks || []).find((t) => t.id === taskId);
+    if (!task) return;
+
+    if (targetColumn === "completed") {
+      handleComplete(task);
+      return;
+    }
+
+    const today = new Date();
+    let newDate: string;
+    if (targetColumn === "today") {
+      newDate = format(today, "yyyy-MM-dd");
+    } else if (targetColumn === "tomorrow") {
+      newDate = format(addDays(today, 1), "yyyy-MM-dd");
+    } else {
+      newDate = format(nextFriday(today), "yyyy-MM-dd");
+    }
+
+    updateTask.mutate({ id: taskId, due_date: newDate });
   };
 
   // Calendar view helpers
@@ -106,6 +130,7 @@ export default function TarefasPage() {
               onComplete={handleComplete}
               onEdit={handleEdit}
               onOpenProspect={handleOpenProspect}
+              onMoveTask={handleMoveTask}
             />
           )}
         </TabsContent>
