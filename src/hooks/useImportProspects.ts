@@ -111,35 +111,57 @@ function parseCSVLine(line: string, separator: string): string[] {
  * Se tiver 11 dígitos (DDD+9) → whatsapp.
  * Se tiver outro tamanho, mantém no campo original.
  */
+/**
+ * Normaliza campos de telefone e whatsapp.
+ * - Remove não-dígitos
+ * - Se começa com 55 e tem 12+ dígitos, remove o 55 para análise
+ * - 11 dígitos (DDD+9) → whatsapp com prefixo 55, status nao_verificado
+ * - 10 dígitos (DDD+8) → mantém em telefone (será validado via Z-API depois)
+ */
 function normalizePhoneFields(prospect: Partial<ParsedProspect>): void {
-  // If we have a generic telefone field, classify it
   const rawPhone = prospect.telefone;
   const rawWhatsapp = prospect.whatsapp;
 
   if (rawPhone && !rawWhatsapp) {
-    const digits = rawPhone.replace(/\D/g, '');
-    if (digits.length === 11) {
-      // 11 digits = DDD+9, it's a WhatsApp number
-      prospect.whatsapp = digits;
+    let digits = rawPhone.replace(/\D/g, '');
+
+    // Strip country code 55 for analysis
+    let stripped = digits;
+    if (stripped.startsWith('55') && stripped.length >= 12) {
+      stripped = stripped.slice(2);
+    }
+
+    if (stripped.length === 11) {
+      // 11 digits = DDD+9 → WhatsApp
+      prospect.whatsapp = '55' + stripped;
       prospect.whatsapp_status = 'nao_verificado';
       prospect.telefone = undefined;
-    } else if (digits.length === 10) {
-      prospect.telefone = digits;
+    } else if (stripped.length === 10) {
+      // 10 digits = DDD+8 → keep as telefone, will be validated via Z-API
+      prospect.telefone = stripped;
     } else {
-      // Keep as-is in telefone
       prospect.telefone = digits || undefined;
     }
   }
 
   if (rawWhatsapp) {
-    const digits = rawWhatsapp.replace(/\D/g, '');
-    prospect.whatsapp = digits || undefined;
-    if (digits) {
+    let digits = rawWhatsapp.replace(/\D/g, '');
+    // Ensure 55 prefix for international format
+    let stripped = digits;
+    if (stripped.startsWith('55') && stripped.length >= 12) {
+      stripped = stripped.slice(2);
+    }
+    if (stripped.length === 11 || stripped.length === 10) {
+      prospect.whatsapp = '55' + stripped;
+    } else {
+      prospect.whatsapp = digits || undefined;
+    }
+    if (prospect.whatsapp) {
       prospect.whatsapp_status = 'nao_verificado';
     }
   }
 
-  // Clean telefone digits too
+  // Clean telefone digits
   if (prospect.telefone) {
     prospect.telefone = prospect.telefone.replace(/\D/g, '') || undefined;
   }

@@ -68,3 +68,9 @@ verify_jwt = false
 
 [functions.orbit-ai-generate-template]
 verify_jwt = false
+
+[functions.orbit-migrate-phones]
+verify_jwt = false
+
+[functions.orbit-validate-whatsapp]
+verify_jwt = false

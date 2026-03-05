@@ -6,6 +6,8 @@ interface ValidateRequest {
   prospect_ids: string[];
 }
 
+const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return optionsResponse();
 
@@ -20,16 +22,15 @@ const handler = async (req: Request): Promise<Response> => {
       return fail(ErrorCodes.VALIDATION_ERROR, "prospect_ids é obrigatório");
     }
 
-    // Get prospects
+    // Get prospects (include telefone for 10-digit fallback)
     const { data: prospects, error } = await supabase
       .from("orbit_prospects")
-      .select("id, whatsapp, whatsapp_status, empresa_id")
-      .in("id", prospect_ids)
-      .not("whatsapp", "is", null);
+      .select("id, whatsapp, whatsapp_status, telefone, empresa_id")
+      .in("id", prospect_ids);
 
     if (error) throw error;
     if (!prospects?.length) {
-      return ok({ validados: 0, validos: 0, invalidos: 0, message: "Nenhum prospect com WhatsApp" });
+      return ok({ validados: 0, validos: 0, invalidos: 0, message: "Nenhum prospect encontrado" });
     }
 
     // Get Z-API config from first prospect's empresa
@@ -49,40 +50,122 @@ const handler = async (req: Request): Promise<Response> => {
       return fail(ErrorCodes.PROVIDER_NOT_CONFIGURED, "Z-API não configurado");
     }
 
+    const zapiBaseUrl = `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Client-Token": zapiConfig.client_token || "",
+    };
+
     let validos = 0;
     let invalidos = 0;
+    let migrados_telefone = 0;
 
     for (const prospect of prospects) {
       try {
-        const phone = prospect.whatsapp!.replace(/\D/g, "");
-        if (!phone) continue;
+        // Case 1: prospect has whatsapp → validate directly
+        if (prospect.whatsapp) {
+          const phone = prospect.whatsapp.replace(/\D/g, "");
+          if (!phone) continue;
 
-        const zapiBaseUrl = `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}`;
+          await delay(500);
+          const res = await fetch(`${zapiBaseUrl}/phone-exists/${phone}`, {
+            method: "GET",
+            headers,
+          });
 
-        const res = await fetch(`${zapiBaseUrl}/phone-exists/${phone}`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "Client-Token": zapiConfig.client_token || "",
-          },
-        });
+          if (!res.ok) {
+            console.error(`[validate-whatsapp] Z-API error for ${phone}:`, res.status);
+            continue;
+          }
 
-        if (!res.ok) {
-          console.error(`[validate-whatsapp] Z-API error for ${phone}:`, res.status);
+          const result = await res.json();
+          const exists = result.exists === true;
+          const newStatus = exists ? "valido" : "invalido";
+
+          await supabase
+            .from("orbit_prospects")
+            .update({ whatsapp_status: newStatus })
+            .eq("id", prospect.id);
+
+          if (exists) validos++;
+          else invalidos++;
           continue;
         }
 
-        const result = await res.json();
-        const exists = result.exists === true;
-        const newStatus = exists ? "valido" : "invalido";
+        // Case 2: no whatsapp but has telefone with 10 digits → try to discover
+        if (!prospect.whatsapp && prospect.telefone) {
+          let digits = prospect.telefone.replace(/\D/g, "");
+          // Strip 55 prefix
+          let stripped = digits;
+          if (stripped.startsWith("55") && stripped.length >= 12) {
+            stripped = stripped.slice(2);
+          }
 
-        await supabase
-          .from("orbit_prospects")
-          .update({ whatsapp_status: newStatus })
-          .eq("id", prospect.id);
+          if (stripped.length !== 10) continue;
 
-        if (exists) validos++;
-        else invalidos++;
+          // Try 55 + 10 digits
+          const phone10 = "55" + stripped;
+          let found = false;
+
+          await delay(500);
+          try {
+            const res = await fetch(`${zapiBaseUrl}/phone-exists/${phone10}`, {
+              method: "GET",
+              headers,
+            });
+            if (res.ok) {
+              const result = await res.json();
+              if (result.exists === true) {
+                await supabase
+                  .from("orbit_prospects")
+                  .update({ whatsapp: phone10, whatsapp_status: "valido" })
+                  .eq("id", prospect.id);
+                validos++;
+                migrados_telefone++;
+                found = true;
+              }
+            }
+          } catch (err) {
+            console.error(`[validate-whatsapp] Z-API error for ${phone10}:`, err);
+          }
+
+          // Try adding 9 after DDD
+          if (!found) {
+            const ddd = stripped.slice(0, 2);
+            const rest = stripped.slice(2);
+            const phone11 = "55" + ddd + "9" + rest;
+
+            await delay(500);
+            try {
+              const res = await fetch(`${zapiBaseUrl}/phone-exists/${phone11}`, {
+                method: "GET",
+                headers,
+              });
+              if (res.ok) {
+                const result = await res.json();
+                if (result.exists === true) {
+                  await supabase
+                    .from("orbit_prospects")
+                    .update({ whatsapp: phone11, whatsapp_status: "valido" })
+                    .eq("id", prospect.id);
+                  validos++;
+                  migrados_telefone++;
+                  found = true;
+                }
+              }
+            } catch (err) {
+              console.error(`[validate-whatsapp] Z-API error for ${phone11}:`, err);
+            }
+          }
+
+          if (!found) {
+            await supabase
+              .from("orbit_prospects")
+              .update({ whatsapp_status: "invalido" })
+              .eq("id", prospect.id);
+            invalidos++;
+          }
+        }
       } catch (err) {
         console.error(`[validate-whatsapp] Error for prospect ${prospect.id}:`, err);
       }
@@ -92,6 +175,7 @@ const handler = async (req: Request): Promise<Response> => {
       validados: validos + invalidos,
       validos,
       invalidos,
+      migrados_telefone,
       total: prospects.length,
     });
   } catch (error: any) {
