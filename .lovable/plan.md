@@ -1,89 +1,66 @@
 
 
-# Sistema de controle de ritmo (anti-bloqueio) para campanhas WhatsApp
+# Filtros avançados na página Prospects
 
 ## Resumo
 
-Implementar rate limiting inteligente com delays aleatórios, lotes com pausas, limite diário, e warm-up para números novos. Requer 2 novas tabelas, refatoração da Edge Function e ajustes na UI.
+Adicionar 4 novos filtros (WhatsApp, WhatsApp verificado, Email, Contato disponível) com chips de filtros ativos e botão X para remoção rápida. Todos client-side, aplicados sobre os dados já carregados.
 
-## 1. Novas tabelas (Migration SQL)
+## Abordagem
 
-### `orbit_whatsapp_sending_config`
-Configuração por empresa:
-- `empresa_id` (uuid, unique)
-- `min_delay_ms` (int, default 1500)
-- `max_delay_ms` (int, default 3500)
-- `batch_size` (int, default 50)
-- `batch_pause_ms` (int, default 30000)
-- `daily_limit` (int, default 500)
-- `max_per_minute` (int, default 15)
-- `warmup_enabled` (bool, default false)
-- `warmup_start_date` (date, nullable)
-- `enabled` (bool, default true)
-- `created_at`, `updated_at`
+Os filtros serão aplicados **client-side** no `useMemo` de `filtered`, pois os dados já são carregados integralmente via paginação. Isso evita complexidade de queries Supabase com `is.null` / `neq` combinados e mantém a UX instantânea.
 
-RLS: empresa_id isolation + super_admin full access.
+## Mudanças em `src/pages/orbit/ProspectsPage.tsx`
 
-### `orbit_whatsapp_daily_usage`
-Rastreio diário:
-- `empresa_id` (uuid)
-- `usage_date` (date)
-- `sent_count` (int, default 0)
-- `updated_at`
-- UNIQUE(empresa_id, usage_date)
+### 1. Novos estados de filtro
 
-RLS: same pattern.
+```typescript
+const [whatsappFilter, setWhatsappFilter] = useState("all");       // all | com | sem
+const [whatsappStatusFilter, setWhatsappStatusFilter] = useState("all"); // all | valido | nao_verificado | invalido
+const [emailFilter, setEmailFilter] = useState("all");             // all | com | sem
+const [contatoFilter, setContatoFilter] = useState("all");         // all | whatsapp | email | ambos | nenhum
+```
 
-## 2. Edge Function: `send-orbit-campaign/index.ts`
+### 2. Novos Selects no painel de filtros (linha 165–184)
 
-Refatorar o loop de envio WhatsApp:
+Adicionar 4 novos `<Select>` após os existentes, antes do contador:
+- **WhatsApp**: Todos / Com WhatsApp / Sem WhatsApp
+- **WhatsApp verificado**: Todos / Verificado / Não verificado / Inválido
+- **Email**: Todos / Com email / Sem email
+- **Contato disponível**: Todos / WhatsApp / Email / Ambos / Nenhum
 
-**Antes do loop:**
-- Buscar `orbit_whatsapp_sending_config` para a empresa (usar defaults se não existir)
-- Buscar/criar `orbit_whatsapp_daily_usage` para hoje
-- Calcular `daily_limit` efetivo considerando warm-up:
-  - Se `warmup_enabled` e `warmup_start_date` definido, calcular dias desde início
-  - Escala: dia 1→50, dia 2→80, dia 3→120, dia 4→200, dia 5→300, dia 6+→config.daily_limit
-  - Delays maiores nos primeiros 3 dias: multiplicar min/max por 1.5
+### 3. Lógica de filtragem no `useMemo` (linha 93–105)
 
-**No loop:**
-- Substituir `jitterDelay` atual (150-350ms) por `delayMs(random(config.min_delay_ms, config.max_delay_ms))` antes de CADA envio
-- Contar envios no lote; ao atingir `batch_size`, pausar `batch_pause_ms`
-- Antes de enviar, checar: se `daily_usage.sent_count >= effective_daily_limit`:
-  - Marcar campanha status `"pausada_por_limite"`
-  - Retornar com `pausada_por_limite: true` e `remaining_pending` no relatório
-  - Parar o loop
-- Incrementar `sent_count` na tabela `orbit_whatsapp_daily_usage` a cada envio bem-sucedido
+Adicionar filtros após o filtro de origem:
 
-**Novo status de campanha:** `pausada_por_limite`
+- `whatsappFilter === "com"` → `p.whatsapp != null && p.whatsapp !== ""`
+- `whatsappFilter === "sem"` → `p.whatsapp == null || p.whatsapp === ""`
+- `whatsappStatusFilter !== "all"` → `p.whatsapp_status === valor`
+- `emailFilter === "com"` → `p.email_principal != null && p.email_principal !== ""`
+- `emailFilter === "sem"` → `p.email_principal == null || p.email_principal === ""`
+- `contatoFilter`:
+  - `whatsapp` → `whatsapp_status === "valido"`
+  - `email` → email preenchido
+  - `ambos` → ambas condições
+  - `nenhum` → sem WhatsApp válido E sem email
 
-## 3. UI: `CampanhasPage.tsx`
+### 4. Chips de filtros ativos (entre filtros e grid)
 
-- Adicionar `pausada_por_limite` ao `statusConfig` (ex: laranja/amarelo, "Limite Diário Atingido")
-- No `handleSend` response, mostrar info extra se `pausada_por_limite: true`
-- Permitir "Retomar" em campanhas `pausada_por_limite` (já funciona pois usa `handleSend`)
+Renderizar badges/chips para cada filtro ativo (valor !== "all") com label descritivo e botão X que reseta para "all". Usar o componente `Badge` existente com um botão X inline.
 
-## 4. UI: `ConfigPage.tsx`
+```
+[WhatsApp: Com WhatsApp ×] [Email: Com email ×] [Status WA: Verificado ×]
+```
 
-Na aba Z-API, adicionar seção "Controle de Ritmo":
-- Campos para min/max delay, batch size, pause, daily limit, max/min
-- Toggle warm-up com data de início
-- Exibir contador "Enviados hoje: X / Y"
+Helper para mapear valores para labels legíveis.
 
-## 5. Hook: `useOrbitConfig.ts`
+### 5. Resetar página ao mudar filtros
 
-Adicionar hooks:
-- `useWhatsAppSendingConfig(empresaId)` — buscar config
-- `useUpdateWhatsAppSendingConfig()` — upsert config
-- `useWhatsAppDailyUsage(empresaId)` — buscar uso de hoje
+Cada `onValueChange` dos novos Selects chama `setPage(0)`.
 
-## Arquivos alterados
+## Arquivo alterado
 
 | Arquivo | Ação |
 |---|---|
-| Migration SQL | Criar 2 tabelas + RLS |
-| `send-orbit-campaign/index.ts` | Rate limiting, lotes, limite diário, warm-up |
-| `src/pages/orbit/CampanhasPage.tsx` | Novo status + relatório expandido |
-| `src/pages/orbit/ConfigPage.tsx` | Seção de configuração de ritmo |
-| `src/hooks/useOrbitConfig.ts` | 3 novos hooks |
+| `src/pages/orbit/ProspectsPage.tsx` | 4 novos filtros, chips ativos, lógica de filtragem |
 
