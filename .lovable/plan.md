@@ -1,41 +1,23 @@
 
+# Fix: OrbitTaskDialog crash on open
 
-# Drag-and-Drop no Kanban de Tarefas
+## Root Cause
 
-## Abordagem
+The `OrbitTaskDialog` crashes with the error: **"A `<Select.Item />` must have a value prop that is not an empty string"**. This is on line 138 of `OrbitTaskDialog.tsx`:
 
-Usar a **HTML5 Drag and Drop API nativa** (sem dependência extra) para permitir arrastar cards entre colunas do Kanban. Quando um card é solto em uma coluna diferente, a ação correspondente é executada:
+```tsx
+<SelectItem value="">Nenhum</SelectItem>
+```
 
-- **Soltar em "Concluídas"** → chama `completeTask` (muda status para `completed`)
-- **Soltar em "Hoje"** → atualiza `due_date` para hoje
-- **Soltar em "Amanhã"** → atualiza `due_date` para amanhã
-- **Soltar em "Esta Semana"** → atualiza `due_date` para próxima sexta
-- **Soltar em "Atrasadas"** → não faz sentido mover para lá, ignora
+Radix UI Select forbids empty string values because empty string is used internally to clear the selection.
 
-## Alterações
+## Fix
 
-### 1. `OrbitTaskKanban.tsx`
-- Adicionar prop `onMoveTask(taskId, targetColumn)` 
-- Cada coluna recebe `onDragOver` + `onDrop` handlers
-- Highlight visual na coluna durante drag-over (borda colorida)
-- Passar `taskId` via `dataTransfer.setData`
+**File: `src/components/orbit/OrbitTaskDialog.tsx`**
 
-### 2. `OrbitTaskCard.tsx`
-- Adicionar `draggable` ao card div
-- `onDragStart` seta o `task.id` no dataTransfer
-- Classe visual `opacity-50` durante drag
+1. Change `<SelectItem value="">Nenhum</SelectItem>` to `<SelectItem value="none">Nenhum</SelectItem>`
+2. Update the `prospectId` state initialization: default to `"none"` instead of `""`
+3. In `handleSubmit`, treat `"none"` as no prospect: `prospect_id: prospectId && prospectId !== "none" ? prospectId : undefined`
+4. In the `useEffect` reset, use `"none"` instead of `""` for the fallback
 
-### 3. `TarefasPage.tsx`
-- Implementar handler `handleMoveTask(taskId, targetColumn)` que:
-  - Se target = "completed" → chama `completeTask.mutate()`
-  - Se target = "today/tomorrow/thisWeek" → chama `updateTask.mutate()` com novo `due_date`
-  - Toast de confirmação
-
-## Arquivos editados
-
-| Arquivo | Ação |
-|---|---|
-| `src/components/orbit/OrbitTaskCard.tsx` | Adicionar draggable + onDragStart |
-| `src/components/orbit/OrbitTaskKanban.tsx` | Adicionar drop zones nas colunas |
-| `src/pages/orbit/TarefasPage.tsx` | Handler de move + integrar mutations |
-
+This is a single-file, 4-line fix.
