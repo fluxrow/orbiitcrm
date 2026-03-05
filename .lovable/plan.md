@@ -1,102 +1,91 @@
 
 
-# Refatorar Prospects Page em Lead Action Hub
+# Módulo de Tarefas no Orbit CRM
 
-## Escopo
+O projeto já possui uma tabela `orbit_activities` e o hook `useOrbitActivities` que cobrem atividades genéricas. Porém, o pedido é um módulo de tarefas dedicado com Kanban, calendário e integração profunda com prospects. Vou criar uma nova tabela `orbit_tasks` (separada de `orbit_activities`) para ter campos específicos como `tipo_tarefa`, `due_time`, `priority`, e status Kanban.
 
-Transformar a tela de Prospects em um hub de ações com cards interativos, timeline unificada, ações rápidas e seleção em massa.
-
-## 1. Criar tabela `prospect_events` (Migration)
+## 1. Migration — Tabela `orbit_tasks`
 
 ```sql
-CREATE TABLE public.prospect_events (
+CREATE TABLE public.orbit_tasks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   empresa_id uuid NOT NULL,
-  prospect_id uuid NOT NULL REFERENCES orbit_prospects(id) ON DELETE CASCADE,
-  actor_user_id uuid,
-  event_type text NOT NULL, -- lead_created, conversation_started, email_sent, campaign_sent, pipeline_added, note_added, status_changed
-  titulo text,
+  prospect_id uuid REFERENCES orbit_prospects(id) ON DELETE SET NULL,
+  deal_id uuid REFERENCES orbit_deals(id) ON DELETE SET NULL,
+  assigned_to uuid,
+  created_by uuid,
+  completed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  titulo text NOT NULL,
   descricao text,
-  metadata jsonb DEFAULT '{}'::jsonb,
-  created_at timestamptz NOT NULL DEFAULT now()
+  status text NOT NULL DEFAULT 'pending',  -- pending, in_progress, completed, cancelled
+  prioridade text NOT NULL DEFAULT 'medium', -- low, medium, high
+  tipo_tarefa text NOT NULL DEFAULT 'task',  -- call, email, meeting, follow_up, task
+  due_date date,
+  due_time time,
+  notificar_responsavel boolean DEFAULT false
 );
-
-ALTER TABLE public.prospect_events ENABLE ROW LEVEL SECURITY;
-
-CREATE INDEX idx_prospect_events_prospect ON prospect_events(prospect_id, created_at DESC);
-
--- RLS
-CREATE POLICY "Users can view own empresa events" ON prospect_events FOR SELECT USING (empresa_id = get_user_empresa_id(auth.uid()));
-CREATE POLICY "PE members can insert own empresa events" ON prospect_events FOR INSERT WITH CHECK (empresa_id = get_user_empresa_id(auth.uid()) AND pe_user_is_orbit_member(auth.uid()));
-CREATE POLICY "Super admin full access prospect_events" ON prospect_events FOR ALL USING (has_role(auth.uid(), 'super_admin'::app_role));
+-- RLS + index + policies (empresa_id based, same pattern as other orbit tables)
 ```
 
-## 2. Novo hook `useProspectEvents`
+## 2. Novo hook — `src/hooks/useOrbitTasks.ts`
 
-**Arquivo**: `src/hooks/useProspectEvents.ts`
+- `useOrbitTasks(filters?)` — lista tarefas com join em `profiles` (assigned) e `orbit_prospects` (nome)
+- `useCreateOrbitTask()` — cria tarefa + registra `prospect_events` (task_created)
+- `useUpdateOrbitTask()` — atualiza campos
+- `useCompleteOrbitTask()` — marca como completed + registra `prospect_events` (task_completed)
 
-- `useProspectEvents(prospectId)` - lista eventos do prospect ordenados por data
-- `useCreateProspectEvent()` - mutation para inserir evento
+## 3. Nova página — `src/pages/orbit/TarefasPage.tsx`
 
-## 3. Novo componente `ProspectActionCard`
+Layout com 3 áreas:
 
-**Arquivo**: `src/components/orbit/ProspectActionCard.tsx`
+- **Barra superior**: busca (titulo, prospect, descrição), filtros (status, responsável, prioridade, data), botão "+ Nova Tarefa"
+- **Visualização principal**: toggle entre Kanban / Lista / Calendário
+  - **Kanban**: colunas Atrasadas, Hoje, Amanhã, Esta Semana, Concluídas — cards arrastáveis
+  - **Lista**: tabela simples com sorting
+  - **Calendário**: grid mensal com tarefas nos dias
+- **Card de tarefa**: título, prospect relacionado, responsável, data, prioridade badge, ações rápidas (concluir, editar, abrir prospect, reagendar)
 
-Card interativo com:
-- **Topo**: Nome, empresa (nome_fantasia), badge de status com cores
-- **Info**: Telefone, email, origem, data criacao (formatada com date-fns)
-- **Indicadores**: icones para sem-telefone, sem-email, convertido, lead quente (score > 70)
-- **Barra de acoes rapidas**: Iniciar conversa (WhatsApp), Enviar email, Adicionar nota, Criar tarefa, Enviar para funil
-- **Checkbox** de selecao em massa (canto superior esquerdo)
-- **Botao "Ver historico"** que abre sheet lateral
+## 4. Componentes novos
 
-## 4. Novo componente `ProspectTimeline`
-
-**Arquivo**: `src/components/orbit/ProspectTimeline.tsx`
-
-Sheet lateral (usando `Sheet` do shadcn) com:
-- Timeline vertical dos `prospect_events`
-- Icones por tipo de evento
-- Data formatada
-- Descricao do evento
-
-## 5. Novo componente `AddToFunnelDialog`
-
-**Arquivo**: `src/components/orbit/AddToFunnelDialog.tsx`
-
-Dialog para selecionar funil/etapa:
-- Usa `useFunilEtapas()` para listar etapas
-- Chama `usePromoteProspect()` para converter
-- Registra evento `pipeline_added` no prospect_events
-
-## 6. Novo componente `AddNoteDialog`
-
-**Arquivo**: `src/components/orbit/AddNoteDialog.tsx`
-
-Dialog simples com textarea para nota. Registra evento `note_added`.
-
-## 7. Refatorar `ProspectsPage.tsx`
-
-- **Barra superior**: campo de busca grande, filtros (status, segmento, origem, cidade, estado), ordenacao (recentes, antigos, nome)
-- **Grid de ProspectActionCards**
-- **Barra inferior fixa** (aparece quando ha selecao): contador + botoes de acao em massa (Enviar campanha, Adicionar ao funil, Adicionar tag, Excluir)
-- Paginacao client-side (50 por pagina)
-- Manter ProspectDialog existente para criar/editar
-
-## 8. Auto-registro de evento `lead_created`
-
-No `useCreateProspect`, apos criar o prospect, inserir automaticamente um evento `lead_created` no `prospect_events`.
-
-## Arquivos criados/editados
-
-| Arquivo | Acao |
+| Componente | Responsabilidade |
 |---|---|
-| Migration SQL | Criar tabela `prospect_events` |
-| `src/hooks/useProspectEvents.ts` | Novo |
-| `src/components/orbit/ProspectActionCard.tsx` | Novo |
-| `src/components/orbit/ProspectTimeline.tsx` | Novo |
-| `src/components/orbit/AddToFunnelDialog.tsx` | Novo |
-| `src/components/orbit/AddNoteDialog.tsx` | Novo |
-| `src/pages/orbit/ProspectsPage.tsx` | Refatorar |
-| `src/hooks/useOrbitProspects.ts` | Adicionar auto-evento no create |
+| `OrbitTaskCard.tsx` | Card da tarefa com ações rápidas |
+| `OrbitTaskDialog.tsx` | Modal de criação/edição com todos os campos |
+| `OrbitTaskKanban.tsx` | Board Kanban com colunas temporais |
+
+## 5. Integração na sidebar
+
+Adicionar item "Tarefas" com ícone `CheckSquare` no `OrbitSidebar.tsx`, entre "Analytics" e "Configurações".
+
+## 6. Rota
+
+Adicionar `<Route path="tarefas" element={<TarefasPage />} />` no `OrbitRoutes` em `App.tsx`.
+
+## 7. Integração com ProspectActionCard
+
+O botão "Criar tarefa" no card do prospect já existe — conectar ao `OrbitTaskDialog` passando `prospect_id`.
+
+## 8. Widget no Dashboard
+
+Adicionar seção "Minhas Tarefas" no `OrbitDashboard.tsx` mostrando tarefas do dia e atrasadas.
+
+## 9. Auto-registro em prospect_events
+
+Ao criar/concluir tarefa vinculada a um prospect, inserir evento `task_created` / `task_completed` na tabela `prospect_events`.
+
+## Arquivos
+
+| Arquivo | Ação |
+|---|---|
+| Migration SQL | Criar tabela `orbit_tasks` |
+| `src/hooks/useOrbitTasks.ts` | Novo |
+| `src/pages/orbit/TarefasPage.tsx` | Novo |
+| `src/components/orbit/OrbitTaskCard.tsx` | Novo |
+| `src/components/orbit/OrbitTaskDialog.tsx` | Novo |
+| `src/components/orbit/OrbitTaskKanban.tsx` | Novo |
+| `src/components/orbit/OrbitSidebar.tsx` | Adicionar link Tarefas |
+| `src/App.tsx` | Adicionar rota |
+| `src/pages/orbit/OrbitDashboard.tsx` | Widget de tarefas |
 
