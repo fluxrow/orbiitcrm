@@ -1,72 +1,89 @@
 
 
-# Refatorar pré-flight WhatsApp no `send-orbit-campaign`
+# Sistema de controle de ritmo (anti-bloqueio) para campanhas WhatsApp
 
-## Problema atual
+## Resumo
 
-A função ignora prospects sem `whatsapp` preenchido, mesmo que tenham número válido em `telefone`. Bases importadas onde tudo ficou em `telefone` não conseguem enviar campanhas WhatsApp. Também falta fallback de 10 dígitos com adição do 9, e o delay só ocorre na validação (não no envio).
+Implementar rate limiting inteligente com delays aleatórios, lotes com pausas, limite diário, e warm-up para números novos. Requer 2 novas tabelas, refatoração da Edge Function e ajustes na UI.
 
-## Mudanças no arquivo `supabase/functions/send-orbit-campaign/index.ts`
+## 1. Novas tabelas (Migration SQL)
 
-### 1. Novo fluxo pré-flight para cada recipient WhatsApp
+### `orbit_whatsapp_sending_config`
+Configuração por empresa:
+- `empresa_id` (uuid, unique)
+- `min_delay_ms` (int, default 1500)
+- `max_delay_ms` (int, default 3500)
+- `batch_size` (int, default 50)
+- `batch_pause_ms` (int, default 30000)
+- `daily_limit` (int, default 500)
+- `max_per_minute` (int, default 15)
+- `warmup_enabled` (bool, default false)
+- `warmup_start_date` (date, nullable)
+- `enabled` (bool, default true)
+- `created_at`, `updated_at`
 
-Substituir o bloco WhatsApp (linhas 206–282) por:
+RLS: empresa_id isolation + super_admin full access.
 
-```
-1. Determinar candidate_phone:
-   - Se prospect.whatsapp preenchido → usar
-   - Senão, se prospect.telefone preenchido → usar como fallback
-   - Senão → IGNORED_NO_NUMBER, continue
+### `orbit_whatsapp_daily_usage`
+Rastreio diário:
+- `empresa_id` (uuid)
+- `usage_date` (date)
+- `sent_count` (int, default 0)
+- `updated_at`
+- UNIQUE(empresa_id, usage_date)
 
-2. Normalizar: remover não-dígitos, garantir prefixo 55
-   - Se começa com 55 e tem 12-13 dígitos → ok
-   - Se tem 10-11 dígitos → prefixar 55
-   - Se vazio após normalização → IGNORED_NO_NUMBER
+RLS: same pattern.
 
-3. Se whatsapp_status=valido e last_check <= 7 dias → enviar direto
+## 2. Edge Function: `send-orbit-campaign/index.ts`
 
-4. Senão, validar via Z-API phone-exists:
-   a. Se válido → salvar em prospect.whatsapp (se veio do telefone),
-      status=valido, last_check=now(), enviar
-   b. Se inválido e número tem 10 dígitos (sem 55):
-      - Tentar 55 + DDD + 9 + restante
-      - Se válido → salvar versão com 9, status=valido, enviar
-      - Se inválido → status=invalido, IGNORED_NO_WHATSAPP
-   c. Se inválido e 11 dígitos → status=invalido, IGNORED_NO_WHATSAPP
-```
+Refatorar o loop de envio WhatsApp:
 
-### 2. Contadores atualizados
+**Antes do loop:**
+- Buscar `orbit_whatsapp_sending_config` para a empresa (usar defaults se não existir)
+- Buscar/criar `orbit_whatsapp_daily_usage` para hoje
+- Calcular `daily_limit` efetivo considerando warm-up:
+  - Se `warmup_enabled` e `warmup_start_date` definido, calcular dias desde início
+  - Escala: dia 1→50, dia 2→80, dia 3→120, dia 4→200, dia 5→300, dia 6+→config.daily_limit
+  - Delays maiores nos primeiros 3 dias: multiplicar min/max por 1.5
 
-Renomear e adicionar contadores:
-- `enviados` — enviados sem necessidade de validação
-- `validados_enviados` — validados + enviados
-- `ignorados_sem_numero` — sem telefone nem whatsapp
-- `ignorados_sem_whatsapp` — número existe mas não é WhatsApp
-- `ignorados_whatsapp_invalido` — já marcado como inválido (cache)
-- `falhas` — erros técnicos
+**No loop:**
+- Substituir `jitterDelay` atual (150-350ms) por `delayMs(random(config.min_delay_ms, config.max_delay_ms))` antes de CADA envio
+- Contar envios no lote; ao atingir `batch_size`, pausar `batch_pause_ms`
+- Antes de enviar, checar: se `daily_usage.sent_count >= effective_daily_limit`:
+  - Marcar campanha status `"pausada_por_limite"`
+  - Retornar com `pausada_por_limite: true` e `remaining_pending` no relatório
+  - Parar o loop
+- Incrementar `sent_count` na tabela `orbit_whatsapp_daily_usage` a cada envio bem-sucedido
 
-### 3. Delay com jitter em TODOS os envios
+**Novo status de campanha:** `pausada_por_limite`
 
-Aplicar delay aleatório (150–350ms) antes de cada envio de mensagem, não apenas na validação:
+## 3. UI: `CampanhasPage.tsx`
 
-```typescript
-const jitterDelay = () => delayMs(150 + Math.random() * 200);
-```
+- Adicionar `pausada_por_limite` ao `statusConfig` (ex: laranja/amarelo, "Limite Diário Atingido")
+- No `handleSend` response, mostrar info extra se `pausada_por_limite: true`
+- Permitir "Retomar" em campanhas `pausada_por_limite` (já funciona pois usa `handleSend`)
 
-### 4. Códigos padronizados no campo `erro`
+## 4. UI: `ConfigPage.tsx`
 
-Usar códigos no campo `erro` do `orbit_campaign_recipients`:
-- `IGNORED_NO_NUMBER` — sem número candidato
-- `IGNORED_NO_WHATSAPP` — validação Z-API retornou inexistente
-- `IGNORED_INVALID_WHATSAPP` — cache indica inválido
+Na aba Z-API, adicionar seção "Controle de Ritmo":
+- Campos para min/max delay, batch size, pause, daily limit, max/min
+- Toggle warm-up com data de início
+- Exibir contador "Enviados hoje: X / Y"
 
-### 5. Relatório final
+## 5. Hook: `useOrbitConfig.ts`
 
-Retornar objeto com todas as contagens separadas no response.
+Adicionar hooks:
+- `useWhatsAppSendingConfig(empresaId)` — buscar config
+- `useUpdateWhatsAppSendingConfig()` — upsert config
+- `useWhatsAppDailyUsage(empresaId)` — buscar uso de hoje
 
-## Arquivo único alterado
+## Arquivos alterados
 
 | Arquivo | Ação |
 |---|---|
-| `supabase/functions/send-orbit-campaign/index.ts` | Refatorar bloco WhatsApp com fallback telefone, tentativa +9, jitter delay, códigos padronizados |
+| Migration SQL | Criar 2 tabelas + RLS |
+| `send-orbit-campaign/index.ts` | Rate limiting, lotes, limite diário, warm-up |
+| `src/pages/orbit/CampanhasPage.tsx` | Novo status + relatório expandido |
+| `src/pages/orbit/ConfigPage.tsx` | Seção de configuração de ritmo |
+| `src/hooks/useOrbitConfig.ts` | 3 novos hooks |
 
