@@ -1,126 +1,67 @@
 
 
-# Separar Telefone e WhatsApp no Orbit
+# Migração inteligente de telefone/WhatsApp com validação Z-API
 
-## Resumo
+## Contexto
 
-Atualmente o campo `telefone_whatsapp` serve tanto como telefone geral quanto WhatsApp. Vamos criar um campo `whatsapp` dedicado com `whatsapp_status` para controle de validação, ajustar o import CSV, migrar dados existentes, atualizar a UI e integrar validação via Z-API.
+Hoje a migração SQL apenas copia números de 11 dígitos para `whatsapp`. Números com 10 dígitos (que podem ser celulares antigos sem o 9) ficam apenas em `telefone` sem tentativa de validação. O pedido é: para números de 10 dígitos, tentar validar via Z-API se é WhatsApp; se não for, adicionar o 9 após o DDD e tentar novamente.
 
-## 1. Migration SQL — Novos campos + migração de dados
+## Abordagem
 
-Adicionar 2 colunas à tabela `orbit_prospects`:
+Criar uma **Edge Function `orbit-migrate-phones`** que executa a migração em lote por empresa, usando Z-API para resolver números ambíguos de 10 dígitos. Também ajustar a função `normalizePhoneFields` no import CSV para tratar o código de país 55.
 
-```sql
-ALTER TABLE orbit_prospects
-  ADD COLUMN whatsapp text,
-  ADD COLUMN whatsapp_status text NOT NULL DEFAULT 'nao_verificado';
+## 1. Nova Edge Function: `orbit-migrate-phones`
 
--- Migrar dados existentes: se telefone_whatsapp tem 11 dígitos, copiar para whatsapp
-UPDATE orbit_prospects
-SET whatsapp = telefone_whatsapp,
-    whatsapp_status = 'nao_verificado'
-WHERE whatsapp IS NULL
-  AND telefone_whatsapp IS NOT NULL
-  AND length(regexp_replace(telefone_whatsapp, '[^0-9]', '', 'g')) = 11;
+**`supabase/functions/orbit-migrate-phones/index.ts`**
 
--- Renomear telefone_whatsapp para telefone (mais semântico)
-ALTER TABLE orbit_prospects RENAME COLUMN telefone_whatsapp TO telefone;
-```
+Lógica:
+1. Recebe `{ empresa_id }` (ou executa para todas se super admin)
+2. Busca todos prospects com `telefone` preenchido e `whatsapp` vazio, paginando
+3. Para cada prospect:
+   - Remove não-dígitos do telefone
+   - Se começa com `55`, remove temporariamente para análise
+   - Se resultado tem **11 dígitos** (DDD+9): copia direto para `whatsapp` com prefixo `55`, marca `nao_verificado`
+   - Se resultado tem **10 dígitos** (DDD+8): busca config Z-API da empresa
+     - Tenta validar `55 + número` via Z-API `phone-exists`
+     - Se válido: salva em `whatsapp` como `55{número}`, status `valido`
+     - Se inválido: insere o 9 após o DDD → `55{DDD}9{restante}`, tenta novamente
+     - Se válido com 9: salva em `whatsapp` como `55{DDD}9{restante}`, status `valido`
+     - Se ambos inválidos: mantém apenas em `telefone`, status `invalido`
+   - Outros tamanhos: ignora
+4. Retorna resumo: `{ total, migrados, validados_zapi, invalidos }`
 
-> **Nota:** O rename de `telefone_whatsapp` → `telefone` requer atualizar todas as referências no código. Alternativa: manter `telefone_whatsapp` como `telefone` geral e apenas adicionar `whatsapp` + `whatsapp_status`. Vou usar o rename para clareza semântica.
+Rate limiting: delay de 500ms entre chamadas Z-API para não estourar limites.
 
-## 2. Arquivos frontend a alterar
+## 2. Ajustar `normalizePhoneFields` no import CSV
 
-### `src/hooks/useImportProspects.ts`
-- Atualizar `ParsedProspect` com campos `telefone` e `whatsapp`
-- No `COLUMN_MAP`: `'telefone'` → `telefone`, `'whatsapp'`/`'celular'` → `whatsapp`
-- Após parse, normalizar número: remover não-dígitos. Se 10 dígitos → salvar em `telefone`. Se 11 dígitos → salvar em `whatsapp` + `whatsapp_status = 'nao_verificado'`
-- Ajustar dedup para checar ambos os campos
-- Atualizar o insert para enviar `telefone`, `whatsapp`, `whatsapp_status`
+**`src/hooks/useImportProspects.ts`** — função `normalizePhoneFields`:
 
-### `src/hooks/useOrbitProspects.ts`
-- Atualizar filtro de busca: `telefone_whatsapp` → `telefone` e adicionar `whatsapp`
+- Ao receber número, remover não-dígitos
+- Se começa com `55` e tem 12+ dígitos, remover o `55` para análise
+- Se 11 dígitos → `whatsapp = '55' + digits`, status `nao_verificado`
+- Se 10 dígitos → `telefone = digits`, `whatsapp_status = 'nao_verificado'` (será validado depois via Z-API)
+- Manter prefixo `55` no campo `whatsapp` para formato internacional
 
-### `src/components/orbit/ProspectDialog.tsx`
-- Substituir campo único `telefone_whatsapp` por dois campos: **Telefone** e **WhatsApp**
-- Adicionar campo `whatsapp_status` (read-only ou select)
-- Atualizar schema zod, defaultValues e reset
+## 3. Ajustar `orbit-validate-whatsapp` existente
 
-### `src/components/orbit/ProspectActionCard.tsx`
-- Mostrar telefone e whatsapp separadamente com ícones distintos
-- Badge de `whatsapp_status` (✓ válido / ? não verificado / ✗ inválido)
-- Botão "Iniciar conversa" (WhatsApp) habilitado apenas quando `whatsapp` existir e `whatsapp_status !== 'invalido'`
+**`supabase/functions/orbit-validate-whatsapp/index.ts`**:
 
-### `src/components/orbit/RecipientSelector.tsx`
-- `hasContact` para canal whatsapp: checar `p.whatsapp` (não mais `telefone_whatsapp`) e `whatsapp_status !== 'invalido'`
-- Atualizar referências de exibição
+Adicionar lógica de fallback para números de 10 dígitos no campo `telefone`:
+- Se prospect não tem `whatsapp` mas tem `telefone` com 10 dígitos, incluir na validação
+- Tentar `55 + telefone` → se válido, mover para `whatsapp`
+- Senão, tentar `55 + DDD + 9 + restante` → se válido, mover para `whatsapp`
+- Atualizar `whatsapp_status` conforme resultado
 
-### `src/pages/orbit/ProspectsPage.tsx`
-- `onWhatsApp` usar `prospect.whatsapp` em vez de `telefone_whatsapp`
+## 4. Botão na UI para executar migração
 
-### `src/pages/orbit/OrbitDashboard.tsx`
-- Atualizar mapeamento de `telefone_whatsapp` → `telefone`
+**`src/pages/orbit/ConfigPage.tsx`** — Adicionar botão "Migrar telefones existentes" na seção de configuração, que chama a edge function `orbit-migrate-phones`. Mostrar progresso/resultado via toast.
 
-### `src/pages/orbit/ConversasPage.tsx`
-- Referências de `telefone_whatsapp` na conversa (estes usam `orbit_conversas.telefone_whatsapp` que não muda)
-
-### `src/pages/orbit/ConfigPage.tsx`
-- Atualizar referência na tabela de prospects
-
-### `src/components/orbit/ProspectCard.tsx`
-- Atualizar referências (se usado)
-
-## 3. Edge Functions a alterar
-
-### `supabase/functions/send-orbit-campaign/index.ts`
-- Para canal WhatsApp: usar `prospect.whatsapp` em vez de `prospect.telefone_whatsapp`
-- Filtrar apenas prospects com `whatsapp IS NOT NULL` e `whatsapp_status != 'invalido'`
-
-### `supabase/functions/orbit-webhook/index.ts`
-- Ao criar prospect via webhook WhatsApp: salvar número em `whatsapp` (e em `telefone` também)
-- Buscar prospect por `whatsapp` em vez de `telefone_whatsapp`
-
-### `supabase/functions/orbit-ai-agent/index.ts`
-- Atualizar referência de contexto
-
-### `supabase/functions/send-vendedor-notification/index.ts`
-- Atualizar template de notificação
-
-## 4. Edge Function nova: `orbit-validate-whatsapp`
-
-Endpoint para validar números via Z-API (individual ou em lote):
-
-```
-POST /orbit-validate-whatsapp
-{ prospect_ids: string[] }
-```
-
-- Busca config Z-API da empresa
-- Para cada prospect com `whatsapp` preenchido, chama Z-API `phone-exists`
-- Atualiza `whatsapp_status` para `valido` ou `invalido`
-- Retorna resumo
-
-Será chamado:
-- Automaticamente ao "Iniciar conversa" (validação individual)
-- Via botão "Validar WhatsApp" na UI (lote)
-
-## 5. Resumo de arquivos
+## Resumo de arquivos
 
 | Arquivo | Ação |
 |---|---|
-| Migration SQL | ADD `whatsapp`, `whatsapp_status`; RENAME `telefone_whatsapp` → `telefone`; migrar dados |
-| `useImportProspects.ts` | Lógica 10/11 dígitos, novos campos |
-| `useOrbitProspects.ts` | Atualizar filtro de busca |
-| `ProspectDialog.tsx` | 2 campos separados + badge status |
-| `ProspectActionCard.tsx` | Exibir telefone/whatsapp separados, badge status, condicional no botão |
-| `RecipientSelector.tsx` | Usar `whatsapp` para canal WhatsApp |
-| `ProspectsPage.tsx` | Usar `whatsapp` no onWhatsApp |
-| `OrbitDashboard.tsx` | Atualizar ref |
-| `ConfigPage.tsx` | Atualizar ref |
-| `ProspectCard.tsx` | Atualizar ref |
-| `send-orbit-campaign` | Usar `whatsapp` para envio |
-| `orbit-webhook` | Salvar em `whatsapp` |
-| `orbit-ai-agent` | Atualizar contexto |
-| `send-vendedor-notification` | Atualizar template |
-| **Nova:** `orbit-validate-whatsapp` | Validação Z-API individual/lote |
+| **Nova:** `supabase/functions/orbit-migrate-phones/index.ts` | Edge function de migração em lote com validação Z-API |
+| `supabase/functions/orbit-validate-whatsapp/index.ts` | Adicionar fallback para telefones de 10 dígitos |
+| `src/hooks/useImportProspects.ts` | Tratar código país 55 na normalização |
+| `src/pages/orbit/ConfigPage.tsx` | Botão para executar migração |
 
