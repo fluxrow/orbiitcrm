@@ -6,6 +6,30 @@ interface CampaignRequest {
   campaign_id: string;
 }
 
+const delayMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+const VALIDATION_CACHE_DAYS = 7;
+
+function isCheckExpired(lastCheck: string | null): boolean {
+  if (!lastCheck) return true;
+  const diff = Date.now() - new Date(lastCheck).getTime();
+  return diff > VALIDATION_CACHE_DAYS * 24 * 60 * 60 * 1000;
+}
+
+async function validateWhatsAppNumber(
+  phone: string,
+  zapiBaseUrl: string,
+  headers: Record<string, string>
+): Promise<boolean> {
+  const res = await fetch(`${zapiBaseUrl}/phone-exists/${phone}`, {
+    method: "GET",
+    headers,
+  });
+  if (!res.ok) return false;
+  const result = await res.json();
+  return result.exists === true;
+}
+
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return optionsResponse();
 
@@ -78,10 +102,13 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (!recipients || recipients.length === 0) {
       await supabase.from("orbit_campaigns").update({ status: "concluida" }).eq("id", campaign_id);
-      return ok({ enviados: 0, falhas: 0, message: "Campanha concluída" });
+      return ok({ enviados: 0, validados_enviados: 0, sem_whatsapp: 0, whatsapp_invalido: 0, falhas: 0, message: "Campanha concluída" });
     }
 
     let enviados = 0;
+    let validados_enviados = 0;
+    let sem_whatsapp = 0;
+    let whatsapp_invalido = 0;
     let falhas = 0;
 
     let resendConfig = null;
@@ -94,6 +121,13 @@ const handler = async (req: Request): Promise<Response> => {
       const { data } = await supabase.from("orbit_zapi_config").select("*").eq("empresa_id", campaign.empresa_id).maybeSingle();
       zapiConfig = data;
     }
+
+    // Z-API headers for validation
+    const zapiBaseUrl = zapiConfig ? `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}` : "";
+    const zapiHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Client-Token": zapiConfig?.client_token || "",
+    };
 
     // Get template image URL
     const templateImageUrl = campaign.template?.imagem_url || null;
@@ -135,6 +169,7 @@ const handler = async (req: Request): Promise<Response> => {
         }
 
         if (campaign.canal === "email") {
+          // ── Email sending (unchanged) ──
           if (!resendConfig?.api_key || !prospect.email_principal) {
             await supabase.from("orbit_campaign_recipients").update({ status: "falhou", erro: "Email não configurado ou prospect sem email" }).eq("id", recipient.id);
             falhas++;
@@ -145,7 +180,6 @@ const handler = async (req: Request): Promise<Response> => {
             ? `${resendConfig.from_name || "Orbit"} <${resendConfig.from_email}>`
             : "Orbit <onboarding@resend.dev>";
 
-          // Build HTML with image before text
           let emailHtml = "";
           if (templateImageUrl) {
             emailHtml += `<div style="margin-bottom:16px"><img src="${templateImageUrl}" alt="Campanha" style="max-width:100%;height:auto;border-radius:8px" /></div>`;
@@ -170,28 +204,70 @@ const handler = async (req: Request): Promise<Response> => {
           }
           enviados++;
         } else {
-          if (!zapiConfig?.instance_id || !zapiConfig?.token || !prospect.whatsapp) {
-            await supabase.from("orbit_campaign_recipients").update({ status: "falhou", erro: "Z-API não configurado ou prospect sem WhatsApp" }).eq("id", recipient.id);
+          // ── WhatsApp sending with pre-flight validation ──
+
+          // 1. No whatsapp
+          if (!prospect.whatsapp) {
+            await supabase.from("orbit_campaign_recipients").update({ status: "ignorado", erro: "sem whatsapp" }).eq("id", recipient.id);
+            sem_whatsapp++;
+            continue;
+          }
+
+          // 2. Already invalid
+          if (prospect.whatsapp_status === "invalido") {
+            await supabase.from("orbit_campaign_recipients").update({ status: "ignorado", erro: "whatsapp invalido" }).eq("id", recipient.id);
+            whatsapp_invalido++;
+            continue;
+          }
+
+          // 3. Z-API config check
+          if (!zapiConfig?.instance_id || !zapiConfig?.token) {
+            await supabase.from("orbit_campaign_recipients").update({ status: "falhou", erro: "Z-API não configurado" }).eq("id", recipient.id);
             falhas++;
             continue;
           }
 
           const phone = prospect.whatsapp.replace(/\D/g, "");
-          const zapiBaseUrl = `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}`;
 
-          // Send image first if present
+          // 4. Pre-flight validation if needed
+          const needsValidation =
+            prospect.whatsapp_status === "nao_verificado" ||
+            isCheckExpired(prospect.whatsapp_last_check_at);
+
+          if (needsValidation) {
+            await delayMs(300);
+            const exists = await validateWhatsAppNumber(phone, zapiBaseUrl, zapiHeaders);
+
+            await supabase
+              .from("orbit_prospects")
+              .update({
+                whatsapp_status: exists ? "valido" : "invalido",
+                whatsapp_last_check_at: new Date().toISOString(),
+              })
+              .eq("id", prospect.id);
+
+            if (!exists) {
+              await supabase.from("orbit_campaign_recipients").update({ status: "ignorado", erro: "whatsapp invalido (validado)" }).eq("id", recipient.id);
+              whatsapp_invalido++;
+              continue;
+            }
+
+            // Will send below, count as validated+sent
+            validados_enviados++;
+          }
+
+          // 5. Send WhatsApp message
           if (templateImageUrl) {
             await fetch(`${zapiBaseUrl}/send-image`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: zapiHeaders,
               body: JSON.stringify({ phone, image: templateImageUrl, caption: "" }),
             });
           }
 
-          // Then send text
           const zapiRes = await fetch(`${zapiBaseUrl}/send-text`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: zapiHeaders,
             body: JSON.stringify({ phone, message: mensagem }),
           });
 
@@ -199,7 +275,10 @@ const handler = async (req: Request): Promise<Response> => {
             const err = await zapiRes.json();
             throw new Error(err.message || "Erro ao enviar WhatsApp");
           }
-          enviados++;
+
+          if (!needsValidation) {
+            enviados++;
+          }
         }
 
         await supabase.from("orbit_campaign_recipients").update({ status: "enviado", enviado_em: new Date().toISOString() }).eq("id", recipient.id);
@@ -214,13 +293,18 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
+    const totalEnviados = enviados + validados_enviados;
+
     await supabase.from("orbit_campaigns").update({
-      enviados: (campaign.enviados || 0) + enviados,
+      enviados: (campaign.enviados || 0) + totalEnviados,
       falhas: (campaign.falhas || 0) + falhas,
       status: recipients.length <= 100 ? "concluida" : "enviando",
     }).eq("id", campaign_id);
 
-    return ok({ enviados, falhas }, { simulated: isDemo });
+    return ok(
+      { enviados, validados_enviados, sem_whatsapp, whatsapp_invalido, falhas },
+      { simulated: isDemo }
+    );
   } catch (error: any) {
     console.error("Erro ao processar campanha:", error);
     return fail(ErrorCodes.INTERNAL_ERROR, error.message, 500);
