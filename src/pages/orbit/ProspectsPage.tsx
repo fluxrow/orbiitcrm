@@ -286,9 +286,17 @@ export default function ProspectsPage() {
                   isSelected={selectedIds.has(p.id)}
                   onToggleSelect={handleToggleSelect}
                   onEdit={handleEdit}
-                  onWhatsApp={(pr) => {
-                    if (pr.whatsapp && pr.whatsapp_status !== "invalido") {
-                      window.open(`https://wa.me/${pr.whatsapp.replace(/\D/g, "")}`, "_blank");
+                   onWhatsApp={(pr) => {
+                     const raw = pr.whatsapp || pr.telefone;
+                     if (raw) {
+                       let num = raw.replace(/\D/g, "");
+                       if (num.length >= 10 && num.length <= 11 && !num.startsWith("55")) {
+                         num = "55" + num;
+                       }
+                       if (pr.whatsapp_status !== "valido") {
+                         toast.info("⚠ WhatsApp não verificado. Tentando iniciar conversa...");
+                       }
+                       window.open(`https://wa.me/${num}`, "_blank");
                     }
                   }}
                   onEmail={(pr) => {
