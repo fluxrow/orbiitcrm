@@ -1,0 +1,1 @@
+ALTER TABLE orbit_prospects ADD COLUMN IF NOT EXISTS whatsapp_last_check_at timestamptz;

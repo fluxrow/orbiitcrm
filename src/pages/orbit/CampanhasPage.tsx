@@ -141,8 +141,15 @@ export default function CampanhasPage() {
         body: { campaign_id: campaignId }
       });
 
-      const result = handleApiResponse<{ enviados: number; falhas: number }>(response);
-      toast.success(`Enviados: ${result.enviados}, Falhas: ${result.falhas}`);
+      const result = handleApiResponse<{ enviados: number; validados_enviados: number; sem_whatsapp: number; whatsapp_invalido: number; falhas: number }>(response);
+      const parts = [
+        `✅ Enviados: ${result.enviados}`,
+        result.validados_enviados ? `🔍 Validados+Enviados: ${result.validados_enviados}` : null,
+        result.sem_whatsapp ? `⚠️ Sem WhatsApp: ${result.sem_whatsapp}` : null,
+        result.whatsapp_invalido ? `❌ Inválidos: ${result.whatsapp_invalido}` : null,
+        result.falhas ? `🔴 Erros: ${result.falhas}` : null,
+      ].filter(Boolean);
+      toast.success(parts.join(" | "));
       refetch();
     } catch (error: any) {
       toast.error(error.message || "Erro ao enviar campanha");

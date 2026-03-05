@@ -84,7 +84,7 @@ const handler = async (req: Request): Promise<Response> => {
 
           await supabase
             .from("orbit_prospects")
-            .update({ whatsapp_status: newStatus })
+            .update({ whatsapp_status: newStatus, whatsapp_last_check_at: new Date().toISOString() })
             .eq("id", prospect.id);
 
           if (exists) validos++;
@@ -116,10 +116,10 @@ const handler = async (req: Request): Promise<Response> => {
             if (res.ok) {
               const result = await res.json();
               if (result.exists === true) {
-                await supabase
-                  .from("orbit_prospects")
-                  .update({ whatsapp: phone10, whatsapp_status: "valido" })
-                  .eq("id", prospect.id);
+                  await supabase
+                    .from("orbit_prospects")
+                    .update({ whatsapp: phone10, whatsapp_status: "valido", whatsapp_last_check_at: new Date().toISOString() })
+                    .eq("id", prospect.id);
                 validos++;
                 migrados_telefone++;
                 found = true;
@@ -146,7 +146,7 @@ const handler = async (req: Request): Promise<Response> => {
                 if (result.exists === true) {
                   await supabase
                     .from("orbit_prospects")
-                    .update({ whatsapp: phone11, whatsapp_status: "valido" })
+                    .update({ whatsapp: phone11, whatsapp_status: "valido", whatsapp_last_check_at: new Date().toISOString() })
                     .eq("id", prospect.id);
                   validos++;
                   migrados_telefone++;
@@ -161,7 +161,7 @@ const handler = async (req: Request): Promise<Response> => {
           if (!found) {
             await supabase
               .from("orbit_prospects")
-              .update({ whatsapp_status: "invalido" })
+              .update({ whatsapp_status: "invalido", whatsapp_last_check_at: new Date().toISOString() })
               .eq("id", prospect.id);
             invalidos++;
           }

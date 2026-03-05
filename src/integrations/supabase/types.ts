@@ -1945,6 +1945,7 @@ export type Database = {
           tipo: string | null
           updated_at: string | null
           whatsapp: string | null
+          whatsapp_last_check_at: string | null
           whatsapp_status: string
         }
         Insert: {
@@ -1973,6 +1974,7 @@ export type Database = {
           tipo?: string | null
           updated_at?: string | null
           whatsapp?: string | null
+          whatsapp_last_check_at?: string | null
           whatsapp_status?: string
         }
         Update: {
@@ -2001,6 +2003,7 @@ export type Database = {
           tipo?: string | null
           updated_at?: string | null
           whatsapp?: string | null
+          whatsapp_last_check_at?: string | null
           whatsapp_status?: string
         }
         Relationships: [
