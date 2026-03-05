@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import orbitLogo from "@/assets/orbit-logo.png";
 import { useIsAdmin } from "@/hooks/useUserRole";
+import { useOrbitTasks } from "@/hooks/useOrbitTasks";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,8 @@ export function OrbitSidebar() {
   const { isAdmin } = useIsAdmin();
   const { basePath, isDemo } = useTenant();
   const { user, signOut } = useAuth();
+  const { data: pendingTasks } = useOrbitTasks({ status: "pending" });
+  const pendingCount = pendingTasks?.length || 0;
 
   const displayName = user?.user_metadata?.nome || user?.email || "Usuário";
   const displayEmail = user?.email || "";
@@ -41,7 +44,7 @@ export function OrbitSidebar() {
     { name: "Prospects", href: `${basePath}/prospects`, icon: Users },
     { name: "Conversas", href: `${basePath}/conversas`, icon: MessageSquare },
     { name: "Funil", href: `${basePath}/funil`, icon: Kanban },
-    { name: "Tarefas", href: `${basePath}/tarefas`, icon: CheckSquare },
+    { name: "Tarefas", href: `${basePath}/tarefas`, icon: CheckSquare, badge: pendingCount > 0 ? pendingCount : undefined },
     { name: "Campanhas", href: `${basePath}/campanhas`, icon: Mail },
     { name: "Templates", href: `${basePath}/templates`, icon: FileText },
     { name: "Lead Finder", href: `${basePath}/lead-finder`, icon: Search },
@@ -79,7 +82,12 @@ export function OrbitSidebar() {
               )}
             >
               <item.icon className="w-5 h-5" />
-              <span>{item.name}</span>
+              <span className="flex-1">{item.name}</span>
+              {item.badge && (
+                <span className="ml-auto min-w-[20px] h-5 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[11px] font-semibold px-1.5">
+                  {item.badge > 99 ? "99+" : item.badge}
+                </span>
+              )}
             </Link>
           );
         })}
