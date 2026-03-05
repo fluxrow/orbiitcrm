@@ -95,6 +95,18 @@ export function useCreateProspect() {
         .select()
         .single();
       if (error) throw error;
+
+      // Auto-register lead_created event
+      if (data.empresa_id) {
+        await supabase.from("prospect_events" as any).insert({
+          empresa_id: data.empresa_id,
+          prospect_id: data.id,
+          event_type: "lead_created",
+          titulo: "Lead criado",
+          descricao: `Prospect ${data.nome_razao} foi criado`,
+        }).then(() => {});
+      }
+
       return data;
     },
     onSuccess: () => {
