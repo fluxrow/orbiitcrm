@@ -2243,6 +2243,39 @@ export type Database = {
           },
         ]
       }
+      orbit_webhook_logs: {
+        Row: {
+          created_at: string | null
+          error_message: string | null
+          event_type: string | null
+          id: string
+          instance_id: string | null
+          payload: Json | null
+          phone: string | null
+          status: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          error_message?: string | null
+          event_type?: string | null
+          id?: string
+          instance_id?: string | null
+          payload?: Json | null
+          phone?: string | null
+          status?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          error_message?: string | null
+          event_type?: string | null
+          id?: string
+          instance_id?: string | null
+          payload?: Json | null
+          phone?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
       orbit_whatsapp_daily_limits: {
         Row: {
           created_at: string | null

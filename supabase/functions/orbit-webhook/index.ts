@@ -11,34 +11,57 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
 
+  // Will be set later for logging
+  let logId: string | null = null;
+
+  try {
     const url = new URL(req.url);
     const eventType = url.searchParams.get("event") || "on-receive";
 
     const payload = await req.json();
     console.log(`[orbit-webhook] Evento: ${eventType}, Payload:`, JSON.stringify(payload));
 
+    const payloadInstanceId = payload.instanceId || null;
+    const payloadPhone = payload.phone?.replace(/\D/g, "") || payload.from?.replace(/\D/g, "") || null;
+
+    // Insert webhook log
+    const { data: logRow } = await supabase
+      .from("orbit_webhook_logs")
+      .insert({
+        event_type: eventType,
+        instance_id: payloadInstanceId,
+        phone: payloadPhone,
+        payload,
+        status: "received",
+      })
+      .select("id")
+      .single();
+    logId = logRow?.id || null;
+
     // Handle non-message events
     switch (eventType) {
       case "on-connect":
         console.log("[orbit-webhook] Instância conectada");
+        if (logId) await supabase.from("orbit_webhook_logs").update({ status: "processed" }).eq("id", logId);
         return new Response(JSON.stringify({ ok: true, event: "on-connect" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
 
       case "on-disconnect":
         console.log("[orbit-webhook] Instância desconectada");
+        if (logId) await supabase.from("orbit_webhook_logs").update({ status: "processed" }).eq("id", logId);
         return new Response(JSON.stringify({ ok: true, event: "on-disconnect" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
 
       case "presence":
         console.log("[orbit-webhook] Atualização de presença:", payload.status);
+        if (logId) await supabase.from("orbit_webhook_logs").update({ status: "processed" }).eq("id", logId);
         return new Response(JSON.stringify({ ok: true, event: "presence", status: payload.status }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -50,6 +73,7 @@ serve(async (req) => {
             .update({ status: payload.status || "delivered" })
             .eq("provider_message_id", payload.messageId);
         }
+        if (logId) await supabase.from("orbit_webhook_logs").update({ status: "processed" }).eq("id", logId);
         return new Response(JSON.stringify({ ok: true, event: "message-status" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -61,9 +85,7 @@ serve(async (req) => {
     }
 
     // ── Resolve empresa_id from Z-API config ──
-    // Try matching by instance_id from the payload, or fall back to first active config
     let empresaId: string | null = null;
-    const payloadInstanceId = payload.instanceId || null;
 
     if (payloadInstanceId) {
       const { data: zapiByInstance } = await supabase
@@ -75,7 +97,6 @@ serve(async (req) => {
     }
 
     if (!empresaId) {
-      // Fallback: get the first active Z-API config
       const { data: zapiActive } = await supabase
         .from("orbit_zapi_config")
         .select("empresa_id, notificar_enviadas_por_mim")
@@ -84,8 +105,8 @@ serve(async (req) => {
         .maybeSingle();
       empresaId = zapiActive?.empresa_id || null;
 
-      // Handle on-send notification check
       if (eventType === "on-send" && !zapiActive?.notificar_enviadas_por_mim) {
+        if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "own messages disabled" }).eq("id", logId);
         return new Response(JSON.stringify({ ok: true, skipped: true, reason: "own messages disabled" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -97,6 +118,7 @@ serve(async (req) => {
         .eq("empresa_id", empresaId)
         .maybeSingle();
       if (!zapiCfg?.notificar_enviadas_por_mim) {
+        if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "own messages disabled" }).eq("id", logId);
         return new Response(JSON.stringify({ ok: true, skipped: true, reason: "own messages disabled" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -112,6 +134,7 @@ serve(async (req) => {
     const fromMe = payload.fromMe || eventType === "on-send";
 
     if (!phone || (fromMe && eventType !== "on-send")) {
+      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "no phone or skipped fromMe" }).eq("id", logId);
       return new Response(JSON.stringify({ ok: true, skipped: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -119,14 +142,24 @@ serve(async (req) => {
 
     const normalizedPhone = phone.startsWith("55") ? phone : `55${phone}`;
 
-    // 1. Find or create prospect (with empresa_id)
+    // 1. Find or create prospect — search by whatsapp OR telefone
     let prospectQuery = supabase
       .from("orbit_prospects")
       .select("*")
-      .eq("whatsapp", normalizedPhone);
+      .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`);
     if (empresaId) prospectQuery = prospectQuery.eq("empresa_id", empresaId);
 
     let { data: prospect } = await prospectQuery.maybeSingle();
+
+    // Auto-fill whatsapp if found via telefone only
+    if (prospect && !prospect.whatsapp) {
+      console.log("[orbit-webhook] Auto-preenchendo whatsapp para prospect:", prospect.id);
+      await supabase
+        .from("orbit_prospects")
+        .update({ whatsapp: normalizedPhone, whatsapp_status: "nao_verificado" })
+        .eq("id", prospect.id);
+      prospect.whatsapp = normalizedPhone;
+    }
 
     if (!prospect) {
       // Check prospect limit for demo plans
@@ -147,6 +180,7 @@ serve(async (req) => {
 
           if (count !== null && count >= maxProspects) {
             console.log("[orbit-webhook] Prospect limit reached for empresa:", empresaId);
+            if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "prospect_limit_reached" }).eq("id", logId);
             return new Response(JSON.stringify({ ok: true, skipped: true, reason: "prospect_limit_reached" }), {
               headers: { ...corsHeaders, "Content-Type": "application/json" },
             });
@@ -171,17 +205,15 @@ serve(async (req) => {
         .single();
 
       if (prospectError) {
-        // Handle duplicate phone (prospect exists with NULL or different empresa_id)
         if (prospectError.code === "23505") {
-          console.log("[orbit-webhook] Prospect duplicado, buscando existente sem filtro empresa_id");
+          console.log("[orbit-webhook] Prospect duplicado, buscando por whatsapp OR telefone sem filtro empresa_id");
           const { data: existingProspect } = await supabase
             .from("orbit_prospects")
             .select("*")
-            .eq("whatsapp", normalizedPhone)
+            .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`)
             .maybeSingle();
 
           if (existingProspect) {
-            // Update empresa_id if missing
             if (!existingProspect.empresa_id && empresaId) {
               await supabase
                 .from("orbit_prospects")
@@ -189,10 +221,22 @@ serve(async (req) => {
                 .eq("id", existingProspect.id);
               existingProspect.empresa_id = empresaId;
             }
+            // Auto-fill whatsapp if missing
+            if (!existingProspect.whatsapp) {
+              console.log("[orbit-webhook] Auto-preenchendo whatsapp (fallback) para prospect:", existingProspect.id);
+              await supabase
+                .from("orbit_prospects")
+                .update({ whatsapp: normalizedPhone, whatsapp_status: "nao_verificado" })
+                .eq("id", existingProspect.id);
+              existingProspect.whatsapp = normalizedPhone;
+            }
             prospect = existingProspect;
           } else {
-            console.error("[orbit-webhook] Prospect duplicado mas não encontrado:", prospectError);
-            throw prospectError;
+            console.error("[orbit-webhook] Prospect duplicado mas não encontrado com OR:", normalizedPhone);
+            if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "duplicate_unresolved" }).eq("id", logId);
+            return new Response(JSON.stringify({ ok: true, ignored: true, reason: "duplicate_unresolved" }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
           }
         } else {
           console.error("[orbit-webhook] Erro ao criar prospect:", prospectError);
@@ -203,7 +247,7 @@ serve(async (req) => {
       }
     }
 
-    // 2. Find or create conversation (with empresa_id)
+    // 2. Find or create conversation
     let conversaQuery = supabase
       .from("orbit_conversas")
       .select("*")
@@ -248,6 +292,7 @@ serve(async (req) => {
 
       if (existingMsg) {
         console.log("[orbit-webhook] Mensagem duplicada ignorada:", messageId);
+        if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "duplicate_message" }).eq("id", logId);
         return new Response(JSON.stringify({ ok: true, duplicate: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -300,12 +345,16 @@ serve(async (req) => {
       }
     }
 
+    // Update log as processed
+    if (logId) await supabase.from("orbit_webhook_logs").update({ status: "processed" }).eq("id", logId);
+
     return new Response(JSON.stringify({ ok: true, event: eventType, prospect_id: prospect.id, conversa_id: conversa.id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[orbit-webhook] Erro:", message);
+    if (logId) await supabase.from("orbit_webhook_logs").update({ status: "failed", error_message: message }).eq("id", logId).catch(() => {});
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
