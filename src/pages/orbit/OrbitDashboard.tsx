@@ -54,7 +54,7 @@ export default function OrbitDashboard() {
     nome_razao: p.nome_razao,
     nome_fantasia: p.nome_fantasia ?? undefined,
     email_principal: p.email_principal ?? undefined,
-    telefone: p.telefone_whatsapp ?? undefined,
+    telefone: p.telefone ?? p.whatsapp ?? undefined,
     cidade: p.cidade ?? undefined,
     segmento: p.segmento ?? undefined,
     status: (p.status_qualificacao ?? "novo") as "novo" | "em_contato" | "qualificado" | "nao_qualificado",

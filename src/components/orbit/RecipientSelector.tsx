@@ -118,7 +118,8 @@ export function RecipientSelector({
         p.nome_razao?.toLowerCase().includes(q) ||
         p.nome_fantasia?.toLowerCase().includes(q) ||
         p.email_principal?.toLowerCase().includes(q) ||
-        p.telefone_whatsapp?.includes(q) ||
+        p.telefone?.includes(q) ||
+        p.whatsapp?.includes(q) ||
         p.segmento?.toLowerCase().includes(q)
       );
     }
@@ -146,7 +147,7 @@ export function RecipientSelector({
       list = canal === "email" ? list.filter(p => p.consentimento_email) : list.filter(p => p.consentimento_whatsapp);
     }
     if (filtros.tem_email) list = list.filter(p => !!p.email_principal);
-    if (filtros.tem_telefone) list = list.filter(p => !!p.telefone_whatsapp);
+    if (filtros.tem_telefone) list = list.filter(p => !!p.telefone || !!p.whatsapp);
     if (filtros.tipo) list = list.filter(p => p.tipo === filtros.tipo);
 
     // Sort
@@ -182,7 +183,7 @@ export function RecipientSelector({
     else { setSortKey(key); setSortDir("asc"); }
   };
 
-  const hasContact = (p: any) => canal === "email" ? (p.email_principal && !p.optout_email) : (p.telefone_whatsapp && !p.optout_whatsapp);
+  const hasContact = (p: any) => canal === "email" ? (p.email_principal && !p.optout_email) : (p.whatsapp && p.whatsapp_status !== "invalido" && !p.optout_whatsapp);
 
   const selectAllVisible = () => {
     const validIds = pagedProspects.filter(hasContact).map(p => p.id);
@@ -401,7 +402,7 @@ export function RecipientSelector({
                   {pagedProspects.map(p => {
                     const isSelected = selectedProspectIds.includes(p.id);
                     const valid = hasContact(p);
-                    const noPhone = !p.telefone_whatsapp;
+                    const noPhone = !p.whatsapp;
                     const noEmail = !p.email_principal;
                     const tags = (p.tags as string[]) || [];
 
@@ -455,10 +456,10 @@ export function RecipientSelector({
                           )}
 
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                            {p.telefone_whatsapp && (
+                            {(p.telefone || p.whatsapp) && (
                               <span className="flex items-center gap-1">
                                 <Phone className="h-3 w-3 shrink-0" />
-                                {p.telefone_whatsapp}
+                                {p.whatsapp || p.telefone}
                               </span>
                             )}
                             {p.email_principal && (

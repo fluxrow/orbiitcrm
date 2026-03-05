@@ -30,7 +30,9 @@ interface ParsedProspect {
   tipo?: string;
   cnpj_cpf?: string;
   email_principal?: string;
-  telefone_whatsapp?: string;
+  telefone?: string;
+  whatsapp?: string;
+  whatsapp_status?: string;
   cidade?: string;
   estado?: string;
   segmento?: string;
@@ -1218,7 +1220,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                               <TableRow key={idx}>
                                 <TableCell className="font-medium">{p.nome_razao}</TableCell>
                                 <TableCell>{p.email_principal || '-'}</TableCell>
-                                <TableCell>{p.telefone_whatsapp || '-'}</TableCell>
+                                <TableCell>{p.whatsapp || p.telefone || '-'}</TableCell>
                                 <TableCell>{p.cidade || '-'}</TableCell>
                                 <TableCell>{p.tipo || 'pessoa'}</TableCell>
                               </TableRow>

@@ -30,12 +30,20 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   desqualificado: { label: "Desqualificado", className: "bg-destructive/20 text-destructive" },
 };
 
+const whatsappStatusConfig: Record<string, { label: string; className: string }> = {
+  nao_verificado: { label: "?", className: "bg-[hsl(var(--warning))]/20 text-[hsl(var(--warning))]" },
+  valido: { label: "✓", className: "bg-[hsl(var(--success))]/20 text-[hsl(var(--success))]" },
+  invalido: { label: "✗", className: "bg-destructive/20 text-destructive" },
+};
+
 export function ProspectActionCard({
   prospect, isConverted, isSelected, onToggleSelect, onEdit,
   onWhatsApp, onEmail, onAddNote, onCreateTask, onAddToFunnel, onViewHistory,
 }: ProspectActionCardProps) {
   const status = statusConfig[prospect.status_qualificacao || ""] || statusConfig.novo;
   const isHot = (prospect.score || 0) > 70;
+  const hasWhatsapp = !!prospect.whatsapp && prospect.whatsapp_status !== "invalido";
+  const wsStatus = whatsappStatusConfig[prospect.whatsapp_status || "nao_verificado"] || whatsappStatusConfig.nao_verificado;
 
   return (
     <div className="glass-card p-4 hover:border-primary/50 transition-all duration-200 animate-slide-in group relative">
@@ -70,13 +78,27 @@ export function ProspectActionCard({
 
         {/* Info */}
         <div className="space-y-1 text-sm text-muted-foreground mb-3 pl-6">
+          {/* Telefone */}
           <div className="flex items-center gap-2">
-            {prospect.telefone_whatsapp ? (
-              <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{prospect.telefone_whatsapp}</span>
+            {prospect.telefone ? (
+              <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{prospect.telefone}</span>
             ) : (
               <span className="flex items-center gap-1 text-destructive/60"><PhoneOff className="w-3 h-3" />Sem telefone</span>
             )}
           </div>
+          {/* WhatsApp */}
+          <div className="flex items-center gap-2">
+            {prospect.whatsapp ? (
+              <span className="flex items-center gap-1">
+                <MessageCircle className="w-3 h-3" />
+                {prospect.whatsapp}
+                <Badge className={`text-[9px] px-1 py-0 h-4 ${wsStatus.className}`}>{wsStatus.label}</Badge>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-muted-foreground/50"><MessageCircle className="w-3 h-3" />Sem WhatsApp</span>
+            )}
+          </div>
+          {/* Email */}
           <div className="flex items-center gap-2">
             {prospect.email_principal ? (
               <span className="flex items-center gap-1 truncate"><Mail className="w-3 h-3" />{prospect.email_principal}</span>
@@ -105,11 +127,11 @@ export function ProspectActionCard({
       <div className="flex items-center gap-1 pt-3 border-t border-border/50 flex-wrap">
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={(e) => { e.stopPropagation(); onWhatsApp(prospect); }} disabled={!prospect.telefone_whatsapp}>
+            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={(e) => { e.stopPropagation(); onWhatsApp(prospect); }} disabled={!hasWhatsapp}>
               <MessageCircle className="w-3.5 h-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Iniciar conversa</TooltipContent>
+          <TooltipContent>{hasWhatsapp ? "Iniciar conversa" : prospect.whatsapp_status === "invalido" ? "WhatsApp inválido" : "Sem WhatsApp"}</TooltipContent>
         </Tooltip>
 
         <Tooltip>

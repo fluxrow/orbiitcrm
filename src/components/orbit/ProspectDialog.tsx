@@ -22,6 +22,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -37,7 +38,8 @@ const prospectSchema = z.object({
   nome_razao: z.string().min(2, "Nome é obrigatório") as z.ZodType<string>,
   nome_fantasia: z.string().optional(),
   email_principal: z.string().email("Email inválido").optional().or(z.literal("")),
-  telefone_whatsapp: z.string().optional(),
+  telefone: z.string().optional(),
+  whatsapp: z.string().optional(),
   cnpj_cpf: z.string().optional(),
   cidade: z.string().optional(),
   estado: z.string().optional(),
@@ -69,6 +71,12 @@ const ESTADOS = [
   "RS", "RO", "RR", "SC", "SP", "SE", "TO"
 ];
 
+const whatsappStatusLabel: Record<string, { label: string; className: string }> = {
+  nao_verificado: { label: "Não verificado", className: "bg-[hsl(var(--warning))]/20 text-[hsl(var(--warning))]" },
+  valido: { label: "Válido", className: "bg-[hsl(var(--success))]/20 text-[hsl(var(--success))]" },
+  invalido: { label: "Inválido", className: "bg-destructive/20 text-destructive" },
+};
+
 export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogProps) {
   const createProspect = useCreateProspect();
   const updateProspect = useUpdateProspect();
@@ -90,7 +98,8 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
       nome_razao: "",
       nome_fantasia: "",
       email_principal: "",
-      telefone_whatsapp: "",
+      telefone: "",
+      whatsapp: "",
       cnpj_cpf: "",
       cidade: "",
       estado: "",
@@ -108,7 +117,8 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
         nome_razao: prospect.nome_razao || "",
         nome_fantasia: prospect.nome_fantasia || "",
         email_principal: prospect.email_principal || "",
-        telefone_whatsapp: prospect.telefone_whatsapp || "",
+        telefone: prospect.telefone || "",
+        whatsapp: prospect.whatsapp || "",
         cnpj_cpf: prospect.cnpj_cpf || "",
         cidade: prospect.cidade || "",
         estado: prospect.estado || "",
@@ -123,7 +133,8 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
         nome_razao: "",
         nome_fantasia: "",
         email_principal: "",
-        telefone_whatsapp: "",
+        telefone: "",
+        whatsapp: "",
         cnpj_cpf: "",
         cidade: "",
         estado: "",
@@ -151,6 +162,9 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
       console.error(error);
     }
   };
+
+  const currentWhatsappStatus = prospect?.whatsapp_status || "nao_verificado";
+  const wsStatus = whatsappStatusLabel[currentWhatsappStatus] || whatsappStatusLabel.nao_verificado;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -257,10 +271,31 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
 
               <FormField
                 control={form.control}
-                name="telefone_whatsapp"
+                name="telefone"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>WhatsApp</FormLabel>
+                    <FormLabel>Telefone</FormLabel>
+                    <FormControl>
+                      <Input placeholder="(11) 3456-7890" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <FormField
+                control={form.control}
+                name="whatsapp"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-2">
+                      WhatsApp
+                      {isEditing && prospect?.whatsapp && (
+                        <Badge className={`text-[10px] ${wsStatus.className}`}>{wsStatus.label}</Badge>
+                      )}
+                    </FormLabel>
                     <FormControl>
                       <Input placeholder="5511999999999" {...field} />
                     </FormControl>

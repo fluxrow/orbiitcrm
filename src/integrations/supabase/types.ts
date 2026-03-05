@@ -1941,9 +1941,11 @@ export type Database = {
           segmento: string | null
           status_qualificacao: string | null
           tags: string[] | null
-          telefone_whatsapp: string | null
+          telefone: string | null
           tipo: string | null
           updated_at: string | null
+          whatsapp: string | null
+          whatsapp_status: string
         }
         Insert: {
           cidade?: string | null
@@ -1967,9 +1969,11 @@ export type Database = {
           segmento?: string | null
           status_qualificacao?: string | null
           tags?: string[] | null
-          telefone_whatsapp?: string | null
+          telefone?: string | null
           tipo?: string | null
           updated_at?: string | null
+          whatsapp?: string | null
+          whatsapp_status?: string
         }
         Update: {
           cidade?: string | null
@@ -1993,9 +1997,11 @@ export type Database = {
           segmento?: string | null
           status_qualificacao?: string | null
           tags?: string[] | null
-          telefone_whatsapp?: string | null
+          telefone?: string | null
           tipo?: string | null
           updated_at?: string | null
+          whatsapp?: string | null
+          whatsapp_status?: string
         }
         Relationships: [
           {

@@ -201,8 +201,8 @@ export default function ProspectsPage() {
                   onToggleSelect={handleToggleSelect}
                   onEdit={handleEdit}
                   onWhatsApp={(pr) => {
-                    if (pr.telefone_whatsapp) {
-                      window.open(`https://wa.me/${pr.telefone_whatsapp.replace(/\D/g, "")}`, "_blank");
+                    if (pr.whatsapp && pr.whatsapp_status !== "invalido") {
+                      window.open(`https://wa.me/${pr.whatsapp.replace(/\D/g, "")}`, "_blank");
                     }
                   }}
                   onEmail={(pr) => {
