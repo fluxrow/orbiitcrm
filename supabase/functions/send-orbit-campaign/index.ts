@@ -102,14 +102,17 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (!recipients || recipients.length === 0) {
       await supabase.from("orbit_campaigns").update({ status: "concluida" }).eq("id", campaign_id);
-      return ok({ enviados: 0, validados_enviados: 0, sem_whatsapp: 0, whatsapp_invalido: 0, falhas: 0, message: "Campanha concluída" });
+      return ok({ enviados: 0, validados_enviados: 0, ignorados_sem_numero: 0, ignorados_sem_whatsapp: 0, ignorados_whatsapp_invalido: 0, falhas: 0, message: "Campanha concluída" });
     }
 
     let enviados = 0;
     let validados_enviados = 0;
-    let sem_whatsapp = 0;
-    let whatsapp_invalido = 0;
+    let ignorados_sem_numero = 0;
+    let ignorados_sem_whatsapp = 0;
+    let ignorados_whatsapp_invalido = 0;
     let falhas = 0;
+
+    const jitterDelay = () => delayMs(150 + Math.random() * 200);
 
     let resendConfig = null;
     let zapiConfig = null;
@@ -131,6 +134,17 @@ const handler = async (req: Request): Promise<Response> => {
 
     // Get template image URL
     const templateImageUrl = campaign.template?.imagem_url || null;
+
+    // ── Helper: normalize phone to 55+DDD+number ──
+    function normalizePhone(raw: string): string {
+      let digits = raw.replace(/\D/g, "");
+      if (!digits) return "";
+      // Already has 55 prefix and correct length (12-13 digits)
+      if (digits.startsWith("55") && digits.length >= 12 && digits.length <= 13) return digits;
+      // 10-11 digits → add 55
+      if (digits.length >= 10 && digits.length <= 11) return "55" + digits;
+      return digits;
+    }
 
     for (const recipient of recipients) {
       try {
@@ -206,17 +220,20 @@ const handler = async (req: Request): Promise<Response> => {
         } else {
           // ── WhatsApp sending with pre-flight validation ──
 
-          // 1. No whatsapp
-          if (!prospect.whatsapp) {
-            await supabase.from("orbit_campaign_recipients").update({ status: "ignorado", erro: "sem whatsapp" }).eq("id", recipient.id);
-            sem_whatsapp++;
+          // 1. Determine candidate phone: whatsapp → telefone → none
+          const rawCandidate = prospect.whatsapp || prospect.telefone || "";
+          const candidatePhone = normalizePhone(rawCandidate);
+
+          if (!candidatePhone) {
+            await supabase.from("orbit_campaign_recipients").update({ status: "ignorado", erro: "IGNORED_NO_NUMBER" }).eq("id", recipient.id);
+            ignorados_sem_numero++;
             continue;
           }
 
-          // 2. Already invalid
-          if (prospect.whatsapp_status === "invalido") {
-            await supabase.from("orbit_campaign_recipients").update({ status: "ignorado", erro: "whatsapp invalido" }).eq("id", recipient.id);
-            whatsapp_invalido++;
+          // 2. Already cached as invalid
+          if (prospect.whatsapp_status === "invalido" && !isCheckExpired(prospect.whatsapp_last_check_at)) {
+            await supabase.from("orbit_campaign_recipients").update({ status: "ignorado", erro: "IGNORED_INVALID_WHATSAPP" }).eq("id", recipient.id);
+            ignorados_whatsapp_invalido++;
             continue;
           }
 
@@ -227,48 +244,69 @@ const handler = async (req: Request): Promise<Response> => {
             continue;
           }
 
-          const phone = prospect.whatsapp.replace(/\D/g, "");
+          // 4. Check if we can skip validation (valid + recent check)
+          const isRecentlyValid =
+            prospect.whatsapp_status === "valido" &&
+            !isCheckExpired(prospect.whatsapp_last_check_at);
 
-          // 4. Pre-flight validation if needed
-          const needsValidation =
-            prospect.whatsapp_status === "nao_verificado" ||
-            isCheckExpired(prospect.whatsapp_last_check_at);
+          let validatedPhone = candidatePhone;
+          let wasValidated = false;
 
-          if (needsValidation) {
+          if (!isRecentlyValid) {
+            // Need to validate
             await delayMs(300);
-            const exists = await validateWhatsAppNumber(phone, zapiBaseUrl, zapiHeaders);
+            let exists = await validateWhatsAppNumber(candidatePhone, zapiBaseUrl, zapiHeaders);
 
-            await supabase
-              .from("orbit_prospects")
-              .update({
-                whatsapp_status: exists ? "valido" : "invalido",
-                whatsapp_last_check_at: new Date().toISOString(),
-              })
-              .eq("id", prospect.id);
+            // If invalid and number has 10 digits after 55 prefix → try adding 9
+            if (!exists) {
+              const stripped = candidatePhone.startsWith("55") ? candidatePhone.slice(2) : candidatePhone;
+              if (stripped.length === 10) {
+                const ddd = stripped.slice(0, 2);
+                const rest = stripped.slice(2);
+                const phoneWith9 = "55" + ddd + "9" + rest;
+                await delayMs(300);
+                exists = await validateWhatsAppNumber(phoneWith9, zapiBaseUrl, zapiHeaders);
+                if (exists) {
+                  validatedPhone = phoneWith9;
+                }
+              }
+            }
+
+            // Update prospect
+            const updateData: Record<string, any> = {
+              whatsapp_status: exists ? "valido" : "invalido",
+              whatsapp_last_check_at: new Date().toISOString(),
+            };
+            // Save validated phone to whatsapp field (especially important for telefone fallback)
+            if (exists) {
+              updateData.whatsapp = validatedPhone;
+            }
+            await supabase.from("orbit_prospects").update(updateData).eq("id", prospect.id);
 
             if (!exists) {
-              await supabase.from("orbit_campaign_recipients").update({ status: "ignorado", erro: "whatsapp invalido (validado)" }).eq("id", recipient.id);
-              whatsapp_invalido++;
+              await supabase.from("orbit_campaign_recipients").update({ status: "ignorado", erro: "IGNORED_NO_WHATSAPP" }).eq("id", recipient.id);
+              ignorados_sem_whatsapp++;
               continue;
             }
 
-            // Will send below, count as validated+sent
-            validados_enviados++;
+            wasValidated = true;
           }
 
-          // 5. Send WhatsApp message
+          // 5. Send WhatsApp message (with jitter delay)
+          await jitterDelay();
+
           if (templateImageUrl) {
             await fetch(`${zapiBaseUrl}/send-image`, {
               method: "POST",
               headers: zapiHeaders,
-              body: JSON.stringify({ phone, image: templateImageUrl, caption: "" }),
+              body: JSON.stringify({ phone: validatedPhone, image: templateImageUrl, caption: "" }),
             });
           }
 
           const zapiRes = await fetch(`${zapiBaseUrl}/send-text`, {
             method: "POST",
             headers: zapiHeaders,
-            body: JSON.stringify({ phone, message: mensagem }),
+            body: JSON.stringify({ phone: validatedPhone, message: mensagem }),
           });
 
           if (!zapiRes.ok) {
@@ -276,7 +314,9 @@ const handler = async (req: Request): Promise<Response> => {
             throw new Error(err.message || "Erro ao enviar WhatsApp");
           }
 
-          if (!needsValidation) {
+          if (wasValidated) {
+            validados_enviados++;
+          } else {
             enviados++;
           }
         }
@@ -302,7 +342,7 @@ const handler = async (req: Request): Promise<Response> => {
     }).eq("id", campaign_id);
 
     return ok(
-      { enviados, validados_enviados, sem_whatsapp, whatsapp_invalido, falhas },
+      { enviados, validados_enviados, ignorados_sem_numero, ignorados_sem_whatsapp, ignorados_whatsapp_invalido, falhas },
       { simulated: isDemo }
     );
   } catch (error: any) {

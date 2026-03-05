@@ -141,12 +141,13 @@ export default function CampanhasPage() {
         body: { campaign_id: campaignId }
       });
 
-      const result = handleApiResponse<{ enviados: number; validados_enviados: number; sem_whatsapp: number; whatsapp_invalido: number; falhas: number }>(response);
+      const result = handleApiResponse<{ enviados: number; validados_enviados: number; ignorados_sem_numero: number; ignorados_sem_whatsapp: number; ignorados_whatsapp_invalido: number; falhas: number }>(response);
       const parts = [
         `✅ Enviados: ${result.enviados}`,
         result.validados_enviados ? `🔍 Validados+Enviados: ${result.validados_enviados}` : null,
-        result.sem_whatsapp ? `⚠️ Sem WhatsApp: ${result.sem_whatsapp}` : null,
-        result.whatsapp_invalido ? `❌ Inválidos: ${result.whatsapp_invalido}` : null,
+        result.ignorados_sem_numero ? `📵 Sem número: ${result.ignorados_sem_numero}` : null,
+        result.ignorados_sem_whatsapp ? `⚠️ Sem WhatsApp: ${result.ignorados_sem_whatsapp}` : null,
+        result.ignorados_whatsapp_invalido ? `❌ Inválidos (cache): ${result.ignorados_whatsapp_invalido}` : null,
         result.falhas ? `🔴 Erros: ${result.falhas}` : null,
       ].filter(Boolean);
       toast.success(parts.join(" | "));
