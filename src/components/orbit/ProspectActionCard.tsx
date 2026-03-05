@@ -42,7 +42,8 @@ export function ProspectActionCard({
 }: ProspectActionCardProps) {
   const status = statusConfig[prospect.status_qualificacao || ""] || statusConfig.novo;
   const isHot = (prospect.score || 0) > 70;
-  const hasWhatsapp = !!prospect.whatsapp && prospect.whatsapp_status !== "invalido";
+  const hasAnyPhone = !!(prospect.whatsapp || prospect.telefone);
+  const isUnverified = prospect.whatsapp_status !== "valido";
   const wsStatus = whatsappStatusConfig[prospect.whatsapp_status || "nao_verificado"] || whatsappStatusConfig.nao_verificado;
 
   return (
@@ -127,11 +128,12 @@ export function ProspectActionCard({
       <div className="flex items-center gap-1 pt-3 border-t border-border/50 flex-wrap">
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={(e) => { e.stopPropagation(); onWhatsApp(prospect); }} disabled={!hasWhatsapp}>
+            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={(e) => { e.stopPropagation(); onWhatsApp(prospect); }} disabled={!hasAnyPhone}>
               <MessageCircle className="w-3.5 h-3.5" />
+              {hasAnyPhone && isUnverified && <span className="text-[hsl(var(--warning))] text-[9px] ml-0.5">⚠</span>}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{hasWhatsapp ? "Iniciar conversa" : prospect.whatsapp_status === "invalido" ? "WhatsApp inválido" : "Sem WhatsApp"}</TooltipContent>
+          <TooltipContent>{hasAnyPhone ? (isUnverified ? "Iniciar conversa (não verificado)" : "Iniciar conversa") : "Sem número disponível"}</TooltipContent>
         </Tooltip>
 
         <Tooltip>
