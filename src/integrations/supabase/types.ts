@@ -2608,6 +2608,50 @@ export type Database = {
           },
         ]
       }
+      prospect_events: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          descricao: string | null
+          empresa_id: string
+          event_type: string
+          id: string
+          metadata: Json | null
+          prospect_id: string
+          titulo: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          descricao?: string | null
+          empresa_id: string
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          prospect_id: string
+          titulo?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          descricao?: string | null
+          empresa_id?: string
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          prospect_id?: string
+          titulo?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prospect_events_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       saas_empresa: {
         Row: {
           activated_at: string | null
