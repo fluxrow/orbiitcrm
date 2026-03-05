@@ -31,7 +31,7 @@ export function OrbitTaskDialog({ open, onOpenChange, task, defaultProspectId }:
 
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
-  const [prospectId, setProspectId] = useState("");
+  const [prospectId, setProspectId] = useState("none");
   const [prioridade, setPrioridade] = useState("medium");
   const [tipoTarefa, setTipoTarefa] = useState("task");
   const [dueDate, setDueDate] = useState<Date | undefined>();
@@ -51,7 +51,7 @@ export function OrbitTaskDialog({ open, onOpenChange, task, defaultProspectId }:
     } else {
       setTitulo("");
       setDescricao("");
-      setProspectId(defaultProspectId || "");
+      setProspectId(defaultProspectId || "none");
       setPrioridade("medium");
       setTipoTarefa("task");
       setDueDate(undefined);
@@ -66,7 +66,7 @@ export function OrbitTaskDialog({ open, onOpenChange, task, defaultProspectId }:
     const payload: any = {
       titulo,
       descricao: descricao || undefined,
-      prospect_id: prospectId || undefined,
+      prospect_id: prospectId && prospectId !== "none" ? prospectId : undefined,
       prioridade,
       tipo_tarefa: tipoTarefa,
       due_date: dueDate ? format(dueDate, "yyyy-MM-dd") : undefined,
@@ -135,7 +135,7 @@ export function OrbitTaskDialog({ open, onOpenChange, task, defaultProspectId }:
             <Select value={prospectId} onValueChange={setProspectId}>
               <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Nenhum</SelectItem>
+                <SelectItem value="none">Nenhum</SelectItem>
                 {(prospects || []).slice(0, 100).map((p: any) => (
                   <SelectItem key={p.id} value={p.id}>{p.nome_razao}</SelectItem>
                 ))}
