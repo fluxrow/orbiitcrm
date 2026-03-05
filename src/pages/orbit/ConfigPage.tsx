@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/orbit/PageHeader";
 import { usePeAuth } from "@/hooks/usePeAuth";
 import { useTenant } from "@/contexts/TenantContext";
 import ConfigUsersTab from "@/components/orbit/ConfigUsersTab";
-import { Users } from "lucide-react";
+import { Users, Phone } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -90,6 +90,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
   const [ignoreDuplicates, setIgnoreDuplicates] = useState(true);
   const [importProgress, setImportProgress] = useState(0);
   const [isImporting, setIsImporting] = useState(false);
+  const [isMigrating, setIsMigrating] = useState(false);
   
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/orbit-webhook`;
   const emailWebhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/orbit-send-email`;
@@ -930,6 +931,62 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     Salvar Configurações
                   </Button>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Card 3: Migração de Telefones */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Phone className="h-5 w-5 text-primary" />
+                  <CardTitle>Migração de Telefones</CardTitle>
+                </div>
+                <CardDescription>
+                  Analisa os telefones existentes e migra celulares para o campo WhatsApp. 
+                  Números com 11 dígitos são migrados automaticamente. 
+                  Números com 10 dígitos são validados via Z-API para verificar se possuem WhatsApp.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="p-4 bg-muted rounded-lg space-y-2">
+                  <p className="text-sm font-medium">Como funciona:</p>
+                  <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                    <li><strong>11 dígitos (DDD+9):</strong> Movido para WhatsApp automaticamente</li>
+                    <li><strong>10 dígitos (DDD+8):</strong> Validado via Z-API. Se não encontrado, tenta adicionar o 9 após o DDD</li>
+                    <li><strong>Outros:</strong> Ignorados (mantidos em telefone)</li>
+                  </ul>
+                </div>
+                <Button 
+                  onClick={async () => {
+                    if (!empresaId) {
+                      toast.error("Empresa não encontrada");
+                      return;
+                    }
+                    setIsMigrating(true);
+                    try {
+                      const { data, error } = await (await import("@/integrations/supabase/client")).supabase.functions.invoke("orbit-migrate-phones", {
+                        body: { empresa_id: empresaId },
+                      });
+                      if (error) throw error;
+                      const result = data?.data || data;
+                      toast.success(
+                        `Migração concluída! ${result.migrados_11 || 0} migrados (11 dígitos), ${result.validados_zapi || 0} validados via Z-API, ${result.invalidos || 0} inválidos, ${result.ignorados || 0} ignorados`
+                      );
+                    } catch (error: any) {
+                      toast.error(error.message || "Erro na migração");
+                    } finally {
+                      setIsMigrating(false);
+                    }
+                  }}
+                  disabled={isMigrating || isDemo}
+                >
+                  {isMigrating ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Phone className="h-4 w-4 mr-2" />
+                  )}
+                  {isMigrating ? "Migrando..." : "Migrar Telefones Existentes"}
+                </Button>
               </CardContent>
             </Card>
             </div>
