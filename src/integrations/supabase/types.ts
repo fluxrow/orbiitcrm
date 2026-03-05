@@ -2278,6 +2278,94 @@ export type Database = {
           },
         ]
       }
+      orbit_whatsapp_daily_usage: {
+        Row: {
+          empresa_id: string
+          id: string
+          sent_count: number
+          updated_at: string | null
+          usage_date: string
+        }
+        Insert: {
+          empresa_id: string
+          id?: string
+          sent_count?: number
+          updated_at?: string | null
+          usage_date?: string
+        }
+        Update: {
+          empresa_id?: string
+          id?: string
+          sent_count?: number
+          updated_at?: string | null
+          usage_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_whatsapp_daily_usage_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_whatsapp_sending_config: {
+        Row: {
+          batch_pause_ms: number
+          batch_size: number
+          created_at: string | null
+          daily_limit: number
+          empresa_id: string | null
+          enabled: boolean
+          id: string
+          max_delay_ms: number
+          max_per_minute: number
+          min_delay_ms: number
+          updated_at: string | null
+          warmup_enabled: boolean
+          warmup_start_date: string | null
+        }
+        Insert: {
+          batch_pause_ms?: number
+          batch_size?: number
+          created_at?: string | null
+          daily_limit?: number
+          empresa_id?: string | null
+          enabled?: boolean
+          id?: string
+          max_delay_ms?: number
+          max_per_minute?: number
+          min_delay_ms?: number
+          updated_at?: string | null
+          warmup_enabled?: boolean
+          warmup_start_date?: string | null
+        }
+        Update: {
+          batch_pause_ms?: number
+          batch_size?: number
+          created_at?: string | null
+          daily_limit?: number
+          empresa_id?: string | null
+          enabled?: boolean
+          id?: string
+          max_delay_ms?: number
+          max_per_minute?: number
+          min_delay_ms?: number
+          updated_at?: string | null
+          warmup_enabled?: boolean
+          warmup_start_date?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_whatsapp_sending_config_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_zapi_config: {
         Row: {
           ativo: boolean | null

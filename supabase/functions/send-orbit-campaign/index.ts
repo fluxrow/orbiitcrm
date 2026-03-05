@@ -9,11 +9,20 @@ interface CampaignRequest {
 const delayMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const VALIDATION_CACHE_DAYS = 7;
+const WARMUP_SCALE = [50, 80, 120, 200, 300, 500];
 
 function isCheckExpired(lastCheck: string | null): boolean {
   if (!lastCheck) return true;
   const diff = Date.now() - new Date(lastCheck).getTime();
   return diff > VALIDATION_CACHE_DAYS * 24 * 60 * 60 * 1000;
+}
+
+function normalizePhone(raw: string): string {
+  let digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("55") && digits.length >= 12 && digits.length <= 13) return digits;
+  if (digits.length >= 10 && digits.length <= 11) return "55" + digits;
+  return digits;
 }
 
 async function validateWhatsAppNumber(
@@ -28,6 +37,47 @@ async function validateWhatsAppNumber(
   if (!res.ok) return false;
   const result = await res.json();
   return result.exists === true;
+}
+
+interface SendingConfig {
+  min_delay_ms: number;
+  max_delay_ms: number;
+  batch_size: number;
+  batch_pause_ms: number;
+  daily_limit: number;
+  max_per_minute: number;
+  warmup_enabled: boolean;
+  warmup_start_date: string | null;
+  enabled: boolean;
+}
+
+const DEFAULT_CONFIG: SendingConfig = {
+  min_delay_ms: 1500,
+  max_delay_ms: 3500,
+  batch_size: 50,
+  batch_pause_ms: 30000,
+  daily_limit: 500,
+  max_per_minute: 15,
+  warmup_enabled: false,
+  warmup_start_date: null,
+  enabled: true,
+};
+
+function getEffectiveLimit(config: SendingConfig): { limit: number; delayMultiplier: number } {
+  if (!config.warmup_enabled || !config.warmup_start_date) {
+    return { limit: config.daily_limit, delayMultiplier: 1 };
+  }
+  const startDate = new Date(config.warmup_start_date);
+  const now = new Date();
+  const daysDiff = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+  const dayIndex = Math.max(0, daysDiff);
+  const limit = dayIndex < WARMUP_SCALE.length ? WARMUP_SCALE[dayIndex] : config.daily_limit;
+  const delayMultiplier = dayIndex < 3 ? 1.5 : 1;
+  return { limit: Math.min(limit, config.daily_limit), delayMultiplier };
+}
+
+function randomDelay(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1) + min);
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -98,11 +148,11 @@ const handler = async (req: Request): Promise<Response> => {
       .select("*, prospect:orbit_prospects(*)")
       .eq("campaign_id", campaign_id)
       .eq("status", "pendente")
-      .limit(100);
+      .limit(500);
 
     if (!recipients || recipients.length === 0) {
       await supabase.from("orbit_campaigns").update({ status: "concluida" }).eq("id", campaign_id);
-      return ok({ enviados: 0, validados_enviados: 0, ignorados_sem_numero: 0, ignorados_sem_whatsapp: 0, ignorados_whatsapp_invalido: 0, falhas: 0, message: "Campanha concluída" });
+      return ok({ enviados: 0, validados_enviados: 0, ignorados_sem_numero: 0, ignorados_sem_whatsapp: 0, ignorados_whatsapp_invalido: 0, falhas: 0, pausada_por_limite: false, message: "Campanha concluída" });
     }
 
     let enviados = 0;
@@ -111,8 +161,57 @@ const handler = async (req: Request): Promise<Response> => {
     let ignorados_sem_whatsapp = 0;
     let ignorados_whatsapp_invalido = 0;
     let falhas = 0;
+    let pausada_por_limite = false;
+    let batchSentCount = 0;
 
-    const jitterDelay = () => delayMs(150 + Math.random() * 200);
+    // ── Load sending config ──
+    let sendingConfig: SendingConfig = { ...DEFAULT_CONFIG };
+    if (campaign.canal === "whatsapp" && campaign.empresa_id) {
+      const { data: configRow } = await supabase
+        .from("orbit_whatsapp_sending_config")
+        .select("*")
+        .eq("empresa_id", campaign.empresa_id)
+        .maybeSingle();
+      if (configRow) {
+        sendingConfig = {
+          min_delay_ms: configRow.min_delay_ms ?? DEFAULT_CONFIG.min_delay_ms,
+          max_delay_ms: configRow.max_delay_ms ?? DEFAULT_CONFIG.max_delay_ms,
+          batch_size: configRow.batch_size ?? DEFAULT_CONFIG.batch_size,
+          batch_pause_ms: configRow.batch_pause_ms ?? DEFAULT_CONFIG.batch_pause_ms,
+          daily_limit: configRow.daily_limit ?? DEFAULT_CONFIG.daily_limit,
+          max_per_minute: configRow.max_per_minute ?? DEFAULT_CONFIG.max_per_minute,
+          warmup_enabled: configRow.warmup_enabled ?? false,
+          warmup_start_date: configRow.warmup_start_date,
+          enabled: configRow.enabled ?? true,
+        };
+      }
+    }
+
+    const { limit: effectiveDailyLimit, delayMultiplier } = getEffectiveLimit(sendingConfig);
+    const effectiveMinDelay = Math.round(sendingConfig.min_delay_ms * delayMultiplier);
+    const effectiveMaxDelay = Math.round(sendingConfig.max_delay_ms * delayMultiplier);
+
+    // ── Load/create daily usage ──
+    let dailySentCount = 0;
+    if (campaign.canal === "whatsapp" && campaign.empresa_id) {
+      const today = new Date().toISOString().split("T")[0];
+      const { data: usageRow } = await supabase
+        .from("orbit_whatsapp_daily_usage")
+        .select("sent_count")
+        .eq("empresa_id", campaign.empresa_id)
+        .eq("usage_date", today)
+        .maybeSingle();
+
+      if (usageRow) {
+        dailySentCount = usageRow.sent_count || 0;
+      } else {
+        await supabase.from("orbit_whatsapp_daily_usage").insert({
+          empresa_id: campaign.empresa_id,
+          usage_date: today,
+          sent_count: 0,
+        });
+      }
+    }
 
     let resendConfig = null;
     let zapiConfig = null;
@@ -125,26 +224,13 @@ const handler = async (req: Request): Promise<Response> => {
       zapiConfig = data;
     }
 
-    // Z-API headers for validation
     const zapiBaseUrl = zapiConfig ? `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}` : "";
     const zapiHeaders: Record<string, string> = {
       "Content-Type": "application/json",
       "Client-Token": zapiConfig?.client_token || "",
     };
 
-    // Get template image URL
     const templateImageUrl = campaign.template?.imagem_url || null;
-
-    // ── Helper: normalize phone to 55+DDD+number ──
-    function normalizePhone(raw: string): string {
-      let digits = raw.replace(/\D/g, "");
-      if (!digits) return "";
-      // Already has 55 prefix and correct length (12-13 digits)
-      if (digits.startsWith("55") && digits.length >= 12 && digits.length <= 13) return digits;
-      // 10-11 digits → add 55
-      if (digits.length >= 10 && digits.length <= 11) return "55" + digits;
-      return digits;
-    }
 
     for (const recipient of recipients) {
       try {
@@ -183,7 +269,7 @@ const handler = async (req: Request): Promise<Response> => {
         }
 
         if (campaign.canal === "email") {
-          // ── Email sending (unchanged) ──
+          // ── Email sending ──
           if (!resendConfig?.api_key || !prospect.email_principal) {
             await supabase.from("orbit_campaign_recipients").update({ status: "falhou", erro: "Email não configurado ou prospect sem email" }).eq("id", recipient.id);
             falhas++;
@@ -218,9 +304,16 @@ const handler = async (req: Request): Promise<Response> => {
           }
           enviados++;
         } else {
-          // ── WhatsApp sending with pre-flight validation ──
+          // ── WhatsApp sending with rate limiting ──
 
-          // 1. Determine candidate phone: whatsapp → telefone → none
+          // Check daily limit
+          if (dailySentCount >= effectiveDailyLimit) {
+            pausada_por_limite = true;
+            // Mark remaining as pendente still — just stop
+            break;
+          }
+
+          // 1. Determine candidate phone
           const rawCandidate = prospect.whatsapp || prospect.telefone || "";
           const candidatePhone = normalizePhone(rawCandidate);
 
@@ -244,7 +337,7 @@ const handler = async (req: Request): Promise<Response> => {
             continue;
           }
 
-          // 4. Check if we can skip validation (valid + recent check)
+          // 4. Check if we can skip validation
           const isRecentlyValid =
             prospect.whatsapp_status === "valido" &&
             !isCheckExpired(prospect.whatsapp_last_check_at);
@@ -253,11 +346,9 @@ const handler = async (req: Request): Promise<Response> => {
           let wasValidated = false;
 
           if (!isRecentlyValid) {
-            // Need to validate
             await delayMs(300);
             let exists = await validateWhatsAppNumber(candidatePhone, zapiBaseUrl, zapiHeaders);
 
-            // If invalid and number has 10 digits after 55 prefix → try adding 9
             if (!exists) {
               const stripped = candidatePhone.startsWith("55") ? candidatePhone.slice(2) : candidatePhone;
               if (stripped.length === 10) {
@@ -272,12 +363,10 @@ const handler = async (req: Request): Promise<Response> => {
               }
             }
 
-            // Update prospect
             const updateData: Record<string, any> = {
               whatsapp_status: exists ? "valido" : "invalido",
               whatsapp_last_check_at: new Date().toISOString(),
             };
-            // Save validated phone to whatsapp field (especially important for telefone fallback)
             if (exists) {
               updateData.whatsapp = validatedPhone;
             }
@@ -292,9 +381,10 @@ const handler = async (req: Request): Promise<Response> => {
             wasValidated = true;
           }
 
-          // 5. Send WhatsApp message (with jitter delay)
-          await jitterDelay();
+          // 5. Rate-limited delay before sending
+          await delayMs(randomDelay(effectiveMinDelay, effectiveMaxDelay));
 
+          // 6. Send WhatsApp message
           if (templateImageUrl) {
             await fetch(`${zapiBaseUrl}/send-image`, {
               method: "POST",
@@ -319,6 +409,27 @@ const handler = async (req: Request): Promise<Response> => {
           } else {
             enviados++;
           }
+
+          // 7. Increment daily usage
+          dailySentCount++;
+          batchSentCount++;
+
+          if (campaign.empresa_id) {
+            const today = new Date().toISOString().split("T")[0];
+            await supabase
+              .from("orbit_whatsapp_daily_usage")
+              .upsert(
+                { empresa_id: campaign.empresa_id, usage_date: today, sent_count: dailySentCount, updated_at: new Date().toISOString() },
+                { onConflict: "empresa_id,usage_date" }
+              );
+          }
+
+          // 8. Batch pause
+          if (batchSentCount >= sendingConfig.batch_size) {
+            console.log(`Batch de ${sendingConfig.batch_size} concluído, pausando ${sendingConfig.batch_pause_ms}ms...`);
+            await delayMs(sendingConfig.batch_pause_ms);
+            batchSentCount = 0;
+          }
         }
 
         await supabase.from("orbit_campaign_recipients").update({ status: "enviado", enviado_em: new Date().toISOString() }).eq("id", recipient.id);
@@ -335,14 +446,36 @@ const handler = async (req: Request): Promise<Response> => {
 
     const totalEnviados = enviados + validados_enviados;
 
+    // Count remaining pending
+    const { count: remainingPending } = await supabase
+      .from("orbit_campaign_recipients")
+      .select("*", { count: "exact", head: true })
+      .eq("campaign_id", campaign_id)
+      .eq("status", "pendente");
+
+    const finalStatus = pausada_por_limite
+      ? "pausada_por_limite"
+      : (remainingPending && remainingPending > 0)
+        ? "enviando"
+        : "concluida";
+
     await supabase.from("orbit_campaigns").update({
       enviados: (campaign.enviados || 0) + totalEnviados,
       falhas: (campaign.falhas || 0) + falhas,
-      status: recipients.length <= 100 ? "concluida" : "enviando",
+      status: finalStatus,
     }).eq("id", campaign_id);
 
     return ok(
-      { enviados, validados_enviados, ignorados_sem_numero, ignorados_sem_whatsapp, ignorados_whatsapp_invalido, falhas },
+      {
+        enviados,
+        validados_enviados,
+        ignorados_sem_numero,
+        ignorados_sem_whatsapp,
+        ignorados_whatsapp_invalido,
+        falhas,
+        pausada_por_limite,
+        remaining_pending: remainingPending || 0,
+      },
       { simulated: isDemo }
     );
   } catch (error: any) {

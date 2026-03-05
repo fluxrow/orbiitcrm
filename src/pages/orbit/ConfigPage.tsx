@@ -17,7 +17,7 @@ import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Bot, MessageSquare, Mail, Save, Loader2, Copy, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Send, Upload, Download, FileText, X, Settings2, Info, Link2, ClipboardList } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useOrbitAIConfig, useUpdateAIConfig, useOrbitZAPIConfig, useUpdateZAPIConfig, useOrbitResendConfig, useUpdateResendConfig, useTestResendConnection } from "@/hooks/useOrbitConfig";
+import { useOrbitAIConfig, useUpdateAIConfig, useOrbitZAPIConfig, useUpdateZAPIConfig, useOrbitResendConfig, useUpdateResendConfig, useTestResendConnection, useWhatsAppSendingConfig, useUpdateWhatsAppSendingConfig, useWhatsAppDailyUsage } from "@/hooks/useOrbitConfig";
 import { parseCSV, generateCSVTemplate, useImportProspects, useImportHistory } from "@/hooks/useImportProspects";
 import { toast } from "sonner";
 import { useIsDemo } from "@/hooks/useIsDemo";
@@ -55,6 +55,9 @@ export default function ConfigPage() {
   const updateResend = useUpdateResendConfig();
   const testConnection = useTestResendConnection();
   const importProspects = useImportProspects();
+  const { data: sendingConfig, isLoading: sendingConfigLoading } = useWhatsAppSendingConfig(empresaId);
+  const { data: dailyUsage } = useWhatsAppDailyUsage(empresaId);
+  const updateSendingConfig = useUpdateWhatsAppSendingConfig();
 
   const [aiForm, setAiForm] = useState({ 
     modo_automatico: true, 
@@ -91,6 +94,17 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
   const [importProgress, setImportProgress] = useState(0);
   const [isImporting, setIsImporting] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
+  const [rateForm, setRateForm] = useState({
+    min_delay_ms: 1500,
+    max_delay_ms: 3500,
+    batch_size: 50,
+    batch_pause_ms: 30000,
+    daily_limit: 500,
+    max_per_minute: 15,
+    warmup_enabled: false,
+    warmup_start_date: "",
+    enabled: true,
+  });
   
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/orbit-webhook`;
   const emailWebhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/orbit-send-email`;
@@ -130,6 +144,19 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
       ativo: resendConfig.ativo ?? false 
     }); 
   }, [resendConfig]);
+  useEffect(() => {
+    if (sendingConfig) setRateForm({
+      min_delay_ms: sendingConfig.min_delay_ms ?? 1500,
+      max_delay_ms: sendingConfig.max_delay_ms ?? 3500,
+      batch_size: sendingConfig.batch_size ?? 50,
+      batch_pause_ms: sendingConfig.batch_pause_ms ?? 30000,
+      daily_limit: sendingConfig.daily_limit ?? 500,
+      max_per_minute: sendingConfig.max_per_minute ?? 15,
+      warmup_enabled: sendingConfig.warmup_enabled ?? false,
+      warmup_start_date: sendingConfig.warmup_start_date || "",
+      enabled: sendingConfig.enabled ?? true,
+    });
+  }, [sendingConfig]);
 
   const saveAI = async () => { await updateAI.mutateAsync({ id: aiConfig?.id, ...aiForm, empresa_id: empresaId }); toast.success("Salvo!"); };
   const saveZAPI = async () => { await updateZAPI.mutateAsync({ id: zapiConfig?.id, ...zapiForm, empresa_id: empresaId, ativo: !!(zapiForm as any).instance_id && !!(zapiForm as any).token }); toast.success("Salvo!"); };
@@ -934,7 +961,108 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
               </CardContent>
             </Card>
 
-            {/* Card 3: Migração de Telefones */}
+            {/* Card 3: Controle de Ritmo */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Settings2 className="h-5 w-5 text-primary" />
+                  <CardTitle>Controle de Ritmo (Anti-Bloqueio)</CardTitle>
+                </div>
+                <CardDescription>Configure delays, lotes e limites para evitar bloqueios do WhatsApp</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Status Ativo */}
+                <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+                  <div>
+                    <Label className="text-base font-medium">Controle de Ritmo Ativo</Label>
+                    <p className="text-sm text-muted-foreground">Quando ativo, aplica delays e limites nos envios</p>
+                  </div>
+                  <Switch checked={rateForm.enabled} onCheckedChange={(v) => setRateForm({ ...rateForm, enabled: v })} disabled={isDemo} />
+                </div>
+
+                {/* Daily Usage Counter */}
+                <div className="p-4 bg-muted rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-base font-medium">Enviados Hoje</Label>
+                    <span className="text-sm font-mono">{dailyUsage?.sent_count || 0} / {rateForm.daily_limit}</span>
+                  </div>
+                  <Progress value={((dailyUsage?.sent_count || 0) / rateForm.daily_limit) * 100} className="h-2" />
+                </div>
+
+                {/* Delay Config */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Delay Mínimo (ms)</Label>
+                    <Input type="number" min={500} max={10000} value={rateForm.min_delay_ms} onChange={(e) => setRateForm({ ...rateForm, min_delay_ms: parseInt(e.target.value) || 1500 })} disabled={isDemo} />
+                    <p className="text-xs text-muted-foreground">Padrão: 1500ms (1.5s)</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Delay Máximo (ms)</Label>
+                    <Input type="number" min={1000} max={15000} value={rateForm.max_delay_ms} onChange={(e) => setRateForm({ ...rateForm, max_delay_ms: parseInt(e.target.value) || 3500 })} disabled={isDemo} />
+                    <p className="text-xs text-muted-foreground">Padrão: 3500ms (3.5s)</p>
+                  </div>
+                </div>
+
+                {/* Batch Config */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Tamanho do Lote</Label>
+                    <Input type="number" min={10} max={200} value={rateForm.batch_size} onChange={(e) => setRateForm({ ...rateForm, batch_size: parseInt(e.target.value) || 50 })} disabled={isDemo} />
+                    <p className="text-xs text-muted-foreground">Mensagens por lote antes da pausa</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Pausa entre Lotes (ms)</Label>
+                    <Input type="number" min={5000} max={120000} value={rateForm.batch_pause_ms} onChange={(e) => setRateForm({ ...rateForm, batch_pause_ms: parseInt(e.target.value) || 30000 })} disabled={isDemo} />
+                    <p className="text-xs text-muted-foreground">Padrão: 30000ms (30s)</p>
+                  </div>
+                </div>
+
+                {/* Limits */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Limite Diário</Label>
+                    <Input type="number" min={10} max={5000} value={rateForm.daily_limit} onChange={(e) => setRateForm({ ...rateForm, daily_limit: parseInt(e.target.value) || 500 })} disabled={isDemo} />
+                    <p className="text-xs text-muted-foreground">Máximo de envios por dia</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Máx. por Minuto</Label>
+                    <Input type="number" min={1} max={60} value={rateForm.max_per_minute} onChange={(e) => setRateForm({ ...rateForm, max_per_minute: parseInt(e.target.value) || 15 })} disabled={isDemo} />
+                    <p className="text-xs text-muted-foreground">Limite de envios por minuto</p>
+                  </div>
+                </div>
+
+                {/* Warm-up */}
+                <div className="space-y-4 p-4 border rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-base font-medium">Modo Warm-up</Label>
+                      <p className="text-sm text-muted-foreground">Aumenta o limite diário gradualmente: 50 → 80 → 120 → 200 → 300 → limite configurado</p>
+                    </div>
+                    <Switch checked={rateForm.warmup_enabled} onCheckedChange={(v) => setRateForm({ ...rateForm, warmup_enabled: v })} disabled={isDemo} />
+                  </div>
+                  {rateForm.warmup_enabled && (
+                    <div className="space-y-2">
+                      <Label>Data de Início do Warm-up</Label>
+                      <Input type="date" value={rateForm.warmup_start_date} onChange={(e) => setRateForm({ ...rateForm, warmup_start_date: e.target.value })} disabled={isDemo} />
+                    </div>
+                  )}
+                </div>
+
+                <Button 
+                  onClick={async () => {
+                    if (!empresaId) return;
+                    await updateSendingConfig.mutateAsync({ ...rateForm, empresa_id: empresaId });
+                    toast.success("Configurações de ritmo salvas!");
+                  }} 
+                  disabled={updateSendingConfig.isPending || isDemo}
+                >
+                  {updateSendingConfig.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                  Salvar Controle de Ritmo
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Card 4: Migração de Telefones */}
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-2">
