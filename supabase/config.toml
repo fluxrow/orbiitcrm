@@ -25,7 +25,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.request-campaign-approval]
-verify_jwt = true
+verify_jwt = false
 
 [functions.send-vendedor-notification]
 verify_jwt = false
