@@ -149,13 +149,15 @@ Dados do prospect:
 
 IMPORTANTE: Responda em JSON com esta estrutura:
 {
-  "intencao": "saudacao|orcamento|duvida|reclamacao|agradecimento|outro",
+  "intencao": "saudacao|orcamento|duvida|reclamacao|agradecimento|falar_humano|outro",
   "mensagem": "sua resposta ao cliente em linguagem natural",
   "iniciar_coleta_orcamento": true|false,
   "dados_extraidos": { "campo": "valor" },
   "campo_solicitado": "nome_do_campo ou null",
   "cadastro_completo": true|false
-}`;
+}
+
+REGRA ADICIONAL: Se o cliente pedir para falar com um vendedor, atendente humano, ou pessoa real, defina "intencao" como "falar_humano" e informe que um vendedor entrará em contato em breve.`;
 
     // Chamar Lovable AI
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
