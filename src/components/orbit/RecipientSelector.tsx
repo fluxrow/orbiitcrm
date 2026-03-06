@@ -620,7 +620,7 @@ export function RecipientSelector({
                 const filtered = prospects?.filter(p => {
                   if (!groupProspectSearch) return true;
                   const q = groupProspectSearch.toLowerCase();
-                  return p.nome_razao?.toLowerCase().includes(q) || p.email_principal?.toLowerCase().includes(q) || p.telefone_whatsapp?.toLowerCase().includes(q);
+                  return p.nome_razao?.toLowerCase().includes(q) || p.email_principal?.toLowerCase().includes(q) || (p.whatsapp || p.telefone || "")?.toLowerCase().includes(q);
                 }) ?? [];
                 return (
                   <>

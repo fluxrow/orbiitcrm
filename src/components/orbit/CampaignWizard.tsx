@@ -161,7 +161,7 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
     if (data.canal === "email") {
       filtered = filtered.filter(p => p.email_principal && !p.optout_email);
     } else {
-      filtered = filtered.filter(p => p.telefone_whatsapp && !p.optout_whatsapp);
+      filtered = filtered.filter(p => (p.whatsapp || p.telefone) && !p.optout_whatsapp);
     }
 
     return filtered;
@@ -207,7 +207,7 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
       const p = prospects.find(pr => pr.id === id);
       if (!p) return false;
       if (data.canal === "email") return p.email_principal && !p.optout_email;
-      return p.telefone_whatsapp && !p.optout_whatsapp;
+      return (p.whatsapp || p.telefone) && !p.optout_whatsapp;
     });
   };
 
@@ -398,7 +398,7 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
           empresa_id: profile.empresa_id,
           prospect_id: p.id,
           email: p.email_principal,
-          telefone: p.telefone_whatsapp,
+          telefone: p.whatsapp || p.telefone,
           status: "pendente",
         }));
 
