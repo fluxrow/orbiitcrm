@@ -1,76 +1,42 @@
 
 
-# Correção do webhook inbound — busca por whatsapp OR telefone + logging
+# Fix: Etapas do funil não aparecem
 
-## Problema raiz
+## Causa raiz
 
-Os logs confirmam: o webhook busca prospect apenas por `whatsapp`, não encontra, tenta criar, falha com erro 23505 (`telefone` duplicado), e o fallback também busca só por `whatsapp` — resultando em 500.
+As 7 etapas inseridas na migration têm `empresa_id = NULL`. A política RLS exige `empresa_id = get_user_empresa_id(auth.uid())`, bloqueando todas as etapas.
 
-## Mudanças
+## Solução
 
-### 1. `supabase/functions/orbit-webhook/index.ts`
+Duas ações:
 
-**Busca inicial de prospect (linha 123-129)** — usar `.or()`:
-```typescript
-let prospectQuery = supabase
-  .from("orbit_prospects")
-  .select("*")
-  .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`);
-if (empresaId) prospectQuery = prospectQuery.eq("empresa_id", empresaId);
-```
+### 1. Migration SQL
 
-**Fallback de duplicata (linha 177-181)** — buscar por whatsapp OR telefone:
-```typescript
-const { data: existingProspect } = await supabase
-  .from("orbit_prospects")
-  .select("*")
-  .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`)
-  .maybeSingle();
-```
-
-**Auto-preencher whatsapp** — após encontrar prospect (tanto na busca inicial quanto no fallback), se `whatsapp` estiver vazio:
-```typescript
-if (prospect && !prospect.whatsapp) {
-  await supabase.from("orbit_prospects")
-    .update({ whatsapp: normalizedPhone, whatsapp_status: "nao_verificado" })
-    .eq("id", prospect.id);
-  prospect.whatsapp = normalizedPhone;
-}
-```
-
-**Fallback final sem exceção (linha 193-196)** — se mesmo com `.or()` não encontrar prospect após 23505, não lançar exceção. Retornar 200 com `ignored`:
-```typescript
-if (!existingProspect) {
-  console.error("[orbit-webhook] Prospect duplicado mas não encontrado com OR:", normalizedPhone);
-  return new Response(JSON.stringify({ ok: true, ignored: true, reason: "duplicate_unresolved" }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
-```
-
-**Logging de webhook** — inserir log no `orbit_webhook_logs` no início do processamento de mensagem e atualizar status ao final.
-
-### 2. Migration SQL — tabela `orbit_webhook_logs`
+Atualizar as 7 etapas existentes para pertencerem à empresa correta, e ajustar a RLS para também permitir visualização de etapas com `empresa_id IS NULL` (etapas globais/default):
 
 ```sql
-CREATE TABLE IF NOT EXISTS orbit_webhook_logs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  event_type text,
-  instance_id text,
-  phone text,
-  payload jsonb,
-  status text DEFAULT 'received',
-  error_message text,
-  created_at timestamptz DEFAULT now()
-);
+-- Associar etapas à empresa existente
+UPDATE orbit_pipeline_stages
+SET empresa_id = 'c4ea82e5-ec19-4d1a-b752-cfadec363fca'
+WHERE empresa_id IS NULL;
+
+-- Atualizar RLS para permitir ver etapas da empresa OU globais
+DROP POLICY IF EXISTS "Users can view own empresa stages" ON orbit_pipeline_stages;
+CREATE POLICY "Users can view own empresa stages"
+  ON orbit_pipeline_stages FOR SELECT TO authenticated
+  USING (
+    empresa_id IS NULL
+    OR empresa_id = get_user_empresa_id(auth.uid())
+  );
 ```
 
-Sem RLS (apenas service_role acessa no webhook).
+### 2. Nenhuma mudança de frontend necessária
 
-## Arquivos alterados
+O hook `useOrbitPipelineStages` e `useOrbitDealsGrouped` já fazem `select("*")` — o problema é puramente RLS.
+
+## Arquivo alterado
 
 | Arquivo | Ação |
 |---|---|
-| `supabase/functions/orbit-webhook/index.ts` | Busca por `whatsapp OR telefone`, auto-preencher whatsapp, fallback sem 500, logging |
-| Migration SQL | Criar tabela `orbit_webhook_logs` |
+| Nova migration SQL | UPDATE empresa_id + ajustar RLS |
 
