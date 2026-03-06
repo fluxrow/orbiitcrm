@@ -406,14 +406,14 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Responsável Comercial</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value || ""}>
+                  <Select onValueChange={(v) => field.onChange(v === "__none__" ? "" : v)} value={field.value || "__none__"}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione um responsável" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="">Sem responsável</SelectItem>
+                      <SelectItem value="__none__">Sem responsável</SelectItem>
                       {vendedores?.map((v: any) => (
                         <SelectItem key={v.id} value={v.id}>
                           {v.nome} {v.cargo ? `(${v.cargo})` : ""}
