@@ -917,6 +917,7 @@ export type Database = {
           canal: string | null
           created_at: string | null
           empresa_id: string | null
+          handoff_sent_at: string | null
           human_talk: boolean | null
           human_user_id: string | null
           id: string
@@ -933,6 +934,7 @@ export type Database = {
           canal?: string | null
           created_at?: string | null
           empresa_id?: string | null
+          handoff_sent_at?: string | null
           human_talk?: boolean | null
           human_user_id?: string | null
           id?: string
@@ -949,6 +951,7 @@ export type Database = {
           canal?: string | null
           created_at?: string | null
           empresa_id?: string | null
+          handoff_sent_at?: string | null
           human_talk?: boolean | null
           human_user_id?: string | null
           id?: string
@@ -1367,6 +1370,71 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "orbit_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_handoffs: {
+        Row: {
+          conversa_id: string
+          created_at: string | null
+          empresa_id: string | null
+          id: string
+          prospect_id: string | null
+          resumo: string | null
+          sent_at: string | null
+          status: string
+          vendedor_id: string | null
+        }
+        Insert: {
+          conversa_id: string
+          created_at?: string | null
+          empresa_id?: string | null
+          id?: string
+          prospect_id?: string | null
+          resumo?: string | null
+          sent_at?: string | null
+          status?: string
+          vendedor_id?: string | null
+        }
+        Update: {
+          conversa_id?: string
+          created_at?: string | null
+          empresa_id?: string | null
+          id?: string
+          prospect_id?: string | null
+          resumo?: string | null
+          sent_at?: string | null
+          status?: string
+          vendedor_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_handoffs_conversa_id_fkey"
+            columns: ["conversa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_conversas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_handoffs_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_handoffs_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_prospects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_handoffs_vendedor_id_fkey"
+            columns: ["vendedor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
