@@ -22,7 +22,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.send-orbit-campaign]
-verify_jwt = true
+verify_jwt = false
 
 [functions.request-campaign-approval]
 verify_jwt = true
