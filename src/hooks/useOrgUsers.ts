@@ -26,7 +26,7 @@ export function useUpdateOrgUser() {
   const { user } = useAuth();
 
   return useMutation({
-    mutationFn: async ({ userId, orgId, ...updates }: { userId: string; orgId: string; role_id?: string; is_active?: boolean; full_name?: string; phone?: string }) => {
+    mutationFn: async ({ userId, orgId, ...updates }: { userId: string; orgId: string; role_id?: string; is_active?: boolean; full_name?: string; phone?: string; whatsapp?: string; cargo?: string; avatar_url?: string; email_signature?: string }) => {
       const { error } = await supabase
         .from("pe_users" as any)
         .update(updates)
