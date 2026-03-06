@@ -7,10 +7,11 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, Send, Sparkles, MessageSquare, Bot, User, Loader2 } from "lucide-react";
+import { Search, Send, Sparkles, MessageSquare, Bot, User, Loader2, CheckCircle } from "lucide-react";
 import { useOrbitConversas, useStartHumanTakeover, useEndHumanTakeover } from "@/hooks/useOrbitConversas";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrbitMensagens, useSendMensagem } from "@/hooks/useOrbitMensagens";
+import { useOrbitHandoff } from "@/hooks/useOrbitHandoffs";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
