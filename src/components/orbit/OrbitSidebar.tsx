@@ -22,6 +22,7 @@ import { useOrbitTasks } from "@/hooks/useOrbitTasks";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
+import { UserProfileDialog } from "@/components/orbit/UserProfileDialog";
 
 export function OrbitSidebar() {
   const location = useLocation();
