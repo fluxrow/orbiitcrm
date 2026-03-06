@@ -49,6 +49,7 @@ const prospectSchema = z.object({
   status_qualificacao: z.string().optional(),
   observacoes: z.string().optional(),
   tipo: z.string().optional(),
+  responsavel_id: z.string().optional().or(z.literal("")),
 });
 
 type ProspectFormData = z.infer<typeof prospectSchema>;
