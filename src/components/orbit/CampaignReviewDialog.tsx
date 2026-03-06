@@ -1,0 +1,150 @@
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { CheckCircle, MessageSquare, Mail, Loader2, Users, AlertTriangle } from "lucide-react";
+import { format } from "date-fns";
+
+interface RecipientCounts {
+  total: number;
+  pendente: number;
+}
+
+interface CampaignReviewDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  campaign: any;
+  recipientCounts?: RecipientCounts;
+  onApproveForSend: (id: string) => void;
+  loading: boolean;
+}
+
+export function CampaignReviewDialog({
+  open,
+  onOpenChange,
+  campaign,
+  recipientCounts,
+  onApproveForSend,
+  loading,
+}: CampaignReviewDialogProps) {
+  if (!campaign) return null;
+
+  const template = campaign.template as any;
+  const totalRecipients = recipientCounts?.total || campaign.total_destinatarios || 0;
+  const pendingRecipients = recipientCounts?.pendente || 0;
+  const invalidRecipients = totalRecipients - pendingRecipients;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            Revisar Campanha
+          </DialogTitle>
+        </DialogHeader>
+
+        {/* Campaign Summary */}
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-muted-foreground">Nome</p>
+              <p className="font-medium">{campaign.nome}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Canal</p>
+              <div className="flex items-center gap-2">
+                {campaign.canal === "whatsapp" ? (
+                  <MessageSquare className="h-4 w-4 text-green-500" />
+                ) : (
+                  <Mail className="h-4 w-4 text-blue-500" />
+                )}
+                <span className="capitalize">{campaign.canal}</span>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Template</p>
+              <p className="font-medium">{template?.nome || "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Criada em</p>
+              <p>{campaign.created_at ? format(new Date(campaign.created_at), "dd/MM/yyyy HH:mm") : "—"}</p>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Message Content */}
+          <div>
+            <h4 className="text-sm font-semibold mb-2">Conteúdo da Mensagem</h4>
+            {template?.corpo_texto ? (
+              <div className="bg-muted/50 rounded-lg p-4 text-sm whitespace-pre-wrap border">
+                {template.corpo_texto}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground italic">Nenhum texto configurado no template.</p>
+            )}
+          </div>
+
+          {/* Image Preview */}
+          {template?.imagem_url && (
+            <div>
+              <h4 className="text-sm font-semibold mb-2">Imagem</h4>
+              <img
+                src={template.imagem_url}
+                alt="Imagem da campanha"
+                className="rounded-lg border max-h-48 object-contain"
+              />
+            </div>
+          )}
+
+          <Separator />
+
+          {/* Recipients */}
+          <div>
+            <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+              <Users className="h-4 w-4" /> Destinatários
+            </h4>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-muted/50 rounded-lg p-3 border">
+                <p className="text-xs text-muted-foreground">Total</p>
+                <p className="text-xl font-bold">{totalRecipients}</p>
+              </div>
+              <div className="bg-green-500/10 rounded-lg p-3 border border-green-500/20">
+                <p className="text-xs text-green-600">Pendentes (válidos)</p>
+                <p className="text-xl font-bold text-green-600">{pendingRecipients}</p>
+              </div>
+              <div className="bg-amber-500/10 rounded-lg p-3 border border-amber-500/20">
+                <p className="text-xs text-amber-600">Já enviados / Inválidos</p>
+                <p className="text-xl font-bold text-amber-600">{invalidRecipients}</p>
+              </div>
+            </div>
+            {pendingRecipients === 0 && totalRecipients > 0 && (
+              <div className="flex items-center gap-2 mt-3 text-sm text-amber-500">
+                <AlertTriangle className="h-4 w-4" />
+                Nenhum destinatário pendente para envio.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Fechar
+          </Button>
+          <Button
+            onClick={() => onApproveForSend(campaign.id)}
+            disabled={loading || pendingRecipients === 0}
+            className="bg-green-600 hover:bg-green-700 text-white"
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <CheckCircle className="h-4 w-4 mr-2" />
+            )}
+            Aprovar para Envio
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
