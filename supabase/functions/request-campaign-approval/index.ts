@@ -18,7 +18,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Validate JWT
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return fail(ErrorCodes.AUTH_ERROR, "Não autenticado", 401);
+      return fail(ErrorCodes.UNAUTHORIZED, "Não autenticado", 401);
     }
 
     const anonClient = createClient(supabaseUrl, supabaseAnonKey, {
