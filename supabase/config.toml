@@ -34,7 +34,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.send-orbit-meta-message]
-verify_jwt = true
+verify_jwt = false
 
 [functions.orbit-search-leads]
 verify_jwt = false
