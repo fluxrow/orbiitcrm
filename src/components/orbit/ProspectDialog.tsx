@@ -155,11 +155,15 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
 
   const onSubmit = async (data: ProspectFormData) => {
     try {
+      const submitData = {
+        ...data,
+        responsavel_id: data.responsavel_id || null,
+      };
       if (isEditing && prospect) {
-        await updateProspect.mutateAsync({ id: prospect.id, ...data });
+        await updateProspect.mutateAsync({ id: prospect.id, ...submitData });
         toast.success("Prospect atualizado com sucesso!");
       } else {
-        await createProspect.mutateAsync({ ...data, nome_razao: data.nome_razao, empresa_id: myProfile?.empresa_id });
+        await createProspect.mutateAsync({ ...submitData, nome_razao: data.nome_razao, empresa_id: myProfile?.empresa_id });
         toast.success("Prospect criado com sucesso!");
       }
       onOpenChange(false);
