@@ -12,8 +12,24 @@ const handler = async (req: Request): Promise<Response> => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    // Validate JWT
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return fail(ErrorCodes.AUTH_ERROR, "Não autenticado", 401);
+    }
+
+    const anonClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: claimsData, error: claimsError } = await anonClient.auth.getUser();
+    if (claimsError || !claimsData?.user) {
+      return fail(ErrorCodes.AUTH_ERROR, "Token inválido", 401);
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { campaign_id, user_id }: ApprovalRequest = await req.json();
 
