@@ -118,7 +118,9 @@ export function DealCard({
       {/* Responsavel */}
       {responsavel && (
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
-          <User className="h-3 w-3" />
+          <div className="h-5 w-5 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+            {(responsavel.nome || "?").substring(0, 2).toUpperCase()}
+          </div>
           <span className="truncate">{responsavel.nome}</span>
         </div>
       )}
