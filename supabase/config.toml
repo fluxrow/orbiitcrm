@@ -13,7 +13,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.orbit-ai-suggest]
-verify_jwt = true
+verify_jwt = false
 
 [functions.orbit-send-message]
 verify_jwt = false
