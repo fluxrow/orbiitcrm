@@ -374,7 +374,11 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
 
       if (!profile?.empresa_id) throw new Error("Empresa não encontrada");
 
-      // Criar campanha
+      // Calculate recipients BEFORE creating campaign to get accurate count
+      const recipientIds = calculateAllRecipientIds();
+      const recipientProspects = prospects?.filter(p => recipientIds.includes(p.id)) || [];
+
+      // Criar campanha with accurate total
       const campaign = await createCampaign.mutateAsync({
         nome: data.nome,
         canal: data.canal,
@@ -383,15 +387,13 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
         filtros_json: data.filtros,
         agendada_para: data.agendada_para || null,
         status: data.agendada_para ? "agendada" : "rascunho",
-        total_destinatarios: estimatedRecipients,
+        total_destinatarios: recipientIds.length,
         empresa_id: profile.empresa_id,
         created_by: user.id,
       });
 
-      // Criar recipients using unified calculation
-      if (prospects && campaign) {
-        const recipientIds = calculateAllRecipientIds();
-        const recipientProspects = prospects.filter(p => recipientIds.includes(p.id));
+      // Criar recipients
+      if (campaign) {
 
         const recipients = recipientProspects.map(p => ({
           campaign_id: campaign.id,
