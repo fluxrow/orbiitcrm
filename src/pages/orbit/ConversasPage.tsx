@@ -29,6 +29,7 @@ export default function ConversasPage() {
   const sendMessage = useSendMensagem();
   const assume = useStartHumanTakeover();
   const release = useEndHumanTakeover();
+  const { data: handoff } = useOrbitHandoff(activeId || undefined);
 
   const filtered = conversas?.filter((c) => (tab === "all" || c.canal === tab) && (!search || c.telefone_whatsapp.includes(search)));
   const active = conversas?.find((c) => c.id === activeId);
