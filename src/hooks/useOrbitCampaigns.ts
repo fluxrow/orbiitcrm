@@ -17,7 +17,7 @@ export function useOrbitCampaigns(filters?: CampaignFilters) {
     queryFn: async () => {
       let query = supabase
         .from("orbit_campaigns")
-        .select("*, template:orbit_message_templates(id, nome, canal)")
+        .select("*, template:orbit_message_templates(id, nome, canal, corpo_texto, imagem_url, assunto_email)")
         .order("created_at", { ascending: false });
 
       if (filters?.status && filters.status !== "all") {

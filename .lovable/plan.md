@@ -1,79 +1,76 @@
 
 
-# Substituir "Solicitar Aprovação" por fluxo "Revisar e Aprovar para Envio"
+# Correção do webhook inbound — busca por whatsapp OR telefone + logging
 
-## Resumo
+## Problema raiz
 
-Remover o conceito de aprovação por terceiros e implementar um fluxo operacional: **Rascunho → Revisar → Aprovar para Envio → Enviar**.
+Os logs confirmam: o webhook busca prospect apenas por `whatsapp`, não encontra, tenta criar, falha com erro 23505 (`telefone` duplicado), e o fallback também busca só por `whatsapp` — resultando em 500.
 
 ## Mudanças
 
-### 1. `src/pages/orbit/CampanhasPage.tsx`
+### 1. `supabase/functions/orbit-webhook/index.ts`
 
-**Status config** - Atualizar o mapa de status:
-- Remover `pendente_aprovacao`, `aprovada`, `reprovada`
-- Adicionar `em_revisao` ("Em Revisão"), `aprovada_para_envio` ("Aprovada para Envio")
-
-**Remover handlers desnecessários**: `handleRequestApproval`, `handleApprove`, `handleReject` e a chamada à edge function `request-campaign-approval`.
-
-**Novo state**: `reviewCampaignId` para controlar qual campanha está no modal de revisão.
-
-**Novo handler `handleApproveForSend`**: Atualiza a campanha com `status: "aprovada_para_envio"` e insere um registro em `orbit_campaign_approvals` com `acao: "aprovada_para_envio"`.
-
-**Novo componente `CampaignReviewDialog`**: Modal que exibe:
-- Nome, canal, template, data de criação
-- Texto completo da mensagem e imagem (se houver)
-- Contagem de destinatários (total, pendentes, válidos, inválidos)
-- Botão "Aprovar para Envio" (principal)
-- Botão "Fechar"
-
-Para obter o template completo, buscar dados da campanha com join no template (já disponível via `c.template`). Buscar o template completo (`corpo_texto`, `imagem_url`, `assunto_email`) via query adicional usando `template_id`.
-
-**Atualizar `CampaignActions`**:
-- Remover `canRequestApproval`, `canApprove`, props `onRequestApproval`, `onApprove`, `onReject`
-- Adicionar `canReview = ["rascunho", "em_revisao"].includes(status) && hasTemplate && totalRecipients > 0`
-- Adicionar `canSend = status === "aprovada_para_envio" && pendingRecipients > 0`
-- `canResume` = `(status === "enviando" || status === "pausada" || status === "pausada_por_limite") && pendingRecipients > 0`
-- Botão "Revisar Campanha" chama `onReview(campaignId)`
-- Guidance message para rascunho sem template/recipients atualizada (remover menção a "aprovação")
-
-**Atualizar filtro de status no Select**: substituir valores antigos pelos novos.
-
-### 2. `src/hooks/useOrbitCampaigns.ts`
-
-Atualizar a query para buscar template com campos completos:
-```
-select("*, template:orbit_message_templates(id, nome, canal, corpo_texto, imagem_url, assunto_email)")
+**Busca inicial de prospect (linha 123-129)** — usar `.or()`:
+```typescript
+let prospectQuery = supabase
+  .from("orbit_prospects")
+  .select("*")
+  .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`);
+if (empresaId) prospectQuery = prospectQuery.eq("empresa_id", empresaId);
 ```
 
-### 3. Nenhuma migração de banco necessária
-
-O campo `status` é `text` livre. Os novos valores (`em_revisao`, `aprovada_para_envio`) funcionam sem alteração de schema.
-
-## Fluxo final de status
-
-```
-rascunho → em_revisao → aprovada_para_envio → enviando → concluida
-                                              → pausada / pausada_por_limite
-                                              → cancelada
+**Fallback de duplicata (linha 177-181)** — buscar por whatsapp OR telefone:
+```typescript
+const { data: existingProspect } = await supabase
+  .from("orbit_prospects")
+  .select("*")
+  .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`)
+  .maybeSingle();
 ```
 
-## Regras de botões
+**Auto-preencher whatsapp** — após encontrar prospect (tanto na busca inicial quanto no fallback), se `whatsapp` estiver vazio:
+```typescript
+if (prospect && !prospect.whatsapp) {
+  await supabase.from("orbit_prospects")
+    .update({ whatsapp: normalizedPhone, whatsapp_status: "nao_verificado" })
+    .eq("id", prospect.id);
+  prospect.whatsapp = normalizedPhone;
+}
+```
 
-| Botão | Condição |
-|---|---|
-| Revisar Campanha | status in (rascunho, em_revisao) AND template AND recipients > 0 |
-| Aprovar para Envio | Dentro do modal de revisão |
-| Enviar Campanha | status = aprovada_para_envio AND pendentes > 0 |
-| Retomar Envio | status in (enviando, pausada, pausada_por_limite) AND pendentes > 0 |
-| Pausar | status = enviando |
-| Cancelar | status not in (concluida, cancelada) |
-| Excluir | status = rascunho |
+**Fallback final sem exceção (linha 193-196)** — se mesmo com `.or()` não encontrar prospect após 23505, não lançar exceção. Retornar 200 com `ignored`:
+```typescript
+if (!existingProspect) {
+  console.error("[orbit-webhook] Prospect duplicado mas não encontrado com OR:", normalizedPhone);
+  return new Response(JSON.stringify({ ok: true, ignored: true, reason: "duplicate_unresolved" }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+```
+
+**Logging de webhook** — inserir log no `orbit_webhook_logs` no início do processamento de mensagem e atualizar status ao final.
+
+### 2. Migration SQL — tabela `orbit_webhook_logs`
+
+```sql
+CREATE TABLE IF NOT EXISTS orbit_webhook_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_type text,
+  instance_id text,
+  phone text,
+  payload jsonb,
+  status text DEFAULT 'received',
+  error_message text,
+  created_at timestamptz DEFAULT now()
+);
+```
+
+Sem RLS (apenas service_role acessa no webhook).
 
 ## Arquivos alterados
 
 | Arquivo | Ação |
 |---|---|
-| `src/pages/orbit/CampanhasPage.tsx` | Reescrever ações, adicionar modal de revisão, remover aprovação por terceiros |
-| `src/hooks/useOrbitCampaigns.ts` | Incluir campos completos do template na query |
+| `supabase/functions/orbit-webhook/index.ts` | Busca por `whatsapp OR telefone`, auto-preencher whatsapp, fallback sem 500, logging |
+| Migration SQL | Criar tabela `orbit_webhook_logs` |
 
