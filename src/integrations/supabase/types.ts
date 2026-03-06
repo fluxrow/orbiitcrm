@@ -2688,8 +2688,11 @@ export type Database = {
       }
       pe_users: {
         Row: {
+          avatar_url: string | null
+          cargo: string | null
           created_at: string
           email: string
+          email_signature: string | null
           full_name: string
           id: string
           is_active: boolean
@@ -2698,10 +2701,14 @@ export type Database = {
           phone: string | null
           role_id: string | null
           updated_at: string
+          whatsapp: string | null
         }
         Insert: {
+          avatar_url?: string | null
+          cargo?: string | null
           created_at?: string
           email: string
+          email_signature?: string | null
           full_name: string
           id: string
           is_active?: boolean
@@ -2710,10 +2717,14 @@ export type Database = {
           phone?: string | null
           role_id?: string | null
           updated_at?: string
+          whatsapp?: string | null
         }
         Update: {
+          avatar_url?: string | null
+          cargo?: string | null
           created_at?: string
           email?: string
+          email_signature?: string | null
           full_name?: string
           id?: string
           is_active?: boolean
@@ -2722,6 +2733,7 @@ export type Database = {
           phone?: string | null
           role_id?: string | null
           updated_at?: string
+          whatsapp?: string | null
         }
         Relationships: [
           {

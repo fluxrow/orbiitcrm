@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Users,
@@ -21,6 +22,7 @@ import { useOrbitTasks } from "@/hooks/useOrbitTasks";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
+import { UserProfileDialog } from "@/components/orbit/UserProfileDialog";
 
 export function OrbitSidebar() {
   const location = useLocation();
@@ -30,6 +32,7 @@ export function OrbitSidebar() {
   const { user, signOut } = useAuth();
   const { data: pendingTasks } = useOrbitTasks({ status: "pending" });
   const pendingCount = pendingTasks?.length || 0;
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const displayName = user?.user_metadata?.nome || user?.email || "Usuário";
   const displayEmail = user?.email || "";
@@ -95,15 +98,18 @@ export function OrbitSidebar() {
 
       {/* User info */}
       <div className="p-4 border-t border-sidebar-border">
-        <div className="flex items-center gap-3 px-3 py-2">
+        <button
+          onClick={() => setProfileOpen(true)}
+          className="flex items-center gap-3 px-3 py-2 w-full rounded-md hover:bg-sidebar-accent transition-colors"
+        >
           <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center">
             <span className="text-sm font-medium text-primary">{initials}</span>
           </div>
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 text-left">
             <p className="text-sm font-medium truncate">{displayName}</p>
             <p className="text-xs text-muted-foreground truncate">{displayEmail}</p>
           </div>
-        </div>
+        </button>
         <Button
           variant="ghost"
           size="sm"
@@ -114,6 +120,8 @@ export function OrbitSidebar() {
           Sair
         </Button>
       </div>
+
+      <UserProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
     </aside>
   );
 }

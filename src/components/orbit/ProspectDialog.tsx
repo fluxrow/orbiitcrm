@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useEmpresaVendedores } from "@/hooks/useEmpresaVendedores";
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -48,6 +49,7 @@ const prospectSchema = z.object({
   status_qualificacao: z.string().optional(),
   observacoes: z.string().optional(),
   tipo: z.string().optional(),
+  responsavel_id: z.string().optional().or(z.literal("")),
 });
 
 type ProspectFormData = z.infer<typeof prospectSchema>;
@@ -80,6 +82,7 @@ const whatsappStatusLabel: Record<string, { label: string; className: string }> 
 export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogProps) {
   const createProspect = useCreateProspect();
   const updateProspect = useUpdateProspect();
+  const { data: vendedores } = useEmpresaVendedores();
   const isEditing = !!prospect;
 
   const { data: myProfile } = useQuery({
@@ -108,6 +111,7 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
       status_qualificacao: "novo",
       observacoes: "",
       tipo: "pessoa",
+      responsavel_id: "",
     },
   });
 
@@ -127,6 +131,7 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
         status_qualificacao: prospect.status_qualificacao || "novo",
         observacoes: prospect.observacoes || "",
         tipo: prospect.tipo || "pessoa",
+        responsavel_id: prospect.responsavel_id || "",
       });
     } else {
       form.reset({
@@ -143,17 +148,22 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
         status_qualificacao: "novo",
         observacoes: "",
         tipo: "pessoa",
+        responsavel_id: "",
       });
     }
   }, [prospect, form]);
 
   const onSubmit = async (data: ProspectFormData) => {
     try {
+      const submitData = {
+        ...data,
+        responsavel_id: data.responsavel_id || null,
+      };
       if (isEditing && prospect) {
-        await updateProspect.mutateAsync({ id: prospect.id, ...data });
+        await updateProspect.mutateAsync({ id: prospect.id, ...submitData });
         toast.success("Prospect atualizado com sucesso!");
       } else {
-        await createProspect.mutateAsync({ ...data, nome_razao: data.nome_razao, empresa_id: myProfile?.empresa_id });
+        await createProspect.mutateAsync({ ...submitData, nome_razao: data.nome_razao, empresa_id: myProfile?.empresa_id });
         toast.success("Prospect criado com sucesso!");
       }
       onOpenChange(false);
@@ -389,6 +399,32 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="responsavel_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Responsável Comercial</FormLabel>
+                  <Select onValueChange={(v) => field.onChange(v === "__none__" ? "" : v)} value={field.value || "__none__"}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um responsável" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="__none__">Sem responsável</SelectItem>
+                      {vendedores?.map((v: any) => (
+                        <SelectItem key={v.id} value={v.id}>
+                          {v.nome} {v.cargo ? `(${v.cargo})` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { usePeAuth } from "@/hooks/usePeAuth";
-import { useOrgUsers, useUpdateOrgUser, useInviteUser, useAddOrgUser } from "@/hooks/useOrgUsers";
+import { useOrgUsers, useInviteUser, useAddOrgUser } from "@/hooks/useOrgUsers";
 import { useOrgInvitations, useCancelInvitation, useResendInvitation } from "@/hooks/usePeInvitations";
 import { usePeRoles } from "@/hooks/usePeRoles";
 import { Button } from "@/components/ui/button";
@@ -8,10 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MoreHorizontal, UserPlus, Plus, Mail, Clock, RefreshCw } from "lucide-react";
+import { EditUserDialog } from "@/components/orbit/EditUserDialog";
+import { UserPlus, Plus, Mail, Clock, RefreshCw, Pencil } from "lucide-react";
 import { format } from "date-fns";
 
 export default function ConfigUsersTab() {
@@ -19,7 +19,6 @@ export default function ConfigUsersTab() {
   const { data: users, isLoading } = useOrgUsers(orgId);
   const { data: invitations } = useOrgInvitations(orgId);
   const { data: roles } = usePeRoles();
-  const updateUser = useUpdateOrgUser();
   const inviteUser = useInviteUser();
   const addUser = useAddOrgUser();
   const cancelInvite = useCancelInvitation();
@@ -27,6 +26,8 @@ export default function ConfigUsersTab() {
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<any>(null);
   const [inviteForm, setInviteForm] = useState({ email: "", role_code: "", full_name: "" });
   const [addForm, setAddForm] = useState({ email: "", password: "", role_code: "", full_name: "" });
 
@@ -44,6 +45,11 @@ export default function ConfigUsersTab() {
     await addUser.mutateAsync({ organization_id: orgId, ...addForm });
     setAddOpen(false);
     setAddForm({ email: "", password: "", role_code: "", full_name: "" });
+  };
+
+  const handleEditUser = (user: any) => {
+    setEditingUser(user);
+    setEditOpen(true);
   };
 
   return (
@@ -69,6 +75,8 @@ export default function ConfigUsersTab() {
             <TableRow>
               <TableHead>Nome</TableHead>
               <TableHead>Email</TableHead>
+              <TableHead>WhatsApp</TableHead>
+              <TableHead>Cargo</TableHead>
               <TableHead>Papel</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="w-12"></TableHead>
@@ -76,14 +84,16 @@ export default function ConfigUsersTab() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
             ) : !users?.length ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Nenhum usuário</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhum usuário</TableCell></TableRow>
             ) : (
               users.map((u: any) => (
                 <TableRow key={u.id}>
                   <TableCell className="font-medium text-foreground">{u.full_name}</TableCell>
                   <TableCell className="text-muted-foreground">{u.email}</TableCell>
+                  <TableCell className="text-muted-foreground">{u.whatsapp || "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">{u.cargo || "—"}</TableCell>
                   <TableCell><Badge variant="outline">{u.pe_roles?.name || "—"}</Badge></TableCell>
                   <TableCell>
                     <Badge variant={u.is_active ? "default" : "secondary"}>
@@ -91,25 +101,9 @@ export default function ConfigUsersTab() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon"><MoreHorizontal className="w-4 h-4" /></Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {roles?.map((r: any) => (
-                          <DropdownMenuItem
-                            key={r.id}
-                            onClick={() => updateUser.mutate({ userId: u.id, orgId: orgId!, role_id: r.id })}
-                            disabled={u.role_id === r.id}
-                          >
-                            Papel: {r.name}
-                          </DropdownMenuItem>
-                        ))}
-                        <DropdownMenuItem onClick={() => updateUser.mutate({ userId: u.id, orgId: orgId!, is_active: !u.is_active })}>
-                          {u.is_active ? "Inativar" : "Ativar"}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <Button variant="ghost" size="icon" onClick={() => handleEditUser(u)}>
+                      <Pencil className="w-4 h-4" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))
@@ -164,6 +158,15 @@ export default function ConfigUsersTab() {
           </div>
         </div>
       )}
+
+      {/* Edit User Dialog */}
+      <EditUserDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        user={editingUser}
+        roles={roles || []}
+        orgId={orgId || ""}
+      />
 
       {/* Dialog: Convidar */}
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
