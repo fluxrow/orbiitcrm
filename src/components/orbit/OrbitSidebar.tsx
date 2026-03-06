@@ -32,6 +32,7 @@ export function OrbitSidebar() {
   const { user, signOut } = useAuth();
   const { data: pendingTasks } = useOrbitTasks({ status: "pending" });
   const pendingCount = pendingTasks?.length || 0;
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const displayName = user?.user_metadata?.nome || user?.email || "Usuário";
   const displayEmail = user?.email || "";
