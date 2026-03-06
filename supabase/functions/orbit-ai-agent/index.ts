@@ -235,6 +235,7 @@ IMPORTANTE: Responda em JSON com esta estrutura:
     }
 
     // Se cadastro completo, distribuir para vendedor
+    let vendedorAtribuido: string | null = prospect?.responsavel_id || null;
     if (parsed.cadastro_completo && !prospect?.responsavel_id) {
       const { data: proximoVendedor } = await supabase
         .from("orbit_distribuicao_config")
@@ -246,6 +247,7 @@ IMPORTANTE: Responda em JSON com esta estrutura:
         .maybeSingle();
 
       if (proximoVendedor) {
+        vendedorAtribuido = proximoVendedor.vendedor_id;
         await supabase
           .from("orbit_prospects")
           .update({
@@ -264,6 +266,21 @@ IMPORTANTE: Responda em JSON com esta estrutura:
 
         console.log("[orbit-ai-agent] Lead distribuído para:", proximoVendedor.vendedor_id);
       }
+    }
+
+    // ── Handoff: notificar vendedor via WhatsApp ──
+    const shouldHandoff = parsed.cadastro_completo === true || parsed.intencao === "falar_humano";
+    if (shouldHandoff && vendedorAtribuido) {
+      await handleSellerHandoff(supabase, {
+        conversa_id,
+        prospect_id,
+        prospect,
+        vendedor_id: vendedorAtribuido,
+        empresa_id: empresaId,
+        mensagem_lead: mensagem,
+        telefone_lead: telefone,
+        isDemo,
+      });
     }
 
     // Enviar resposta via WhatsApp (or simulate for demo)
