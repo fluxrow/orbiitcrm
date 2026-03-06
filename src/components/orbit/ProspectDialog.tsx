@@ -82,6 +82,7 @@ const whatsappStatusLabel: Record<string, { label: string; className: string }> 
 export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogProps) {
   const createProspect = useCreateProspect();
   const updateProspect = useUpdateProspect();
+  const { data: vendedores } = useEmpresaVendedores();
   const isEditing = !!prospect;
 
   const { data: myProfile } = useQuery({
