@@ -3,11 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
 import { CampaignWizard } from "@/components/orbit/CampaignWizard";
+import { CampaignReviewDialog } from "@/components/orbit/CampaignReviewDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Plus, MessageSquare, Mail, Loader2, Play, Pause, X, CheckCircle, Send, Trash2, Info } from "lucide-react";
+import { Plus, MessageSquare, Mail, Loader2, Play, Pause, X, Send, Trash2, Info, Eye } from "lucide-react";
 import { useOrbitCampaigns, useUpdateCampaign, useDeleteCampaign } from "@/hooks/useOrbitCampaigns";
 import { supabase } from "@/integrations/supabase/client";
 import { handleApiResponse } from "@/lib/api-envelope";
@@ -16,9 +17,8 @@ import { toast } from "sonner";
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   rascunho: { label: "Rascunho", className: "bg-muted text-muted-foreground" },
-  pendente_aprovacao: { label: "Aguardando Aprovação", className: "bg-amber-500/20 text-amber-500" },
-  aprovada: { label: "Aprovada", className: "bg-green-500/20 text-green-500" },
-  reprovada: { label: "Reprovada", className: "bg-red-500/20 text-red-500" },
+  em_revisao: { label: "Em Revisão", className: "bg-amber-500/20 text-amber-500" },
+  aprovada_para_envio: { label: "Aprovada para Envio", className: "bg-green-500/20 text-green-500" },
   agendada: { label: "Agendada", className: "bg-blue-500/20 text-blue-400" },
   enviando: { label: "Enviando", className: "bg-purple-500/20 text-purple-400" },
   concluida: { label: "Concluída", className: "bg-green-500/20 text-green-400" },
@@ -32,12 +32,12 @@ export default function CampanhasPage() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+  const [reviewCampaignId, setReviewCampaignId] = useState<string | null>(null);
 
   const { data: campaigns, isLoading, refetch } = useOrbitCampaigns({ status: statusFilter });
   const updateCampaign = useUpdateCampaign();
   const deleteCampaign = useDeleteCampaign();
 
-  // Fetch recipient counts per campaign
   const campaignIds = campaigns?.map(c => c.id) || [];
   const { data: recipientCounts } = useQuery({
     queryKey: ["campaign_recipient_counts", campaignIds],
@@ -60,34 +60,27 @@ export default function CampanhasPage() {
     enabled: campaignIds.length > 0,
   });
 
-  const handleRequestApproval = async (campaignId: string) => {
-    try {
-      setActionLoading(campaignId);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Não autenticado");
-      const response = await supabase.functions.invoke("request-campaign-approval", {
-        body: { campaign_id: campaignId, user_id: user.id }
-      });
-      handleApiResponse(response);
-      toast.success("Solicitação de aprovação enviada!");
-      refetch();
-    } catch (error: any) {
-      toast.error(error.message || "Erro ao solicitar aprovação");
-    } finally {
-      setActionLoading(null);
+  const reviewCampaign = campaigns?.find(c => c.id === reviewCampaignId) || null;
+
+  const handleReview = (campaignId: string) => {
+    setReviewCampaignId(campaignId);
+    // Update status to em_revisao if still rascunho
+    const campaign = campaigns?.find(c => c.id === campaignId);
+    if (campaign?.status === "rascunho") {
+      updateCampaign.mutate({ id: campaignId, status: "em_revisao" });
     }
   };
 
-  const handleApprove = async (campaignId: string) => {
+  const handleApproveForSend = async (campaignId: string) => {
     try {
       setActionLoading(campaignId);
       const { data: { user } } = await supabase.auth.getUser();
       await updateCampaign.mutateAsync({
         id: campaignId,
-        aprovacao_status: "aprovada",
+        status: "aprovada_para_envio",
+        aprovacao_status: "aprovada_para_envio",
         aprovado_por: user?.id,
         aprovado_em: new Date().toISOString(),
-        status: "aprovada"
       });
       const { data: campaign } = await supabase
         .from("orbit_campaigns")
@@ -98,45 +91,15 @@ export default function CampanhasPage() {
         await supabase.from("orbit_campaign_approvals").insert({
           campaign_id: campaignId,
           empresa_id: campaign.empresa_id,
-          acao: "aprovada",
-          user_id: user?.id
+          acao: "aprovada_para_envio",
+          user_id: user?.id,
         });
       }
-      toast.success("Campanha aprovada!");
+      toast.success("Campanha aprovada para envio!");
+      setReviewCampaignId(null);
       refetch();
     } catch (error: any) {
       toast.error(error.message || "Erro ao aprovar");
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleReject = async (campaignId: string) => {
-    try {
-      setActionLoading(campaignId);
-      const { data: { user } } = await supabase.auth.getUser();
-      await updateCampaign.mutateAsync({
-        id: campaignId,
-        aprovacao_status: "reprovada",
-        status: "reprovada"
-      });
-      const { data: campaign } = await supabase
-        .from("orbit_campaigns")
-        .select("empresa_id")
-        .eq("id", campaignId)
-        .single();
-      if (campaign) {
-        await supabase.from("orbit_campaign_approvals").insert({
-          campaign_id: campaignId,
-          empresa_id: campaign.empresa_id,
-          acao: "reprovada",
-          user_id: user?.id
-        });
-      }
-      toast.success("Campanha reprovada");
-      refetch();
-    } catch (error: any) {
-      toast.error(error.message || "Erro ao reprovar");
     } finally {
       setActionLoading(null);
     }
@@ -219,8 +182,8 @@ export default function CampanhasPage() {
           <SelectContent>
             <SelectItem value="all">Todos os Status</SelectItem>
             <SelectItem value="rascunho">Rascunho</SelectItem>
-            <SelectItem value="pendente_aprovacao">Aguardando Aprovação</SelectItem>
-            <SelectItem value="aprovada">Aprovada</SelectItem>
+            <SelectItem value="em_revisao">Em Revisão</SelectItem>
+            <SelectItem value="aprovada_para_envio">Aprovada para Envio</SelectItem>
             <SelectItem value="enviando">Enviando</SelectItem>
             <SelectItem value="concluida">Concluída</SelectItem>
             <SelectItem value="pausada">Pausada</SelectItem>
@@ -253,7 +216,6 @@ export default function CampanhasPage() {
 
             return (
               <div key={c.id} className="bg-card border rounded-lg p-6">
-                {/* Header */}
                 <div className="flex justify-between mb-4">
                   <div className="flex gap-3">
                     <div className={`p-2 rounded-lg ${c.canal === "whatsapp" ? "bg-green-500/20" : "bg-blue-500/20"}`}>
@@ -272,11 +234,10 @@ export default function CampanhasPage() {
                     </div>
                   </div>
                   <Badge className={statusConfig[status]?.className}>
-                    {statusConfig[status]?.label}
+                    {statusConfig[status]?.label || status}
                   </Badge>
                 </div>
 
-                {/* Stats */}
                 <div className="grid grid-cols-5 gap-4 mb-4">
                   {[
                     ["Destinatários", totalRecipients],
@@ -298,7 +259,6 @@ export default function CampanhasPage() {
                   </p>
                 )}
 
-                {/* Action buttons — always visible */}
                 <CampaignActions
                   status={status}
                   campaignId={c.id}
@@ -306,10 +266,7 @@ export default function CampanhasPage() {
                   totalRecipients={totalRecipients}
                   pendingRecipients={pendingRecipients}
                   hasTemplate={hasTemplate}
-                  aprovacaoStatus={c.aprovacao_status}
-                  onRequestApproval={handleRequestApproval}
-                  onApprove={handleApprove}
-                  onReject={handleReject}
+                  onReview={handleReview}
                   onSend={handleSend}
                   onPause={handlePause}
                   onCancel={handleCancel}
@@ -322,6 +279,15 @@ export default function CampanhasPage() {
       )}
 
       <CampaignWizard open={wizardOpen} onOpenChange={setWizardOpen} />
+
+      <CampaignReviewDialog
+        open={!!reviewCampaignId}
+        onOpenChange={(open) => !open && setReviewCampaignId(null)}
+        campaign={reviewCampaign}
+        recipientCounts={reviewCampaignId ? recipientCounts?.[reviewCampaignId] : undefined}
+        onApproveForSend={handleApproveForSend}
+        loading={actionLoading === reviewCampaignId}
+      />
 
       <AlertDialog open={deleteDialog.open} onOpenChange={(open) => setDeleteDialog({ open, id: open ? deleteDialog.id : null })}>
         <AlertDialogContent>
@@ -343,7 +309,7 @@ export default function CampanhasPage() {
   );
 }
 
-/* ── Extracted action buttons component ── */
+/* ── Campaign action buttons ── */
 
 interface CampaignActionsProps {
   status: string;
@@ -352,10 +318,7 @@ interface CampaignActionsProps {
   totalRecipients: number;
   pendingRecipients: number;
   hasTemplate: boolean;
-  aprovacaoStatus: string | null;
-  onRequestApproval: (id: string) => void;
-  onApprove: (id: string) => void;
-  onReject: (id: string) => void;
+  onReview: (id: string) => void;
   onSend: (id: string) => void;
   onPause: (id: string) => void;
   onCancel: (id: string) => void;
@@ -364,54 +327,34 @@ interface CampaignActionsProps {
 
 function CampaignActions({
   status, campaignId, loading, totalRecipients, pendingRecipients,
-  hasTemplate, aprovacaoStatus,
-  onRequestApproval, onApprove, onReject, onSend, onPause, onCancel, onDelete,
+  hasTemplate, onReview, onSend, onPause, onCancel, onDelete,
 }: CampaignActionsProps) {
-  const canRequestApproval = status === "rascunho" && hasTemplate && totalRecipients > 0;
-  const canApprove = status === "pendente_aprovacao";
-  const canSend = (status === "aprovada" || aprovacaoStatus === "aprovada") && pendingRecipients > 0;
-  const canResume = (status === "pausada" || status === "pausada_por_limite") && pendingRecipients > 0;
+  const canReview = ["rascunho", "em_revisao"].includes(status) && hasTemplate && totalRecipients > 0;
+  const canSend = status === "aprovada_para_envio" && pendingRecipients > 0;
+  const canResume = (status === "enviando" || status === "pausada" || status === "pausada_por_limite") && pendingRecipients > 0;
   const canPause = status === "enviando";
   const canCancel = !["concluida", "cancelada"].includes(status);
   const canDelete = status === "rascunho";
 
-  const hasAnyAction = canRequestApproval || canApprove || canSend || canResume || canPause || canCancel || canDelete;
-
-  // Debug info — helps diagnose when no buttons appear
-  const showDebug = !hasAnyAction && !["concluida", "cancelada"].includes(status);
-
   return (
-    <div className="border-t pt-4 space-y-3">
+    <div className="border-t pt-4">
       <div className="flex flex-wrap gap-2">
-        {/* Primary actions */}
-        {canRequestApproval && (
-          <Button size="sm" onClick={() => onRequestApproval(campaignId)} disabled={loading}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
-            Solicitar Aprovação
+        {canReview && (
+          <Button size="sm" onClick={() => onReview(campaignId)} disabled={loading}>
+            <Eye className="h-4 w-4 mr-2" />
+            Revisar Campanha
           </Button>
         )}
 
-        {canApprove && (
-          <>
-            <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => onApprove(campaignId)} disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
-              Aprovar para Envio
-            </Button>
-            <Button size="sm" variant="destructive" onClick={() => onReject(campaignId)} disabled={loading}>
-              <X className="h-4 w-4 mr-2" />Reprovar
-            </Button>
-          </>
-        )}
-
         {canSend && (
-          <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => onSend(campaignId)} disabled={loading}>
+          <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => onSend(campaignId)} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
             Enviar Campanha ({pendingRecipients} pendentes)
           </Button>
         )}
 
         {canResume && (
-          <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => onSend(campaignId)} disabled={loading}>
+          <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => onSend(campaignId)} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
             {status === "pausada_por_limite" ? "Retomar (Limite Resetado)" : "Retomar Envio"} ({pendingRecipients} pendentes)
           </Button>
@@ -423,7 +366,6 @@ function CampaignActions({
           </Button>
         )}
 
-        {/* Secondary actions */}
         {canCancel && (
           <Button size="sm" variant="outline" className="text-destructive border-destructive/50 hover:bg-destructive/10" onClick={() => onCancel(campaignId)} disabled={loading}>
             <X className="h-4 w-4 mr-2" />Cancelar
@@ -436,28 +378,14 @@ function CampaignActions({
           </Button>
         )}
 
-        {/* Rascunho without template or recipients — show guidance */}
-        {status === "rascunho" && !canRequestApproval && (
+        {status === "rascunho" && !canReview && (
           <div className="flex items-center gap-2 text-sm text-amber-500">
             <Info className="h-4 w-4" />
-            {!hasTemplate && "Configure um template para solicitar aprovação. "}
+            {!hasTemplate && "Configure um template para revisar a campanha. "}
             {totalRecipients === 0 && "Nenhum destinatário configurado."}
           </div>
         )}
       </div>
-
-      {/* Debug panel — shown when no actions available on an active campaign */}
-      {showDebug && (
-        <div className="bg-muted/50 border border-dashed rounded-lg p-3 text-xs text-muted-foreground space-y-1">
-          <p className="font-medium flex items-center gap-1"><Info className="h-3 w-3" /> Diagnóstico da campanha</p>
-          <p>Status: <span className="font-mono">{status}</span> | Aprovação: <span className="font-mono">{aprovacaoStatus || "n/a"}</span></p>
-          <p>Destinatários: {totalRecipients} total, {pendingRecipients} pendentes</p>
-          <p>Template: {hasTemplate ? "✅ configurado" : "❌ não configurado"}</p>
-          {status === "aprovada" && pendingRecipients === 0 && (
-            <p className="text-amber-500">⚠️ Campanha aprovada mas sem destinatários pendentes para envio.</p>
-          )}
-        </div>
-      )}
     </div>
   );
 }
