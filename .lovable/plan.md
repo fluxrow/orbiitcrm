@@ -1,76 +1,42 @@
 
 
-# Correção do webhook inbound — busca por whatsapp OR telefone + logging
+# Bug: Campanha WhatsApp mostra 0 destinatários
 
 ## Problema raiz
 
-Os logs confirmam: o webhook busca prospect apenas por `whatsapp`, não encontra, tenta criar, falha com erro 23505 (`telefone` duplicado), e o fallback também busca só por `whatsapp` — resultando em 500.
+Dois problemas combinados:
 
-## Mudanças
+1. **`total_destinatarios` salvo como 0 no banco**: Em `handleCreate` (linha 386), o campo `total_destinatarios` usa `estimatedRecipients`, que é um `useState(0)` atualizado apenas ao clicar "Próximo" no passo 3. Se o estado não foi atualizado corretamente (ex: navegação rápida, ou bug de timing), o valor fica 0. Porém os recipients **são inseridos corretamente** na tabela `orbit_campaign_recipients` via `calculateAllRecipientIds()`.
 
-### 1. `supabase/functions/orbit-webhook/index.ts`
+2. **Contagem na listagem depende de `total_destinatarios` como fallback**: Na `CampanhasPage` (linha 250), `totalRecipients = counts?.total || c.total_destinatarios || 0`. Se a query de `orbit_campaign_recipients` não retornar dados (ex: campanha cancelada com recipients deletados, ou timing de query), e `total_destinatarios` é 0, mostra 0.
 
-**Busca inicial de prospect (linha 123-129)** — usar `.or()`:
+## Correção
+
+### `src/components/orbit/CampaignWizard.tsx`
+
+Na função `handleCreate`, calcular `total_destinatarios` diretamente em vez de usar o estado `estimatedRecipients`:
+
 ```typescript
-let prospectQuery = supabase
-  .from("orbit_prospects")
-  .select("*")
-  .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`);
-if (empresaId) prospectQuery = prospectQuery.eq("empresa_id", empresaId);
+// Linha 386 — substituir estimatedRecipients por cálculo direto
+const recipientIds = calculateAllRecipientIds();
+const recipientProspects = prospects.filter(p => recipientIds.includes(p.id));
+
+const campaign = await createCampaign.mutateAsync({
+  ...
+  total_destinatarios: recipientIds.length,  // era: estimatedRecipients
+  ...
+});
 ```
 
-**Fallback de duplicata (linha 177-181)** — buscar por whatsapp OR telefone:
-```typescript
-const { data: existingProspect } = await supabase
-  .from("orbit_prospects")
-  .select("*")
-  .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`)
-  .maybeSingle();
-```
+Mover o cálculo de `recipientIds` para antes da criação da campanha, e reutilizar nos dois lugares (campanha + insert de recipients).
 
-**Auto-preencher whatsapp** — após encontrar prospect (tanto na busca inicial quanto no fallback), se `whatsapp` estiver vazio:
-```typescript
-if (prospect && !prospect.whatsapp) {
-  await supabase.from("orbit_prospects")
-    .update({ whatsapp: normalizedPhone, whatsapp_status: "nao_verificado" })
-    .eq("id", prospect.id);
-  prospect.whatsapp = normalizedPhone;
-}
-```
+### `src/pages/orbit/CampanhasPage.tsx`
 
-**Fallback final sem exceção (linha 193-196)** — se mesmo com `.or()` não encontrar prospect após 23505, não lançar exceção. Retornar 200 com `ignored`:
-```typescript
-if (!existingProspect) {
-  console.error("[orbit-webhook] Prospect duplicado mas não encontrado com OR:", normalizedPhone);
-  return new Response(JSON.stringify({ ok: true, ignored: true, reason: "duplicate_unresolved" }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
-```
+Nenhuma mudança necessária — a query de `orbit_campaign_recipients` já funciona como fonte primária. Com `total_destinatarios` correto no banco, o fallback também funcionará.
 
-**Logging de webhook** — inserir log no `orbit_webhook_logs` no início do processamento de mensagem e atualizar status ao final.
+## Resumo
 
-### 2. Migration SQL — tabela `orbit_webhook_logs`
-
-```sql
-CREATE TABLE IF NOT EXISTS orbit_webhook_logs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  event_type text,
-  instance_id text,
-  phone text,
-  payload jsonb,
-  status text DEFAULT 'received',
-  error_message text,
-  created_at timestamptz DEFAULT now()
-);
-```
-
-Sem RLS (apenas service_role acessa no webhook).
-
-## Arquivos alterados
-
-| Arquivo | Ação |
+| Arquivo | Mudança |
 |---|---|
-| `supabase/functions/orbit-webhook/index.ts` | Busca por `whatsapp OR telefone`, auto-preencher whatsapp, fallback sem 500, logging |
-| Migration SQL | Criar tabela `orbit_webhook_logs` |
+| `CampaignWizard.tsx` | Usar `calculateAllRecipientIds().length` diretamente em `handleCreate` em vez do estado `estimatedRecipients` |
 
