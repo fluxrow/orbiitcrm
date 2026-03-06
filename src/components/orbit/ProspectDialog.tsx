@@ -131,6 +131,7 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
         status_qualificacao: prospect.status_qualificacao || "novo",
         observacoes: prospect.observacoes || "",
         tipo: prospect.tipo || "pessoa",
+        responsavel_id: prospect.responsavel_id || "",
       });
     } else {
       form.reset({
