@@ -402,6 +402,32 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
 
             <FormField
               control={form.control}
+              name="responsavel_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Responsável Comercial</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value || ""}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um responsável" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="">Sem responsável</SelectItem>
+                      {vendedores?.map((v: any) => (
+                        <SelectItem key={v.id} value={v.id}>
+                          {v.nome} {v.cargo ? `(${v.cargo})` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name="observacoes"
               render={({ field }) => (
                 <FormItem>
