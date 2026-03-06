@@ -28,7 +28,7 @@ export function useOrbitDeals(etapa_id?: string) {
         .from("orbit_deals")
         .select(`
           *,
-          prospect:orbit_prospects!orbit_deals_prospect_id_fkey(id, nome_razao, nome_fantasia),
+          prospect:orbit_prospects!orbit_deals_prospect_id_fkey(id, nome_razao, nome_fantasia, telefone, whatsapp, email_principal, status_qualificacao),
           etapa:orbit_pipeline_stages!orbit_deals_etapa_id_fkey(id, nome, cor, is_won, is_lost),
           responsavel:profiles!orbit_deals_responsavel_id_fkey(id, nome)
         `)
@@ -49,25 +49,22 @@ export function useOrbitDealsGrouped() {
   return useQuery({
     queryKey: ["orbit_deals_grouped"],
     queryFn: async () => {
-      // Fetch stages
       const { data: stages, error: stagesError } = await supabase
         .from("orbit_pipeline_stages")
         .select("*")
         .order("ordem", { ascending: true });
       if (stagesError) throw stagesError;
 
-      // Fetch all deals
       const { data: deals, error: dealsError } = await supabase
         .from("orbit_deals")
         .select(`
           *,
-          prospect:orbit_prospects!orbit_deals_prospect_id_fkey(id, nome_razao, nome_fantasia),
+          prospect:orbit_prospects!orbit_deals_prospect_id_fkey(id, nome_razao, nome_fantasia, telefone, whatsapp, email_principal, status_qualificacao),
           responsavel:profiles!orbit_deals_responsavel_id_fkey(id, nome)
         `)
         .order("created_at", { ascending: false });
       if (dealsError) throw dealsError;
 
-      // Group deals by stage
       const grouped = stages.map((stage) => ({
         ...stage,
         deals: deals.filter((deal) => deal.etapa_id === stage.id),
@@ -127,7 +124,7 @@ export function useMoveDealToStage() {
 
   return useMutation({
     mutationFn: async ({ deal_id, etapa_id, motivo_perda }: { deal_id: string; etapa_id: string; motivo_perda?: string }) => {
-      const updates: DealUpdate = { etapa_id };
+      const updates: any = { etapa_id, moved_at: new Date().toISOString() };
       if (motivo_perda) updates.motivo_perda = motivo_perda;
 
       const { data, error } = await supabase
@@ -155,6 +152,73 @@ export function useDeleteDeal() {
         .from("orbit_deals")
         .delete()
         .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orbit_deals"] });
+      queryClient.invalidateQueries({ queryKey: ["orbit_deals_grouped"] });
+    },
+  });
+}
+
+export function useConvertDealToClient() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ deal_id, prospect_id, etapa_id }: { deal_id: string; prospect_id: string; etapa_id: string }) => {
+      // Update deal status
+      const { error: dealError } = await supabase
+        .from("orbit_deals")
+        .update({
+          etapa_id,
+          status: "won",
+          data_conversao: new Date().toISOString(),
+          moved_at: new Date().toISOString(),
+        })
+        .eq("id", deal_id);
+      if (dealError) throw dealError;
+
+      // Update prospect to cliente
+      const { error: prospectError } = await supabase
+        .from("orbit_prospects")
+        .update({ status_qualificacao: "cliente" })
+        .eq("id", prospect_id);
+      if (prospectError) throw prospectError;
+
+      // Register event
+      const { data: deal } = await supabase
+        .from("orbit_deals")
+        .select("empresa_id")
+        .eq("id", deal_id)
+        .single();
+
+      if (deal?.empresa_id) {
+        await supabase.from("prospect_events" as any).insert({
+          prospect_id,
+          empresa_id: deal.empresa_id,
+          tipo: "status_changed",
+          titulo: "Prospect convertido em cliente",
+          descricao: "Oportunidade marcada como ganha no funil comercial",
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orbit_deals"] });
+      queryClient.invalidateQueries({ queryKey: ["orbit_deals_grouped"] });
+      queryClient.invalidateQueries({ queryKey: ["orbit_prospects"] });
+    },
+  });
+}
+
+export function useUpdateDealChecklist() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ deal_id, checklist }: { deal_id: string; checklist: any[] }) => {
+      const { error } = await supabase
+        .from("orbit_deals")
+        .update({ documentos_checklist: checklist })
+        .eq("id", deal_id);
       if (error) throw error;
     },
     onSuccess: () => {
