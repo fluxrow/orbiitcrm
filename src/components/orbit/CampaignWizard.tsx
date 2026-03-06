@@ -171,9 +171,25 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
   const calculateAllRecipientIds = (): string[] => {
     const ids = new Set<string>();
 
-    // 1. From filters
-    const fromFilters = applyFilters(prospects);
-    fromFilters.forEach(p => ids.add(p.id));
+    // 1. From filters — only if at least one filter is active
+    const f = data.filtros;
+    const hasAnyFilter = !!(
+      f.status_qualificacao?.length ||
+      f.segmento ||
+      f.cidade ||
+      f.estado ||
+      f.origem_contato ||
+      f.origem_lead ||
+      f.tags?.length ||
+      (f.score_min !== undefined && f.score_min > 0) ||
+      f.responsavel_id ||
+      f.apenas_consentimento
+    );
+
+    if (hasAnyFilter) {
+      const fromFilters = applyFilters(prospects);
+      fromFilters.forEach(p => ids.add(p.id));
+    }
 
     // 2. Individual selection
     data.selected_prospect_ids?.forEach(id => ids.add(id));
