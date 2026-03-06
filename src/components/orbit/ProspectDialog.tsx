@@ -111,6 +111,7 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
       status_qualificacao: "novo",
       observacoes: "",
       tipo: "pessoa",
+      responsavel_id: "",
     },
   });
 
