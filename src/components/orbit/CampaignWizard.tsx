@@ -398,7 +398,7 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
           empresa_id: profile.empresa_id,
           prospect_id: p.id,
           email: p.email_principal,
-          telefone: p.telefone_whatsapp,
+          telefone: p.whatsapp || p.telefone,
           status: "pendente",
         }));
 
