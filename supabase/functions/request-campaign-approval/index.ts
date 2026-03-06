@@ -26,7 +26,7 @@ const handler = async (req: Request): Promise<Response> => {
     });
     const { data: claimsData, error: claimsError } = await anonClient.auth.getUser();
     if (claimsError || !claimsData?.user) {
-      return fail(ErrorCodes.AUTH_ERROR, "Token inválido", 401);
+      return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401);
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
