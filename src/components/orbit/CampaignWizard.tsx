@@ -207,7 +207,7 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
       const p = prospects.find(pr => pr.id === id);
       if (!p) return false;
       if (data.canal === "email") return p.email_principal && !p.optout_email;
-      return p.telefone_whatsapp && !p.optout_whatsapp;
+      return (p.whatsapp || p.telefone) && !p.optout_whatsapp;
     });
   };
 
