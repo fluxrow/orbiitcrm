@@ -987,43 +987,58 @@ export type Database = {
       orbit_deals: {
         Row: {
           created_at: string | null
+          data_conversao: string | null
           data_prevista_fechamento: string | null
+          documentos_checklist: Json | null
           empresa_id: string | null
           etapa_id: string | null
           id: string
           motivo_perda: string | null
+          moved_at: string | null
           probabilidade: number | null
           prospect_id: string | null
           responsavel_id: string | null
+          status: string
           titulo: string
+          ultima_interacao_at: string | null
           updated_at: string | null
           valor_estimado: number | null
         }
         Insert: {
           created_at?: string | null
+          data_conversao?: string | null
           data_prevista_fechamento?: string | null
+          documentos_checklist?: Json | null
           empresa_id?: string | null
           etapa_id?: string | null
           id?: string
           motivo_perda?: string | null
+          moved_at?: string | null
           probabilidade?: number | null
           prospect_id?: string | null
           responsavel_id?: string | null
+          status?: string
           titulo: string
+          ultima_interacao_at?: string | null
           updated_at?: string | null
           valor_estimado?: number | null
         }
         Update: {
           created_at?: string | null
+          data_conversao?: string | null
           data_prevista_fechamento?: string | null
+          documentos_checklist?: Json | null
           empresa_id?: string | null
           etapa_id?: string | null
           id?: string
           motivo_perda?: string | null
+          moved_at?: string | null
           probabilidade?: number | null
           prospect_id?: string | null
           responsavel_id?: string | null
+          status?: string
           titulo?: string
+          ultima_interacao_at?: string | null
           updated_at?: string | null
           valor_estimado?: number | null
         }
