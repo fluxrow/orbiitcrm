@@ -78,7 +78,7 @@ export default function CampanhasPage() {
       await updateCampaign.mutateAsync({
         id: campaignId,
         status: "aprovada_para_envio",
-        aprovacao_status: "aprovada_para_envio",
+        aprovacao_status: "aprovada",
         aprovado_por: user?.id,
         aprovado_em: new Date().toISOString(),
       });
