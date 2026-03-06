@@ -7,10 +7,11 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, Send, Sparkles, MessageSquare, Bot, User, Loader2 } from "lucide-react";
+import { Search, Send, Sparkles, MessageSquare, Bot, User, Loader2, CheckCircle } from "lucide-react";
 import { useOrbitConversas, useStartHumanTakeover, useEndHumanTakeover } from "@/hooks/useOrbitConversas";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrbitMensagens, useSendMensagem } from "@/hooks/useOrbitMensagens";
+import { useOrbitHandoff } from "@/hooks/useOrbitHandoffs";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -28,6 +29,7 @@ export default function ConversasPage() {
   const sendMessage = useSendMensagem();
   const assume = useStartHumanTakeover();
   const release = useEndHumanTakeover();
+  const { data: handoff } = useOrbitHandoff(activeId || undefined);
 
   const filtered = conversas?.filter((c) => (tab === "all" || c.canal === tab) && (!search || c.telefone_whatsapp.includes(search)));
   const active = conversas?.find((c) => c.id === activeId);
@@ -64,7 +66,7 @@ export default function ConversasPage() {
           {active ? (
             <>
               <div className="p-4 border-b flex justify-between">
-                <div className="flex gap-3"><Avatar><AvatarFallback>{active.telefone_whatsapp[0]}</AvatarFallback></Avatar><div><h3 className="font-semibold">{(active.prospect as any)?.nome_razao || active.telefone_whatsapp}</h3><Badge variant="outline">{active.human_talk ? <><User className="h-3 w-3 mr-1" />Humano</> : <><Bot className="h-3 w-3 mr-1" />IA</>}</Badge></div></div>
+                <div className="flex gap-3"><Avatar><AvatarFallback>{active.telefone_whatsapp[0]}</AvatarFallback></Avatar><div><h3 className="font-semibold">{(active.prospect as any)?.nome_razao || active.telefone_whatsapp}</h3><div className="flex gap-2 flex-wrap"><Badge variant="outline">{active.human_talk ? <><User className="h-3 w-3 mr-1" />Humano</> : <><Bot className="h-3 w-3 mr-1" />IA</>}</Badge>{handoff?.status === "sent" && <Badge variant="secondary"><CheckCircle className="h-3 w-3 mr-1" />Vendedor notificado{handoff.vendedor?.nome ? ` • ${handoff.vendedor.nome}` : ""}{handoff.sent_at ? ` • ${format(new Date(handoff.sent_at), "dd/MM HH:mm")}` : ""}</Badge>}</div></div></div>
                 <Button variant="outline" size="sm" onClick={() => active.human_talk ? release.mutateAsync(active.id) : assume.mutateAsync({ conversa_id: active.id, user_id: user?.id || "" })}>{active.human_talk ? "Devolver IA" : "Assumir"}</Button>
               </div>
               <ScrollArea className="flex-1 p-4"><div className="space-y-4">{mensagens?.map((m) => <div key={m.id} className={`flex ${m.direcao === "OUT" ? "justify-end" : "justify-start"}`}><div className={`max-w-[70%] rounded-lg p-3 ${m.direcao === "OUT" ? "bg-primary text-primary-foreground" : "bg-muted"}`}><p className="text-sm">{m.mensagem}</p><div className="flex items-center gap-1.5"><span className="text-xs opacity-70">{m.timestamp ? format(new Date(m.timestamp), "HH:mm") : ""}</span>{m.status === "simulated" && <span className="text-[10px] bg-amber-500/20 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded">Simulado</span>}</div></div></div>)}<div ref={endRef} /></div></ScrollArea>

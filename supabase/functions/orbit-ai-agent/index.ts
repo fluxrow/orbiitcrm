@@ -149,13 +149,15 @@ Dados do prospect:
 
 IMPORTANTE: Responda em JSON com esta estrutura:
 {
-  "intencao": "saudacao|orcamento|duvida|reclamacao|agradecimento|outro",
+  "intencao": "saudacao|orcamento|duvida|reclamacao|agradecimento|falar_humano|outro",
   "mensagem": "sua resposta ao cliente em linguagem natural",
   "iniciar_coleta_orcamento": true|false,
   "dados_extraidos": { "campo": "valor" },
   "campo_solicitado": "nome_do_campo ou null",
   "cadastro_completo": true|false
-}`;
+}
+
+REGRA ADICIONAL: Se o cliente pedir para falar com um vendedor, atendente humano, ou pessoa real, defina "intencao" como "falar_humano" e informe que um vendedor entrará em contato em breve.`;
 
     // Chamar Lovable AI
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -235,6 +237,7 @@ IMPORTANTE: Responda em JSON com esta estrutura:
     }
 
     // Se cadastro completo, distribuir para vendedor
+    let vendedorAtribuido: string | null = prospect?.responsavel_id || null;
     if (parsed.cadastro_completo && !prospect?.responsavel_id) {
       const { data: proximoVendedor } = await supabase
         .from("orbit_distribuicao_config")
@@ -246,6 +249,7 @@ IMPORTANTE: Responda em JSON com esta estrutura:
         .maybeSingle();
 
       if (proximoVendedor) {
+        vendedorAtribuido = proximoVendedor.vendedor_id;
         await supabase
           .from("orbit_prospects")
           .update({
@@ -266,6 +270,21 @@ IMPORTANTE: Responda em JSON com esta estrutura:
       }
     }
 
+    // ── Handoff: notificar vendedor via WhatsApp ──
+    const shouldHandoff = parsed.cadastro_completo === true || parsed.intencao === "falar_humano";
+    if (shouldHandoff && vendedorAtribuido) {
+      await handleSellerHandoff(supabase, {
+        conversa_id,
+        prospect_id,
+        prospect,
+        vendedor_id: vendedorAtribuido,
+        empresa_id: empresaId,
+        mensagem_lead: mensagem,
+        telefone_lead: telefone,
+        isDemo,
+      });
+    }
+
     // Enviar resposta via WhatsApp (or simulate for demo)
     await sendWhatsAppMessage(supabase, telefone, resposta, conversa_id, isDemo, empresaId);
 
@@ -281,6 +300,153 @@ IMPORTANTE: Responda em JSON com esta estrutura:
     });
   }
 });
+
+interface HandoffParams {
+  conversa_id: string;
+  prospect_id: string;
+  prospect: any;
+  vendedor_id: string;
+  empresa_id: string | null | undefined;
+  mensagem_lead: string;
+  telefone_lead: string;
+  isDemo: boolean;
+}
+
+async function handleSellerHandoff(supabase: any, params: HandoffParams) {
+  const { conversa_id, prospect_id, prospect, vendedor_id, empresa_id, mensagem_lead, telefone_lead, isDemo } = params;
+
+  try {
+    // Check if handoff already sent for this conversa
+    const { data: existingHandoff } = await supabase
+      .from("orbit_handoffs")
+      .select("id")
+      .eq("conversa_id", conversa_id)
+      .in("status", ["sent", "pending"])
+      .maybeSingle();
+
+    if (existingHandoff) {
+      console.log("[orbit-ai-agent] Handoff já enviado para esta conversa:", conversa_id);
+      return;
+    }
+
+    // Get seller data from profiles and pe_users
+    const { data: vendedorProfile } = await supabase
+      .from("profiles")
+      .select("id, nome, telefone, cargo")
+      .eq("id", vendedor_id)
+      .single();
+
+    const { data: vendedorPe } = await supabase
+      .from("pe_users")
+      .select("whatsapp, phone")
+      .eq("id", vendedor_id)
+      .maybeSingle();
+
+    const vendedorWhatsapp = vendedorPe?.whatsapp || vendedorPe?.phone || vendedorProfile?.telefone;
+    if (!vendedorWhatsapp) {
+      console.log("[orbit-ai-agent] Vendedor sem WhatsApp/telefone, não pode enviar handoff");
+      await supabase.from("orbit_handoffs").insert({
+        empresa_id,
+        conversa_id,
+        prospect_id,
+        vendedor_id,
+        resumo: "Vendedor sem WhatsApp cadastrado",
+        status: "failed",
+      });
+      return;
+    }
+
+    // Get empresa name
+    let empresaNome = "";
+    if (empresa_id) {
+      const { data: empresa } = await supabase.from("orbit_empresas").select("nome").eq("id", empresa_id).single();
+      empresaNome = empresa?.nome || "";
+    }
+
+    // Build summary
+    const leadPhone = telefone_lead?.replace(/\D/g, "") || "";
+    const vendedorNome = vendedorProfile?.nome || "Vendedor";
+    const now = new Date();
+    const dataHora = now.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+
+    const msgIntro = empresaNome
+      ? `Olá, aqui é ${vendedorNome} da ${empresaNome}. Vi seu contato com nosso atendimento e estou assumindo seu caso por aqui.`
+      : `Olá, aqui é ${vendedorNome}. Vi seu contato com nosso atendimento e estou assumindo seu caso por aqui.`;
+
+    const waLink = `https://wa.me/${leadPhone}?text=${encodeURIComponent(msgIntro)}`;
+
+    const resumo = [
+      `🔔 *Novo Lead Qualificado pela IA*`,
+      ``,
+      `👤 Nome: ${prospect?.nome_razao || "Não informado"}`,
+      prospect?.nome_fantasia ? `🏢 Empresa: ${prospect.nome_fantasia}` : null,
+      `💬 WhatsApp: ${telefone_lead || "Não informado"}`,
+      prospect?.cidade ? `📍 Cidade: ${prospect.cidade}${prospect.estado ? `/${prospect.estado}` : ""}` : null,
+      prospect?.segmento ? `🏷️ Segmento: ${prospect.segmento}` : null,
+      ``,
+      prospect?.email_principal ? `📧 Email: ${prospect.email_principal}` : null,
+      `💬 Última msg: "${mensagem_lead?.substring(0, 200)}"`,
+      `🕐 ${dataHora}`,
+      ``,
+      `👉 Entrar em contato:`,
+      waLink,
+    ].filter(Boolean).join("\n");
+
+    // Insert handoff record as pending
+    const { data: handoff } = await supabase.from("orbit_handoffs").insert({
+      empresa_id,
+      conversa_id,
+      prospect_id,
+      vendedor_id,
+      resumo,
+      status: "pending",
+    }).select().single();
+
+    // Send WhatsApp to seller
+    const vendedorPhone = vendedorWhatsapp.replace(/\D/g, "");
+
+    if (isDemo) {
+      console.log("[orbit-ai-agent] Demo mode — handoff simulado para vendedor:", vendedorPhone);
+      await supabase.from("orbit_handoffs").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", handoff.id);
+    } else {
+      let zapiQuery = supabase.from("orbit_zapi_config").select("*").eq("ativo", true);
+      if (empresa_id) zapiQuery = zapiQuery.eq("empresa_id", empresa_id);
+      const { data: zapiConfig } = await zapiQuery.maybeSingle();
+
+      if (zapiConfig?.instance_id && zapiConfig?.token) {
+        const response = await fetch(
+          `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-text`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Client-Token": zapiConfig.client_token || "",
+            },
+            body: JSON.stringify({ phone: vendedorPhone, message: resumo }),
+          }
+        );
+
+        const result = await response.json();
+        console.log("[orbit-ai-agent] Handoff WhatsApp enviado:", { ok: response.ok, messageId: result.messageId });
+
+        await supabase.from("orbit_handoffs").update({
+          status: response.ok ? "sent" : "failed",
+          sent_at: response.ok ? new Date().toISOString() : null,
+        }).eq("id", handoff.id);
+      } else {
+        console.log("[orbit-ai-agent] Z-API não configurado para handoff");
+        await supabase.from("orbit_handoffs").update({ status: "failed" }).eq("id", handoff.id);
+      }
+    }
+
+    // Update conversa with handoff timestamp
+    await supabase.from("orbit_conversas").update({ handoff_sent_at: new Date().toISOString() }).eq("id", conversa_id);
+    console.log("[orbit-ai-agent] Handoff completo para conversa:", conversa_id);
+
+  } catch (error) {
+    console.error("[orbit-ai-agent] Erro no handoff:", error);
+  }
+}
 
 async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: string, conversa_id: string, isDemo: boolean, empresaId?: string | null) {
   try {
