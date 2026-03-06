@@ -13,7 +13,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.orbit-ai-suggest]
-verify_jwt = true
+verify_jwt = false
 
 [functions.orbit-send-message]
 verify_jwt = false
@@ -22,10 +22,10 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.send-orbit-campaign]
-verify_jwt = true
+verify_jwt = false
 
 [functions.request-campaign-approval]
-verify_jwt = true
+verify_jwt = false
 
 [functions.send-vendedor-notification]
 verify_jwt = false
@@ -34,7 +34,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.send-orbit-meta-message]
-verify_jwt = true
+verify_jwt = false
 
 [functions.orbit-search-leads]
 verify_jwt = false
