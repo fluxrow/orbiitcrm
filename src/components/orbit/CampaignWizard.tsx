@@ -161,7 +161,7 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
     if (data.canal === "email") {
       filtered = filtered.filter(p => p.email_principal && !p.optout_email);
     } else {
-      filtered = filtered.filter(p => p.telefone_whatsapp && !p.optout_whatsapp);
+      filtered = filtered.filter(p => (p.whatsapp || p.telefone) && !p.optout_whatsapp);
     }
 
     return filtered;
