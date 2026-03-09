@@ -432,6 +432,59 @@ const handler = async (req: Request): Promise<Response> => {
           }
         }
 
+        // ── Registrar em Conversas ──
+        const phoneForConversa = campaign.canal === "whatsapp" ? (validatedPhone || candidatePhone || "") : (prospect.telefone || prospect.whatsapp || "");
+        if (phoneForConversa && campaign.empresa_id) {
+          try {
+            let conversaId: string | null = null;
+            const { data: existingConversa } = await supabase
+              .from("orbit_conversas")
+              .select("id")
+              .eq("prospect_id", prospect.id)
+              .eq("empresa_id", campaign.empresa_id)
+              .eq("status", "aberta")
+              .maybeSingle();
+
+            if (existingConversa) {
+              conversaId = existingConversa.id;
+            } else {
+              const { data: novaConversa } = await supabase
+                .from("orbit_conversas")
+                .insert({
+                  empresa_id: campaign.empresa_id,
+                  prospect_id: prospect.id,
+                  canal: campaign.canal,
+                  telefone_whatsapp: phoneForConversa,
+                  status: "aberta",
+                  ultima_mensagem_at: new Date().toISOString(),
+                  ultima_mensagem_preview: mensagem.substring(0, 100),
+                })
+                .select("id")
+                .single();
+              conversaId = novaConversa?.id || null;
+            }
+
+            if (conversaId) {
+              await supabase.from("orbit_mensagens").insert({
+                conversa_id: conversaId,
+                empresa_id: campaign.empresa_id,
+                direcao: "OUT",
+                mensagem,
+                canal: campaign.canal,
+                status: isDemo ? "simulated" : "enviada",
+                campaign_id: campaign.id,
+              });
+
+              await supabase.from("orbit_conversas").update({
+                ultima_mensagem_at: new Date().toISOString(),
+                ultima_mensagem_preview: mensagem.substring(0, 100),
+              }).eq("id", conversaId);
+            }
+          } catch (convError: any) {
+            console.error(`Erro ao registrar conversa para ${recipient.id}:`, convError.message);
+          }
+        }
+
         await supabase.from("orbit_campaign_recipients").update({ status: "enviado", enviado_em: new Date().toISOString() }).eq("id", recipient.id);
 
         if (campaign.empresa_id) {
