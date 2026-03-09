@@ -1,76 +1,95 @@
 
 
-# Correção do webhook inbound — busca por whatsapp OR telefone + logging
+# Fix: Mensagens de campanha não aparecem em Conversas
 
-## Problema raiz
+## Problema
 
-Os logs confirmam: o webhook busca prospect apenas por `whatsapp`, não encontra, tenta criar, falha com erro 23505 (`telefone` duplicado), e o fallback também busca só por `whatsapp` — resultando em 500.
+A edge function `send-orbit-campaign` envia mensagens via Z-API diretamente, mas **não cria registros em `orbit_conversas` nem em `orbit_mensagens`**. Por isso as mensagens enviadas por campanha não aparecem no módulo Conversas.
 
-## Mudanças
+Em contraste, o `orbit-send-message` (envio manual) sempre salva em `orbit_mensagens` e atualiza `orbit_conversas`.
 
-### 1. `supabase/functions/orbit-webhook/index.ts`
+## Solução
 
-**Busca inicial de prospect (linha 123-129)** — usar `.or()`:
+Após cada envio bem-sucedido de WhatsApp/email na campanha, o sistema deve:
+
+1. **Buscar ou criar uma conversa** (`orbit_conversas`) para o prospect
+2. **Inserir a mensagem** em `orbit_mensagens` com `direcao: "OUT"` e referência à campanha
+3. **Atualizar a conversa** com `ultima_mensagem_at` e `ultima_mensagem_preview`
+
+## Alteração — `supabase/functions/send-orbit-campaign/index.ts`
+
+Após o envio bem-sucedido (linha ~435, antes do update do recipient para "enviado"), adicionar:
+
 ```typescript
-let prospectQuery = supabase
-  .from("orbit_prospects")
-  .select("*")
-  .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`);
-if (empresaId) prospectQuery = prospectQuery.eq("empresa_id", empresaId);
-```
-
-**Fallback de duplicata (linha 177-181)** — buscar por whatsapp OR telefone:
-```typescript
-const { data: existingProspect } = await supabase
-  .from("orbit_prospects")
-  .select("*")
-  .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`)
+// ── Registrar em Conversas ──
+// 1. Buscar conversa aberta existente para este prospect
+let conversaId: string | null = null;
+const { data: existingConversa } = await supabase
+  .from("orbit_conversas")
+  .select("id")
+  .eq("prospect_id", prospect.id)
+  .eq("empresa_id", campaign.empresa_id)
+  .eq("status", "aberta")
   .maybeSingle();
-```
 
-**Auto-preencher whatsapp** — após encontrar prospect (tanto na busca inicial quanto no fallback), se `whatsapp` estiver vazio:
-```typescript
-if (prospect && !prospect.whatsapp) {
-  await supabase.from("orbit_prospects")
-    .update({ whatsapp: normalizedPhone, whatsapp_status: "nao_verificado" })
-    .eq("id", prospect.id);
-  prospect.whatsapp = normalizedPhone;
+if (existingConversa) {
+  conversaId = existingConversa.id;
+} else {
+  // Criar nova conversa
+  const { data: novaConversa } = await supabase
+    .from("orbit_conversas")
+    .insert({
+      empresa_id: campaign.empresa_id,
+      prospect_id: prospect.id,
+      canal: campaign.canal,
+      telefone_whatsapp: validatedPhone,
+      status: "aberta",
+      ultima_mensagem_at: new Date().toISOString(),
+      ultima_mensagem_preview: mensagem.substring(0, 100),
+    })
+    .select("id")
+    .single();
+  conversaId = novaConversa?.id || null;
 }
-```
 
-**Fallback final sem exceção (linha 193-196)** — se mesmo com `.or()` não encontrar prospect após 23505, não lançar exceção. Retornar 200 com `ignored`:
-```typescript
-if (!existingProspect) {
-  console.error("[orbit-webhook] Prospect duplicado mas não encontrado com OR:", normalizedPhone);
-  return new Response(JSON.stringify({ ok: true, ignored: true, reason: "duplicate_unresolved" }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+if (conversaId) {
+  // 2. Inserir mensagem
+  await supabase.from("orbit_mensagens").insert({
+    conversa_id: conversaId,
+    empresa_id: campaign.empresa_id,
+    direcao: "OUT",
+    mensagem,
+    canal: campaign.canal,
+    status: isDemo ? "simulated" : "enviada",
+    campaign_id: campaign.id,
   });
+
+  // 3. Atualizar conversa
+  await supabase.from("orbit_conversas").update({
+    ultima_mensagem_at: new Date().toISOString(),
+    ultima_mensagem_preview: mensagem.substring(0, 100),
+  }).eq("id", conversaId);
 }
 ```
 
-**Logging de webhook** — inserir log no `orbit_webhook_logs` no início do processamento de mensagem e atualizar status ao final.
+A mesma lógica se aplica ao canal email, adaptando os campos.
 
-### 2. Migration SQL — tabela `orbit_webhook_logs`
+Para mensagens simuladas (demo), também registrar com `status: "simulated"`.
+
+## Verificação de schema
+
+Verificar se `orbit_mensagens` possui coluna `campaign_id`. Se não existir, criar via migration:
 
 ```sql
-CREATE TABLE IF NOT EXISTS orbit_webhook_logs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  event_type text,
-  instance_id text,
-  phone text,
-  payload jsonb,
-  status text DEFAULT 'received',
-  error_message text,
-  created_at timestamptz DEFAULT now()
-);
+ALTER TABLE orbit_mensagens ADD COLUMN IF NOT EXISTS campaign_id uuid REFERENCES orbit_campaigns(id);
 ```
 
-Sem RLS (apenas service_role acessa no webhook).
+Isso permite filtrar/identificar mensagens originadas de campanhas.
 
 ## Arquivos alterados
 
 | Arquivo | Ação |
 |---|---|
-| `supabase/functions/orbit-webhook/index.ts` | Busca por `whatsapp OR telefone`, auto-preencher whatsapp, fallback sem 500, logging |
-| Migration SQL | Criar tabela `orbit_webhook_logs` |
+| `supabase/functions/send-orbit-campaign/index.ts` | Adicionar criação de conversa + mensagem após envio |
+| Nova migration SQL | Adicionar `campaign_id` em `orbit_mensagens` (se necessário) |
 
