@@ -1,0 +1,1 @@
+ALTER TABLE orbit_mensagens ADD COLUMN IF NOT EXISTS campaign_id uuid REFERENCES orbit_campaigns(id);

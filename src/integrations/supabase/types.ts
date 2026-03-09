@@ -1757,6 +1757,7 @@ export type Database = {
       }
       orbit_mensagens: {
         Row: {
+          campaign_id: string | null
           canal: string | null
           conversa_id: string | null
           direcao: string
@@ -1771,6 +1772,7 @@ export type Database = {
           url_midia: string | null
         }
         Insert: {
+          campaign_id?: string | null
           canal?: string | null
           conversa_id?: string | null
           direcao: string
@@ -1785,6 +1787,7 @@ export type Database = {
           url_midia?: string | null
         }
         Update: {
+          campaign_id?: string | null
           canal?: string | null
           conversa_id?: string | null
           direcao?: string
@@ -1799,6 +1802,13 @@ export type Database = {
           url_midia?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "orbit_mensagens_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_campaigns"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "orbit_mensagens_conversa_id_fkey"
             columns: ["conversa_id"]
