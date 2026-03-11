@@ -23,12 +23,12 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    let { conversa_id, mensagem, telefone, canal } = body;
+    let { conversa_id, mensagem, telefone, canal, tipo_midia, url_midia } = body;
 
-    console.log("[orbit-send-message] Params recebidos:", JSON.stringify({ conversa_id, mensagem: mensagem?.substring(0, 30), telefone, canal }));
+    console.log("[orbit-send-message] Params recebidos:", JSON.stringify({ conversa_id, mensagem: mensagem?.substring(0, 30), telefone, canal, tipo_midia, url_midia: url_midia ? "SET" : "EMPTY" }));
 
-    if (!conversa_id || !mensagem) {
-      return fail(ErrorCodes.VALIDATION_ERROR, "conversa_id e mensagem são obrigatórios");
+    if (!conversa_id || (!mensagem && !url_midia)) {
+      return fail(ErrorCodes.VALIDATION_ERROR, "conversa_id e mensagem/url_midia são obrigatórios");
     }
 
     // Se telefone não veio do frontend, buscar da conversa
@@ -114,16 +114,41 @@ serve(async (req) => {
 
       if (zapiConfig?.instance_id && zapiConfig?.token && telefone) {
         try {
-          const zapiUrl = `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-text`;
-          console.log("[orbit-send-message] Enviando via Z-API para:", telefone);
+          const zapiBase = `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}`;
+          const zapiHeaders = {
+            "Content-Type": "application/json",
+            "Client-Token": zapiConfig.client_token || "",
+          };
+
+          let zapiUrl: string;
+          let zapiBody: any;
+
+          // Choose endpoint based on media type
+          if (tipo_midia === "image" && url_midia) {
+            zapiUrl = `${zapiBase}/send-image`;
+            zapiBody = { phone: telefone, image: url_midia, caption: mensagem || "" };
+          } else if (tipo_midia === "audio" && url_midia) {
+            zapiUrl = `${zapiBase}/send-audio`;
+            zapiBody = { phone: telefone, audio: url_midia };
+          } else if (tipo_midia === "document" && url_midia) {
+            zapiUrl = `${zapiBase}/send-document`;
+            const fileName = url_midia.split("/").pop() || "documento";
+            zapiBody = { phone: telefone, document: url_midia, fileName };
+          } else if (tipo_midia === "video" && url_midia) {
+            zapiUrl = `${zapiBase}/send-video`;
+            zapiBody = { phone: telefone, video: url_midia, caption: mensagem || "" };
+          } else {
+            // Default: text
+            zapiUrl = `${zapiBase}/send-text`;
+            zapiBody = { phone: telefone, message: mensagem };
+          }
+
+          console.log("[orbit-send-message] Enviando via Z-API para:", telefone, "tipo:", tipo_midia || "text");
 
           const response = await fetch(zapiUrl, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Client-Token": zapiConfig.client_token || "",
-            },
-            body: JSON.stringify({ phone: telefone, message: mensagem }),
+            headers: zapiHeaders,
+            body: JSON.stringify(zapiBody),
           });
 
           const result = await response.json();
@@ -138,7 +163,6 @@ serve(async (req) => {
           failReason = `Z-API exception: ${error instanceof Error ? error.message : String(error)}`;
         }
       } else {
-        // Não tem config ou telefone — marcar como falhou com motivo
         messageStatus = "falhou";
         const missing: string[] = [];
         if (!zapiConfig?.instance_id) missing.push("instance_id");
@@ -155,12 +179,14 @@ serve(async (req) => {
       .insert({
         conversa_id,
         direcao: "OUT",
-        mensagem,
+        mensagem: mensagem || (tipo_midia ? `📎 ${tipo_midia}` : ""),
         canal: canal || "whatsapp",
         status: messageStatus,
         provider_message_id: providerId,
         empresa_id: profile?.empresa_id || null,
         erro: failReason,
+        tipo_midia: tipo_midia || null,
+        url_midia: url_midia || null,
       })
       .select()
       .single();
@@ -179,11 +205,15 @@ serve(async (req) => {
     }
 
     // Atualizar conversa
+    const previewText = tipo_midia
+      ? (mensagem || `📎 ${tipo_midia}`).substring(0, 100)
+      : (mensagem || "").substring(0, 100);
+
     await supabase
       .from("orbit_conversas")
       .update({
         ultima_mensagem_at: new Date().toISOString(),
-        ultima_mensagem_preview: mensagem.substring(0, 100),
+        ultima_mensagem_preview: previewText,
         mensagens_nao_lidas: 0,
       })
       .eq("id", conversa_id);

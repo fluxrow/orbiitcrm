@@ -16,7 +16,6 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
-  // Will be set later for logging
   let logId: string | null = null;
 
   try {
@@ -29,7 +28,6 @@ serve(async (req) => {
     const payloadInstanceId = payload.instanceId || null;
     const payloadPhone = payload.phone?.replace(/\D/g, "") || payload.from?.replace(/\D/g, "") || null;
 
-    // Insert webhook log
     const { data: logRow } = await supabase
       .from("orbit_webhook_logs")
       .insert({
@@ -43,7 +41,6 @@ serve(async (req) => {
       .single();
     logId = logRow?.id || null;
 
-    // Handle non-message events
     switch (eventType) {
       case "on-connect":
         console.log("[orbit-webhook] Instância conectada");
@@ -129,9 +126,39 @@ serve(async (req) => {
 
     // Main message processing
     const phone = payload.phone?.replace(/\D/g, "") || payload.from?.replace(/\D/g, "");
-    const messageText = payload.text?.message || payload.body || payload.caption || "";
-    const messageId = payload.messageId || payload.id;
     const fromMe = payload.fromMe || eventType === "on-send";
+
+    // ── Extract media from Z-API payload ──
+    let tipoMidia: string | null = null;
+    let urlMidia: string | null = null;
+    let messageText = payload.text?.message || payload.body || "";
+
+    if (payload.image) {
+      tipoMidia = "image";
+      urlMidia = payload.image.imageUrl || payload.image.url || null;
+      messageText = payload.image.caption || messageText || "";
+    } else if (payload.audio) {
+      tipoMidia = "audio";
+      urlMidia = payload.audio.audioUrl || payload.audio.url || null;
+    } else if (payload.video) {
+      tipoMidia = "video";
+      urlMidia = payload.video.videoUrl || payload.video.url || null;
+      messageText = payload.video.caption || messageText || "";
+    } else if (payload.document) {
+      tipoMidia = "document";
+      urlMidia = payload.document.documentUrl || payload.document.url || null;
+      messageText = payload.document.caption || payload.document.fileName || messageText || "";
+    } else if (payload.sticker) {
+      tipoMidia = "image";
+      urlMidia = payload.sticker.stickerUrl || payload.sticker.url || null;
+    }
+
+    // Fallback: caption at root level
+    if (!messageText && payload.caption) {
+      messageText = payload.caption;
+    }
+
+    const messageId = payload.messageId || payload.id;
 
     if (!phone || (fromMe && eventType !== "on-send")) {
       if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "no phone or skipped fromMe" }).eq("id", logId);
@@ -142,7 +169,7 @@ serve(async (req) => {
 
     const normalizedPhone = phone.startsWith("55") ? phone : `55${phone}`;
 
-    // 1. Find or create prospect — search by whatsapp OR telefone
+    // 1. Find or create prospect
     let prospectQuery = supabase
       .from("orbit_prospects")
       .select("*")
@@ -151,7 +178,6 @@ serve(async (req) => {
 
     let { data: prospect } = await prospectQuery.maybeSingle();
 
-    // Auto-fill whatsapp if found via telefone only
     if (prospect && !prospect.whatsapp) {
       console.log("[orbit-webhook] Auto-preenchendo whatsapp para prospect:", prospect.id);
       await supabase
@@ -162,7 +188,6 @@ serve(async (req) => {
     }
 
     if (!prospect) {
-      // Check prospect limit for demo plans
       if (empresaId) {
         const { data: saasEmpresa } = await supabase
           .from("saas_empresa")
@@ -221,7 +246,6 @@ serve(async (req) => {
                 .eq("id", existingProspect.id);
               existingProspect.empresa_id = empresaId;
             }
-            // Auto-fill whatsapp if missing
             if (!existingProspect.whatsapp) {
               console.log("[orbit-webhook] Auto-preenchendo whatsapp (fallback) para prospect:", existingProspect.id);
               await supabase
@@ -299,16 +323,22 @@ serve(async (req) => {
       }
     }
 
-    // 4. Save message
+    // 4. Save message with media fields
     const direcao = fromMe ? "OUT" : "IN";
+    const previewText = tipoMidia
+      ? (messageText || `📎 ${tipoMidia}`).substring(0, 100)
+      : messageText.substring(0, 100);
+
     await supabase.from("orbit_mensagens").insert({
       conversa_id: conversa.id,
       direcao,
-      mensagem: messageText,
+      mensagem: messageText || (tipoMidia ? `📎 ${tipoMidia}` : ""),
       provider_message_id: messageId,
       canal: "whatsapp",
       status: fromMe ? "enviada" : "recebida",
       empresa_id: empresaId,
+      tipo_midia: tipoMidia,
+      url_midia: urlMidia,
     });
 
     // 5. Update conversation
@@ -316,7 +346,7 @@ serve(async (req) => {
       .from("orbit_conversas")
       .update({
         ultima_mensagem_at: new Date().toISOString(),
-        ultima_mensagem_preview: messageText.substring(0, 100),
+        ultima_mensagem_preview: previewText,
         mensagens_nao_lidas: fromMe ? 0 : (conversa.mensagens_nao_lidas || 0) + 1,
       })
       .eq("id", conversa.id);
@@ -345,7 +375,6 @@ serve(async (req) => {
       }
     }
 
-    // Update log as processed
     if (logId) await supabase.from("orbit_webhook_logs").update({ status: "processed" }).eq("id", logId);
 
     return new Response(JSON.stringify({ ok: true, event: eventType, prospect_id: prospect.id, conversa_id: conversa.id }), {
