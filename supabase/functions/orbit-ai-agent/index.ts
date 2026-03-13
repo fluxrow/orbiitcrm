@@ -116,6 +116,12 @@ serve(async (req) => {
     );
     const cadastroCompleto = camposFaltantes.length === 0;
 
+    // Detect stale prospect (updated more than 90 days ago)
+    const isStaleProspect = prospect?.updated_at
+      ? (Date.now() - new Date(prospect.updated_at).getTime()) > 90 * 24 * 60 * 60 * 1000
+      : false;
+    const isReturningContact = !primeiraInteracao || (prospect?.nome_razao && !prospect.nome_razao.startsWith("WhatsApp "));
+
     const instrucaoOrcamento = promptOrcamentos 
       ? `\nINSTRUÇÃO ESPECIAL PARA ORÇAMENTOS:\n${promptOrcamentos}`
       : "";
@@ -157,7 +163,9 @@ IMPORTANTE: Responda em JSON com esta estrutura:
   "cadastro_completo": true|false
 }
 
-REGRA ADICIONAL: Se o cliente pedir para falar com um vendedor, atendente humano, ou pessoa real, defina "intencao" como "falar_humano" e informe que um vendedor entrará em contato em breve.`;
+REGRA ADICIONAL: Se o cliente pedir para falar com um vendedor, atendente humano, ou pessoa real, defina "intencao" como "falar_humano" e informe que um vendedor entrará em contato em breve.
+
+REGRA DE ATUALIZAÇÃO CADASTRAL: ${isStaleProspect && isReturningContact ? `O cadastro deste contato está DESATUALIZADO (último update há mais de 90 dias). Após a saudação inicial, pergunte gentilmente se os dados cadastrais ainda estão corretos e se houve alguma mudança (nome, email, cidade, empresa). Campos atuais: Nome=${prospect?.nome_razao}, Email=${prospect?.email_principal || "não informado"}, Cidade=${prospect?.cidade || "não informada"}. Se o cliente confirmar ou fornecer novos dados, extraia-os em "dados_extraidos".` : "Cadastro atualizado, não é necessário solicitar atualização."}`;
 
     // Chamar Lovable AI
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {

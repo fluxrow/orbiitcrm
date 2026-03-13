@@ -6,6 +6,39 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+/**
+ * Generate phone number variants for flexible matching.
+ * Given a normalized BR phone like 5551999887766 (13 digits with 9),
+ * also generate variant without the 9: 555199887766 (12 digits).
+ * And vice-versa: given 555199887766 (12 digits), add the 9: 5551999887766.
+ */
+function generatePhoneVariants(normalizedPhone: string): string[] {
+  const variants = new Set<string>();
+  variants.add(normalizedPhone);
+
+  // Only apply to Brazilian numbers (starting with 55)
+  if (normalizedPhone.startsWith("55")) {
+    const withoutCountry = normalizedPhone.substring(2); // e.g. 51999887766
+
+    if (withoutCountry.length === 11) {
+      // Has 9th digit (DDD 2 digits + 9 + 8 digits) — create variant without it
+      const ddd = withoutCountry.substring(0, 2);
+      const ninthDigit = withoutCountry.charAt(2);
+      if (ninthDigit === "9") {
+        const without9 = `55${ddd}${withoutCountry.substring(3)}`;
+        variants.add(without9);
+      }
+    } else if (withoutCountry.length === 10) {
+      // Missing 9th digit (DDD 2 digits + 8 digits) — create variant with it
+      const ddd = withoutCountry.substring(0, 2);
+      const with9 = `55${ddd}9${withoutCountry.substring(2)}`;
+      variants.add(with9);
+    }
+  }
+
+  return Array.from(variants);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -169,11 +202,19 @@ serve(async (req) => {
 
     const normalizedPhone = phone.startsWith("55") ? phone : `55${phone}`;
 
-    // 1. Find or create prospect
+    // Generate phone variants for matching (with/without 9th digit)
+    const phoneVariants = generatePhoneVariants(normalizedPhone);
+    console.log("[orbit-webhook] Phone variants para busca:", phoneVariants);
+
+    // 1. Find or create prospect — search all phone variants
+    const orFilter = phoneVariants
+      .map(v => `whatsapp.eq.${v},telefone.eq.${v}`)
+      .join(",");
+
     let prospectQuery = supabase
       .from("orbit_prospects")
       .select("*")
-      .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`);
+      .or(orFilter);
     if (empresaId) prospectQuery = prospectQuery.eq("empresa_id", empresaId);
 
     let { data: prospect } = await prospectQuery.maybeSingle();
@@ -231,11 +272,14 @@ serve(async (req) => {
 
       if (prospectError) {
         if (prospectError.code === "23505") {
-          console.log("[orbit-webhook] Prospect duplicado, buscando por whatsapp OR telefone sem filtro empresa_id");
+          console.log("[orbit-webhook] Prospect duplicado, buscando por variantes de telefone");
+          const fallbackOrFilter = phoneVariants
+            .map(v => `whatsapp.eq.${v},telefone.eq.${v}`)
+            .join(",");
           const { data: existingProspect } = await supabase
             .from("orbit_prospects")
             .select("*")
-            .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`)
+            .or(fallbackOrFilter)
             .maybeSingle();
 
           if (existingProspect) {
