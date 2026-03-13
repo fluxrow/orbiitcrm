@@ -353,6 +353,14 @@ REGRA DE ATUALIZAÇÃO CADASTRAL: ${isStaleProspect && isReturningContact ? `O c
     return new Response(JSON.stringify({ ok: true, resposta, parsed, simulated: isDemo }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+    } finally {
+      // ── UNLOCK: sempre resetar ai_processing ──
+      await supabase
+        .from("orbit_conversas")
+        .update({ ai_processing: false })
+        .eq("id", conversa_id);
+      console.log("[orbit-ai-agent] Lock liberado para conversa:", conversa_id);
+    }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[orbit-ai-agent] Erro:", message);
