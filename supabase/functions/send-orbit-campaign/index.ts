@@ -219,6 +219,10 @@ const handler = async (req: Request): Promise<Response> => {
     if (campaign.canal === "email") {
       const { data } = await supabase.from("orbit_resend_config").select("*").eq("empresa_id", campaign.empresa_id).maybeSingle();
       resendConfig = data;
+      if (!resendConfig) {
+        const { data: globalConfig } = await supabase.from("orbit_resend_config").select("*").is("empresa_id", null).maybeSingle();
+        resendConfig = globalConfig;
+      }
     } else {
       const { data } = await supabase.from("orbit_zapi_config").select("*").eq("empresa_id", campaign.empresa_id).maybeSingle();
       zapiConfig = data;
