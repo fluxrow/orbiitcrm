@@ -1,0 +1,1 @@
+ALTER TABLE public.orbit_conversas ADD COLUMN IF NOT EXISTS ai_processing boolean DEFAULT false;
