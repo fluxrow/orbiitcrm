@@ -1,76 +1,33 @@
 
 
-# Correção do webhook inbound — busca por whatsapp OR telefone + logging
+# Ajustar tags de envio para CAIXA ALTA
 
-## Problema raiz
+## Problema
+As variáveis `{{nome}}`, `{{nome_fantasia}}`, etc. são substituídas com o valor exato do banco de dados, sem conversão para caixa alta. O usuário quer que os nomes apareçam em MAIÚSCULAS nas mensagens enviadas.
 
-Os logs confirmam: o webhook busca prospect apenas por `whatsapp`, não encontra, tenta criar, falha com erro 23505 (`telefone` duplicado), e o fallback também busca só por `whatsapp` — resultando em 500.
+## Solução
+No arquivo `supabase/functions/send-orbit-campaign/index.ts`, aplicar `.toUpperCase()` nos valores das variáveis ao montar o mapa de substituição (linhas 252-259):
 
-## Mudanças
-
-### 1. `supabase/functions/orbit-webhook/index.ts`
-
-**Busca inicial de prospect (linha 123-129)** — usar `.or()`:
 ```typescript
-let prospectQuery = supabase
-  .from("orbit_prospects")
-  .select("*")
-  .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`);
-if (empresaId) prospectQuery = prospectQuery.eq("empresa_id", empresaId);
+const variaveis: Record<string, string> = {
+  "{{nome}}": (prospect.nome_razao || "").toUpperCase(),
+  "{{nome_fantasia}}": (prospect.nome_fantasia || "").toUpperCase(),
+  "{{email}}": prospect.email_principal || "",
+  "{{telefone}}": prospect.telefone || prospect.whatsapp || "",
+  "{{cidade}}": (prospect.cidade || "").toUpperCase(),
+  "{{segmento}}": (prospect.segmento || "").toUpperCase(),
+};
 ```
 
-**Fallback de duplicata (linha 177-181)** — buscar por whatsapp OR telefone:
+Também ajustar a linha 299 do assunto do email:
 ```typescript
-const { data: existingProspect } = await supabase
-  .from("orbit_prospects")
-  .select("*")
-  .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`)
-  .maybeSingle();
+subject: assunto.replace(/{{nome}}/g, (prospect.nome_razao || "").toUpperCase()),
 ```
 
-**Auto-preencher whatsapp** — após encontrar prospect (tanto na busca inicial quanto no fallback), se `whatsapp` estiver vazio:
-```typescript
-if (prospect && !prospect.whatsapp) {
-  await supabase.from("orbit_prospects")
-    .update({ whatsapp: normalizedPhone, whatsapp_status: "nao_verificado" })
-    .eq("id", prospect.id);
-  prospect.whatsapp = normalizedPhone;
-}
-```
+> Email e telefone permanecem sem alteração pois não faz sentido aplicar uppercase nesses campos.
 
-**Fallback final sem exceção (linha 193-196)** — se mesmo com `.or()` não encontrar prospect após 23505, não lançar exceção. Retornar 200 com `ignored`:
-```typescript
-if (!existingProspect) {
-  console.error("[orbit-webhook] Prospect duplicado mas não encontrado com OR:", normalizedPhone);
-  return new Response(JSON.stringify({ ok: true, ignored: true, reason: "duplicate_unresolved" }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
-```
-
-**Logging de webhook** — inserir log no `orbit_webhook_logs` no início do processamento de mensagem e atualizar status ao final.
-
-### 2. Migration SQL — tabela `orbit_webhook_logs`
-
-```sql
-CREATE TABLE IF NOT EXISTS orbit_webhook_logs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  event_type text,
-  instance_id text,
-  phone text,
-  payload jsonb,
-  status text DEFAULT 'received',
-  error_message text,
-  created_at timestamptz DEFAULT now()
-);
-```
-
-Sem RLS (apenas service_role acessa no webhook).
-
-## Arquivos alterados
-
+## Arquivo alterado
 | Arquivo | Ação |
 |---|---|
-| `supabase/functions/orbit-webhook/index.ts` | Busca por `whatsapp OR telefone`, auto-preencher whatsapp, fallback sem 500, logging |
-| Migration SQL | Criar tabela `orbit_webhook_logs` |
+| `supabase/functions/send-orbit-campaign/index.ts` | `.toUpperCase()` nos valores de nome, nome_fantasia, cidade e segmento |
 
