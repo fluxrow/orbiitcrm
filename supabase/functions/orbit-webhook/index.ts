@@ -397,25 +397,36 @@ serve(async (req) => {
 
     // 6. If AI active and human_talk = false and incoming message, call AI agent
     if (!fromMe && !conversa.human_talk) {
-      let aiConfigQuery = supabase.from("orbit_ai_config").select("*");
-      if (empresaId) aiConfigQuery = aiConfigQuery.eq("empresa_id", empresaId);
+      // Check if AI is already processing this conversation (debounce lock)
+      const { data: conversaAtual } = await supabase
+        .from("orbit_conversas")
+        .select("ai_processing")
+        .eq("id", conversa.id)
+        .single();
 
-      const { data: aiConfig } = await aiConfigQuery.maybeSingle();
+      if (conversaAtual?.ai_processing) {
+        console.log("[orbit-webhook] AI já processando conversa, msg será agregada:", conversa.id);
+      } else {
+        let aiConfigQuery = supabase.from("orbit_ai_config").select("*");
+        if (empresaId) aiConfigQuery = aiConfigQuery.eq("empresa_id", empresaId);
 
-      if (aiConfig?.modo_automatico) {
-        fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-ai-agent`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-          },
-          body: JSON.stringify({
-            conversa_id: conversa.id,
-            prospect_id: prospect.id,
-            mensagem: messageText,
-            telefone: normalizedPhone,
-          }),
-        }).catch(err => console.error("[orbit-webhook] Erro ao chamar AI agent:", err));
+        const { data: aiConfig } = await aiConfigQuery.maybeSingle();
+
+        if (aiConfig?.modo_automatico) {
+          fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-ai-agent`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+            },
+            body: JSON.stringify({
+              conversa_id: conversa.id,
+              prospect_id: prospect.id,
+              mensagem: messageText,
+              telefone: normalizedPhone,
+            }),
+          }).catch(err => console.error("[orbit-webhook] Erro ao chamar AI agent:", err));
+        }
       }
     }
 

@@ -914,6 +914,7 @@ export type Database = {
       orbit_conversas: {
         Row: {
           ai_contexto: Json | null
+          ai_processing: boolean | null
           canal: string | null
           created_at: string | null
           empresa_id: string | null
@@ -931,6 +932,7 @@ export type Database = {
         }
         Insert: {
           ai_contexto?: Json | null
+          ai_processing?: boolean | null
           canal?: string | null
           created_at?: string | null
           empresa_id?: string | null
@@ -948,6 +950,7 @@ export type Database = {
         }
         Update: {
           ai_contexto?: Json | null
+          ai_processing?: boolean | null
           canal?: string | null
           created_at?: string | null
           empresa_id?: string | null
