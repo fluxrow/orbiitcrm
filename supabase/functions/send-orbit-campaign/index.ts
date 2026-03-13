@@ -250,12 +250,12 @@ const handler = async (req: Request): Promise<Response> => {
         const assunto = campaign.template?.assunto_email || "";
 
         const variaveis: Record<string, string> = {
-          "{{nome}}": prospect.nome_razao || "",
-          "{{nome_fantasia}}": prospect.nome_fantasia || "",
+          "{{nome}}": (prospect.nome_razao || "").toUpperCase(),
+          "{{nome_fantasia}}": (prospect.nome_fantasia || "").toUpperCase(),
           "{{email}}": prospect.email_principal || "",
           "{{telefone}}": prospect.telefone || prospect.whatsapp || "",
-          "{{cidade}}": prospect.cidade || "",
-          "{{segmento}}": prospect.segmento || "",
+          "{{cidade}}": (prospect.cidade || "").toUpperCase(),
+          "{{segmento}}": (prospect.segmento || "").toUpperCase(),
         };
 
         for (const [key, value] of Object.entries(variaveis)) {
