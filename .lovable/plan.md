@@ -1,76 +1,48 @@
 
 
-# Correção do webhook inbound — busca por whatsapp OR telefone + logging
+# Fix: Campanha de email não encontra configuração do Resend
 
-## Problema raiz
+## Problema
 
-Os logs confirmam: o webhook busca prospect apenas por `whatsapp`, não encontra, tenta criar, falha com erro 23505 (`telefone` duplicado), e o fallback também busca só por `whatsapp` — resultando em 500.
+Na linha 220 de `send-orbit-campaign/index.ts`, a busca da configuração do Resend filtra apenas por `empresa_id`:
 
-## Mudanças
-
-### 1. `supabase/functions/orbit-webhook/index.ts`
-
-**Busca inicial de prospect (linha 123-129)** — usar `.or()`:
 ```typescript
-let prospectQuery = supabase
-  .from("orbit_prospects")
-  .select("*")
-  .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`);
-if (empresaId) prospectQuery = prospectQuery.eq("empresa_id", empresaId);
+const { data } = await supabase.from("orbit_resend_config").select("*").eq("empresa_id", campaign.empresa_id).maybeSingle();
 ```
 
-**Fallback de duplicata (linha 177-181)** — buscar por whatsapp OR telefone:
-```typescript
-const { data: existingProspect } = await supabase
-  .from("orbit_prospects")
-  .select("*")
-  .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`)
-  .maybeSingle();
-```
+A configuração existente no banco tem `empresa_id = null` (global), então a query não encontra nada. Resultado: `resendConfig` fica `null` e todos os emails falham com *"Email não configurado ou prospect sem email"*.
 
-**Auto-preencher whatsapp** — após encontrar prospect (tanto na busca inicial quanto no fallback), se `whatsapp` estiver vazio:
+A edge function `orbit-send-email` já implementa esse fallback corretamente (busca por empresa, depois por `empresa_id IS NULL`), mas `send-orbit-campaign` não.
+
+## Solução
+
+Adicionar fallback na busca do Resend config (linhas 219-221), seguindo o mesmo padrão de `orbit-send-email`:
+
 ```typescript
-if (prospect && !prospect.whatsapp) {
-  await supabase.from("orbit_prospects")
-    .update({ whatsapp: normalizedPhone, whatsapp_status: "nao_verificado" })
-    .eq("id", prospect.id);
-  prospect.whatsapp = normalizedPhone;
+if (campaign.canal === "email") {
+  // Try empresa-specific config first
+  const { data } = await supabase
+    .from("orbit_resend_config")
+    .select("*")
+    .eq("empresa_id", campaign.empresa_id)
+    .maybeSingle();
+  resendConfig = data;
+
+  // Fallback to global config
+  if (!resendConfig) {
+    const { data: globalConfig } = await supabase
+      .from("orbit_resend_config")
+      .select("*")
+      .is("empresa_id", null)
+      .maybeSingle();
+    resendConfig = globalConfig;
+  }
 }
 ```
 
-**Fallback final sem exceção (linha 193-196)** — se mesmo com `.or()` não encontrar prospect após 23505, não lançar exceção. Retornar 200 com `ignored`:
-```typescript
-if (!existingProspect) {
-  console.error("[orbit-webhook] Prospect duplicado mas não encontrado com OR:", normalizedPhone);
-  return new Response(JSON.stringify({ ok: true, ignored: true, reason: "duplicate_unresolved" }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
-```
-
-**Logging de webhook** — inserir log no `orbit_webhook_logs` no início do processamento de mensagem e atualizar status ao final.
-
-### 2. Migration SQL — tabela `orbit_webhook_logs`
-
-```sql
-CREATE TABLE IF NOT EXISTS orbit_webhook_logs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  event_type text,
-  instance_id text,
-  phone text,
-  payload jsonb,
-  status text DEFAULT 'received',
-  error_message text,
-  created_at timestamptz DEFAULT now()
-);
-```
-
-Sem RLS (apenas service_role acessa no webhook).
-
-## Arquivos alterados
+## Arquivo alterado
 
 | Arquivo | Ação |
 |---|---|
-| `supabase/functions/orbit-webhook/index.ts` | Busca por `whatsapp OR telefone`, auto-preencher whatsapp, fallback sem 500, logging |
-| Migration SQL | Criar tabela `orbit_webhook_logs` |
+| `supabase/functions/send-orbit-campaign/index.ts` | Adicionar fallback para config global do Resend |
 
