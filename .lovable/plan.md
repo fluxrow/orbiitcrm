@@ -1,23 +1,76 @@
 
 
-# Limpar dados do Augusto para novo teste
+# Correção do webhook inbound — busca por whatsapp OR telefone + logging
 
-## Dados encontrados
+## Problema raiz
 
-| Registro | ID | Detalhe |
-|---|---|---|
-| Prospect duplicado | `be8631c7` | "Augusto Ross Viagens" — whatsapp `554187276129` (sem 9) |
-| Prospect original | `7f2de85f` | "Promotrip Corporate" — whatsapp `5541987276129` (com 9) |
-| Conversa | `1310cd7c` | 36 mensagens, status "aberta" |
-| Handoffs | nenhum | — |
+Os logs confirmam: o webhook busca prospect apenas por `whatsapp`, não encontra, tenta criar, falha com erro 23505 (`telefone` duplicado), e o fallback também busca só por `whatsapp` — resultando em 500.
 
-## Ações de limpeza (via insert tool)
+## Mudanças
 
-1. **Deletar mensagens**: `DELETE FROM orbit_mensagens WHERE conversa_id = '1310cd7c-...'`
-2. **Deletar conversa**: `DELETE FROM orbit_conversas WHERE id = '1310cd7c-...'`
-3. **Deletar prospect duplicado**: `DELETE FROM orbit_prospects WHERE id = 'be8631c7-...'`
+### 1. `supabase/functions/orbit-webhook/index.ts`
 
-O prospect original "Promotrip Corporate" (`7f2de85f`) permanece intacto com o número correto `5541987276129`.
+**Busca inicial de prospect (linha 123-129)** — usar `.or()`:
+```typescript
+let prospectQuery = supabase
+  .from("orbit_prospects")
+  .select("*")
+  .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`);
+if (empresaId) prospectQuery = prospectQuery.eq("empresa_id", empresaId);
+```
 
-Isso permitirá testar novamente o fluxo completo: webhook recebe mensagem → normalização de telefone encontra o prospect existente → IA conversa → handoff.
+**Fallback de duplicata (linha 177-181)** — buscar por whatsapp OR telefone:
+```typescript
+const { data: existingProspect } = await supabase
+  .from("orbit_prospects")
+  .select("*")
+  .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`)
+  .maybeSingle();
+```
+
+**Auto-preencher whatsapp** — após encontrar prospect (tanto na busca inicial quanto no fallback), se `whatsapp` estiver vazio:
+```typescript
+if (prospect && !prospect.whatsapp) {
+  await supabase.from("orbit_prospects")
+    .update({ whatsapp: normalizedPhone, whatsapp_status: "nao_verificado" })
+    .eq("id", prospect.id);
+  prospect.whatsapp = normalizedPhone;
+}
+```
+
+**Fallback final sem exceção (linha 193-196)** — se mesmo com `.or()` não encontrar prospect após 23505, não lançar exceção. Retornar 200 com `ignored`:
+```typescript
+if (!existingProspect) {
+  console.error("[orbit-webhook] Prospect duplicado mas não encontrado com OR:", normalizedPhone);
+  return new Response(JSON.stringify({ ok: true, ignored: true, reason: "duplicate_unresolved" }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+```
+
+**Logging de webhook** — inserir log no `orbit_webhook_logs` no início do processamento de mensagem e atualizar status ao final.
+
+### 2. Migration SQL — tabela `orbit_webhook_logs`
+
+```sql
+CREATE TABLE IF NOT EXISTS orbit_webhook_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_type text,
+  instance_id text,
+  phone text,
+  payload jsonb,
+  status text DEFAULT 'received',
+  error_message text,
+  created_at timestamptz DEFAULT now()
+);
+```
+
+Sem RLS (apenas service_role acessa no webhook).
+
+## Arquivos alterados
+
+| Arquivo | Ação |
+|---|---|
+| `supabase/functions/orbit-webhook/index.ts` | Busca por `whatsapp OR telefone`, auto-preencher whatsapp, fallback sem 500, logging |
+| Migration SQL | Criar tabela `orbit_webhook_logs` |
 
