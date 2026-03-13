@@ -272,11 +272,14 @@ serve(async (req) => {
 
       if (prospectError) {
         if (prospectError.code === "23505") {
-          console.log("[orbit-webhook] Prospect duplicado, buscando por whatsapp OR telefone sem filtro empresa_id");
+          console.log("[orbit-webhook] Prospect duplicado, buscando por variantes de telefone");
+          const fallbackOrFilter = phoneVariants
+            .map(v => `whatsapp.eq.${v},telefone.eq.${v}`)
+            .join(",");
           const { data: existingProspect } = await supabase
             .from("orbit_prospects")
             .select("*")
-            .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`)
+            .or(fallbackOrFilter)
             .maybeSingle();
 
           if (existingProspect) {
