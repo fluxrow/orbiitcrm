@@ -20,6 +20,17 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    // ── LOCK: marcar conversa como em processamento ──
+    await supabase
+      .from("orbit_conversas")
+      .update({ ai_processing: true })
+      .eq("id", conversa_id);
+
+    try {
+    // ── DEBOUNCE: aguardar 10 segundos para agregar mensagens quebradas ──
+    console.log("[orbit-ai-agent] Aguardando 10s para agregar mensagens...");
+    await new Promise(r => setTimeout(r, 10000));
+
     // Buscar prospect first to get empresa_id
     const { data: prospect } = await supabase
       .from("orbit_prospects")
@@ -86,7 +97,35 @@ serve(async (req) => {
       .eq("id", conversa_id)
       .single();
 
-    // Buscar histórico
+    // ── AGREGAR: buscar todas as mensagens IN pendentes desde o último OUT ──
+    const { data: lastOutMsg } = await supabase
+      .from("orbit_mensagens")
+      .select("timestamp")
+      .eq("conversa_id", conversa_id)
+      .eq("direcao", "OUT")
+      .order("timestamp", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let pendingQuery = supabase
+      .from("orbit_mensagens")
+      .select("mensagem")
+      .eq("conversa_id", conversa_id)
+      .eq("direcao", "IN")
+      .order("timestamp", { ascending: true });
+
+    if (lastOutMsg?.timestamp) {
+      pendingQuery = pendingQuery.gt("timestamp", lastOutMsg.timestamp);
+    }
+
+    const { data: pendingMsgs } = await pendingQuery;
+    const mensagemAgregada = (pendingMsgs && pendingMsgs.length > 0)
+      ? pendingMsgs.map(m => m.mensagem).join("\n")
+      : mensagem;
+
+    console.log("[orbit-ai-agent] Mensagens agregadas:", pendingMsgs?.length || 1, "msgs →", mensagemAgregada.substring(0, 100));
+
+    // Buscar histórico completo (últimas 20 mensagens para contexto)
     const { data: mensagens } = await supabase
       .from("orbit_mensagens")
       .select("direcao, mensagem, timestamp")
