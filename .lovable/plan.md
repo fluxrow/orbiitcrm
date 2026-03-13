@@ -1,76 +1,52 @@
 
 
-# Correção do webhook inbound — busca por whatsapp OR telefone + logging
+# Fallback para "Comercial Alexandre" no handoff da IA
 
-## Problema raiz
+## Problema
+Quando o cadastro é completado ou o lead pede para falar com humano, o sistema não encontra vendedor (fila de distribuição vazia e prospect sem `responsavel_id`), então o handoff nunca acontece.
 
-Os logs confirmam: o webhook busca prospect apenas por `whatsapp`, não encontra, tenta criar, falha com erro 23505 (`telefone` duplicado), e o fallback também busca só por `whatsapp` — resultando em 500.
+## Solução
+Reorganizar a lógica de atribuição (linhas 239-271 de `orbit-ai-agent/index.ts`) com 3 níveis de prioridade:
 
-## Mudanças
+1. **Responsável já salvo no prospect** (`prospect.responsavel_id`) → usar diretamente
+2. **Fila de distribuição** (round-robin, como hoje)
+3. **Fallback fixo** → Alexandre Eifler Bock (`bf42e203-328e-445b-a72d-93529aaedd4d`)
 
-### 1. `supabase/functions/orbit-webhook/index.ts`
-
-**Busca inicial de prospect (linha 123-129)** — usar `.or()`:
 ```typescript
-let prospectQuery = supabase
-  .from("orbit_prospects")
-  .select("*")
-  .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`);
-if (empresaId) prospectQuery = prospectQuery.eq("empresa_id", empresaId);
-```
+let vendedorAtribuido: string | null = null;
+const FALLBACK_VENDEDOR_ID = "bf42e203-328e-445b-a72d-93529aaedd4d"; // Alexandre
 
-**Fallback de duplicata (linha 177-181)** — buscar por whatsapp OR telefone:
-```typescript
-const { data: existingProspect } = await supabase
-  .from("orbit_prospects")
-  .select("*")
-  .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`)
-  .maybeSingle();
-```
+if (parsed.cadastro_completo || parsed.intencao === "falar_humano") {
+  if (prospect?.responsavel_id) {
+    // 1) Usar responsável já cadastrado
+    vendedorAtribuido = prospect.responsavel_id;
+  } else {
+    // 2) Round-robin
+    const { data: proximoVendedor } = await supabase
+      .from("orbit_distribuicao_config")...
+    if (proximoVendedor) {
+      vendedorAtribuido = proximoVendedor.vendedor_id;
+      // update prospect + distribuicao (como hoje)
+    } else {
+      // 3) Fallback: Alexandre
+      vendedorAtribuido = FALLBACK_VENDEDOR_ID;
+    }
+  }
 
-**Auto-preencher whatsapp** — após encontrar prospect (tanto na busca inicial quanto no fallback), se `whatsapp` estiver vazio:
-```typescript
-if (prospect && !prospect.whatsapp) {
-  await supabase.from("orbit_prospects")
-    .update({ whatsapp: normalizedPhone, whatsapp_status: "nao_verificado" })
-    .eq("id", prospect.id);
-  prospect.whatsapp = normalizedPhone;
+  // Atualizar prospect com responsável e qualificar
+  if (vendedorAtribuido) {
+    await supabase.from("orbit_prospects")
+      .update({ responsavel_id: vendedorAtribuido, status_qualificacao: "qualificado" })
+      .eq("id", prospect_id);
+  }
 }
 ```
 
-**Fallback final sem exceção (linha 193-196)** — se mesmo com `.or()` não encontrar prospect após 23505, não lançar exceção. Retornar 200 com `ignored`:
-```typescript
-if (!existingProspect) {
-  console.error("[orbit-webhook] Prospect duplicado mas não encontrado com OR:", normalizedPhone);
-  return new Response(JSON.stringify({ ok: true, ignored: true, reason: "duplicate_unresolved" }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
-```
+O bloco de handoff existente (linhas 273-285) continua funcionando sem alteração — já usa `vendedorAtribuido`.
 
-**Logging de webhook** — inserir log no `orbit_webhook_logs` no início do processamento de mensagem e atualizar status ao final.
+## Arquivo alterado
 
-### 2. Migration SQL — tabela `orbit_webhook_logs`
-
-```sql
-CREATE TABLE IF NOT EXISTS orbit_webhook_logs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  event_type text,
-  instance_id text,
-  phone text,
-  payload jsonb,
-  status text DEFAULT 'received',
-  error_message text,
-  created_at timestamptz DEFAULT now()
-);
-```
-
-Sem RLS (apenas service_role acessa no webhook).
-
-## Arquivos alterados
-
-| Arquivo | Ação |
+| Arquivo | Alteração |
 |---|---|
-| `supabase/functions/orbit-webhook/index.ts` | Busca por `whatsapp OR telefone`, auto-preencher whatsapp, fallback sem 500, logging |
-| Migration SQL | Criar tabela `orbit_webhook_logs` |
+| `supabase/functions/orbit-ai-agent/index.ts` | Reorganizar lógica: priorizar responsável existente → fila → fallback Alexandre |
 
