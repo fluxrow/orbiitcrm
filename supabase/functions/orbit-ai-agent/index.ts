@@ -236,37 +236,52 @@ REGRA ADICIONAL: Se o cliente pedir para falar com um vendedor, atendente humano
         .eq("id", prospect_id);
     }
 
-    // Se cadastro completo, distribuir para vendedor
-    let vendedorAtribuido: string | null = prospect?.responsavel_id || null;
-    if (parsed.cadastro_completo && !prospect?.responsavel_id) {
-      const { data: proximoVendedor } = await supabase
-        .from("orbit_distribuicao_config")
-        .select("vendedor_id")
-        .eq("ativo", true)
-        .order("ultima_atribuicao", { ascending: true, nullsFirst: true })
-        .order("ordem_fila", { ascending: true })
-        .limit(1)
-        .maybeSingle();
+    // Distribuir para vendedor com 3 níveis de prioridade
+    const FALLBACK_VENDEDOR_ID = "bf42e203-328e-445b-a72d-93529aaedd4d"; // Alexandre Eifler Bock
+    let vendedorAtribuido: string | null = null;
 
-      if (proximoVendedor) {
-        vendedorAtribuido = proximoVendedor.vendedor_id;
+    if (parsed.cadastro_completo || parsed.intencao === "falar_humano") {
+      if (prospect?.responsavel_id) {
+        // 1) Usar responsável já cadastrado no prospect
+        vendedorAtribuido = prospect.responsavel_id;
+        console.log("[orbit-ai-agent] Usando responsável existente:", vendedorAtribuido);
+      } else {
+        // 2) Round-robin na fila de distribuição
+        const { data: proximoVendedor } = await supabase
+          .from("orbit_distribuicao_config")
+          .select("vendedor_id")
+          .eq("ativo", true)
+          .order("ultima_atribuicao", { ascending: true, nullsFirst: true })
+          .order("ordem_fila", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (proximoVendedor) {
+          vendedorAtribuido = proximoVendedor.vendedor_id;
+          await supabase
+            .from("orbit_distribuicao_config")
+            .update({
+              ultima_atribuicao: new Date().toISOString(),
+              total_atribuicoes: (await supabase.rpc("increment_atribuicoes", { vendedor: proximoVendedor.vendedor_id })),
+            })
+            .eq("vendedor_id", proximoVendedor.vendedor_id);
+          console.log("[orbit-ai-agent] Lead distribuído via round-robin:", proximoVendedor.vendedor_id);
+        } else {
+          // 3) Fallback fixo: Alexandre
+          vendedorAtribuido = FALLBACK_VENDEDOR_ID;
+          console.log("[orbit-ai-agent] Fallback: lead atribuído ao Alexandre:", FALLBACK_VENDEDOR_ID);
+        }
+      }
+
+      // Atualizar prospect com responsável e qualificar
+      if (vendedorAtribuido) {
         await supabase
           .from("orbit_prospects")
           .update({
-            responsavel_id: proximoVendedor.vendedor_id,
+            responsavel_id: vendedorAtribuido,
             status_qualificacao: "qualificado",
           })
           .eq("id", prospect_id);
-
-        await supabase
-          .from("orbit_distribuicao_config")
-          .update({
-            ultima_atribuicao: new Date().toISOString(),
-            total_atribuicoes: (await supabase.rpc("increment_atribuicoes", { vendedor: proximoVendedor.vendedor_id })),
-          })
-          .eq("vendedor_id", proximoVendedor.vendedor_id);
-
-        console.log("[orbit-ai-agent] Lead distribuído para:", proximoVendedor.vendedor_id);
       }
     }
 
