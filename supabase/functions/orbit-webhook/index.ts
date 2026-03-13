@@ -169,11 +169,19 @@ serve(async (req) => {
 
     const normalizedPhone = phone.startsWith("55") ? phone : `55${phone}`;
 
-    // 1. Find or create prospect
+    // Generate phone variants for matching (with/without 9th digit)
+    const phoneVariants = generatePhoneVariants(normalizedPhone);
+    console.log("[orbit-webhook] Phone variants para busca:", phoneVariants);
+
+    // 1. Find or create prospect — search all phone variants
+    const orFilter = phoneVariants
+      .map(v => `whatsapp.eq.${v},telefone.eq.${v}`)
+      .join(",");
+
     let prospectQuery = supabase
       .from("orbit_prospects")
       .select("*")
-      .or(`whatsapp.eq.${normalizedPhone},telefone.eq.${normalizedPhone}`);
+      .or(orFilter);
     if (empresaId) prospectQuery = prospectQuery.eq("empresa_id", empresaId);
 
     let { data: prospect } = await prospectQuery.maybeSingle();
