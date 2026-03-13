@@ -219,7 +219,7 @@ REGRA DE ATUALIZAÇÃO CADASTRAL: ${isStaleProspect && isReturningContact ? `O c
           { role: "system", content: systemPrompt },
           { 
             role: "user", 
-            content: `Histórico da conversa:\n${historicoFormatado}\n\n---\nÚltima mensagem do cliente: "${mensagem}"\n\nContexto:\n- Primeira interação: ${primeiraInteracao}\n- Em coleta de dados: ${emColetaOrcamento}\n- Cadastro completo: ${cadastroCompleto}` 
+            content: `Histórico da conversa:\n${historicoFormatado}\n\n---\nMensagens pendentes do cliente: "${mensagemAgregada}"\n\nContexto:\n- Primeira interação: ${primeiraInteracao}\n- Em coleta de dados: ${emColetaOrcamento}\n- Cadastro completo: ${cadastroCompleto}` 
           },
         ],
         temperature: 0.7,
