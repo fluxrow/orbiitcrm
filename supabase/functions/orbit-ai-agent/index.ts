@@ -116,6 +116,12 @@ serve(async (req) => {
     );
     const cadastroCompleto = camposFaltantes.length === 0;
 
+    // Detect stale prospect (updated more than 90 days ago)
+    const isStaleProspect = prospect?.updated_at
+      ? (Date.now() - new Date(prospect.updated_at).getTime()) > 90 * 24 * 60 * 60 * 1000
+      : false;
+    const isReturningContact = !primeiraInteracao || (prospect?.nome_razao && !prospect.nome_razao.startsWith("WhatsApp "));
+
     const instrucaoOrcamento = promptOrcamentos 
       ? `\nINSTRUÇÃO ESPECIAL PARA ORÇAMENTOS:\n${promptOrcamentos}`
       : "";
