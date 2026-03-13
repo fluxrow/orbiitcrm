@@ -296,7 +296,7 @@ const handler = async (req: Request): Promise<Response> => {
             body: JSON.stringify({
               from: fromEmail,
               to: [prospect.email_principal],
-              subject: assunto.replace(/{{nome}}/g, prospect.nome_razao || ""),
+              subject: assunto.replace(/{{nome}}/g, (prospect.nome_razao || "").toUpperCase()),
               html: emailHtml,
               reply_to: resendConfig?.reply_to_email ? [resendConfig.reply_to_email] : undefined,
             }),
