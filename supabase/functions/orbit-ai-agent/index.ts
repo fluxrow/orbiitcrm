@@ -140,7 +140,9 @@ serve(async (req) => {
 
     const mensagensIN = mensagens?.filter((m) => m.direcao === "IN").length || 0;
     const mensagensOUT = mensagens?.filter((m) => m.direcao === "OUT").length || 0;
-    const primeiraInteracao = mensagensOUT === 0 || mensagensIN <= 1;
+    const introAlreadySent = aiContexto.intro_already_sent === true;
+    const isFromCampaign = aiContexto.origin === "outbound_campaign";
+    const primeiraInteracao = !introAlreadySent && (mensagensOUT === 0 || mensagensIN <= 1);
 
     const aiContexto = conversa?.ai_contexto || {};
     const emColetaOrcamento = aiContexto.em_coleta_orcamento || false;
@@ -165,10 +167,15 @@ serve(async (req) => {
       ? `\nINSTRUÇÃO ESPECIAL PARA ORÇAMENTOS:\n${promptOrcamentos}`
       : "";
 
+    const campaignRule = isFromCampaign
+      ? `\nREGRA DE CAMPANHA: Esta conversa foi iniciada por uma campanha outbound. O prospect já recebeu uma mensagem nossa. NÃO envie boas-vindas novamente. Considere o histórico abaixo e responda de forma contextualizada à última mensagem que enviamos.`
+      : "";
+
     const systemPrompt = `${aiConfig.prompt_treinamento || "Você é um assistente de vendas."}
 
 Tom de voz: ${aiConfig.tom_conversa || "profissional e amigável"}
 Idioma: ${idioma === "pt-BR" ? "Português do Brasil" : idioma === "en" ? "Inglês" : "Espanhol"}
+${campaignRule}
 
 REGRAS IMPORTANTES:
 1. Se for PRIMEIRA INTERAÇÃO, envie a mensagem de boas-vindas: "${aiConfig.mensagem_boas_vindas || 'Olá! Como posso ajudá-lo?'}"

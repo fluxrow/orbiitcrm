@@ -443,7 +443,7 @@ const handler = async (req: Request): Promise<Response> => {
             let conversaId: string | null = null;
             const { data: existingConversa } = await supabase
               .from("orbit_conversas")
-              .select("id")
+              .select("id, ai_contexto")
               .eq("prospect_id", prospect.id)
               .eq("empresa_id", campaign.empresa_id)
               .eq("status", "aberta")
@@ -451,6 +451,18 @@ const handler = async (req: Request): Promise<Response> => {
 
             if (existingConversa) {
               conversaId = existingConversa.id;
+              const existingCtx = (existingConversa as any).ai_contexto || {};
+              await supabase.from("orbit_conversas").update({
+                ai_contexto: {
+                  ...existingCtx,
+                  origin: "outbound_campaign",
+                  campaign_id: campaign.id,
+                  intro_already_sent: true,
+                  estado: "aguardando_resposta",
+                },
+                ultima_mensagem_at: new Date().toISOString(),
+                ultima_mensagem_preview: mensagem.substring(0, 100),
+              }).eq("id", conversaId);
             } else {
               const { data: novaConversa } = await supabase
                 .from("orbit_conversas")
@@ -462,6 +474,12 @@ const handler = async (req: Request): Promise<Response> => {
                   status: "aberta",
                   ultima_mensagem_at: new Date().toISOString(),
                   ultima_mensagem_preview: mensagem.substring(0, 100),
+                  ai_contexto: {
+                    origin: "outbound_campaign",
+                    campaign_id: campaign.id,
+                    intro_already_sent: true,
+                    estado: "aguardando_resposta",
+                  },
                 })
                 .select("id")
                 .single();
