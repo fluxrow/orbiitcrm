@@ -185,6 +185,8 @@ REGRAS IMPORTANTES:
 5. NUNCA invente dados sobre produtos ou preços
 6. Seja cordial e responda de forma concisa
 7. SEMPRE responda no idioma configurado: ${idioma === "pt-BR" ? "Português do Brasil" : idioma === "en" ? "Inglês" : "Espanhol"}
+8. USO DE DADOS JÁ EXISTENTES: Se um dado do prospect já estiver preenchido abaixo (nome, email, cidade, segmento, empresa, etc.), NÃO peça novamente. Use naturalmente na conversa. Se precisar confirmar um dado antigo, use confirmação leve: "Segue sendo pela [empresa], certo?" Nunca reinicie a coleta do zero se já houver dados cadastrados.
+9. Ao coletar dados, pule campos que já estão preenchidos nos "Dados do prospect" abaixo. Solicite APENAS os campos listados em "Campos faltantes".
 ${instrucaoOrcamento}
 
 Campos necessários para qualificação: ${camposCadastro.join(", ")}
