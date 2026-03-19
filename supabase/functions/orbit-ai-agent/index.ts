@@ -6,6 +6,147 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ── Estado da conversa (máquina de estados) ──
+type ConversationState = "novo" | "aguardando_resposta" | "qualificando" | "qualificado" | "handoff" | "encerrado";
+
+interface LeadContext {
+  lead: {
+    id: string;
+    personName: string | null;
+    companyName: string | null;
+    city: string | null;
+    email: string | null;
+    demandType: string | null;
+    isRecurring: boolean | null;
+    status: string | null;
+    source: string | null;
+    owner: string | null;
+  };
+  conversation: {
+    origin: "outbound_campaign" | "inbound";
+    state: ConversationState;
+    isFirstInteraction: boolean;
+    introAlreadySent: boolean;
+  };
+  missingFields: Record<string, boolean>;
+}
+
+// ── Validação de dados extraídos ──
+function validateExtractedData(dados: Record<string, any>): Record<string, any> {
+  const validated: Record<string, any> = {};
+
+  for (const [campo, valor] of Object.entries(dados)) {
+    if (valor === null || valor === undefined || String(valor).trim() === "") continue;
+
+    const strVal = String(valor).trim();
+
+    switch (campo) {
+      case "email_principal":
+        if (strVal.includes("@") && strVal.includes(".")) {
+          validated[campo] = strVal.toLowerCase();
+        } else {
+          console.log(`[orbit-ai-agent] Email inválido descartado: ${strVal}`);
+        }
+        break;
+
+      case "nome_fantasia": {
+        // Heurística: empresa não deve ser nome de pessoa simples (2 palavras curtas sem maiúsculas internas)
+        const words = strVal.split(/\s+/);
+        const looksLikePersonName = words.length === 2 && words.every(w => w.length <= 10 && /^[A-ZÀ-Ú][a-zà-ú]+$/.test(w));
+        if (looksLikePersonName) {
+          console.log(`[orbit-ai-agent] Nome de empresa parece nome de pessoa, descartado: ${strVal}`);
+        } else {
+          validated[campo] = strVal;
+        }
+        break;
+      }
+
+      case "cidade":
+        // Cidade não deve conter números
+        if (/\d/.test(strVal)) {
+          console.log(`[orbit-ai-agent] Cidade com números descartada: ${strVal}`);
+        } else {
+          validated[campo] = strVal;
+        }
+        break;
+
+      default:
+        validated[campo] = strVal;
+        break;
+    }
+  }
+
+  return validated;
+}
+
+// ── Calcular próximo estado da conversa ──
+function computeNextState(
+  currentState: ConversationState,
+  intencao: string,
+  cadastroCompleto: boolean,
+  isHandoff: boolean
+): ConversationState {
+  if (isHandoff) return "handoff";
+  if (cadastroCompleto) return "qualificado";
+  if (intencao === "falar_humano") return "handoff";
+  if (currentState === "aguardando_resposta" || currentState === "novo") return "qualificando";
+  if (currentState === "qualificando" && cadastroCompleto) return "qualificado";
+  return currentState === "novo" ? "qualificando" : currentState;
+}
+
+// ── Montar leadContext estruturado ──
+function buildLeadContext(
+  prospect: any,
+  conversa: any,
+  aiContexto: any,
+  camposFaltantes: string[],
+  primeiraInteracao: boolean
+): LeadContext {
+  const isFromCampaign = aiContexto.origin === "outbound_campaign";
+  const introAlreadySent = aiContexto.intro_already_sent === true;
+  const currentState: ConversationState = aiContexto.estado || "novo";
+
+  const missingFields: Record<string, boolean> = {};
+  const fieldMap: Record<string, string> = {
+    nome_fantasia: "companyName",
+    cidade: "city",
+    email_principal: "email",
+    segmento: "demandType",
+  };
+
+  for (const campo of camposFaltantes) {
+    const key = fieldMap[campo] || campo;
+    missingFields[key] = true;
+  }
+
+  // isRecurring vem do ai_contexto
+  if (aiContexto.is_recurring === null || aiContexto.is_recurring === undefined) {
+    missingFields["isRecurring"] = true;
+  }
+
+  return {
+    lead: {
+      id: prospect?.id || "",
+      personName: prospect?.nome_razao || null,
+      companyName: prospect?.nome_fantasia || null,
+      city: prospect?.cidade || null,
+      email: prospect?.email_principal || null,
+      demandType: prospect?.segmento || null,
+      isRecurring: aiContexto.is_recurring ?? null,
+      status: prospect?.status_qualificacao || null,
+      source: prospect?.origem_contato || null,
+      owner: prospect?.responsavel_id || null,
+    },
+    conversation: {
+      origin: isFromCampaign ? "outbound_campaign" : "inbound",
+      state: currentState,
+      isFirstInteraction: primeiraInteracao,
+      introAlreadySent: introAlreadySent,
+    },
+    missingFields,
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -65,7 +206,7 @@ serve(async (req) => {
       });
     }
 
-    // Verificar horário de atendimento no fuso de São Paulo (Intl.DateTimeFormat é confiável no Deno)
+    // Verificar horário de atendimento no fuso de São Paulo
     const formatter = new Intl.DateTimeFormat("en-US", {
       timeZone: "America/Sao_Paulo",
       hour: "2-digit",
@@ -157,6 +298,10 @@ serve(async (req) => {
     );
     const cadastroCompleto = camposFaltantes.length === 0;
 
+    // ── Montar contexto estruturado do lead ──
+    const leadContext = buildLeadContext(prospect, conversa, aiContexto, camposFaltantes, primeiraInteracao);
+    console.log("[orbit-ai-agent] LeadContext:", JSON.stringify(leadContext.conversation), "missing:", Object.keys(leadContext.missingFields));
+
     // Detect stale prospect (updated more than 90 days ago)
     const isStaleProspect = prospect?.updated_at
       ? (Date.now() - new Date(prospect.updated_at).getTime()) > 90 * 24 * 60 * 60 * 1000
@@ -167,53 +312,73 @@ serve(async (req) => {
       ? `\nINSTRUÇÃO ESPECIAL PARA ORÇAMENTOS:\n${promptOrcamentos}`
       : "";
 
-    const campaignRule = isFromCampaign
-      ? `\nREGRA DE CAMPANHA: Esta conversa foi iniciada por uma campanha outbound. O prospect já recebeu uma mensagem nossa. NÃO envie boas-vindas novamente. Considere o histórico abaixo e responda de forma contextualizada à última mensagem que enviamos.`
+    // ── Prompt refatorado com contexto estruturado ──
+    const campaignContinuity = isFromCampaign
+      ? `\nREGRA DE CAMPANHA: Esta conversa foi iniciada por uma campanha outbound. O prospect já recebeu uma mensagem nossa. NÃO envie boas-vindas novamente. NÃO se reapresente. Considere o histórico e continue a conversa do ponto atual.`
       : "";
+
+    const stateInstruction = (() => {
+      switch (leadContext.conversation.state) {
+        case "aguardando_resposta":
+          return "\nESTADO: Campanha enviada, aguardando resposta. Continue de onde parou.";
+        case "qualificando":
+          return "\nESTADO: Em qualificação. Colete apenas os campos faltantes listados abaixo.";
+        case "qualificado":
+          return "\nESTADO: Lead qualificado. Informe que um vendedor especializado entrará em contato.";
+        case "handoff":
+          return "\nESTADO: Já houve handoff. Se o lead ainda interagir, informe que o responsável entrará em contato em breve.";
+        default:
+          return "";
+      }
+    })();
 
     const systemPrompt = `${aiConfig.prompt_treinamento || "Você é um assistente de vendas."}
 
 Tom de voz: ${aiConfig.tom_conversa || "profissional e amigável"}
 Idioma: ${idioma === "pt-BR" ? "Português do Brasil" : idioma === "en" ? "Inglês" : "Espanhol"}
-${campaignRule}
+${campaignContinuity}${stateInstruction}
 
-REGRAS IMPORTANTES:
-1. Se for PRIMEIRA INTERAÇÃO, envie a mensagem de boas-vindas: "${aiConfig.mensagem_boas_vindas || 'Olá! Como posso ajudá-lo?'}"
-2. Se o cliente pedir ORÇAMENTO, COTAÇÃO ou demonstrar interesse em comprar, inicie a coleta de dados
-3. Se estiver em modo COLETA, peça apenas UM campo por vez de forma natural
-4. Quando o cadastro estiver COMPLETO, agradeça e informe que um vendedor especializado entrará em contato
-5. NUNCA invente dados sobre produtos ou preços
-6. Seja cordial e responda de forma concisa
-7. SEMPRE responda no idioma configurado: ${idioma === "pt-BR" ? "Português do Brasil" : idioma === "en" ? "Inglês" : "Espanhol"}
-8. USO DE DADOS JÁ EXISTENTES: Se um dado do prospect já estiver preenchido abaixo (nome, email, cidade, segmento, empresa, etc.), NÃO peça novamente. Use naturalmente na conversa. Se precisar confirmar um dado antigo, use confirmação leve: "Segue sendo pela [empresa], certo?" Nunca reinicie a coleta do zero se já houver dados cadastrados.
-9. Ao coletar dados, pule campos que já estão preenchidos nos "Dados do prospect" abaixo. Solicite APENAS os campos listados em "Campos faltantes".
+CONTEXTO ESTRUTURADO DO LEAD:
+${JSON.stringify(leadContext, null, 2)}
+
+REGRAS CRÍTICAS:
+1. DADOS EXISTENTES: Se um dado do lead já está preenchido no contexto acima (personName, companyName, city, email, etc.), NUNCA pergunte novamente. Use naturalmente na conversa.
+2. CAMPOS FALTANTES: Solicite APENAS os campos marcados como "true" em missingFields. Siga esta ordem de prioridade:
+   a) Identificar se é demanda corporativa
+   b) companyName (empresa)
+   c) city (cidade)
+   d) email
+   e) isRecurring (recorrência)
+   Pule os que já estão preenchidos.
+3. Se for PRIMEIRA INTERAÇÃO (isFirstInteraction=true) E NÃO for campanha, envie a mensagem de boas-vindas: "${aiConfig.mensagem_boas_vindas || 'Olá! Como posso ajudá-lo?'}"
+4. Se o cliente pedir ORÇAMENTO, COTAÇÃO ou demonstrar interesse em comprar, inicie a coleta dos campos faltantes.
+5. Quando TODOS os campos estiverem preenchidos, agradeça e informe: "Perfeito. Vou colocar o Alexandre aqui para avançarmos de forma mais objetiva."
+6. NUNCA invente dados sobre produtos ou preços.
+7. Seja cordial e responda de forma concisa — máximo 2-3 frases.
+8. SEMPRE responda no idioma configurado.
+9. Se precisar CONFIRMAR um dado antigo ou possivelmente desatualizado, use confirmação leve: "Segue sendo pela [empresa], certo?" — nunca reinicie a coleta.
+10. NUNCA resetar conversa. NUNCA reapresentar-se se já houve interação anterior.
+11. Se o cliente pedir para falar com um vendedor, atendente humano ou pessoa real, defina "intencao" como "falar_humano".
 ${instrucaoOrcamento}
 
-Campos necessários para qualificação: ${camposCadastro.join(", ")}
-Campos já coletados: ${JSON.stringify(camposColetados)}
-Campos faltantes: ${camposFaltantes.join(", ") || "nenhum - cadastro completo"}
-
-Dados do prospect:
-- Nome: ${prospect?.nome_razao || "não informado"}
-- Email: ${prospect?.email_principal || "não informado"}
-- Telefone: ${prospect?.telefone || "não informado"}
-- WhatsApp: ${prospect?.whatsapp || telefone}
-- Cidade: ${prospect?.cidade || "não informada"}
-- Segmento: ${prospect?.segmento || "não informado"}
+REGRA DE ATUALIZAÇÃO CADASTRAL: ${isStaleProspect && isReturningContact ? `O cadastro está DESATUALIZADO (>90 dias). Após a saudação, pergunte gentilmente se os dados ainda estão corretos. Se confirmar ou fornecer novos dados, extraia-os em "dados_extraidos".` : "Cadastro atualizado, não solicitar atualização."}
 
 IMPORTANTE: Responda em JSON com esta estrutura:
 {
   "intencao": "saudacao|orcamento|duvida|reclamacao|agradecimento|falar_humano|outro",
   "mensagem": "sua resposta ao cliente em linguagem natural",
   "iniciar_coleta_orcamento": true|false,
-  "dados_extraidos": { "campo": "valor" },
+  "dados_extraidos": { "campo_do_banco": "valor" },
   "campo_solicitado": "nome_do_campo ou null",
   "cadastro_completo": true|false
 }
 
-REGRA ADICIONAL: Se o cliente pedir para falar com um vendedor, atendente humano, ou pessoa real, defina "intencao" como "falar_humano" e informe que um vendedor entrará em contato em breve.
-
-REGRA DE ATUALIZAÇÃO CADASTRAL: ${isStaleProspect && isReturningContact ? `O cadastro deste contato está DESATUALIZADO (último update há mais de 90 dias). Após a saudação inicial, pergunte gentilmente se os dados cadastrais ainda estão corretos e se houve alguma mudança (nome, email, cidade, empresa). Campos atuais: Nome=${prospect?.nome_razao}, Email=${prospect?.email_principal || "não informado"}, Cidade=${prospect?.cidade || "não informada"}. Se o cliente confirmar ou fornecer novos dados, extraia-os em "dados_extraidos".` : "Cadastro atualizado, não é necessário solicitar atualização."}`;
+Mapeamento de campos para dados_extraidos:
+- Nome da empresa → "nome_fantasia"
+- Cidade → "cidade"
+- Email → "email_principal"
+- Segmento/tipo de demanda → "segmento"
+- Nome da pessoa → "nome_razao"`;
 
     // Chamar Lovable AI
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -228,7 +393,7 @@ REGRA DE ATUALIZAÇÃO CADASTRAL: ${isStaleProspect && isReturningContact ? `O c
           { role: "system", content: systemPrompt },
           { 
             role: "user", 
-            content: `Histórico da conversa:\n${historicoFormatado}\n\n---\nMensagens pendentes do cliente: "${mensagemAgregada}"\n\nContexto:\n- Primeira interação: ${primeiraInteracao}\n- Em coleta de dados: ${emColetaOrcamento}\n- Cadastro completo: ${cadastroCompleto}` 
+            content: `Histórico da conversa:\n${historicoFormatado}\n\n---\nMensagens pendentes do cliente: "${mensagemAgregada}"\n\nContexto:\n- Estado: ${leadContext.conversation.state}\n- Primeira interação: ${primeiraInteracao}\n- Em coleta de dados: ${emColetaOrcamento}\n- Cadastro completo: ${cadastroCompleto}\n- Campos faltantes: ${camposFaltantes.join(", ") || "nenhum"}` 
           },
         ],
         temperature: 0.7,
@@ -270,13 +435,29 @@ REGRA DE ATUALIZAÇÃO CADASTRAL: ${isStaleProspect && isReturningContact ? `O c
     const resposta = parsed.mensagem || content;
     console.log("[orbit-ai-agent] Resposta gerada:", resposta.substring(0, 100));
 
-    // Atualizar contexto da conversa
+    // ── Validar dados extraídos antes de salvar ──
+    const dadosValidados = parsed.dados_extraidos 
+      ? validateExtractedData(parsed.dados_extraidos) 
+      : {};
+
+    // ── Calcular próximo estado da conversa ──
+    const isHandoff = parsed.cadastro_completo === true || parsed.intencao === "falar_humano";
+    const nextState = computeNextState(
+      leadContext.conversation.state,
+      parsed.intencao || "outro",
+      parsed.cadastro_completo || false,
+      false // handoff será determinado abaixo
+    );
+
+    // Atualizar contexto da conversa com estado
     const novoContexto = {
       ...aiContexto,
+      estado: isHandoff ? "handoff" : nextState,
       em_coleta_orcamento: parsed.iniciar_coleta_orcamento || emColetaOrcamento,
-      campos_coletados: { ...camposColetados, ...parsed.dados_extraidos },
+      campos_coletados: { ...camposColetados, ...dadosValidados },
       cadastro_completo: parsed.cadastro_completo,
       ultima_intencao: parsed.intencao,
+      intro_already_sent: introAlreadySent || primeiraInteracao,
     };
 
     await supabase
@@ -284,25 +465,37 @@ REGRA DE ATUALIZAÇÃO CADASTRAL: ${isStaleProspect && isReturningContact ? `O c
       .update({ ai_contexto: novoContexto })
       .eq("id", conversa_id);
 
-    // Atualizar prospect com dados extraídos
-    if (parsed.dados_extraidos && Object.keys(parsed.dados_extraidos).length > 0) {
-      await supabase
-        .from("orbit_prospects")
-        .update(parsed.dados_extraidos)
-        .eq("id", prospect_id);
+    // Atualizar prospect com dados validados (nunca sobrescrever dados confirmados)
+    if (Object.keys(dadosValidados).length > 0) {
+      // Filtrar: só atualizar campos que estão vazios no prospect
+      const updateData: Record<string, any> = {};
+      for (const [campo, valor] of Object.entries(dadosValidados)) {
+        const currentValue = prospect?.[campo];
+        if (!currentValue || currentValue === "" || currentValue.startsWith("WhatsApp ")) {
+          updateData[campo] = valor;
+        } else {
+          console.log(`[orbit-ai-agent] Campo ${campo} já preenchido (${currentValue}), não sobrescrevendo com: ${valor}`);
+        }
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        await supabase
+          .from("orbit_prospects")
+          .update(updateData)
+          .eq("id", prospect_id);
+        console.log("[orbit-ai-agent] Prospect atualizado com:", Object.keys(updateData));
+      }
     }
 
     // Distribuir para vendedor com 3 níveis de prioridade
     const FALLBACK_VENDEDOR_ID = "bf42e203-328e-445b-a72d-93529aaedd4d"; // Alexandre Eifler Bock
     let vendedorAtribuido: string | null = null;
 
-    if (parsed.cadastro_completo || parsed.intencao === "falar_humano") {
+    if (isHandoff) {
       if (prospect?.responsavel_id) {
-        // 1) Usar responsável já cadastrado no prospect
         vendedorAtribuido = prospect.responsavel_id;
         console.log("[orbit-ai-agent] Usando responsável existente:", vendedorAtribuido);
       } else {
-        // 2) Round-robin na fila de distribuição
         const { data: proximoVendedor } = await supabase
           .from("orbit_distribuicao_config")
           .select("vendedor_id")
@@ -323,13 +516,11 @@ REGRA DE ATUALIZAÇÃO CADASTRAL: ${isStaleProspect && isReturningContact ? `O c
             .eq("vendedor_id", proximoVendedor.vendedor_id);
           console.log("[orbit-ai-agent] Lead distribuído via round-robin:", proximoVendedor.vendedor_id);
         } else {
-          // 3) Fallback fixo: Alexandre
           vendedorAtribuido = FALLBACK_VENDEDOR_ID;
           console.log("[orbit-ai-agent] Fallback: lead atribuído ao Alexandre:", FALLBACK_VENDEDOR_ID);
         }
       }
 
-      // Atualizar prospect com responsável e qualificar
       if (vendedorAtribuido) {
         await supabase
           .from("orbit_prospects")
@@ -342,8 +533,7 @@ REGRA DE ATUALIZAÇÃO CADASTRAL: ${isStaleProspect && isReturningContact ? `O c
     }
 
     // ── Handoff: notificar vendedor via WhatsApp ──
-    const shouldHandoff = parsed.cadastro_completo === true || parsed.intencao === "falar_humano";
-    if (shouldHandoff && vendedorAtribuido) {
+    if (isHandoff && vendedorAtribuido) {
       await handleSellerHandoff(supabase, {
         conversa_id,
         prospect_id,
@@ -356,10 +546,10 @@ REGRA DE ATUALIZAÇÃO CADASTRAL: ${isStaleProspect && isReturningContact ? `O c
       });
     }
 
-    // Enviar resposta via WhatsApp (or simulate for demo)
+    // Enviar resposta via WhatsApp
     await sendWhatsAppMessage(supabase, telefone, resposta, conversa_id, isDemo, empresaId);
 
-    return new Response(JSON.stringify({ ok: true, resposta, parsed, simulated: isDemo }), {
+    return new Response(JSON.stringify({ ok: true, resposta, parsed, state: novoContexto.estado, simulated: isDemo }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
     } finally {
@@ -373,7 +563,6 @@ REGRA DE ATUALIZAÇÃO CADASTRAL: ${isStaleProspect && isReturningContact ? `O c
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[orbit-ai-agent] Erro:", message);
-    // Reset lock on error
     try {
       const supabaseCleanup = createClient(
         Deno.env.get("SUPABASE_URL")!,
@@ -391,6 +580,8 @@ REGRA DE ATUALIZAÇÃO CADASTRAL: ${isStaleProspect && isReturningContact ? `O c
   }
 });
 
+// ── Helper functions ──
+
 interface HandoffParams {
   conversa_id: string;
   prospect_id: string;
@@ -406,7 +597,6 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
   const { conversa_id, prospect_id, prospect, vendedor_id, empresa_id, mensagem_lead, telefone_lead, isDemo } = params;
 
   try {
-    // Check if handoff already sent for this conversa
     const { data: existingHandoff } = await supabase
       .from("orbit_handoffs")
       .select("id")
@@ -419,7 +609,6 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
       return;
     }
 
-    // Get seller data from profiles and pe_users
     const { data: vendedorProfile } = await supabase
       .from("profiles")
       .select("id, nome, telefone, cargo")
@@ -446,14 +635,12 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
       return;
     }
 
-    // Get empresa name
     let empresaNome = "";
     if (empresa_id) {
       const { data: empresa } = await supabase.from("orbit_empresas").select("nome").eq("id", empresa_id).single();
       empresaNome = empresa?.nome || "";
     }
 
-    // Build summary
     const leadPhone = telefone_lead?.replace(/\D/g, "") || "";
     const vendedorNome = vendedorProfile?.nome || "Vendedor";
     const now = new Date();
@@ -482,7 +669,6 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
       waLink,
     ].filter(Boolean).join("\n");
 
-    // Insert handoff record as pending
     const { data: handoff } = await supabase.from("orbit_handoffs").insert({
       empresa_id,
       conversa_id,
@@ -492,7 +678,6 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
       status: "pending",
     }).select().single();
 
-    // Send WhatsApp to seller
     const vendedorPhone = vendedorWhatsapp.replace(/\D/g, "");
 
     if (isDemo) {
@@ -529,7 +714,6 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
       }
     }
 
-    // Update conversa with handoff timestamp
     await supabase.from("orbit_conversas").update({ handoff_sent_at: new Date().toISOString() }).eq("id", conversa_id);
     console.log("[orbit-ai-agent] Handoff completo para conversa:", conversa_id);
 
@@ -541,7 +725,6 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
 async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: string, conversa_id: string, isDemo: boolean, empresaId?: string | null) {
   try {
     if (isDemo) {
-      // Demo mode: save message as simulated, don't call Z-API
       console.log("[orbit-ai-agent] Demo mode — simulando envio");
       await supabase.from("orbit_mensagens").insert({
         conversa_id,
@@ -563,7 +746,6 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: st
       return;
     }
 
-    // Production mode: call Z-API filtered by empresa_id
     let zapiQuery = supabase
       .from("orbit_zapi_config")
       .select("*")
