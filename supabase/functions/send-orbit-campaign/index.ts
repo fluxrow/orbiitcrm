@@ -272,6 +272,9 @@ const handler = async (req: Request): Promise<Response> => {
           continue;
         }
 
+        let validatedPhone = "";
+        let candidatePhone = "";
+
         if (campaign.canal === "email") {
           // ── Email sending ──
           if (!resendConfig?.api_key || !prospect.email_principal) {
