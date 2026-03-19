@@ -349,7 +349,7 @@ const handler = async (req: Request): Promise<Response> => {
             prospect.whatsapp_status === "valido" &&
             !isCheckExpired(prospect.whatsapp_last_check_at);
 
-          let validatedPhone = candidatePhone;
+          validatedPhone = candidatePhone;
           let wasValidated = false;
 
           if (!isRecentlyValid) {
