@@ -1,36 +1,79 @@
 
 
-# Instruir o agente IA a usar dados já existentes do prospect
+# Refatorar Agente IA com Contexto Estruturado e Máquina de Estados
 
-## Problema
-O agente de IA re-pergunta informações que já estão cadastradas no prospect (nome, empresa, cidade, email, etc.), mesmo quando esses dados já existem no banco.
+## Resumo
+Reestruturar o `orbit-ai-agent` para operar com um objeto de contexto estruturado, máquina de estados explícita, validação de dados extraídos, e prompt otimizado que elimine coleta redundante.
 
-## Solução
-Modificar o system prompt no `orbit-ai-agent/index.ts` para incluir uma regra explícita sobre uso de dados já conhecidos. O prompt já recebe os dados do prospect (linhas 194-200) e os campos coletados (linha 191), mas falta uma instrução clara para o agente **não re-perguntar** o que já sabe.
+## O que já funciona
+- Busca de prospect por telefone (no webhook)
+- `camposFaltantes` já filtra campos preenchidos
+- Regras 8 e 9 no prompt (adicionadas anteriormente)
+- Detecção de campanha outbound
+- Handoff com 3 níveis de prioridade
 
-## Alteração
+## Alterações necessárias
 
-**`supabase/functions/orbit-ai-agent/index.ts`** — Adicionar regra no bloco "REGRAS IMPORTANTES" (após a regra 7, ~linha 188):
+### 1. Contexto estruturado antes da chamada IA
+Montar objeto `leadContext` com dados do prospect mapeados para nomes claros (personName, companyName, city, email, demandType, isRecurring), mais o estado da conversa e campos faltantes calculados. Passar esse objeto serializado no prompt.
 
-```
-8. USO DE DADOS JÁ EXISTENTES: Se um dado do prospect já estiver preenchido acima (nome, email, cidade, segmento, etc.), 
-   NÃO peça novamente. Use naturalmente na conversa. 
-   Se precisar confirmar um dado antigo, use confirmação leve: "Segue sendo pela [empresa], certo?"
-   Nunca reinicie a coleta do zero se já houver dados cadastrados.
-9. Ao coletar dados, pule campos que já estão preenchidos nos "Dados do prospect" acima. 
-   Solicite APENAS os campos listados em "Campos faltantes".
-```
+### 2. Máquina de estados no `ai_contexto`
+Implementar estados: `novo`, `aguardando_resposta`, `qualificando`, `qualificado`, `handoff`, `encerrado`. Atualizar estado automaticamente:
+- Mensagem de campanha enviada → `aguardando_resposta`
+- Lead respondeu → `qualificando`
+- Dados mínimos completos → `qualificado`
+- Handoff enviado → `handoff`
 
-Também ajustar a lógica de `camposFaltantes` (linha 155-157) para considerar dados do prospect como já preenchidos de forma mais abrangente, incluindo campos como `nome_fantasia` (empresa) e `segmento`:
+### 3. Validação de dados extraídos
+Antes de salvar `dados_extraidos` no prospect, validar:
+- `email_principal`: deve conter `@`
+- `nome_fantasia` (empresa): não pode ser nome de pessoa (heurística simples)
+- `cidade`: texto simples, sem números
 
-```typescript
-const camposFaltantes = camposCadastro.filter(
-  (campo: string) => !camposColetados[campo] && !prospect?.[campo]
-);
-```
+### 4. Ordem de coleta no prompt
+Instruir a IA a seguir ordem: corporativo → empresa → cidade → email → recorrência. Pular campos já preenchidos.
 
-Esta lógica já existe e funciona corretamente — o problema é apenas que o prompt não instrui o agente de forma suficientemente explícita a respeitar esses dados.
+### 5. Prompt refatorado
+Reescrever o system prompt com:
+- Contexto estruturado do lead inline
+- Regras de uso de dados existentes mais explícitas
+- Instrução de continuidade para campanhas
+- Mensagem de handoff específica: "Perfeito. Vou colocar o Alexandre aqui para avançarmos de forma mais objetiva."
+- Nunca resetar conversa
+
+### 6. Atualizar estado da conversa após resposta
+Após processar resposta da IA, atualizar `ai_contexto.estado` baseado na intenção e completude do cadastro.
 
 ## Arquivo modificado
-- `supabase/functions/orbit-ai-agent/index.ts` — ~5 linhas adicionadas no system prompt
+- `supabase/functions/orbit-ai-agent/index.ts` — refatoração do bloco de contexto (linhas ~143-216), validação de dados (linhas ~288-293), atualização de estado (linhas ~274-285)
+
+## Detalhes técnicos
+
+```text
+Fluxo atualizado:
+
+  webhook recebe msg
+        │
+        ▼
+  orbit-ai-agent
+        │
+        ├─ Carrega prospect (já existe)
+        ├─ Monta leadContext estruturado  ← NOVO
+        ├─ Calcula missingFields          ← APRIMORADO
+        ├─ Determina estado conversa      ← NOVO
+        ├─ Gera prompt com contexto       ← REFATORADO
+        ├─ Chama IA
+        ├─ Valida dados_extraidos         ← NOVO
+        ├─ Atualiza prospect
+        ├─ Atualiza estado conversa       ← NOVO
+        └─ Handoff se qualificado
+```
+
+Campos mapeados prospect → contexto:
+- `nome_razao` → personName
+- `nome_fantasia` → companyName
+- `cidade` → city
+- `email_principal` → email
+- `segmento` → demandType
+- `ai_contexto.is_recurring` → isRecurring
 
