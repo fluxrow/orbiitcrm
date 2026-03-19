@@ -140,7 +140,9 @@ serve(async (req) => {
 
     const mensagensIN = mensagens?.filter((m) => m.direcao === "IN").length || 0;
     const mensagensOUT = mensagens?.filter((m) => m.direcao === "OUT").length || 0;
-    const primeiraInteracao = mensagensOUT === 0 || mensagensIN <= 1;
+    const introAlreadySent = aiContexto.intro_already_sent === true;
+    const isFromCampaign = aiContexto.origin === "outbound_campaign";
+    const primeiraInteracao = !introAlreadySent && (mensagensOUT === 0 || mensagensIN <= 1);
 
     const aiContexto = conversa?.ai_contexto || {};
     const emColetaOrcamento = aiContexto.em_coleta_orcamento || false;
