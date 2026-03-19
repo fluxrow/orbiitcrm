@@ -322,7 +322,7 @@ const handler = async (req: Request): Promise<Response> => {
 
           // 1. Determine candidate phone
           const rawCandidate = prospect.whatsapp || prospect.telefone || "";
-          const candidatePhone = normalizePhone(rawCandidate);
+          candidatePhone = normalizePhone(rawCandidate);
 
           if (!candidatePhone) {
             await supabase.from("orbit_campaign_recipients").update({ status: "ignorado", erro: "IGNORED_NO_NUMBER" }).eq("id", recipient.id);
