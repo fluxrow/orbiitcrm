@@ -550,7 +550,8 @@ Mapeamento de campos para dados_extraidos:
 - Cidade → "cidade"
 - Email → "email_principal"
 - Segmento/tipo de demanda → "segmento"
-- Nome da pessoa → "nome_razao"`;
+- Nome da pessoa de contato → "nome_contato"
+- Nome/razão social → "nome_razao"`;
 
     // Chamar Lovable AI
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {

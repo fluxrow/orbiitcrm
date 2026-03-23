@@ -250,12 +250,18 @@ const handler = async (req: Request): Promise<Response> => {
         const assunto = campaign.template?.assunto_email || "";
 
         const getDisplayName = (p: any): string => {
+          // 1. Se tem contato, usar contato
+          if (p.nome_contato?.trim()) return p.nome_contato.trim();
+          // 2. Se nome_razao não é telefone/placeholder, usar como empresa
           const nome = p.nome_razao || "";
           const digits = nome.replace(/\D/g, "");
           const isPhone = /^\d{8,}$/.test(digits) && digits.length >= 8;
           const isPlaceholder = nome.startsWith("WhatsApp ");
-          if (isPhone || isPlaceholder) return p.nome_fantasia || "";
-          return nome;
+          if (!isPhone && !isPlaceholder && nome.trim()) return nome.trim();
+          // 3. Fallback para nome_fantasia
+          if (p.nome_fantasia?.trim()) return p.nome_fantasia.trim();
+          // 4. Vazio — mensagem sem tag
+          return "";
         };
 
         const variaveis: Record<string, string> = {

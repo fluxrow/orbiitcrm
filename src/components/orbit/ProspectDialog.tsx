@@ -268,6 +268,20 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
               )}
             />
 
+            <FormField
+              control={form.control}
+              name="nome_contato"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Contato (pessoa)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Nome da pessoa de contato" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
