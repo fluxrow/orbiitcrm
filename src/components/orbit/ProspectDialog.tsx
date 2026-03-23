@@ -101,6 +101,7 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
     defaultValues: {
       nome_razao: "",
       nome_fantasia: "",
+      nome_contato: "",
       email_principal: "",
       telefone: "",
       whatsapp: "",
