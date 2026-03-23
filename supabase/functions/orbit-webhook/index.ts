@@ -397,19 +397,18 @@ serve(async (req) => {
 
     // 6. If AI active and human_talk = false and incoming message, call AI agent
     if (!fromMe && !conversa.human_talk) {
-      // Check if AI is already processing this conversation (debounce lock)
-      const { data: conversaAtual } = await supabase
+      // Atomic lock: só dispara AI se conseguir adquirir o lock
+      const { data: lockResult } = await supabase
         .from("orbit_conversas")
-        .select("ai_processing")
+        .update({ ai_processing: true })
         .eq("id", conversa.id)
-        .single();
+        .eq("ai_processing", false)
+        .select("id");
 
-      if (conversaAtual?.ai_processing) {
-        console.log("[orbit-webhook] AI já processando conversa, msg será agregada:", conversa.id);
-      } else {
+      if (lockResult && lockResult.length > 0) {
+        // Lock adquirido — disparar agente
         let aiConfigQuery = supabase.from("orbit_ai_config").select("*");
         if (empresaId) aiConfigQuery = aiConfigQuery.eq("empresa_id", empresaId);
-
         const { data: aiConfig } = await aiConfigQuery.maybeSingle();
 
         if (aiConfig?.modo_automatico) {
@@ -426,7 +425,12 @@ serve(async (req) => {
               telefone: normalizedPhone,
             }),
           }).catch(err => console.error("[orbit-webhook] Erro ao chamar AI agent:", err));
+        } else {
+          // Liberar lock se não vai chamar IA
+          await supabase.from("orbit_conversas").update({ ai_processing: false }).eq("id", conversa.id);
         }
+      } else {
+        console.log("[orbit-webhook] AI já processando conversa, msg será agregada:", conversa.id);
       }
     }
 
