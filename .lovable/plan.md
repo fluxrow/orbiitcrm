@@ -1,52 +1,56 @@
 
 
-# Fix: Resposta duplicada do agente IA
+# Adicionar campo "Contato" ao Prospect e ajustar lógica de {{nome}}
 
-## Problema
-Quando o prospect envia duas mensagens rápidas ("Oi." e "Cuido."), o webhook recebe dois eventos separados. Ambos verificam `ai_processing` via SELECT — como as duas chegam quase ao mesmo tempo, ambas veem `ai_processing = false` e disparam duas chamadas ao `orbit-ai-agent`. Resultado: duas respostas enviadas.
+## Resumo
+Adicionar coluna `nome_contato` na tabela `orbit_prospects` para separar o nome da pessoa de contato do nome da empresa. Ajustar a lógica de `{{nome}}` para seguir a cadeia: contato → empresa (nome_razao se não for telefone) → nome_fantasia → vazio.
 
-## Causa raiz
-Race condition no webhook (linhas 401-405): o check de `ai_processing` é feito com SELECT, não é atômico. Duas requisições simultâneas passam pelo check antes que o agente tenha tempo de setar o lock.
+## Alterações
 
-## Solução
-Usar um **lock atômico** no webhook: em vez de SELECT + check, fazer um UPDATE com condição WHERE que só retorna sucesso se o lock foi adquirido. Se nenhuma row foi atualizada, significa que outro processo já tem o lock.
+### 1. Migration: nova coluna `nome_contato`
+```sql
+ALTER TABLE orbit_prospects ADD COLUMN nome_contato text;
+```
 
-### Alteração em `supabase/functions/orbit-webhook/index.ts`
+### 2. ProspectDialog — adicionar campo "Contato"
+Adicionar campo `nome_contato` no formulário (schema zod + campo de input) logo após o campo "Nome / Razão Social", com label "Contato (pessoa)".
 
-Substituir o bloco de check (linhas 399-431) por:
+### 3. Lógica de `{{nome}}` no envio de campanha
+**`supabase/functions/send-orbit-campaign/index.ts`** — Refatorar `getDisplayName`:
 
 ```typescript
-// 6. If AI active and human_talk = false and incoming message, call AI agent
-if (!fromMe && !conversa.human_talk) {
-  // Atomic lock: só dispara AI se conseguir adquirir o lock
-  const { data: lockResult } = await supabase
-    .from("orbit_conversas")
-    .update({ ai_processing: true })
-    .eq("id", conversa.id)
-    .eq("ai_processing", false)  // ← só atualiza se ainda não está processando
-    .select("id");
-
-  if (lockResult && lockResult.length > 0) {
-    // Lock adquirido — disparar agente
-    let aiConfigQuery = supabase.from("orbit_ai_config").select("*");
-    if (empresaId) aiConfigQuery = aiConfigQuery.eq("empresa_id", empresaId);
-    const { data: aiConfig } = await aiConfigQuery.maybeSingle();
-
-    if (aiConfig?.modo_automatico) {
-      fetch(...); // chamada existente ao orbit-ai-agent
-    } else {
-      // Liberar lock se não vai chamar IA
-      await supabase.from("orbit_conversas").update({ ai_processing: false }).eq("id", conversa.id);
-    }
-  } else {
-    console.log("[orbit-webhook] AI já processando conversa, msg será agregada:", conversa.id);
-  }
+function getDisplayName(p: any): string {
+  // 1. Se tem contato, usar contato
+  if (p.nome_contato?.trim()) return p.nome_contato.trim();
+  
+  // 2. Se nome_razao não é telefone, usar como empresa
+  const nome = p.nome_razao || "";
+  const digits = nome.replace(/\D/g, "");
+  const isPhone = /^\d{8,}$/.test(digits) && digits.length >= 8;
+  const isPlaceholder = nome.startsWith("WhatsApp ");
+  
+  if (!isPhone && !isPlaceholder && nome.trim()) return nome.trim();
+  
+  // 3. Fallback para nome_fantasia
+  if (p.nome_fantasia?.trim()) return p.nome_fantasia.trim();
+  
+  // 4. Vazio — mensagem sem tag
+  return "";
 }
 ```
 
-### Por que funciona
-O `UPDATE ... WHERE ai_processing = false` é atômico no PostgreSQL. Se duas requisições tentam ao mesmo tempo, apenas uma consegue atualizar a row. A outra recebe 0 rows afetadas e sabe que deve pular.
+A variável `{{nome}}` usará esse valor. Se vazio, a tag será substituída por string vazia (mensagem enviada sem nome).
 
-## Arquivo modificado
-- `supabase/functions/orbit-webhook/index.ts` — ~15 linhas alteradas no bloco de lock (linhas 399-431)
+### 4. Mesma lógica nos displays de Conversas
+**`src/pages/orbit/ConversasPage.tsx`** — Incluir `nome_contato` na cadeia de fallback para exibição do nome na lista de conversas.
+
+### 5. Ajustar agente IA
+**`supabase/functions/orbit-ai-agent/index.ts`** — Incluir `nome_contato` no LeadContext e nos campos que o agente pode extrair/atualizar.
+
+## Arquivos modificados
+- Migration SQL (nova coluna)
+- `src/components/orbit/ProspectDialog.tsx` — campo de formulário
+- `supabase/functions/send-orbit-campaign/index.ts` — lógica de {{nome}}
+- `src/pages/orbit/ConversasPage.tsx` — fallback de exibição
+- `supabase/functions/orbit-ai-agent/index.ts` — contexto do agente
 
