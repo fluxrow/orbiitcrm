@@ -480,6 +480,10 @@ serve(async (req) => {
       switch (leadContext.conversation.state) {
         case "aguardando_resposta":
           return "\nESTADO: Campanha enviada, aguardando resposta. Continue de onde parou.";
+        case "auto_reply_detected":
+          return "\nESTADO: Resposta automática detectada. Tente contornar a automação e alcançar a pessoa responsável. Pergunte diretamente pela pessoa que cuida de viagens corporativas ou compras.";
+        case "human_detected":
+          return "\nESTADO: Interação humana detectada. Siga a qualificação normalmente, sem mencionar a detecção.";
         case "qualificando":
           return "\nESTADO: Em qualificação. Colete apenas os campos faltantes listados abaixo.";
         case "qualificado":
@@ -491,11 +495,18 @@ serve(async (req) => {
       }
     })();
 
+    // Instrução sobre classificação da mensagem recebida
+    const classificationInstruction = msgClassification === "auto_reply"
+      ? `\nCLASSIFICAÇÃO DA MENSAGEM RECEBIDA: RESPOSTA AUTOMÁTICA. Esta mensagem foi enviada por um sistema automático/bot. Tente contornar educadamente e perguntar pela pessoa responsável por viagens corporativas ou compras. NÃO trate como interesse real.`
+      : msgClassification === "human_probable"
+      ? `\nCLASSIFICAÇÃO DA MENSAGEM RECEBIDA: INTERAÇÃO HUMANA. Continue a qualificação normalmente.`
+      : "";
+
     const systemPrompt = `${aiConfig.prompt_treinamento || "Você é um assistente de vendas."}
 
 Tom de voz: ${aiConfig.tom_conversa || "profissional e amigável"}
 Idioma: ${idioma === "pt-BR" ? "Português do Brasil" : idioma === "en" ? "Inglês" : "Espanhol"}
-${campaignContinuity}${stateInstruction}
+${campaignContinuity}${stateInstruction}${classificationInstruction}
 
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
