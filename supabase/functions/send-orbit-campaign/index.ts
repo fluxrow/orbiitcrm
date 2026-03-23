@@ -264,8 +264,18 @@ const handler = async (req: Request): Promise<Response> => {
           return "";
         };
 
+        const getCompanyName = (p: any): string => {
+          const nome = p.nome_razao || "";
+          const digits = nome.replace(/\D/g, "");
+          const isPhone = /^\d{8,}$/.test(digits) && digits.length >= 8;
+          const isPlaceholder = nome.startsWith("WhatsApp ");
+          if (!isPhone && !isPlaceholder && nome.trim()) return nome.trim();
+          return p.nome_fantasia?.trim() || "";
+        };
+
         const variaveis: Record<string, string> = {
           "{{nome}}": getDisplayName(prospect).toUpperCase(),
+          "{{empresa}}": getCompanyName(prospect).toUpperCase(),
           "{{nome_fantasia}}": (prospect.nome_fantasia || "").toUpperCase(),
           "{{email}}": prospect.email_principal || "",
           "{{telefone}}": prospect.telefone || prospect.whatsapp || "",
