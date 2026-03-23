@@ -38,6 +38,7 @@ import type { Tables } from "@/integrations/supabase/types";
 const prospectSchema = z.object({
   nome_razao: z.string().min(2, "Nome é obrigatório") as z.ZodType<string>,
   nome_fantasia: z.string().optional(),
+  nome_contato: z.string().optional(),
   email_principal: z.string().email("Email inválido").optional().or(z.literal("")),
   telefone: z.string().optional(),
   whatsapp: z.string().optional(),
