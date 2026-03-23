@@ -1,0 +1,1 @@
+ALTER TABLE orbit_prospects ADD COLUMN nome_contato text;

@@ -2025,6 +2025,7 @@ export type Database = {
           empresa_id: string | null
           estado: string | null
           id: string
+          nome_contato: string | null
           nome_fantasia: string | null
           nome_razao: string
           observacoes: string | null
@@ -2054,6 +2055,7 @@ export type Database = {
           empresa_id?: string | null
           estado?: string | null
           id?: string
+          nome_contato?: string | null
           nome_fantasia?: string | null
           nome_razao: string
           observacoes?: string | null
@@ -2083,6 +2085,7 @@ export type Database = {
           empresa_id?: string | null
           estado?: string | null
           id?: string
+          nome_contato?: string | null
           nome_fantasia?: string | null
           nome_razao?: string
           observacoes?: string | null

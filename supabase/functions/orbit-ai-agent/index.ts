@@ -16,6 +16,7 @@ interface LeadContext {
   lead: {
     id: string;
     personName: string | null;
+    contactName: string | null;
     companyName: string | null;
     city: string | null;
     email: string | null;
@@ -264,6 +265,7 @@ function buildLeadContext(
   const missingFields: Record<string, boolean> = {};
   const fieldMap: Record<string, string> = {
     nome_fantasia: "companyName",
+    nome_contato: "contactName",
     cidade: "city",
     email_principal: "email",
     segmento: "demandType",
@@ -283,6 +285,7 @@ function buildLeadContext(
     lead: {
       id: prospect?.id || "",
       personName: prospect?.nome_razao || null,
+      contactName: prospect?.nome_contato || null,
       companyName: prospect?.nome_fantasia || null,
       city: prospect?.cidade || null,
       email: prospect?.email_principal || null,
@@ -548,7 +551,8 @@ Mapeamento de campos para dados_extraidos:
 - Cidade → "cidade"
 - Email → "email_principal"
 - Segmento/tipo de demanda → "segmento"
-- Nome da pessoa → "nome_razao"`;
+- Nome da pessoa de contato → "nome_contato"
+- Nome/razão social → "nome_razao"`;
 
     // Chamar Lovable AI
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {

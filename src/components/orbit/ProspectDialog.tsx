@@ -38,6 +38,7 @@ import type { Tables } from "@/integrations/supabase/types";
 const prospectSchema = z.object({
   nome_razao: z.string().min(2, "Nome é obrigatório") as z.ZodType<string>,
   nome_fantasia: z.string().optional(),
+  nome_contato: z.string().optional(),
   email_principal: z.string().email("Email inválido").optional().or(z.literal("")),
   telefone: z.string().optional(),
   whatsapp: z.string().optional(),
@@ -100,6 +101,7 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
     defaultValues: {
       nome_razao: "",
       nome_fantasia: "",
+      nome_contato: "",
       email_principal: "",
       telefone: "",
       whatsapp: "",
@@ -120,6 +122,7 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
       form.reset({
         nome_razao: prospect.nome_razao || "",
         nome_fantasia: prospect.nome_fantasia || "",
+        nome_contato: (prospect as any).nome_contato || "",
         email_principal: prospect.email_principal || "",
         telefone: prospect.telefone || "",
         whatsapp: prospect.whatsapp || "",
@@ -137,6 +140,7 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
       form.reset({
         nome_razao: "",
         nome_fantasia: "",
+        nome_contato: "",
         email_principal: "",
         telefone: "",
         whatsapp: "",
@@ -258,6 +262,20 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
                   <FormLabel>Nome Fantasia</FormLabel>
                   <FormControl>
                     <Input placeholder="Nome fantasia (opcional)" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="nome_contato"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Contato (pessoa)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Nome da pessoa de contato" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
