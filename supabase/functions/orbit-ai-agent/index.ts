@@ -7,7 +7,10 @@ const corsHeaders = {
 };
 
 // ── Estado da conversa (máquina de estados) ──
-type ConversationState = "novo" | "aguardando_resposta" | "qualificando" | "qualificado" | "handoff" | "encerrado";
+type ConversationState = "novo" | "aguardando_resposta" | "auto_reply_detected" | "human_detected" | "qualificando" | "qualificado" | "handoff" | "encerrado";
+
+// ── Classificação de mensagem ──
+type MessageClassification = "human_probable" | "auto_reply" | "uncertain";
 
 interface LeadContext {
   lead: {
