@@ -616,10 +616,25 @@ Mapeamento de campos para dados_extraidos:
       leadContext.conversation.state,
       parsed.intencao || "outro",
       parsed.cadastro_completo || false,
-      false // handoff será determinado abaixo
+      false, // handoff será determinado abaixo
+      msgClassification
     );
 
-    // Atualizar contexto da conversa com estado
+    // ── Notificação comercial no primeiro sinal humano ──
+    const alreadyNotified = aiContexto.commercial_notified === true;
+    if (msgClassification === "human_probable" && !alreadyNotified) {
+      console.log("[orbit-ai-agent] Primeiro sinal humano detectado, notificando comercial...");
+      await notifyCommercialHumanDetected(supabase, {
+        prospect,
+        telefone_lead: telefone,
+        mensagem: mensagemAgregada,
+        classification: msgClassification,
+        empresa_id: empresaId || null,
+        isDemo,
+      });
+    }
+
+    // Atualizar contexto da conversa com estado e classificação
     const novoContexto = {
       ...aiContexto,
       estado: isHandoff ? "handoff" : nextState,
@@ -628,6 +643,14 @@ Mapeamento de campos para dados_extraidos:
       cadastro_completo: parsed.cadastro_completo,
       ultima_intencao: parsed.intencao,
       intro_already_sent: introAlreadySent || primeiraInteracao,
+      // Campos de classificação
+      message_classification: msgClassification,
+      human_detected: aiContexto.human_detected || msgClassification === "human_probable",
+      auto_reply_detected: aiContexto.auto_reply_detected || msgClassification === "auto_reply",
+      commercial_notified: alreadyNotified || msgClassification === "human_probable",
+      first_human_response_at: (!aiContexto.first_human_response_at && msgClassification === "human_probable")
+        ? new Date().toISOString()
+        : aiContexto.first_human_response_at || null,
     };
 
     await supabase
