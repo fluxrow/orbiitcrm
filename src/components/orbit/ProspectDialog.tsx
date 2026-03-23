@@ -122,6 +122,7 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
       form.reset({
         nome_razao: prospect.nome_razao || "",
         nome_fantasia: prospect.nome_fantasia || "",
+        nome_contato: (prospect as any).nome_contato || "",
         email_principal: prospect.email_principal || "",
         telefone: prospect.telefone || "",
         whatsapp: prospect.whatsapp || "",
