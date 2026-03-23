@@ -7,7 +7,10 @@ const corsHeaders = {
 };
 
 // ── Estado da conversa (máquina de estados) ──
-type ConversationState = "novo" | "aguardando_resposta" | "qualificando" | "qualificado" | "handoff" | "encerrado";
+type ConversationState = "novo" | "aguardando_resposta" | "auto_reply_detected" | "human_detected" | "qualificando" | "qualificado" | "handoff" | "encerrado";
+
+// ── Classificação de mensagem ──
+type MessageClassification = "human_probable" | "auto_reply" | "uncertain";
 
 interface LeadContext {
   lead: {
@@ -79,16 +82,168 @@ function validateExtractedData(dados: Record<string, any>): Record<string, any> 
   return validated;
 }
 
+// ── Classificar mensagem como humana, automática ou incerta ──
+async function classifyMessage(mensagem: string): Promise<{ classification: MessageClassification; confidence: number }> {
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        messages: [
+          {
+            role: "system",
+            content: `Classifique esta mensagem de WhatsApp recebida em resposta a uma campanha comercial.
+Categorias:
+- auto_reply: mensagem automática, institucional, menu de opções, horário de atendimento, "mensagem automática", "assistente virtual", "em instantes responderemos", "seja bem-vindo à empresa X", "digite 1, 2, 3", recepção automática
+- human_probable: saudação real (oi, olá, bom dia), pergunta contextual (quem fala, do que se trata), resposta natural (sim, sou eu, pode falar, eu cuido), demonstração de atenção/interesse
+- uncertain: muito vaga, sem evidência suficiente (ok, ?, ., alô)
+
+Responda APENAS com JSON: {"classification": "...", "confidence": 0.0-1.0}`
+          },
+          { role: "user", content: `Mensagem: "${mensagem}"` }
+        ],
+        temperature: 0.1,
+        max_tokens: 50,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("[orbit-ai-agent] Erro na classificação:", response.status);
+      return { classification: "uncertain", confidence: 0.5 };
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || "";
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      const cls = parsed.classification;
+      if (cls === "human_probable" || cls === "auto_reply" || cls === "uncertain") {
+        return { classification: cls, confidence: parsed.confidence || 0.5 };
+      }
+    }
+    return { classification: "uncertain", confidence: 0.5 };
+  } catch (err) {
+    console.error("[orbit-ai-agent] Erro classificação:", err);
+    return { classification: "uncertain", confidence: 0.5 };
+  }
+}
+
+// ── Notificar comercial sobre interação humana detectada ──
+async function notifyCommercialHumanDetected(
+  supabase: any,
+  params: {
+    prospect: any;
+    telefone_lead: string;
+    mensagem: string;
+    classification: MessageClassification;
+    empresa_id: string | null;
+    isDemo: boolean;
+  }
+) {
+  const { prospect, telefone_lead, mensagem, classification, empresa_id, isDemo } = params;
+  const FALLBACK_VENDEDOR_ID = "bf42e203-328e-445b-a72d-93529aaedd4d";
+  
+  // Determinar vendedor a notificar
+  const vendedorId = prospect?.responsavel_id || FALLBACK_VENDEDOR_ID;
+  
+  const { data: vendedorProfile } = await supabase
+    .from("profiles")
+    .select("id, nome, telefone")
+    .eq("id", vendedorId)
+    .single();
+
+  const { data: vendedorPe } = await supabase
+    .from("pe_users")
+    .select("whatsapp, phone")
+    .eq("id", vendedorId)
+    .maybeSingle();
+
+  const vendedorWhatsapp = vendedorPe?.whatsapp || vendedorPe?.phone || vendedorProfile?.telefone;
+  if (!vendedorWhatsapp) {
+    console.log("[orbit-ai-agent] Vendedor sem WhatsApp para notificação comercial");
+    return;
+  }
+
+  const leadPhone = telefone_lead?.replace(/\D/g, "") || "";
+  const waLink = `https://wa.me/${leadPhone}`;
+  const dataHora = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+
+  // Helper to get display name
+  const getDisplayName = (p: any): string => {
+    const nome = p?.nome_razao || "";
+    const digits = nome.replace(/\D/g, "");
+    const isPhone = /^\d{8,}$/.test(digits) && digits.length >= 8;
+    const isPlaceholder = nome.startsWith("WhatsApp ");
+    return (isPhone || isPlaceholder) ? (p?.nome_fantasia || "Não informado") : (nome || "Não informado");
+  };
+
+  const notificacao = [
+    `🟢 *Novo sinal de interação humana detectado*`,
+    ``,
+    `👤 Prospect: ${getDisplayName(prospect)}`,
+    `📱 Telefone: ${telefone_lead || "Não informado"}`,
+    prospect?.nome_fantasia ? `🏢 Empresa: ${prospect.nome_fantasia}` : null,
+    `💬 Mensagem: "${mensagem?.substring(0, 200)}"`,
+    `🏷️ Classificação: ${classification}`,
+    `📊 Status: possível interesse inicial`,
+    `🕐 ${dataHora}`,
+    ``,
+    `👉 Conversa: ${waLink}`,
+  ].filter(Boolean).join("\n");
+
+  const vendedorPhone = vendedorWhatsapp.replace(/\D/g, "");
+
+  if (isDemo) {
+    console.log("[orbit-ai-agent] Demo — notificação comercial simulada:", vendedorPhone);
+    return;
+  }
+
+  let zapiQuery = supabase.from("orbit_zapi_config").select("*").eq("ativo", true);
+  if (empresa_id) zapiQuery = zapiQuery.eq("empresa_id", empresa_id);
+  const { data: zapiConfig } = await zapiQuery.maybeSingle();
+
+  if (zapiConfig?.instance_id && zapiConfig?.token) {
+    const response = await fetch(
+      `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-text`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Client-Token": zapiConfig.client_token || "",
+        },
+        body: JSON.stringify({ phone: vendedorPhone, message: notificacao }),
+      }
+    );
+    console.log("[orbit-ai-agent] Notificação comercial enviada:", response.ok);
+  }
+}
+
 // ── Calcular próximo estado da conversa ──
 function computeNextState(
   currentState: ConversationState,
   intencao: string,
   cadastroCompleto: boolean,
-  isHandoff: boolean
+  isHandoff: boolean,
+  messageClassification?: MessageClassification
 ): ConversationState {
   if (isHandoff) return "handoff";
   if (cadastroCompleto) return "qualificado";
   if (intencao === "falar_humano") return "handoff";
+  
+  // Transições baseadas em classificação de mensagem
+  if (messageClassification === "auto_reply" && (currentState === "aguardando_resposta" || currentState === "novo")) {
+    return "auto_reply_detected";
+  }
+  if (messageClassification === "human_probable" && (currentState === "aguardando_resposta" || currentState === "novo" || currentState === "auto_reply_detected")) {
+    return "human_detected";
+  }
+  
+  if (currentState === "human_detected") return "qualificando";
   if (currentState === "aguardando_resposta" || currentState === "novo") return "qualificando";
   if (currentState === "qualificando" && cadastroCompleto) return "qualificado";
   return currentState === "novo" ? "qualificando" : currentState;
@@ -266,6 +421,10 @@ serve(async (req) => {
 
     console.log("[orbit-ai-agent] Mensagens agregadas:", pendingMsgs?.length || 1, "msgs →", mensagemAgregada.substring(0, 100));
 
+    // ── CLASSIFICAR MENSAGEM: humana, automática ou incerta ──
+    const { classification: msgClassification, confidence: msgConfidence } = await classifyMessage(mensagemAgregada);
+    console.log("[orbit-ai-agent] Classificação:", msgClassification, "confiança:", msgConfidence);
+
     // Buscar histórico completo (últimas 20 mensagens para contexto)
     const { data: mensagens } = await supabase
       .from("orbit_mensagens")
@@ -321,6 +480,10 @@ serve(async (req) => {
       switch (leadContext.conversation.state) {
         case "aguardando_resposta":
           return "\nESTADO: Campanha enviada, aguardando resposta. Continue de onde parou.";
+        case "auto_reply_detected":
+          return "\nESTADO: Resposta automática detectada. Tente contornar a automação e alcançar a pessoa responsável. Pergunte diretamente pela pessoa que cuida de viagens corporativas ou compras.";
+        case "human_detected":
+          return "\nESTADO: Interação humana detectada. Siga a qualificação normalmente, sem mencionar a detecção.";
         case "qualificando":
           return "\nESTADO: Em qualificação. Colete apenas os campos faltantes listados abaixo.";
         case "qualificado":
@@ -332,11 +495,18 @@ serve(async (req) => {
       }
     })();
 
+    // Instrução sobre classificação da mensagem recebida
+    const classificationInstruction = msgClassification === "auto_reply"
+      ? `\nCLASSIFICAÇÃO DA MENSAGEM RECEBIDA: RESPOSTA AUTOMÁTICA. Esta mensagem foi enviada por um sistema automático/bot. Tente contornar educadamente e perguntar pela pessoa responsável por viagens corporativas ou compras. NÃO trate como interesse real.`
+      : msgClassification === "human_probable"
+      ? `\nCLASSIFICAÇÃO DA MENSAGEM RECEBIDA: INTERAÇÃO HUMANA. Continue a qualificação normalmente.`
+      : "";
+
     const systemPrompt = `${aiConfig.prompt_treinamento || "Você é um assistente de vendas."}
 
 Tom de voz: ${aiConfig.tom_conversa || "profissional e amigável"}
 Idioma: ${idioma === "pt-BR" ? "Português do Brasil" : idioma === "en" ? "Inglês" : "Espanhol"}
-${campaignContinuity}${stateInstruction}
+${campaignContinuity}${stateInstruction}${classificationInstruction}
 
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
@@ -446,10 +616,25 @@ Mapeamento de campos para dados_extraidos:
       leadContext.conversation.state,
       parsed.intencao || "outro",
       parsed.cadastro_completo || false,
-      false // handoff será determinado abaixo
+      false, // handoff será determinado abaixo
+      msgClassification
     );
 
-    // Atualizar contexto da conversa com estado
+    // ── Notificação comercial no primeiro sinal humano ──
+    const alreadyNotified = aiContexto.commercial_notified === true;
+    if (msgClassification === "human_probable" && !alreadyNotified) {
+      console.log("[orbit-ai-agent] Primeiro sinal humano detectado, notificando comercial...");
+      await notifyCommercialHumanDetected(supabase, {
+        prospect,
+        telefone_lead: telefone,
+        mensagem: mensagemAgregada,
+        classification: msgClassification,
+        empresa_id: empresaId || null,
+        isDemo,
+      });
+    }
+
+    // Atualizar contexto da conversa com estado e classificação
     const novoContexto = {
       ...aiContexto,
       estado: isHandoff ? "handoff" : nextState,
@@ -458,6 +643,14 @@ Mapeamento de campos para dados_extraidos:
       cadastro_completo: parsed.cadastro_completo,
       ultima_intencao: parsed.intencao,
       intro_already_sent: introAlreadySent || primeiraInteracao,
+      // Campos de classificação
+      message_classification: msgClassification,
+      human_detected: aiContexto.human_detected || msgClassification === "human_probable",
+      auto_reply_detected: aiContexto.auto_reply_detected || msgClassification === "auto_reply",
+      commercial_notified: alreadyNotified || msgClassification === "human_probable",
+      first_human_response_at: (!aiContexto.first_human_response_at && msgClassification === "human_probable")
+        ? new Date().toISOString()
+        : aiContexto.first_human_response_at || null,
     };
 
     await supabase
