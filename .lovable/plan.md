@@ -1,28 +1,36 @@
 
 
-# Resetar Campanha e Apagar Mensagens
+# Fix: Tag {{empresa}} não substituída no envio de campanha
 
-## Dados identificados
-- **Campanha**: `df2e3e16-2b93-4863-bdb1-83ea54fe3955` — "Novo teste Campanha AUGUSTO e VAGNER 20.03.2026" (status: concluida)
-- **2 destinatários**: Promotrip Corporate (5541987276129) e Promoclick (554196204249)
-- **3 conversas** associadas aos telefones (26 mensagens total)
+## Problema
+O template usa `{{empresa}}` mas essa variável não existe no mapa de substituição (`variaveis`) em `send-orbit-campaign/index.ts`. O sistema só mapeia `{{nome}}`, `{{nome_fantasia}}`, `{{email}}`, `{{telefone}}`, `{{cidade}}` e `{{segmento}}`.
 
-## Ações via migration
+## Solução
+Adicionar `{{empresa}}` ao mapa de variáveis na linha 267-274. A lógica de `{{empresa}}` deve seguir:
 
-### 1. Resetar campanha
-- Status → `aprovada_para_envio`
-- Zerar contadores: `enviados`, `aberturas`, `cliques`, `respostas`
+1. `nome_razao` (se não for telefone/placeholder) → nome da empresa
+2. `nome_fantasia` como fallback
+3. Vazio se nenhum disponível
 
-### 2. Resetar destinatários
-- Status dos 2 recipients → `pendente`
-- Limpar `enviado_em` e `erro`
+```typescript
+const variaveis: Record<string, string> = {
+  "{{nome}}": getDisplayName(prospect).toUpperCase(),
+  "{{empresa}}": getCompanyName(prospect).toUpperCase(),  // ← NOVO
+  "{{nome_fantasia}}": (prospect.nome_fantasia || "").toUpperCase(),
+  // ... restante igual
+};
+```
 
-### 3. Apagar mensagens
-- Deletar as 26 mensagens das 3 conversas
+Função `getCompanyName`:
+```typescript
+const getCompanyName = (p: any): string => {
+  const nome = p.nome_razao || "";
+  const isPhone = /^\d{8,}$/.test(nome.replace(/\D/g, "")) || nome.startsWith("WhatsApp ");
+  if (!isPhone && nome.trim()) return nome.trim();
+  return p.nome_fantasia?.trim() || "";
+};
+```
 
-### 4. Apagar conversas
-- Deletar as 3 conversas dos 2 telefones
-
-## Arquivo
-- Migration SQL com os 4 comandos (UPDATE campaign, UPDATE recipients, DELETE mensagens, DELETE conversas)
+## Arquivo modificado
+- `supabase/functions/send-orbit-campaign/index.ts` — adicionar `{{empresa}}` ao mapa de variáveis (~5 linhas)
 
