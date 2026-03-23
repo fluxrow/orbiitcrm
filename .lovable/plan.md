@@ -1,99 +1,52 @@
 
 
-# Detecção de Interação Humana em Campanhas WhatsApp
+# Fix: Resposta duplicada do agente IA
 
-## Resumo
-Adicionar uma etapa de classificação de mensagens recebidas (human_probable, auto_reply, uncertain) antes da IA responder. Quando detectar interação humana real, notificar o comercial via WhatsApp uma única vez. Expandir a máquina de estados com novos estados intermediários.
+## Problema
+Quando o prospect envia duas mensagens rápidas ("Oi." e "Cuido."), o webhook recebe dois eventos separados. Ambos verificam `ai_processing` via SELECT — como as duas chegam quase ao mesmo tempo, ambas veem `ai_processing = false` e disparam duas chamadas ao `orbit-ai-agent`. Resultado: duas respostas enviadas.
 
-## Alterações
+## Causa raiz
+Race condition no webhook (linhas 401-405): o check de `ai_processing` é feito com SELECT, não é atômico. Duas requisições simultâneas passam pelo check antes que o agente tenha tempo de setar o lock.
 
-### 1. Novos campos no `ai_contexto` da conversa
-Sem mudança de schema — `ai_contexto` já é JSONB. Novos campos armazenados:
-- `human_detected` (boolean)
-- `auto_reply_detected` (boolean)
-- `commercial_notified` (boolean)
-- `first_human_response_at` (timestamp)
-- `message_classification` (string)
+## Solução
+Usar um **lock atômico** no webhook: em vez de SELECT + check, fazer um UPDATE com condição WHERE que só retorna sucesso se o lock foi adquirido. Se nenhuma row foi atualizada, significa que outro processo já tem o lock.
 
-### 2. Estados expandidos
-Atualizar `ConversationState` type e `computeNextState`:
-```
-novo → aguardando_resposta → auto_reply_detected (se auto_reply)
-                           → human_detected (se human_probable)
-human_detected → qualificando → qualificado → handoff
-```
+### Alteração em `supabase/functions/orbit-webhook/index.ts`
 
-### 3. Classificação de mensagem via IA
-Antes de chamar o agente principal, fazer uma chamada rápida ao Gemini Flash Lite (mais barato/rápido) para classificar a mensagem recebida:
+Substituir o bloco de check (linhas 399-431) por:
 
 ```typescript
-// Prompt de classificação
-"Classifique esta mensagem de WhatsApp como:
-- auto_reply: mensagem automática, institucional, menu, horário de atendimento
-- human_probable: saudação real, pergunta contextual, resposta natural
-- uncertain: muito vaga
+// 6. If AI active and human_talk = false and incoming message, call AI agent
+if (!fromMe && !conversa.human_talk) {
+  // Atomic lock: só dispara AI se conseguir adquirir o lock
+  const { data: lockResult } = await supabase
+    .from("orbit_conversas")
+    .update({ ai_processing: true })
+    .eq("id", conversa.id)
+    .eq("ai_processing", false)  // ← só atualiza se ainda não está processando
+    .select("id");
 
-Mensagem: '${mensagemAgregada}'
-Responda APENAS com JSON: {\"classification\": \"...\", \"confidence\": 0.0-1.0}"
+  if (lockResult && lockResult.length > 0) {
+    // Lock adquirido — disparar agente
+    let aiConfigQuery = supabase.from("orbit_ai_config").select("*");
+    if (empresaId) aiConfigQuery = aiConfigQuery.eq("empresa_id", empresaId);
+    const { data: aiConfig } = await aiConfigQuery.maybeSingle();
+
+    if (aiConfig?.modo_automatico) {
+      fetch(...); // chamada existente ao orbit-ai-agent
+    } else {
+      // Liberar lock se não vai chamar IA
+      await supabase.from("orbit_conversas").update({ ai_processing: false }).eq("id", conversa.id);
+    }
+  } else {
+    console.log("[orbit-webhook] AI já processando conversa, msg será agregada:", conversa.id);
+  }
+}
 ```
 
-Usar `google/gemini-2.5-flash-lite` para esta classificação (~50 tokens, rápido e barato).
-
-### 4. Lógica de ação pós-classificação
-No `orbit-ai-agent/index.ts`, após agregar mensagens e antes de chamar IA principal:
-
-- **auto_reply**: atualizar `ai_contexto.auto_reply_detected = true`, estado → `auto_reply_detected`. IA continua tentando alcançar pessoa real.
-- **human_probable**: atualizar `ai_contexto.human_detected = true`, estado → `human_detected` / `qualificando`. Se `commercial_notified === false`, enviar notificação ao comercial e marcar `commercial_notified = true`.
-- **uncertain**: não notificar, IA responde normalmente, reavalia na próxima.
-
-### 5. Notificação ao comercial (primeiro sinal humano)
-Reutilizar a lógica existente de `handleSellerHandoff` com template adaptado:
-
-```
-🟢 *Novo sinal de interação humana detectado*
-
-👤 Prospect: {{personName}}
-📱 Telefone: {{phone}}
-🏢 Empresa: {{companyName}}
-💬 Mensagem: "{{lastInboundMessage}}"
-🏷️ Classificação: human_probable
-📊 Status: possível interesse inicial
-
-👉 Conversa: {{waLink}}
-```
-
-Notificar apenas UMA VEZ por conversa (checar `commercial_notified`).
-
-### 6. Instrução adicional no prompt da IA
-Informar a IA sobre a classificação da mensagem para que ela adapte o tom:
-- Se `auto_reply`: tentar contornar a automação, perguntar pela pessoa responsável
-- Se `human_probable`: seguir qualificação normal
+### Por que funciona
+O `UPDATE ... WHERE ai_processing = false` é atômico no PostgreSQL. Se duas requisições tentam ao mesmo tempo, apenas uma consegue atualizar a row. A outra recebe 0 rows afetadas e sabe que deve pular.
 
 ## Arquivo modificado
-- `supabase/functions/orbit-ai-agent/index.ts` — classificação, estados expandidos, notificação comercial
-
-## Fluxo técnico
-
-```text
-Mensagem IN recebida
-       │
-       ▼
-  Debounce 10s + agregar
-       │
-       ▼
-  Classificar mensagem (Gemini Flash Lite)
-       │
-       ├─ auto_reply → estado=auto_reply_detected, sem notificação
-       ├─ uncertain → sem ação especial
-       └─ human_probable → estado=human_detected
-              │
-              ├─ commercial_notified=false → notificar comercial via WhatsApp
-              └─ commercial_notified=true → pular
-       │
-       ▼
-  Chamar IA principal (com classificação no contexto)
-       │
-       ▼
-  Responder + atualizar estado
-```
+- `supabase/functions/orbit-webhook/index.ts` — ~15 linhas alteradas no bloco de lock (linhas 399-431)
 
