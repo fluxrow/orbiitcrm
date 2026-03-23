@@ -16,6 +16,7 @@ interface LeadContext {
   lead: {
     id: string;
     personName: string | null;
+    contactName: string | null;
     companyName: string | null;
     city: string | null;
     email: string | null;
