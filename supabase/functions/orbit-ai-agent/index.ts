@@ -265,6 +265,7 @@ function buildLeadContext(
   const missingFields: Record<string, boolean> = {};
   const fieldMap: Record<string, string> = {
     nome_fantasia: "companyName",
+    nome_contato: "contactName",
     cidade: "city",
     email_principal: "email",
     segmento: "demandType",
