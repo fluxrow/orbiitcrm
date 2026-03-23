@@ -284,6 +284,7 @@ function buildLeadContext(
     lead: {
       id: prospect?.id || "",
       personName: prospect?.nome_razao || null,
+      contactName: prospect?.nome_contato || null,
       companyName: prospect?.nome_fantasia || null,
       city: prospect?.cidade || null,
       email: prospect?.email_principal || null,
