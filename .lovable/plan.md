@@ -1,79 +1,51 @@
 
 
-# Refatorar Agente IA com Contexto Estruturado e Máquina de Estados
+# Fix: Campanha usando número ao invés do nome do prospect
 
-## Resumo
-Reestruturar o `orbit-ai-agent` para operar com um objeto de contexto estruturado, máquina de estados explícita, validação de dados extraídos, e prompt otimizado que elimine coleta redundante.
+## Problema
+Os prospects na imagem têm `nome_razao` preenchido com o número de telefone (ex: "21968534154" ao invés de um nome real). Quando a campanha substitui `{{nome}}`, usa esse valor, resultando em "Ola 21968534154, tudo bem?".
 
-## O que já funciona
-- Busca de prospect por telefone (no webhook)
-- `camposFaltantes` já filtra campos preenchidos
-- Regras 8 e 9 no prompt (adicionadas anteriormente)
-- Detecção de campanha outbound
-- Handoff com 3 níveis de prioridade
+**Causa raiz dupla:**
+1. **Importação/criação**: prospects foram cadastrados com telefone no campo `nome_razao`
+2. **Envio de campanha**: o `send-orbit-campaign` não verifica se `nome_razao` parece ser um número de telefone antes de usar como `{{nome}}`
 
-## Alterações necessárias
+## Solução
 
-### 1. Contexto estruturado antes da chamada IA
-Montar objeto `leadContext` com dados do prospect mapeados para nomes claros (personName, companyName, city, email, demandType, isRecurring), mais o estado da conversa e campos faltantes calculados. Passar esse objeto serializado no prompt.
+### 1. Fallback inteligente no envio de campanha
+**`supabase/functions/send-orbit-campaign/index.ts`** — Adicionar função que detecta se `nome_razao` é um telefone e usa fallback:
 
-### 2. Máquina de estados no `ai_contexto`
-Implementar estados: `novo`, `aguardando_resposta`, `qualificando`, `qualificado`, `handoff`, `encerrado`. Atualizar estado automaticamente:
-- Mensagem de campanha enviada → `aguardando_resposta`
-- Lead respondeu → `qualificando`
-- Dados mínimos completos → `qualificado`
-- Handoff enviado → `handoff`
-
-### 3. Validação de dados extraídos
-Antes de salvar `dados_extraidos` no prospect, validar:
-- `email_principal`: deve conter `@`
-- `nome_fantasia` (empresa): não pode ser nome de pessoa (heurística simples)
-- `cidade`: texto simples, sem números
-
-### 4. Ordem de coleta no prompt
-Instruir a IA a seguir ordem: corporativo → empresa → cidade → email → recorrência. Pular campos já preenchidos.
-
-### 5. Prompt refatorado
-Reescrever o system prompt com:
-- Contexto estruturado do lead inline
-- Regras de uso de dados existentes mais explícitas
-- Instrução de continuidade para campanhas
-- Mensagem de handoff específica: "Perfeito. Vou colocar o Alexandre aqui para avançarmos de forma mais objetiva."
-- Nunca resetar conversa
-
-### 6. Atualizar estado da conversa após resposta
-Após processar resposta da IA, atualizar `ai_contexto.estado` baseado na intenção e completude do cadastro.
-
-## Arquivo modificado
-- `supabase/functions/orbit-ai-agent/index.ts` — refatoração do bloco de contexto (linhas ~143-216), validação de dados (linhas ~288-293), atualização de estado (linhas ~274-285)
-
-## Detalhes técnicos
-
-```text
-Fluxo atualizado:
-
-  webhook recebe msg
-        │
-        ▼
-  orbit-ai-agent
-        │
-        ├─ Carrega prospect (já existe)
-        ├─ Monta leadContext estruturado  ← NOVO
-        ├─ Calcula missingFields          ← APRIMORADO
-        ├─ Determina estado conversa      ← NOVO
-        ├─ Gera prompt com contexto       ← REFATORADO
-        ├─ Chama IA
-        ├─ Valida dados_extraidos         ← NOVO
-        ├─ Atualiza prospect
-        ├─ Atualiza estado conversa       ← NOVO
-        └─ Handoff se qualificado
+```typescript
+function getDisplayName(prospect: any): string {
+  const nome = prospect.nome_razao || "";
+  // Se nome_razao é só dígitos ou começa com "WhatsApp", usar nome_fantasia ou vazio
+  const isPhoneNumber = /^\d{8,}$/.test(nome.replace(/\D/g, "")) && nome.replace(/\D/g, "").length >= 8;
+  const isWhatsAppPlaceholder = nome.startsWith("WhatsApp ");
+  
+  if (isPhoneNumber || isWhatsAppPlaceholder) {
+    return prospect.nome_fantasia || "";
+  }
+  return nome;
+}
 ```
 
-Campos mapeados prospect → contexto:
-- `nome_razao` → personName
-- `nome_fantasia` → companyName
-- `cidade` → city
-- `email_principal` → email
-- `segmento` → demandType
-- `ai_contexto.is_recurring` → isRecurring
+Usar essa função na montagem de variáveis (linha 253):
+```typescript
+"{{nome}}": (getDisplayName(prospect)).toUpperCase(),
+```
+
+### 2. Mesmo fallback no webhook ao criar prospects
+**`supabase/functions/orbit-webhook/index.ts`** — Já usa `"WhatsApp ${normalizedPhone}"` (linha 258), que é correto. Mas o `orbit-ai-agent` deveria atualizar `nome_razao` quando o lead informa o nome real. Isso já é feito via `dados_extraidos`.
+
+### 3. Fallback na lista de Conversas
+**`src/pages/orbit/ConversasPage.tsx`** — Linhas 268 e 280 já usam `prospect?.nome_razao || telefone_whatsapp`. Adicionar fallback para `nome_fantasia`:
+
+```typescript
+(c.prospect as any)?.nome_razao && !/^\d{8,}$/.test((c.prospect as any).nome_razao.replace(/\D/g, "")) 
+  ? (c.prospect as any).nome_razao 
+  : (c.prospect as any)?.nome_fantasia || c.telefone_whatsapp
+```
+
+## Arquivos modificados
+- `supabase/functions/send-orbit-campaign/index.ts` — fallback de nome no envio
+- `src/pages/orbit/ConversasPage.tsx` — fallback de nome na lista de conversas
 
