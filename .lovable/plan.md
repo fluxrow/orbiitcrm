@@ -1,51 +1,99 @@
 
 
-# Fix: Campanha usando número ao invés do nome do prospect
+# Detecção de Interação Humana em Campanhas WhatsApp
 
-## Problema
-Os prospects na imagem têm `nome_razao` preenchido com o número de telefone (ex: "21968534154" ao invés de um nome real). Quando a campanha substitui `{{nome}}`, usa esse valor, resultando em "Ola 21968534154, tudo bem?".
+## Resumo
+Adicionar uma etapa de classificação de mensagens recebidas (human_probable, auto_reply, uncertain) antes da IA responder. Quando detectar interação humana real, notificar o comercial via WhatsApp uma única vez. Expandir a máquina de estados com novos estados intermediários.
 
-**Causa raiz dupla:**
-1. **Importação/criação**: prospects foram cadastrados com telefone no campo `nome_razao`
-2. **Envio de campanha**: o `send-orbit-campaign` não verifica se `nome_razao` parece ser um número de telefone antes de usar como `{{nome}}`
+## Alterações
 
-## Solução
+### 1. Novos campos no `ai_contexto` da conversa
+Sem mudança de schema — `ai_contexto` já é JSONB. Novos campos armazenados:
+- `human_detected` (boolean)
+- `auto_reply_detected` (boolean)
+- `commercial_notified` (boolean)
+- `first_human_response_at` (timestamp)
+- `message_classification` (string)
 
-### 1. Fallback inteligente no envio de campanha
-**`supabase/functions/send-orbit-campaign/index.ts`** — Adicionar função que detecta se `nome_razao` é um telefone e usa fallback:
-
-```typescript
-function getDisplayName(prospect: any): string {
-  const nome = prospect.nome_razao || "";
-  // Se nome_razao é só dígitos ou começa com "WhatsApp", usar nome_fantasia ou vazio
-  const isPhoneNumber = /^\d{8,}$/.test(nome.replace(/\D/g, "")) && nome.replace(/\D/g, "").length >= 8;
-  const isWhatsAppPlaceholder = nome.startsWith("WhatsApp ");
-  
-  if (isPhoneNumber || isWhatsAppPlaceholder) {
-    return prospect.nome_fantasia || "";
-  }
-  return nome;
-}
+### 2. Estados expandidos
+Atualizar `ConversationState` type e `computeNextState`:
+```
+novo → aguardando_resposta → auto_reply_detected (se auto_reply)
+                           → human_detected (se human_probable)
+human_detected → qualificando → qualificado → handoff
 ```
 
-Usar essa função na montagem de variáveis (linha 253):
-```typescript
-"{{nome}}": (getDisplayName(prospect)).toUpperCase(),
-```
-
-### 2. Mesmo fallback no webhook ao criar prospects
-**`supabase/functions/orbit-webhook/index.ts`** — Já usa `"WhatsApp ${normalizedPhone}"` (linha 258), que é correto. Mas o `orbit-ai-agent` deveria atualizar `nome_razao` quando o lead informa o nome real. Isso já é feito via `dados_extraidos`.
-
-### 3. Fallback na lista de Conversas
-**`src/pages/orbit/ConversasPage.tsx`** — Linhas 268 e 280 já usam `prospect?.nome_razao || telefone_whatsapp`. Adicionar fallback para `nome_fantasia`:
+### 3. Classificação de mensagem via IA
+Antes de chamar o agente principal, fazer uma chamada rápida ao Gemini Flash Lite (mais barato/rápido) para classificar a mensagem recebida:
 
 ```typescript
-(c.prospect as any)?.nome_razao && !/^\d{8,}$/.test((c.prospect as any).nome_razao.replace(/\D/g, "")) 
-  ? (c.prospect as any).nome_razao 
-  : (c.prospect as any)?.nome_fantasia || c.telefone_whatsapp
+// Prompt de classificação
+"Classifique esta mensagem de WhatsApp como:
+- auto_reply: mensagem automática, institucional, menu, horário de atendimento
+- human_probable: saudação real, pergunta contextual, resposta natural
+- uncertain: muito vaga
+
+Mensagem: '${mensagemAgregada}'
+Responda APENAS com JSON: {\"classification\": \"...\", \"confidence\": 0.0-1.0}"
 ```
 
-## Arquivos modificados
-- `supabase/functions/send-orbit-campaign/index.ts` — fallback de nome no envio
-- `src/pages/orbit/ConversasPage.tsx` — fallback de nome na lista de conversas
+Usar `google/gemini-2.5-flash-lite` para esta classificação (~50 tokens, rápido e barato).
+
+### 4. Lógica de ação pós-classificação
+No `orbit-ai-agent/index.ts`, após agregar mensagens e antes de chamar IA principal:
+
+- **auto_reply**: atualizar `ai_contexto.auto_reply_detected = true`, estado → `auto_reply_detected`. IA continua tentando alcançar pessoa real.
+- **human_probable**: atualizar `ai_contexto.human_detected = true`, estado → `human_detected` / `qualificando`. Se `commercial_notified === false`, enviar notificação ao comercial e marcar `commercial_notified = true`.
+- **uncertain**: não notificar, IA responde normalmente, reavalia na próxima.
+
+### 5. Notificação ao comercial (primeiro sinal humano)
+Reutilizar a lógica existente de `handleSellerHandoff` com template adaptado:
+
+```
+🟢 *Novo sinal de interação humana detectado*
+
+👤 Prospect: {{personName}}
+📱 Telefone: {{phone}}
+🏢 Empresa: {{companyName}}
+💬 Mensagem: "{{lastInboundMessage}}"
+🏷️ Classificação: human_probable
+📊 Status: possível interesse inicial
+
+👉 Conversa: {{waLink}}
+```
+
+Notificar apenas UMA VEZ por conversa (checar `commercial_notified`).
+
+### 6. Instrução adicional no prompt da IA
+Informar a IA sobre a classificação da mensagem para que ela adapte o tom:
+- Se `auto_reply`: tentar contornar a automação, perguntar pela pessoa responsável
+- Se `human_probable`: seguir qualificação normal
+
+## Arquivo modificado
+- `supabase/functions/orbit-ai-agent/index.ts` — classificação, estados expandidos, notificação comercial
+
+## Fluxo técnico
+
+```text
+Mensagem IN recebida
+       │
+       ▼
+  Debounce 10s + agregar
+       │
+       ▼
+  Classificar mensagem (Gemini Flash Lite)
+       │
+       ├─ auto_reply → estado=auto_reply_detected, sem notificação
+       ├─ uncertain → sem ação especial
+       └─ human_probable → estado=human_detected
+              │
+              ├─ commercial_notified=false → notificar comercial via WhatsApp
+              └─ commercial_notified=true → pular
+       │
+       ▼
+  Chamar IA principal (com classificação no contexto)
+       │
+       ▼
+  Responder + atualizar estado
+```
 
