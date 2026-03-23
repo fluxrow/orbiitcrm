@@ -421,6 +421,10 @@ serve(async (req) => {
 
     console.log("[orbit-ai-agent] Mensagens agregadas:", pendingMsgs?.length || 1, "msgs →", mensagemAgregada.substring(0, 100));
 
+    // ── CLASSIFICAR MENSAGEM: humana, automática ou incerta ──
+    const { classification: msgClassification, confidence: msgConfidence } = await classifyMessage(mensagemAgregada);
+    console.log("[orbit-ai-agent] Classificação:", msgClassification, "confiança:", msgConfidence);
+
     // Buscar histórico completo (últimas 20 mensagens para contexto)
     const { data: mensagens } = await supabase
       .from("orbit_mensagens")
