@@ -249,8 +249,17 @@ const handler = async (req: Request): Promise<Response> => {
         let html = campaign.template?.corpo_html || "";
         const assunto = campaign.template?.assunto_email || "";
 
+        const getDisplayName = (p: any): string => {
+          const nome = p.nome_razao || "";
+          const digits = nome.replace(/\D/g, "");
+          const isPhone = /^\d{8,}$/.test(digits) && digits.length >= 8;
+          const isPlaceholder = nome.startsWith("WhatsApp ");
+          if (isPhone || isPlaceholder) return p.nome_fantasia || "";
+          return nome;
+        };
+
         const variaveis: Record<string, string> = {
-          "{{nome}}": (prospect.nome_razao || "").toUpperCase(),
+          "{{nome}}": getDisplayName(prospect).toUpperCase(),
           "{{nome_fantasia}}": (prospect.nome_fantasia || "").toUpperCase(),
           "{{email}}": prospect.email_principal || "",
           "{{telefone}}": prospect.telefone || prospect.whatsapp || "",
