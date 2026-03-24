@@ -14,6 +14,8 @@ import { useOrbitTemplates, useCreateTemplate, useUpdateTemplate, useDeleteTempl
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
+const ALLOWED_VARS = ["{{nome}}", "{{empresa}}", "{{nome_fantasia}}", "{{email}}", "{{telefone}}", "{{cidade}}", "{{segmento}}"];
+
 const CATEGORIAS = [
   { value: "geral", label: "Geral" },
   { value: "marketing", label: "Marketing" },
