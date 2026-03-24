@@ -1,21 +1,23 @@
 
 
-# Fix: RLS policy missing for signature image upload
+# Fix: Assinatura com imagem não deve incluir texto
 
-## Problem
-The upload in `UserProfileDialog` uses `supabase.storage.upload(..., { upsert: true })`, which requires both INSERT and UPDATE policies on `storage.objects`. The INSERT policy exists but UPDATE is missing, causing the "new row violates row-level security policy" error.
+## Problema
+Quando o usuário configura uma imagem de assinatura, o sistema ainda anexa o texto (nome, cargo, telefone, email) junto com a imagem. O correto é: se há imagem, usar somente a imagem; se não há imagem, usar o texto.
 
-## Solution
-Add a single UPDATE RLS policy on `storage.objects` for authenticated users on the `orbit-media` bucket:
+## Solução
 
-```sql
-CREATE POLICY "Authenticated can update orbit media"
-ON storage.objects FOR UPDATE
-TO authenticated
-USING (bucket_id = 'orbit-media')
-WITH CHECK (bucket_id = 'orbit-media');
-```
+### 1. Edge Function `orbit-send-email/index.ts`
+Na construção do bloco de assinatura (linhas ~107-118), alterar a lógica para:
+- Se `signature_image_url` existe → renderizar **apenas** a imagem
+- Se não existe → renderizar os campos de texto (nome, cargo, phone, email)
 
-## Files modified
-- 1 database migration only
+### 2. Frontend Preview em `UserProfileDialog.tsx`
+Espelhar a mesma lógica no preview da assinatura (~linhas 185-205):
+- Se há imagem configurada → mostrar apenas a imagem no preview
+- Se não há imagem → mostrar os campos de texto
+
+## Arquivos modificados
+- `supabase/functions/orbit-send-email/index.ts` — lógica condicional na montagem do HTML da assinatura
+- `src/components/orbit/UserProfileDialog.tsx` — preview condicional
 
