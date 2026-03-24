@@ -109,6 +109,13 @@ export default function TemplatesPage() {
       toast.error("Nome e corpo do template são obrigatórios");
       return;
     }
+    const allText = form.corpo_texto + (isEmail ? " " + form.assunto_email : "");
+    const foundVars = allText.match(/\{\{[^}]+\}\}/g) || [];
+    const invalidVars = [...new Set(foundVars.filter(v => !ALLOWED_VARS.includes(v)))];
+    if (invalidVars.length > 0) {
+      toast.error(`Variáveis inválidas: ${invalidVars.join(", ")}. Permitidas: ${ALLOWED_VARS.join(", ")}`);
+      return;
+    }
     try {
       setIsSaving(true);
       const { data: { user } } = await supabase.auth.getUser();
