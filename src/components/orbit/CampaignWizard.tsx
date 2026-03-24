@@ -324,7 +324,7 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
       html += bodyText.replace(/\n/g, "<br>");
 
       const res = await supabase.functions.invoke("orbit-send-email", {
-        body: { to: testEmail, subject, html, empresa_id: profile?.empresa_id },
+        body: { to: testEmail, subject, html, empresa_id: profile?.empresa_id, sender_user_id: user?.id },
       });
       handleApiResponse(res);
       toast.success("Email de teste enviado!");
