@@ -18,10 +18,21 @@ const handler = async (req: Request): Promise<Response> => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { to, subject, html, empresa_id }: EmailRequest = await req.json();
+    const { to, subject, html, empresa_id, sender_user_id }: EmailRequest = await req.json();
 
     if (!to || !subject || !html) {
       return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios: to, subject, html", 200);
+    }
+
+    // ── Load sender user data for signature + reply-to ──
+    let senderUser: any = null;
+    if (sender_user_id) {
+      const { data } = await supabase
+        .from("pe_users")
+        .select("full_name, cargo, phone, email, signature_image_url, email_signature, use_personal_signature")
+        .eq("id", sender_user_id)
+        .maybeSingle();
+      senderUser = data;
     }
 
     // ── Plan enforcement ──
