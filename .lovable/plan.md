@@ -1,17 +1,21 @@
 
 
-# Fix: Assinatura não aparece no email de teste
+# Fix: RLS policy missing for signature image upload
 
-## Problema
-Na linha 327 de `CampaignWizard.tsx`, a chamada ao `orbit-send-email` não envia `sender_user_id`. Sem esse campo, a edge function não carrega os dados do usuário e não anexa a assinatura.
+## Problem
+The upload in `UserProfileDialog` uses `supabase.storage.upload(..., { upsert: true })`, which requires both INSERT and UPDATE policies on `storage.objects`. The INSERT policy exists but UPDATE is missing, causing the "new row violates row-level security policy" error.
 
-## Solução
-Adicionar `sender_user_id: user.id` ao body da chamada na linha 327:
+## Solution
+Add a single UPDATE RLS policy on `storage.objects` for authenticated users on the `orbit-media` bucket:
 
-```typescript
-body: { to: testEmail, subject, html, empresa_id: profile?.empresa_id, sender_user_id: user.id },
+```sql
+CREATE POLICY "Authenticated can update orbit media"
+ON storage.objects FOR UPDATE
+TO authenticated
+USING (bucket_id = 'orbit-media')
+WITH CHECK (bucket_id = 'orbit-media');
 ```
 
-## Arquivo modificado
-- `src/components/orbit/CampaignWizard.tsx` — 1 linha (adicionar `sender_user_id`)
+## Files modified
+- 1 database migration only
 
