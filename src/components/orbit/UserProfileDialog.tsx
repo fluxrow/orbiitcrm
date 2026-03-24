@@ -247,29 +247,32 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
                   <Label className="mb-2 block">Preview da Assinatura</Label>
                   <div className="border rounded-lg p-4 bg-muted/30">
                     <div style={{ borderTop: "1px solid hsl(var(--border))", paddingTop: "12px", fontFamily: "Arial, sans-serif" }}>
-                      {form.full_name && (
-                        <p style={{ fontWeight: "bold", fontSize: "14px", margin: "0 0 2px" }}>{form.full_name}</p>
-                      )}
-                      {form.cargo && (
-                        <p style={{ color: "#666", fontSize: "13px", margin: "0 0 2px" }}>{form.cargo}</p>
-                      )}
-                      {form.phone && (
-                        <p style={{ color: "#666", fontSize: "13px", margin: "0 0 2px" }}>
-                          <Phone className="inline h-3 w-3 mr-1" />{form.phone}
-                        </p>
-                      )}
-                      {userEmail && (
-                        <p style={{ color: "#666", fontSize: "13px", margin: "0 0 2px" }}>
-                          <Mail className="inline h-3 w-3 mr-1" />{userEmail}
-                        </p>
-                      )}
-                      {form.signature_image_url && (
+                      {form.signature_image_url ? (
                         <img
                           src={form.signature_image_url}
                           alt={form.full_name || "Assinatura"}
-                          style={{ marginTop: "8px", maxWidth: "400px", width: "100%" }}
+                          style={{ maxWidth: "400px", width: "100%" }}
                           className="rounded"
                         />
+                      ) : (
+                        <>
+                          {form.full_name && (
+                            <p style={{ fontWeight: "bold", fontSize: "14px", margin: "0 0 2px" }}>{form.full_name}</p>
+                          )}
+                          {form.cargo && (
+                            <p style={{ color: "#666", fontSize: "13px", margin: "0 0 2px" }}>{form.cargo}</p>
+                          )}
+                          {form.phone && (
+                            <p style={{ color: "#666", fontSize: "13px", margin: "0 0 2px" }}>
+                              <Phone className="inline h-3 w-3 mr-1" />{form.phone}
+                            </p>
+                          )}
+                          {userEmail && (
+                            <p style={{ color: "#666", fontSize: "13px", margin: "0 0 2px" }}>
+                              <Mail className="inline h-3 w-3 mr-1" />{userEmail}
+                            </p>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
