@@ -107,6 +107,29 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    // ── Build signature HTML if sender has personal signature ──
+    let finalHtml = html;
+    if (senderUser?.use_personal_signature) {
+      let sigRows = "";
+      if (senderUser.full_name) sigRows += `<tr><td style="font-weight:bold;font-size:14px;padding:0;margin:0">${senderUser.full_name}</td></tr>`;
+      if (senderUser.cargo) sigRows += `<tr><td style="color:#666;font-size:13px;padding:0;margin:0">${senderUser.cargo}</td></tr>`;
+      if (senderUser.phone) sigRows += `<tr><td style="color:#666;font-size:13px;padding:0;margin:0">${senderUser.phone}</td></tr>`;
+      if (senderUser.email) sigRows += `<tr><td style="color:#666;font-size:13px;padding:0;margin:0">${senderUser.email}</td></tr>`;
+      if (senderUser.signature_image_url) {
+        sigRows += `<tr><td style="padding-top:8px"><img src="${senderUser.signature_image_url}" width="400" alt="${senderUser.full_name || "Assinatura"}" style="max-width:100%;height:auto" /></td></tr>`;
+      }
+      if (sigRows) {
+        finalHtml += `<table style="border-top:1px solid #e5e5e5;margin-top:24px;padding-top:16px;font-family:Arial,sans-serif" cellpadding="0" cellspacing="0">${sigRows}</table>`;
+      }
+    }
+
+    // ── Determine reply-to ──
+    const replyTo = senderUser?.email
+      ? [senderUser.email]
+      : resendConfig?.reply_to_email
+        ? [resendConfig.reply_to_email]
+        : undefined;
+
     const emailResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -117,8 +140,8 @@ const handler = async (req: Request): Promise<Response> => {
         from: fromEmail,
         to: [to],
         subject,
-        html,
-        reply_to: resendConfig?.reply_to_email ? [resendConfig.reply_to_email] : undefined,
+        html: finalHtml,
+        reply_to: replyTo,
       }),
     });
 

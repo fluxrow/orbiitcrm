@@ -215,6 +215,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     let resendConfig = null;
     let zapiConfig = null;
+    let senderUser: any = null;
 
     if (campaign.canal === "email") {
       const { data } = await supabase.from("orbit_resend_config").select("*").eq("empresa_id", campaign.empresa_id).maybeSingle();
@@ -222,6 +223,16 @@ const handler = async (req: Request): Promise<Response> => {
       if (!resendConfig) {
         const { data: globalConfig } = await supabase.from("orbit_resend_config").select("*").is("empresa_id", null).maybeSingle();
         resendConfig = globalConfig;
+      }
+
+      // Load sender user for signature + reply-to
+      if (campaign.created_by) {
+        const { data: userData } = await supabase
+          .from("pe_users")
+          .select("full_name, cargo, phone, email, signature_image_url, email_signature, use_personal_signature")
+          .eq("id", campaign.created_by)
+          .maybeSingle();
+        senderUser = userData;
       }
     } else {
       const { data } = await supabase.from("orbit_zapi_config").select("*").eq("empresa_id", campaign.empresa_id).maybeSingle();
