@@ -1,36 +1,25 @@
 
 
-# Fix: Tag {{empresa}} não substituída no envio de campanha
+# Validar variáveis antes de salvar template
 
 ## Problema
-O template usa `{{empresa}}` mas essa variável não existe no mapa de substituição (`variaveis`) em `send-orbit-campaign/index.ts`. O sistema só mapeia `{{nome}}`, `{{nome_fantasia}}`, `{{email}}`, `{{telefone}}`, `{{cidade}}` e `{{segmento}}`.
+O usuário pode digitar variáveis inválidas (ex: `{{nme}}`, `{{emprsa}}`) no corpo do template. Essas tags são enviadas literalmente na mensagem porque não existem no mapa de substituição.
 
 ## Solução
-Adicionar `{{empresa}}` ao mapa de variáveis na linha 267-274. A lógica de `{{empresa}}` deve seguir:
+Antes de salvar, extrair todas as tags `{{...}}` do `corpo_texto` (e `assunto_email` se email) e validar contra a lista de variáveis suportadas.
 
-1. `nome_razao` (se não for telefone/placeholder) → nome da empresa
-2. `nome_fantasia` como fallback
-3. Vazio se nenhum disponível
+### Variáveis permitidas
+`{{nome}}`, `{{empresa}}`, `{{nome_fantasia}}`, `{{email}}`, `{{telefone}}`, `{{cidade}}`, `{{segmento}}`
 
-```typescript
-const variaveis: Record<string, string> = {
-  "{{nome}}": getDisplayName(prospect).toUpperCase(),
-  "{{empresa}}": getCompanyName(prospect).toUpperCase(),  // ← NOVO
-  "{{nome_fantasia}}": (prospect.nome_fantasia || "").toUpperCase(),
-  // ... restante igual
-};
-```
+### Alteração em `src/pages/orbit/TemplatesPage.tsx`
 
-Função `getCompanyName`:
-```typescript
-const getCompanyName = (p: any): string => {
-  const nome = p.nome_razao || "";
-  const isPhone = /^\d{8,}$/.test(nome.replace(/\D/g, "")) || nome.startsWith("WhatsApp ");
-  if (!isPhone && nome.trim()) return nome.trim();
-  return p.nome_fantasia?.trim() || "";
-};
-```
+1. Criar constante com as variáveis válidas
+2. No `handleSave`, antes de salvar:
+   - Extrair todas as ocorrências de `{{...}}` via regex
+   - Comparar com a lista permitida
+   - Se houver inválidas, exibir toast de erro listando quais são inválidas e não salvar
+3. Atualizar o hint de variáveis no formulário para listar todas as disponíveis
 
-## Arquivo modificado
-- `supabase/functions/send-orbit-campaign/index.ts` — adicionar `{{empresa}}` ao mapa de variáveis (~5 linhas)
+### Arquivo modificado
+- `src/pages/orbit/TemplatesPage.tsx` — ~15 linhas adicionadas
 
