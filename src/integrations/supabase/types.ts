@@ -2784,7 +2784,9 @@ export type Database = {
           organization_id: string | null
           phone: string | null
           role_id: string | null
+          signature_image_url: string | null
           updated_at: string
+          use_personal_signature: boolean | null
           whatsapp: string | null
         }
         Insert: {
@@ -2800,7 +2802,9 @@ export type Database = {
           organization_id?: string | null
           phone?: string | null
           role_id?: string | null
+          signature_image_url?: string | null
           updated_at?: string
+          use_personal_signature?: boolean | null
           whatsapp?: string | null
         }
         Update: {
@@ -2816,7 +2820,9 @@ export type Database = {
           organization_id?: string | null
           phone?: string | null
           role_id?: string | null
+          signature_image_url?: string | null
           updated_at?: string
+          use_personal_signature?: boolean | null
           whatsapp?: string | null
         }
         Relationships: [
