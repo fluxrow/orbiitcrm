@@ -108,6 +108,31 @@ export default function CampanhasPage() {
   const handleSend = async (campaignId: string) => {
     try {
       setActionLoading(campaignId);
+
+      // Pre-send validation for email campaigns
+      const campaign = campaigns?.find(c => c.id === campaignId);
+      if (campaign?.canal === "email") {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.id) {
+          const { data: peUser } = await supabase
+            .from("pe_users" as any)
+            .select("full_name, email, use_personal_signature")
+            .eq("id", user.id)
+            .single();
+
+          if ((peUser as any)?.use_personal_signature && !user.email) {
+            toast.error("Configure um e-mail válido no perfil para utilizar reply-to personalizado.");
+            setActionLoading(null);
+            return;
+          }
+          if (!(peUser as any)?.full_name) {
+            toast.error("Configure seu nome no perfil antes de enviar campanhas de e-mail.");
+            setActionLoading(null);
+            return;
+          }
+        }
+      }
+
       const response = await supabase.functions.invoke("send-orbit-campaign", {
         body: { campaign_id: campaignId }
       });
