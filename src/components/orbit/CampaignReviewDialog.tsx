@@ -2,8 +2,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle, MessageSquare, Mail, Loader2, Users, AlertTriangle } from "lucide-react";
+import { CheckCircle, MessageSquare, Mail, Loader2, Users, AlertTriangle, Info } from "lucide-react";
 import { format } from "date-fns";
+import { useAuth } from "@/hooks/useAuth";
+import { usePeAuth } from "@/hooks/usePeAuth";
 
 interface RecipientCounts {
   total: number;
@@ -27,12 +29,20 @@ export function CampaignReviewDialog({
   onApproveForSend,
   loading,
 }: CampaignReviewDialogProps) {
+  const { user } = useAuth();
+  const { peUser } = usePeAuth();
+
   if (!campaign) return null;
 
   const template = campaign.template as any;
   const totalRecipients = recipientCounts?.total || campaign.total_destinatarios || 0;
   const pendingRecipients = recipientCounts?.pendente || 0;
   const invalidRecipients = totalRecipients - pendingRecipients;
+
+  const isEmail = campaign.canal === "email";
+  const senderName = peUser?.full_name || "";
+  const senderEmail = user?.email || "";
+  const usePersonalSignature = peUser?.use_personal_signature || false;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -98,6 +108,42 @@ export function CampaignReviewDialog({
           )}
 
           <Separator />
+
+          {/* Email Signature & Reply-To Info */}
+          {isEmail && (
+            <>
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <Mail className="h-4 w-4" /> Configuração de Envio
+                </h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-muted/50 rounded-lg p-3 border">
+                    <p className="text-xs text-muted-foreground">Responsável</p>
+                    <p className="text-sm font-medium">{senderName || "—"}</p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3 border">
+                    <p className="text-xs text-muted-foreground">Reply-To</p>
+                    <p className="text-sm font-medium">{senderEmail || "—"}</p>
+                  </div>
+                </div>
+                {usePersonalSignature && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground bg-blue-500/10 rounded-lg p-3 border border-blue-500/20">
+                    <Info className="h-4 w-4 text-blue-500 shrink-0" />
+                    <span>
+                      Assinatura personalizada ativa. As respostas desta campanha serão enviadas para <strong>{senderEmail}</strong>.
+                    </span>
+                  </div>
+                )}
+                {!senderEmail && (
+                  <div className="flex items-center gap-2 text-xs text-amber-500 bg-amber-500/10 rounded-lg p-3 border border-amber-500/20">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    Configure um e-mail válido no perfil para utilizar reply-to personalizado.
+                  </div>
+                )}
+              </div>
+              <Separator />
+            </>
+          )}
 
           {/* Recipients */}
           <div>

@@ -7,6 +7,7 @@ interface EmailRequest {
   subject: string;
   html: string;
   empresa_id?: string;
+  sender_user_id?: string;
 }
 
 const handler = async (req: Request): Promise<Response> => {
