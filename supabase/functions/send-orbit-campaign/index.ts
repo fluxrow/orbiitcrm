@@ -215,6 +215,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     let resendConfig = null;
     let zapiConfig = null;
+    let senderUser: any = null;
 
     if (campaign.canal === "email") {
       const { data } = await supabase.from("orbit_resend_config").select("*").eq("empresa_id", campaign.empresa_id).maybeSingle();
@@ -222,6 +223,16 @@ const handler = async (req: Request): Promise<Response> => {
       if (!resendConfig) {
         const { data: globalConfig } = await supabase.from("orbit_resend_config").select("*").is("empresa_id", null).maybeSingle();
         resendConfig = globalConfig;
+      }
+
+      // Load sender user for signature + reply-to
+      if (campaign.created_by) {
+        const { data: userData } = await supabase
+          .from("pe_users")
+          .select("full_name, cargo, phone, email, signature_image_url, email_signature, use_personal_signature")
+          .eq("id", campaign.created_by)
+          .maybeSingle();
+        senderUser = userData;
       }
     } else {
       const { data } = await supabase.from("orbit_zapi_config").select("*").eq("empresa_id", campaign.empresa_id).maybeSingle();
@@ -318,15 +329,43 @@ const handler = async (req: Request): Promise<Response> => {
           }
           emailHtml += html || `<p>${mensagem}</p>`;
 
+          // ── Append personal signature ──
+          if (senderUser?.use_personal_signature) {
+            let sigRows = "";
+            if (senderUser.full_name) sigRows += `<tr><td style="font-weight:bold;font-size:14px;padding:0;margin:0">${senderUser.full_name}</td></tr>`;
+            if (senderUser.cargo) sigRows += `<tr><td style="color:#666;font-size:13px;padding:0;margin:0">${senderUser.cargo}</td></tr>`;
+            if (senderUser.phone) sigRows += `<tr><td style="color:#666;font-size:13px;padding:0;margin:0">${senderUser.phone}</td></tr>`;
+            if (senderUser.email) sigRows += `<tr><td style="color:#666;font-size:13px;padding:0;margin:0">${senderUser.email}</td></tr>`;
+            if (senderUser.signature_image_url) {
+              sigRows += `<tr><td style="padding-top:8px"><img src="${senderUser.signature_image_url}" width="400" alt="${senderUser.full_name || "Assinatura"}" style="max-width:100%;height:auto" /></td></tr>`;
+            }
+            if (sigRows) {
+              emailHtml += `<table style="border-top:1px solid #e5e5e5;margin-top:24px;padding-top:16px;font-family:Arial,sans-serif" cellpadding="0" cellspacing="0">${sigRows}</table>`;
+            }
+          }
+
+          // ── Dynamic Reply-To ──
+          const replyTo = senderUser?.email
+            ? [senderUser.email]
+            : resendConfig?.reply_to_email
+              ? [resendConfig.reply_to_email]
+              : undefined;
+
+          // ── Subject with variables ──
+          let emailSubject = assunto;
+          for (const [key, value] of Object.entries(variaveis)) {
+            emailSubject = emailSubject.replace(new RegExp(key, "g"), value);
+          }
+
           const emailRes = await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: { Authorization: `Bearer ${resendConfig.api_key}`, "Content-Type": "application/json" },
             body: JSON.stringify({
               from: fromEmail,
               to: [prospect.email_principal],
-              subject: assunto.replace(/{{nome}}/g, (prospect.nome_razao || "").toUpperCase()),
+              subject: emailSubject,
               html: emailHtml,
-              reply_to: resendConfig?.reply_to_email ? [resendConfig.reply_to_email] : undefined,
+              reply_to: replyTo,
             }),
           });
 
