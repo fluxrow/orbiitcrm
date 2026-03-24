@@ -325,7 +325,7 @@ export default function TemplatesPage() {
             <div>
               <Label>Corpo do Template</Label>
               <Textarea value={form.corpo_texto} onChange={(e) => setForm({ ...form, corpo_texto: e.target.value })} placeholder="Digite o conteúdo do template..." rows={6} />
-              <p className="text-xs text-muted-foreground mt-1">Use variáveis: {"{{nome}}"}, {"{{empresa}}"}</p>
+              <p className="text-xs text-muted-foreground mt-1">Variáveis: {ALLOWED_VARS.join(", ")}</p>
             </div>
           </div>
           <DialogFooter>
