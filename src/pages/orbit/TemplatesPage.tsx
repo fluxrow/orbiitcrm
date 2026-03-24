@@ -14,6 +14,8 @@ import { useOrbitTemplates, useCreateTemplate, useUpdateTemplate, useDeleteTempl
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
+const ALLOWED_VARS = ["{{nome}}", "{{empresa}}", "{{nome_fantasia}}", "{{email}}", "{{telefone}}", "{{cidade}}", "{{segmento}}"];
+
 const CATEGORIAS = [
   { value: "geral", label: "Geral" },
   { value: "marketing", label: "Marketing" },
@@ -105,6 +107,13 @@ export default function TemplatesPage() {
   const handleSave = async () => {
     if (!form.nome.trim() || !form.corpo_texto.trim()) {
       toast.error("Nome e corpo do template são obrigatórios");
+      return;
+    }
+    const allText = form.corpo_texto + (isEmail ? " " + form.assunto_email : "");
+    const foundVars = allText.match(/\{\{[^}]+\}\}/g) || [];
+    const invalidVars = [...new Set(foundVars.filter(v => !ALLOWED_VARS.includes(v)))];
+    if (invalidVars.length > 0) {
+      toast.error(`Variáveis inválidas: ${invalidVars.join(", ")}. Permitidas: ${ALLOWED_VARS.join(", ")}`);
       return;
     }
     try {
@@ -316,7 +325,7 @@ export default function TemplatesPage() {
             <div>
               <Label>Corpo do Template</Label>
               <Textarea value={form.corpo_texto} onChange={(e) => setForm({ ...form, corpo_texto: e.target.value })} placeholder="Digite o conteúdo do template..." rows={6} />
-              <p className="text-xs text-muted-foreground mt-1">Use variáveis: {"{{nome}}"}, {"{{empresa}}"}</p>
+              <p className="text-xs text-muted-foreground mt-1">Variáveis: {ALLOWED_VARS.join(", ")}</p>
             </div>
           </div>
           <DialogFooter>
