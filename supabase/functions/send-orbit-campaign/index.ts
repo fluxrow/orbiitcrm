@@ -327,7 +327,7 @@ const handler = async (req: Request): Promise<Response> => {
           if (templateImageUrl) {
             emailHtml += `<div style="margin-bottom:16px"><img src="${templateImageUrl}" alt="Campanha" style="max-width:100%;height:auto;border-radius:8px" /></div>`;
           }
-          emailHtml += html || `<p>${mensagem}</p>`;
+          emailHtml += html || mensagem.replace(/\n/g, "<br>");
 
           // ── Append personal signature ──
           if (senderUser?.use_personal_signature) {

@@ -239,7 +239,11 @@ export default function TemplatesPage() {
                     <p className="text-xs text-muted-foreground mb-2">Assunto: {t.assunto_email}</p>
                   )}
                   <div className="bg-muted/50 rounded p-3 mb-3">
-                    <p className="text-sm text-muted-foreground line-clamp-4">{t.corpo_texto || "Sem conteúdo"}</p>
+                    {tab === "email" ? (
+                      <div className="text-sm text-muted-foreground line-clamp-4" dangerouslySetInnerHTML={{ __html: t.corpo_texto || "Sem conteúdo" }} />
+                    ) : (
+                      <p className="text-sm text-muted-foreground line-clamp-4 whitespace-pre-wrap">{t.corpo_texto || "Sem conteúdo"}</p>
+                    )}
                   </div>
                   <div className="flex justify-end gap-2">
                     <Button variant="ghost" size="sm" onClick={() => openEdit(t)}>
@@ -324,7 +328,39 @@ export default function TemplatesPage() {
 
             <div>
               <Label>Corpo do Template</Label>
-              <Textarea value={form.corpo_texto} onChange={(e) => setForm({ ...form, corpo_texto: e.target.value })} placeholder="Digite o conteúdo do template..." rows={6} />
+              {isEmail ? (
+                <>
+                  <div className="flex gap-1 mb-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 p-0 font-bold"
+                      onClick={() => document.execCommand("bold")}
+                    >
+                      B
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 p-0 italic"
+                      onClick={() => document.execCommand("italic")}
+                    >
+                      I
+                    </Button>
+                  </div>
+                  <div
+                    contentEditable
+                    className="flex min-h-[150px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 overflow-y-auto"
+                    dangerouslySetInnerHTML={{ __html: form.corpo_texto }}
+                    onBlur={(e) => setForm({ ...form, corpo_texto: e.currentTarget.innerHTML })}
+                    suppressContentEditableWarning
+                  />
+                </>
+              ) : (
+                <Textarea value={form.corpo_texto} onChange={(e) => setForm({ ...form, corpo_texto: e.target.value })} placeholder="Digite o conteúdo do template..." rows={6} />
+              )}
               <p className="text-xs text-muted-foreground mt-1">Variáveis: {ALLOWED_VARS.join(", ")}</p>
             </div>
           </div>

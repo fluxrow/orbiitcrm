@@ -712,7 +712,7 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
                                   {template.assunto_email && (
                                     <p className="text-sm text-muted-foreground">Assunto: {template.assunto_email}</p>
                                   )}
-                                  <p className="text-xs text-muted-foreground mt-1 truncate">
+                                  <p className="text-xs text-muted-foreground mt-1 truncate whitespace-pre-wrap">
                                     {template.corpo_texto?.substring(0, 100)}...
                                   </p>
                                 </div>
