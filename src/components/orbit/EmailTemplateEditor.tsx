@@ -84,7 +84,11 @@ export function EmailTemplateEditor({ content, onChange, className }: EmailTempl
     },
     editorProps: {
       attributes: {
-        class: "prose prose-sm max-w-none min-h-[300px] focus:outline-none p-6",
+        class: "prose prose-sm max-w-none min-h-[300px] focus:outline-none p-6 text-black [&_*]:text-inherit",
+      },
+      transformPastedHTML(html) {
+        // Strip dangerous tags but preserve inline styles (color, font, etc.)
+        return html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
       },
     },
   });
@@ -262,7 +266,7 @@ export function EmailTemplateEditor({ content, onChange, className }: EmailTempl
       </div>
 
       {/* Editor area */}
-      <div className="bg-white min-h-[350px]">
+      <div className="bg-white text-black min-h-[350px]">
         <EditorContent editor={editor} />
       </div>
     </div>
