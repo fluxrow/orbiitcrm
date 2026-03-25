@@ -163,9 +163,15 @@ Deno.serve(async (req) => {
         // Sync status
         if (subscription.status === "active") {
           updateData.status = "active";
+        } else if (subscription.status === "trialing") {
+          updateData.status = "trial";
         } else if (subscription.status === "past_due") {
           updateData.status = "active"; // still active but past due
+        } else if (subscription.status === "incomplete" || subscription.status === "incomplete_expired") {
+          updateData.status = "pending";
         } else if (subscription.status === "canceled" || subscription.status === "unpaid") {
+          updateData.status = "suspended";
+        } else if (subscription.status === "paused") {
           updateData.status = "suspended";
         }
 
