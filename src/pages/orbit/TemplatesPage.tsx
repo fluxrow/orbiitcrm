@@ -336,7 +336,7 @@ export default function TemplatesPage() {
                       variant="outline"
                       size="sm"
                       className="h-7 w-7 p-0 font-bold"
-                      onClick={() => document.execCommand("bold")}
+                      onMouseDown={(e) => { e.preventDefault(); document.execCommand("bold"); }}
                     >
                       B
                     </Button>
@@ -345,7 +345,7 @@ export default function TemplatesPage() {
                       variant="outline"
                       size="sm"
                       className="h-7 w-7 p-0 italic"
-                      onClick={() => document.execCommand("italic")}
+                      onMouseDown={(e) => { e.preventDefault(); document.execCommand("italic"); }}
                     >
                       I
                     </Button>
