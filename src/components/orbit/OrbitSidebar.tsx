@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import orbitLogo from "@/assets/orbit-logo.png";
+import orbitIcon from "@/assets/orbit-icon.png";
 import { useIsAdmin } from "@/hooks/useUserRole";
 import { useOrbitTasks } from "@/hooks/useOrbitTasks";
 import { useTenant } from "@/contexts/TenantContext";
