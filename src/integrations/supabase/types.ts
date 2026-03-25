@@ -2978,42 +2978,69 @@ export type Database = {
         Row: {
           activated_at: string | null
           billing_status: string | null
+          cancel_at_period_end: boolean | null
           created_at: string
           created_by_user_id: string
+          current_period_end: string | null
+          current_period_start: string | null
           empresa_id: string
           invited_at: string | null
+          last_invoice_status: string | null
+          last_payment_error: string | null
           plan_id: string
           responsible_email: string | null
           responsible_name: string | null
           status: string
+          stripe_customer_id: string | null
+          stripe_status: string | null
+          stripe_subscription_id: string | null
+          trial_end: string | null
           trial_ends_at: string | null
           updated_at: string
         }
         Insert: {
           activated_at?: string | null
           billing_status?: string | null
+          cancel_at_period_end?: boolean | null
           created_at?: string
           created_by_user_id: string
+          current_period_end?: string | null
+          current_period_start?: string | null
           empresa_id: string
           invited_at?: string | null
+          last_invoice_status?: string | null
+          last_payment_error?: string | null
           plan_id: string
           responsible_email?: string | null
           responsible_name?: string | null
           status?: string
+          stripe_customer_id?: string | null
+          stripe_status?: string | null
+          stripe_subscription_id?: string | null
+          trial_end?: string | null
           trial_ends_at?: string | null
           updated_at?: string
         }
         Update: {
           activated_at?: string | null
           billing_status?: string | null
+          cancel_at_period_end?: boolean | null
           created_at?: string
           created_by_user_id?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
           empresa_id?: string
           invited_at?: string | null
+          last_invoice_status?: string | null
+          last_payment_error?: string | null
           plan_id?: string
           responsible_email?: string | null
           responsible_name?: string | null
           status?: string
+          stripe_customer_id?: string | null
+          stripe_status?: string | null
+          stripe_subscription_id?: string | null
+          trial_end?: string | null
           trial_ends_at?: string | null
           updated_at?: string
         }
@@ -3092,6 +3119,10 @@ export type Database = {
           id: string
           limits: Json
           name: string
+          stripe_active: boolean | null
+          stripe_price_id_monthly: string | null
+          stripe_price_id_yearly: string | null
+          stripe_product_id: string | null
           updated_at: string
         }
         Insert: {
@@ -3101,6 +3132,10 @@ export type Database = {
           id?: string
           limits?: Json
           name: string
+          stripe_active?: boolean | null
+          stripe_price_id_monthly?: string | null
+          stripe_price_id_yearly?: string | null
+          stripe_product_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -3110,6 +3145,10 @@ export type Database = {
           id?: string
           limits?: Json
           name?: string
+          stripe_active?: boolean | null
+          stripe_price_id_monthly?: string | null
+          stripe_price_id_yearly?: string | null
+          stripe_product_id?: string | null
           updated_at?: string
         }
         Relationships: []
