@@ -108,7 +108,12 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // ── Build signature HTML if sender has personal signature ──
-    let finalHtml = html;
+    // Inject inline styles for email-compatible lists
+    let finalHtml = html
+      .replace(/<ul(?![^>]*style=)/gi, '<ul style="padding-left:20px;margin:10px 0;list-style-type:disc"')
+      .replace(/<ol(?![^>]*style=)/gi, '<ol style="padding-left:20px;margin:10px 0;list-style-type:decimal"')
+      .replace(/<li(?![^>]*style=)/gi, '<li style="margin-bottom:6px"');
+
     if (senderUser?.use_personal_signature) {
       let sigRows = "";
       if (senderUser.signature_image_url) {
