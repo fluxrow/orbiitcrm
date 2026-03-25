@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -14,23 +14,15 @@ import {
   ClipboardList, Shuffle, Send, FileText, Globe
 } from "lucide-react";
 import orbitLogo from "@/assets/orbit-logo.png";
+import AnimatedSection from "@/components/landing/AnimatedSection";
+import GlowCard from "@/components/landing/GlowCard";
+import AnimatedBackground from "@/components/landing/AnimatedBackground";
 
+/* ─── Data (unchanged) ─── */
 const PROBLEMS = [
-  {
-    icon: PhoneOff,
-    title: "Leads perdidos no WhatsApp pessoal",
-    desc: "Vendedores usam o celular próprio, a empresa perde o histórico de conversas e não sabe o que foi prometido ao cliente.",
-  },
-  {
-    icon: AlertTriangle,
-    title: "Equipe sem processo comercial",
-    desc: "Sem funil definido, sem follow-up automático e oportunidades esquecidas no meio do caminho.",
-  },
-  {
-    icon: UserX,
-    title: "Tempo gasto com leads frios",
-    desc: "Vendedores perdem horas respondendo quem nunca vai comprar, enquanto leads quentes esfriam sem atendimento.",
-  },
+  { icon: PhoneOff, title: "Leads perdidos no WhatsApp pessoal", desc: "Vendedores usam o celular próprio, a empresa perde o histórico de conversas e não sabe o que foi prometido ao cliente." },
+  { icon: AlertTriangle, title: "Equipe sem processo comercial", desc: "Sem funil definido, sem follow-up automático e oportunidades esquecidas no meio do caminho." },
+  { icon: UserX, title: "Tempo gasto com leads frios", desc: "Vendedores perdem horas respondendo quem nunca vai comprar, enquanto leads quentes esfriam sem atendimento." },
 ];
 
 const SOLUTION_POINTS = [
@@ -48,62 +40,16 @@ const STEPS = [
 ];
 
 const FEATURE_GROUPS = [
-  {
-    title: "IA & Automação",
-    icon: Zap,
-    features: [
-      "Atendimento IA no WhatsApp 24h",
-      "Qualificação automática de leads",
-      "Extração inteligente de dados",
-      "Distribuição round-robin entre vendedores",
-      "Handoff com contexto completo",
-    ],
-  },
-  {
-    title: "CRM & Pipeline",
-    icon: Kanban,
-    features: [
-      "Funil Kanban drag-and-drop",
-      "Tarefas por oportunidade",
-      "Timeline completa de interações",
-      "Importação de contatos (CSV/Excel)",
-      "Segmentos e origens configuráveis",
-    ],
-  },
-  {
-    title: "Comunicação & Campanhas",
-    icon: MessageSquare,
-    features: [
-      "WhatsApp bidirecional (envio + recebimento)",
-      "Email marketing com templates visuais",
-      "Campanhas agendadas com métricas",
-      "Instagram Direct e Messenger (Plus)",
-      "Anti-bloqueio com warm-up automático",
-    ],
-  },
+  { title: "IA & Automação", icon: Zap, features: ["Atendimento IA no WhatsApp 24h", "Qualificação automática de leads", "Extração inteligente de dados", "Distribuição round-robin entre vendedores", "Handoff com contexto completo"] },
+  { title: "CRM & Pipeline", icon: Kanban, features: ["Funil Kanban drag-and-drop", "Tarefas por oportunidade", "Timeline completa de interações", "Importação de contatos (CSV/Excel)", "Segmentos e origens configuráveis"] },
+  { title: "Comunicação & Campanhas", icon: MessageSquare, features: ["WhatsApp bidirecional (envio + recebimento)", "Email marketing com templates visuais", "Campanhas agendadas com métricas", "Instagram Direct e Messenger (Plus)", "Anti-bloqueio com warm-up automático"] },
 ];
 
 const DIFFERENTIALS = [
-  {
-    icon: Brain,
-    title: "IA de verdade, não chatbot",
-    desc: "Qualifica leads, extrai dados estruturados, responde com contexto e encaminha ao vendedor com resumo completo da conversa.",
-  },
-  {
-    icon: ShieldCheck,
-    title: "Anti-bloqueio WhatsApp",
-    desc: "Sistema de warm-up progressivo, delays aleatórios entre mensagens e controle de volume para proteger seu número.",
-  },
-  {
-    icon: Building2,
-    title: "Multi-empresa isolada",
-    desc: "Cada empresa tem seu ambiente separado com dados, configurações, usuários e permissões independentes.",
-  },
-  {
-    icon: Globe,
-    title: "Tudo em um só lugar",
-    desc: "CRM, WhatsApp, email, IA, campanhas e funil — sem precisar integrar 5 ferramentas diferentes.",
-  },
+  { icon: Brain, title: "IA de verdade, não chatbot", desc: "Qualifica leads, extrai dados estruturados, responde com contexto e encaminha ao vendedor com resumo completo da conversa." },
+  { icon: ShieldCheck, title: "Anti-bloqueio WhatsApp", desc: "Sistema de warm-up progressivo, delays aleatórios entre mensagens e controle de volume para proteger seu número." },
+  { icon: Building2, title: "Multi-empresa isolada", desc: "Cada empresa tem seu ambiente separado com dados, configurações, usuários e permissões independentes." },
+  { icon: Globe, title: "Tudo em um só lugar", desc: "CRM, WhatsApp, email, IA, campanhas e funil — sem precisar integrar 5 ferramentas diferentes." },
 ];
 
 const VALUE_PROOFS = [
@@ -121,48 +67,11 @@ const AUDIENCES = [
   { icon: Star, name: "Clínicas e serviços", desc: "Que precisam agendar, qualificar e acompanhar pacientes/clientes." },
 ];
 
-const PLANS = [
-  {
-    name: "Demo",
-    price: "Grátis",
-    ideal: "Explore a plataforma sem compromisso",
-    features: ["Ambiente completo de demonstração", "Dados fictícios para teste", "IA funcionando via número de teste", "Acesso imediato, sem cadastro"],
-    cta: "Acessar Demo",
-    ctaVariant: "outline" as const,
-    href: "/demo",
-    highlight: false,
-  },
-  {
-    name: "Basic",
-    price: "R$ 197/mês",
-    ideal: "Para equipes que vendem por email",
-    features: ["CRM completo com funil Kanban", "Tarefas e interações por oportunidade", "Email marketing com templates", "Distribuição de leads round-robin", "Importação de contatos", "Relatórios de performance"],
-    cta: "Começar Trial 7 dias",
-    ctaVariant: "default" as const,
-    href: "/trial?plan=basic",
-    highlight: false,
-  },
-  {
-    name: "Professional",
-    price: "R$ 397/mês",
-    ideal: "Para quem vende pelo WhatsApp",
-    features: ["Tudo do Basic", "WhatsApp bidirecional (envio + recebimento)", "IA para atendimento automático", "Campanhas de WhatsApp", "Handoff inteligente ao vendedor", "Aprovação de campanhas"],
-    cta: "Começar Trial 7 dias",
-    ctaVariant: "default" as const,
-    href: "/trial?plan=professional",
-    highlight: true,
-    badge: "Mais popular",
-  },
-  {
-    name: "Plus",
-    price: "R$ 597/mês",
-    ideal: "Operação omnichannel completa",
-    features: ["Tudo do Professional", "Instagram Direct integrado", "Facebook Messenger integrado", "Busca de leads ativa (Apollo)", "Enriquecimento automático de dados", "Suporte prioritário"],
-    cta: "Começar Trial 7 dias",
-    ctaVariant: "default" as const,
-    href: "/trial?plan=plus",
-    highlight: false,
-  },
+const PLANS_DATA = [
+  { name: "Demo", priceMonthly: 0, ideal: "Explore a plataforma sem compromisso", features: ["Ambiente completo de demonstração", "Dados fictícios para teste", "IA funcionando via número de teste", "Acesso imediato, sem cadastro"], cta: "Acessar Demo", ctaVariant: "outline" as const, href: "/demo", highlight: false },
+  { name: "Basic", priceMonthly: 197, ideal: "Para equipes que vendem por email", features: ["CRM completo com funil Kanban", "Tarefas e interações por oportunidade", "Email marketing com templates", "Distribuição de leads round-robin", "Importação de contatos", "Relatórios de performance"], cta: "Começar Trial 7 dias", ctaVariant: "default" as const, href: "/trial?plan=basic", highlight: false },
+  { name: "Professional", priceMonthly: 397, ideal: "Para quem vende pelo WhatsApp", features: ["Tudo do Basic", "WhatsApp bidirecional (envio + recebimento)", "IA para atendimento automático", "Campanhas de WhatsApp", "Handoff inteligente ao vendedor", "Aprovação de campanhas"], cta: "Começar Trial 7 dias", ctaVariant: "default" as const, href: "/trial?plan=professional", highlight: true, badge: "Mais popular" },
+  { name: "Plus", priceMonthly: 597, ideal: "Operação omnichannel completa", features: ["Tudo do Professional", "Instagram Direct integrado", "Facebook Messenger integrado", "Busca de leads ativa (Apollo)", "Enriquecimento automático de dados", "Suporte prioritário"], cta: "Começar Trial 7 dias", ctaVariant: "default" as const, href: "/trial?plan=plus", highlight: false },
 ];
 
 const FAQ_ITEMS = [
@@ -176,381 +85,600 @@ const FAQ_ITEMS = [
   { q: "Quais canais de comunicação são suportados?", a: "WhatsApp (via API oficial), email (SMTP), Instagram Direct e Facebook Messenger. Os dois últimos estão disponíveis no plano Plus." },
 ];
 
+/* ─── Animation variants ─── */
+const stagger = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.1 } },
+};
+const fadeUp = {
+  hidden: { opacity: 0, y: 30 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.21, 0.47, 0.32, 0.98] } },
+};
+
+/* ─── Section label helper ─── */
+function SectionLabel({ children }: { children: string }) {
+  return (
+    <p className="text-sm font-semibold text-primary text-center mb-2 uppercase tracking-wider">
+      {children}
+    </p>
+  );
+}
+
+/* ─── Main component ─── */
 export default function LandingPage() {
   const navigate = useNavigate();
   const [slug, setSlug] = useState("");
   const [slugError, setSlugError] = useState("");
+  const [isAnnual, setIsAnnual] = useState(false);
 
   const handleSlugAccess = () => {
     const trimmed = slug.trim().toLowerCase();
-    if (!trimmed) {
-      setSlugError("Digite o slug da sua empresa.");
-      return;
-    }
+    if (!trimmed) { setSlugError("Digite o slug da sua empresa."); return; }
     setSlugError("");
     navigate(`/${trimmed}/dashboard`);
   };
 
+  const formatPrice = (monthly: number) => {
+    if (monthly === 0) return "Grátis";
+    const val = isAnnual ? Math.round(monthly * 0.8) : monthly;
+    return `R$ ${val}/mês`;
+  };
+
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      {/* ── Hero ── */}
-      <section className="pt-16 pb-24 px-4">
-        <div className="max-w-4xl mx-auto text-center space-y-6">
-          <img src={orbitLogo} alt="Orbit CRM" className="h-48 mx-auto" />
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-tight">
+    <div className="min-h-screen bg-background text-foreground noise-bg">
+
+      {/* ══════════ HERO ══════════ */}
+      <section className="relative pt-20 pb-28 px-4 overflow-hidden">
+        <AnimatedBackground />
+
+        <div className="relative z-10 max-w-4xl mx-auto text-center space-y-8">
+          <motion.img
+            src={orbitLogo}
+            alt="Orbit CRM"
+            className="h-36 mx-auto drop-shadow-[0_0_30px_hsl(187_92%_50%/0.25)]"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.7 }}
+          />
+
+          <motion.h1
+            className="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-tight"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.2 }}
+          >
             <span className="gradient-text">Sua equipe comercial</span>
             <br />
             no piloto automático
-          </h1>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+          </motion.h1>
+
+          <motion.p
+            className="text-lg text-muted-foreground max-w-2xl mx-auto"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.4 }}
+          >
             O Orbit é o CRM com IA que atende, qualifica e distribui leads pelo WhatsApp, email e redes sociais — para que seu time só feche negócios.
-          </p>
+          </motion.p>
 
-          <div className="flex flex-wrap items-center justify-center gap-3 text-sm text-muted-foreground">
-            <Badge variant="secondary" className="gap-1.5 py-1 px-3"><MessageSquare className="w-3.5 h-3.5 text-primary" /> WhatsApp + IA</Badge>
-            <Badge variant="secondary" className="gap-1.5 py-1 px-3"><Kanban className="w-3.5 h-3.5 text-primary" /> CRM completo</Badge>
-            <Badge variant="secondary" className="gap-1.5 py-1 px-3"><Rocket className="w-3.5 h-3.5 text-primary" /> Campanhas automáticas</Badge>
-          </div>
+          <motion.div
+            className="flex flex-wrap items-center justify-center gap-3"
+            variants={stagger}
+            initial="hidden"
+            animate="show"
+          >
+            {[
+              { icon: MessageSquare, label: "WhatsApp + IA" },
+              { icon: Kanban, label: "CRM completo" },
+              { icon: Rocket, label: "Campanhas automáticas" },
+            ].map((b) => (
+              <motion.div key={b.label} variants={fadeUp}>
+                <Badge variant="secondary" className="gap-1.5 py-1.5 px-4 bg-secondary/60 backdrop-blur-sm border border-border/50">
+                  <b.icon className="w-3.5 h-3.5 text-primary" /> {b.label}
+                </Badge>
+              </motion.div>
+            ))}
+          </motion.div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
-            <Button size="lg" onClick={() => navigate("/trial")} className="gap-2 text-base px-8">
+          <motion.div
+            className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.7 }}
+          >
+            <Button
+              size="lg"
+              onClick={() => navigate("/trial")}
+              className="gap-2 text-base px-8 animate-glow-pulse hover:scale-105 transition-transform"
+            >
               Testar grátis por 7 dias <ArrowRight className="w-4 h-4" />
             </Button>
-            <Button size="lg" variant="outline" onClick={() => navigate("/demo")} className="text-base px-8">
+            <Button
+              size="lg"
+              variant="outline"
+              onClick={() => navigate("/demo")}
+              className="text-base px-8 hover:scale-105 transition-transform border-border/50 backdrop-blur-sm"
+            >
               Ver demonstração
             </Button>
-          </div>
+          </motion.div>
         </div>
       </section>
 
-      {/* ── Problema ── */}
-      <section className="py-20 px-4 bg-secondary/20">
-        <div className="max-w-5xl mx-auto">
-          <p className="text-sm font-semibold text-primary text-center mb-2 uppercase tracking-wider">O problema</p>
-          <h2 className="text-3xl font-bold text-center mb-4">
-            Sua operação comercial <span className="gradient-text">está travada?</span>
-          </h2>
-          <p className="text-center text-muted-foreground mb-12 max-w-xl mx-auto">
-            Se alguma dessas dores parece familiar, o Orbit foi feito para você.
-          </p>
-          <div className="grid sm:grid-cols-3 gap-6">
+      {/* ══════════ PROBLEMA ══════════ */}
+      <section className="py-20 px-4 relative">
+        <div className="absolute inset-0 bg-secondary/20" />
+        <div className="relative max-w-5xl mx-auto">
+          <AnimatedSection>
+            <SectionLabel>O problema</SectionLabel>
+            <h2 className="text-3xl font-bold text-center mb-4">
+              Sua operação comercial <span className="gradient-text">está travada?</span>
+            </h2>
+            <p className="text-center text-muted-foreground mb-12 max-w-xl mx-auto">
+              Se alguma dessas dores parece familiar, o Orbit foi feito para você.
+            </p>
+          </AnimatedSection>
+
+          <motion.div
+            className="grid sm:grid-cols-3 gap-6"
+            variants={stagger}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true }}
+          >
             {PROBLEMS.map((p, i) => (
-              <Card key={i} className="glass-card border-destructive/20 hover:border-destructive/40 transition-all">
-                <CardHeader className="text-center">
-                  <div className="mx-auto w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-2">
-                    <p.icon className="w-6 h-6 text-destructive" />
+              <motion.div key={i} variants={fadeUp}>
+                <GlowCard className="h-full" glowColor="0 72% 51%">
+                  <div className="p-6 text-center">
+                    <div className="mx-auto w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                      <p.icon className="w-6 h-6 text-destructive" />
+                    </div>
+                    <h3 className="font-semibold text-base mb-2">{p.title}</h3>
+                    <p className="text-sm text-muted-foreground">{p.desc}</p>
                   </div>
-                  <CardTitle className="text-base">{p.title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground text-center">{p.desc}</p>
-                </CardContent>
-              </Card>
+                </GlowCard>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
-      {/* ── Solução ── */}
+      {/* ══════════ SOLUÇÃO ══════════ */}
       <section className="py-20 px-4">
         <div className="max-w-5xl mx-auto">
-          <p className="text-sm font-semibold text-primary text-center mb-2 uppercase tracking-wider">A solução</p>
-          <h2 className="text-3xl font-bold text-center mb-4">
-            O Orbit centraliza tudo em <span className="gradient-text">uma plataforma com IA</span>
-          </h2>
-          <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
-            Uma IA que trabalha 24h atendendo, qualificando e organizando seus leads — enquanto sua equipe foca em fechar negócios.
-          </p>
-          <div className="grid sm:grid-cols-3 gap-6">
+          <AnimatedSection>
+            <SectionLabel>A solução</SectionLabel>
+            <h2 className="text-3xl font-bold text-center mb-4">
+              O Orbit centraliza tudo em <span className="gradient-text">uma plataforma com IA</span>
+            </h2>
+            <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
+              Uma IA que trabalha 24h atendendo, qualificando e organizando seus leads — enquanto sua equipe foca em fechar negócios.
+            </p>
+          </AnimatedSection>
+
+          <motion.div
+            className="grid sm:grid-cols-3 gap-6"
+            variants={stagger}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true }}
+          >
             {SOLUTION_POINTS.map((s, i) => (
-              <Card key={i} className="glass-card text-center hover:border-primary/50 transition-all">
-                <CardHeader>
-                  <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-2">
-                    <s.icon className="w-6 h-6 text-primary" />
+              <motion.div key={i} variants={fadeUp}>
+                <GlowCard className="h-full">
+                  <div className="p-6 text-center">
+                    <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4 group-hover:rotate-12 group-hover:scale-110 transition-transform">
+                      <s.icon className="w-6 h-6 text-primary" />
+                    </div>
+                    <h3 className="font-semibold text-base mb-2">{s.title}</h3>
+                    <p className="text-sm text-muted-foreground">{s.desc}</p>
                   </div>
-                  <CardTitle className="text-base">{s.title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">{s.desc}</p>
-                </CardContent>
-              </Card>
+                </GlowCard>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
-      {/* ── Como funciona ── */}
-      <section id="como-funciona" className="py-20 px-4 bg-secondary/20">
-        <div className="max-w-6xl mx-auto">
-          <p className="text-sm font-semibold text-primary text-center mb-2 uppercase tracking-wider">Como funciona</p>
-          <h2 className="text-3xl font-bold text-center mb-4">
-            Do primeiro contato ao <span className="gradient-text">fechamento</span>
-          </h2>
-          <p className="text-center text-muted-foreground mb-12 max-w-xl mx-auto">
-            5 passos para transformar leads em clientes — de forma automática.
-          </p>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-5">
+      {/* ══════════ COMO FUNCIONA (Timeline) ══════════ */}
+      <section id="como-funciona" className="py-20 px-4 relative">
+        <div className="absolute inset-0 bg-secondary/20" />
+        <div className="relative max-w-6xl mx-auto">
+          <AnimatedSection>
+            <SectionLabel>Como funciona</SectionLabel>
+            <h2 className="text-3xl font-bold text-center mb-4">
+              Do primeiro contato ao <span className="gradient-text">fechamento</span>
+            </h2>
+            <p className="text-center text-muted-foreground mb-12 max-w-xl mx-auto">
+              5 passos para transformar leads em clientes — de forma automática.
+            </p>
+          </AnimatedSection>
+
+          {/* Desktop timeline */}
+          <div className="hidden lg:block relative">
+            {/* Connecting line */}
+            <div className="absolute top-16 left-[10%] right-[10%] h-0.5 bg-gradient-to-r from-primary/20 via-primary/50 to-primary/20" />
+
+            <motion.div
+              className="grid grid-cols-5 gap-5"
+              variants={stagger}
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true }}
+            >
+              {STEPS.map((step, i) => (
+                <motion.div key={i} variants={fadeUp}>
+                  <GlowCard className="text-center">
+                    <div className="p-5">
+                      <div className="mx-auto w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center mb-3 text-sm font-bold relative z-10 group-hover:scale-110 group-hover:shadow-[0_0_20px_hsl(var(--primary)/0.4)] transition-all">
+                        {i + 1}
+                      </div>
+                      <h3 className="text-sm font-semibold mb-2">{step.title}</h3>
+                      <p className="text-xs text-muted-foreground">{step.desc}</p>
+                    </div>
+                  </GlowCard>
+                </motion.div>
+              ))}
+            </motion.div>
+          </div>
+
+          {/* Mobile timeline */}
+          <div className="lg:hidden space-y-4">
             {STEPS.map((step, i) => (
-              <Card key={i} className="glass-card text-center group hover:border-primary/50 transition-all relative">
-                <CardHeader className="pb-3">
-                  <div className="mx-auto w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center mb-2 text-sm font-bold">
-                    {i + 1}
+              <AnimatedSection key={i} delay={i * 0.1}>
+                <div className="flex gap-4 items-start">
+                  <div className="flex flex-col items-center shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
+                      {i + 1}
+                    </div>
+                    {i < STEPS.length - 1 && <div className="w-0.5 h-12 bg-primary/20 mt-2" />}
                   </div>
-                  <CardTitle className="text-sm">{step.title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground">{step.desc}</p>
-                </CardContent>
-                {i < STEPS.length - 1 && (
-                  <ChevronRight className="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground/40" />
-                )}
-              </Card>
+                  <GlowCard className="flex-1">
+                    <div className="p-4">
+                      <h3 className="text-sm font-semibold mb-1">{step.title}</h3>
+                      <p className="text-xs text-muted-foreground">{step.desc}</p>
+                    </div>
+                  </GlowCard>
+                </div>
+              </AnimatedSection>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── Funcionalidades ── */}
+      {/* ══════════ FUNCIONALIDADES ══════════ */}
       <section id="recursos" className="py-20 px-4">
         <div className="max-w-6xl mx-auto">
-          <p className="text-sm font-semibold text-primary text-center mb-2 uppercase tracking-wider">Funcionalidades</p>
-          <h2 className="text-3xl font-bold text-center mb-4">
-            Tudo que você precisa, <span className="gradient-text">em um só lugar</span>
-          </h2>
-          <p className="text-center text-muted-foreground mb-12 max-w-xl mx-auto">
-            Cada recurso foi pensado para eliminar etapas manuais e acelerar suas vendas.
-          </p>
-          <div className="grid md:grid-cols-3 gap-6">
+          <AnimatedSection>
+            <SectionLabel>Funcionalidades</SectionLabel>
+            <h2 className="text-3xl font-bold text-center mb-4">
+              Tudo que você precisa, <span className="gradient-text">em um só lugar</span>
+            </h2>
+            <p className="text-center text-muted-foreground mb-12 max-w-xl mx-auto">
+              Cada recurso foi pensado para eliminar etapas manuais e acelerar suas vendas.
+            </p>
+          </AnimatedSection>
+
+          <motion.div
+            className="grid md:grid-cols-3 gap-6"
+            variants={stagger}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true }}
+          >
             {FEATURE_GROUPS.map((group) => (
-              <Card key={group.title} className="glass-card hover:border-primary/40 transition-all">
-                <CardHeader>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <group.icon className="w-5 h-5 text-primary" />
+              <motion.div key={group.title} variants={fadeUp}>
+                <GlowCard className="h-full">
+                  <div className="p-6">
+                    <div className="flex items-center gap-3 mb-5">
+                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:rotate-12 group-hover:scale-110 transition-transform">
+                        <group.icon className="w-5 h-5 text-primary" />
+                      </div>
+                      <h3 className="text-lg font-semibold">{group.title}</h3>
                     </div>
-                    <CardTitle className="text-lg">{group.title}</CardTitle>
+                    <ul className="space-y-2.5">
+                      {group.features.map((f) => (
+                        <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
+                          <CheckCircle className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2.5">
-                    {group.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
-                        <CheckCircle className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
+                </GlowCard>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
-      {/* ── Diferenciais ── */}
-      <section className="py-20 px-4 bg-secondary/20">
-        <div className="max-w-6xl mx-auto">
-          <p className="text-sm font-semibold text-primary text-center mb-2 uppercase tracking-wider">Diferenciais</p>
-          <h2 className="text-3xl font-bold text-center mb-4">
-            Por que o Orbit é <span className="gradient-text">diferente</span>
-          </h2>
-          <p className="text-center text-muted-foreground mb-12 max-w-xl mx-auto">
-            Não é mais um CRM genérico. O Orbit foi construído para equipes que vendem pelo WhatsApp e precisam de IA real.
-          </p>
-          <div className="grid sm:grid-cols-2 gap-6">
+      {/* ══════════ DIFERENCIAIS ══════════ */}
+      <section className="py-20 px-4 relative">
+        <div className="absolute inset-0 bg-secondary/20" />
+        <div className="relative max-w-6xl mx-auto">
+          <AnimatedSection>
+            <SectionLabel>Diferenciais</SectionLabel>
+            <h2 className="text-3xl font-bold text-center mb-4">
+              Por que o Orbit é <span className="gradient-text">diferente</span>
+            </h2>
+            <p className="text-center text-muted-foreground mb-12 max-w-xl mx-auto">
+              Não é mais um CRM genérico. O Orbit foi construído para equipes que vendem pelo WhatsApp e precisam de IA real.
+            </p>
+          </AnimatedSection>
+
+          <motion.div
+            className="grid sm:grid-cols-2 gap-6"
+            variants={stagger}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true }}
+          >
             {DIFFERENTIALS.map((d, i) => (
-              <Card key={i} className="glass-card hover:border-primary/50 transition-all">
-                <CardHeader>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <d.icon className="w-5 h-5 text-primary" />
+              <motion.div key={i} variants={fadeUp}>
+                <GlowCard className="h-full">
+                  <div className="p-6">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:rotate-12 group-hover:scale-110 transition-transform">
+                        <d.icon className="w-5 h-5 text-primary" />
+                      </div>
+                      <h3 className="font-semibold text-base">{d.title}</h3>
                     </div>
-                    <CardTitle className="text-base">{d.title}</CardTitle>
+                    <p className="text-sm text-muted-foreground">{d.desc}</p>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">{d.desc}</p>
-                </CardContent>
-              </Card>
+                </GlowCard>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
-      {/* ── Prova de valor ── */}
+      {/* ══════════ PROVA DE VALOR ══════════ */}
       <section className="py-20 px-4">
         <div className="max-w-5xl mx-auto">
-          <p className="text-sm font-semibold text-primary text-center mb-2 uppercase tracking-wider">Resultados</p>
-          <h2 className="text-3xl font-bold text-center mb-12">
-            O que muda quando você <span className="gradient-text">usa o Orbit</span>
-          </h2>
-          <div className="grid sm:grid-cols-3 gap-6">
+          <AnimatedSection>
+            <SectionLabel>Resultados</SectionLabel>
+            <h2 className="text-3xl font-bold text-center mb-12">
+              O que muda quando você <span className="gradient-text">usa o Orbit</span>
+            </h2>
+          </AnimatedSection>
+
+          <motion.div
+            className="grid sm:grid-cols-3 gap-8"
+            variants={stagger}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true }}
+          >
             {VALUE_PROOFS.map((v, i) => (
-              <div key={i} className="text-center space-y-3">
-                <div className="mx-auto w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+              <motion.div key={i} variants={fadeUp} className="text-center space-y-3">
+                <motion.div
+                  className="mx-auto w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center"
+                  whileHover={{ scale: 1.15, rotate: 5 }}
+                  transition={{ type: "spring", stiffness: 300 }}
+                >
                   <v.icon className="w-7 h-7 text-primary" />
-                </div>
+                </motion.div>
                 <h3 className="font-bold text-lg">{v.title}</h3>
                 <p className="text-sm text-muted-foreground">{v.desc}</p>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
-      {/* ── Para quem é ── */}
-      <section className="py-20 px-4 bg-secondary/20">
-        <div className="max-w-6xl mx-auto">
-          <p className="text-sm font-semibold text-primary text-center mb-2 uppercase tracking-wider">Para quem é</p>
-          <h2 className="text-3xl font-bold text-center mb-4">
-            Ideal para quem <span className="gradient-text">vende ativamente</span>
-          </h2>
-          <p className="text-center text-muted-foreground mb-12 max-w-xl mx-auto">
-            Se sua equipe usa WhatsApp e email para vender, o Orbit vai transformar sua operação.
-          </p>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      {/* ══════════ PARA QUEM É ══════════ */}
+      <section className="py-20 px-4 relative">
+        <div className="absolute inset-0 bg-secondary/20" />
+        <div className="relative max-w-6xl mx-auto">
+          <AnimatedSection>
+            <SectionLabel>Para quem é</SectionLabel>
+            <h2 className="text-3xl font-bold text-center mb-4">
+              Ideal para quem <span className="gradient-text">vende ativamente</span>
+            </h2>
+            <p className="text-center text-muted-foreground mb-12 max-w-xl mx-auto">
+              Se sua equipe usa WhatsApp e email para vender, o Orbit vai transformar sua operação.
+            </p>
+          </AnimatedSection>
+
+          <motion.div
+            className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5"
+            variants={stagger}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true }}
+          >
             {AUDIENCES.map((a, i) => (
-              <Card key={i} className="glass-card hover:border-primary/40 transition-all">
-                <CardHeader className="pb-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <a.icon className="w-5 h-5 text-primary" />
+              <motion.div key={i} variants={fadeUp}>
+                <GlowCard className="h-full">
+                  <div className="p-5">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:rotate-12 transition-transform">
+                        <a.icon className="w-5 h-5 text-primary" />
+                      </div>
+                      <h3 className="font-semibold text-base">{a.name}</h3>
                     </div>
-                    <CardTitle className="text-base">{a.name}</CardTitle>
+                    <p className="text-sm text-muted-foreground">{a.desc}</p>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">{a.desc}</p>
-                </CardContent>
-              </Card>
+                </GlowCard>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
-      {/* ── Planos ── */}
+      {/* ══════════ PLANOS ══════════ */}
       <section id="planos" className="py-20 px-4">
         <div className="max-w-6xl mx-auto">
-          <p className="text-sm font-semibold text-primary text-center mb-2 uppercase tracking-wider">Planos</p>
-          <h2 className="text-3xl font-bold text-center mb-4">
-            Escolha o plano ideal para <span className="gradient-text">sua operação</span>
-          </h2>
-          <p className="text-center text-muted-foreground mb-12 text-sm">
-            Todos os planos incluem trial gratuito de 7 dias. Sem cartão de crédito.
-          </p>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {PLANS.map((plan) => (
-              <Card
-                key={plan.name}
-                className={`glass-card flex flex-col relative ${plan.highlight ? "border-primary ring-1 ring-primary/30" : ""}`}
+          <AnimatedSection>
+            <SectionLabel>Planos</SectionLabel>
+            <h2 className="text-3xl font-bold text-center mb-4">
+              Escolha o plano ideal para <span className="gradient-text">sua operação</span>
+            </h2>
+            <p className="text-center text-muted-foreground mb-6 text-sm">
+              Todos os planos incluem trial gratuito de 7 dias. Sem cartão de crédito.
+            </p>
+
+            {/* Toggle mensal / anual */}
+            <div className="flex items-center justify-center gap-3 mb-12">
+              <span className={`text-sm ${!isAnnual ? "text-foreground font-medium" : "text-muted-foreground"}`}>Mensal</span>
+              <button
+                onClick={() => setIsAnnual(!isAnnual)}
+                className={`relative w-12 h-6 rounded-full transition-colors ${isAnnual ? "bg-primary" : "bg-muted"}`}
               >
-                {plan.highlight && plan.badge && (
-                  <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px]">
-                    <Star className="w-3 h-3 mr-1" /> {plan.badge}
-                  </Badge>
-                )}
-                <CardHeader className="text-center">
-                  <CardTitle className="text-xl">{plan.name}</CardTitle>
-                  <div className="text-3xl font-extrabold mt-2">{plan.price}</div>
-                  <CardDescription className="mt-1">{plan.ideal}</CardDescription>
-                </CardHeader>
-                <CardContent className="flex-1">
-                  <ul className="space-y-2">
-                    {plan.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
-                        <CheckCircle className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-                <CardFooter>
-                  <Button
-                    className="w-full"
-                    variant={plan.ctaVariant}
-                    onClick={() => navigate(plan.href)}
-                  >
-                    {plan.cta} <ChevronRight className="w-4 h-4 ml-1" />
-                  </Button>
-                </CardFooter>
-              </Card>
+                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-background shadow transition-transform ${isAnnual ? "translate-x-6" : "translate-x-0.5"}`} />
+              </button>
+              <span className={`text-sm ${isAnnual ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                Anual <Badge variant="secondary" className="ml-1 text-[10px] bg-primary/10 text-primary border-primary/20">-20%</Badge>
+              </span>
+            </div>
+          </AnimatedSection>
+
+          <motion.div
+            className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6"
+            variants={stagger}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true }}
+          >
+            {PLANS_DATA.map((plan) => (
+              <motion.div
+                key={plan.name}
+                variants={fadeUp}
+                className={plan.highlight ? "lg:-mt-3 lg:mb-3 z-10" : ""}
+              >
+                <GlowCard
+                  className={`flex flex-col h-full ${plan.highlight ? "ring-1 ring-primary/40 animate-glow-pulse" : ""}`}
+                  glowColor={plan.highlight ? "187 92% 50%" : "var(--primary)"}
+                >
+                  <div className="p-6 flex flex-col h-full">
+                    {plan.highlight && plan.badge && (
+                      <Badge className="self-center -mt-9 mb-4 bg-primary text-primary-foreground text-[10px] shadow-lg shadow-primary/20">
+                        <Star className="w-3 h-3 mr-1" /> {plan.badge}
+                      </Badge>
+                    )}
+                    <div className="text-center mb-6">
+                      <h3 className="text-xl font-bold">{plan.name}</h3>
+                      <div className="text-3xl font-extrabold mt-2">{formatPrice(plan.priceMonthly)}</div>
+                      <p className="text-sm text-muted-foreground mt-1">{plan.ideal}</p>
+                    </div>
+                    <ul className="space-y-2 flex-1">
+                      {plan.features.map((f) => (
+                        <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
+                          <CheckCircle className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+                    <Button
+                      className={`w-full mt-6 ${plan.highlight ? "animate-glow hover:scale-105 transition-transform" : "hover:scale-[1.02] transition-transform"}`}
+                      variant={plan.ctaVariant}
+                      onClick={() => navigate(plan.href)}
+                    >
+                      {plan.cta} <ChevronRight className="w-4 h-4 ml-1" />
+                    </Button>
+                  </div>
+                </GlowCard>
+              </motion.div>
             ))}
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ══════════ CTA FINAL ══════════ */}
+      <section className="py-24 px-4 relative overflow-hidden">
+        <div className="absolute inset-0 bg-secondary/20" />
+        {/* Glow blob */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-primary/8 blur-[120px] rounded-full" />
+
+        <AnimatedSection className="relative z-10">
+          <div className="max-w-2xl mx-auto text-center space-y-6">
+            <h2 className="text-3xl sm:text-4xl font-extrabold">
+              Pronto para vender mais <span className="gradient-text">com menos esforço?</span>
+            </h2>
+            <p className="text-muted-foreground text-lg">
+              Comece agora e veja sua equipe vender mais em menos tempo — com IA de verdade.
+            </p>
+            <Button
+              size="lg"
+              onClick={() => navigate("/trial")}
+              className="gap-2 text-base px-10 h-12 animate-glow-pulse hover:scale-105 transition-transform"
+            >
+              Começar agora — 7 dias grátis <ArrowRight className="w-5 h-5" />
+            </Button>
+            <p className="text-xs text-muted-foreground">Sem cartão de crédito. Cancele quando quiser.</p>
           </div>
-        </div>
+        </AnimatedSection>
       </section>
 
-      {/* ── CTA Final ── */}
-      <section className="py-24 px-4 bg-secondary/20">
-        <div className="max-w-2xl mx-auto text-center space-y-6">
-          <h2 className="text-3xl sm:text-4xl font-extrabold">
-            Pronto para vender mais <span className="gradient-text">com menos esforço?</span>
-          </h2>
-          <p className="text-muted-foreground text-lg">
-            Comece agora e veja sua equipe vender mais em menos tempo — com IA de verdade.
-          </p>
-          <Button size="lg" onClick={() => navigate("/trial")} className="gap-2 text-base px-10 h-12">
-            Começar agora — 7 dias grátis <ArrowRight className="w-5 h-5" />
-          </Button>
-          <p className="text-xs text-muted-foreground">Sem cartão de crédito. Cancele quando quiser.</p>
-        </div>
-      </section>
-
-      {/* ── FAQ ── */}
+      {/* ══════════ FAQ ══════════ */}
       <section id="faq" className="py-20 px-4">
         <div className="max-w-2xl mx-auto">
-          <p className="text-sm font-semibold text-primary text-center mb-2 uppercase tracking-wider">Dúvidas</p>
-          <h2 className="text-3xl font-bold text-center mb-10">
-            Perguntas <span className="gradient-text">frequentes</span>
-          </h2>
-          <Accordion type="single" collapsible className="space-y-2">
-            {FAQ_ITEMS.map((item, i) => (
-              <AccordionItem key={i} value={`faq-${i}`} className="glass-card px-4 border rounded-xl">
-                <AccordionTrigger className="text-left text-sm font-medium hover:no-underline">
-                  {item.q}
-                </AccordionTrigger>
-                <AccordionContent className="text-sm text-muted-foreground">
-                  {item.a}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
+          <AnimatedSection>
+            <SectionLabel>Dúvidas</SectionLabel>
+            <h2 className="text-3xl font-bold text-center mb-10">
+              Perguntas <span className="gradient-text">frequentes</span>
+            </h2>
+          </AnimatedSection>
+
+          <AnimatedSection delay={0.2}>
+            <Accordion type="single" collapsible className="space-y-2">
+              {FAQ_ITEMS.map((item, i) => (
+                <AccordionItem
+                  key={i}
+                  value={`faq-${i}`}
+                  className="bg-card/60 backdrop-blur-xl border border-border/50 px-4 rounded-xl hover:border-primary/30 transition-colors"
+                >
+                  <AccordionTrigger className="text-left text-sm font-medium hover:no-underline">
+                    {item.q}
+                  </AccordionTrigger>
+                  <AccordionContent className="text-sm text-muted-foreground">
+                    {item.a}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </AnimatedSection>
         </div>
       </section>
 
-      {/* ── Acesso rápido ── */}
-      <section className="py-16 px-4 bg-secondary/20">
-        <div className="max-w-md mx-auto text-center space-y-4">
-          <h2 className="text-2xl font-bold">Já é cliente?</h2>
-          <p className="text-sm text-muted-foreground">
-            Digite o slug da sua empresa para acessar diretamente.
-          </p>
-          <div className="flex gap-2">
-            <Input
-              placeholder="minha-empresa"
-              value={slug}
-              onChange={(e) => { setSlug(e.target.value); setSlugError(""); }}
-              onKeyDown={(e) => e.key === "Enter" && handleSlugAccess()}
-            />
-            <Button onClick={handleSlugAccess}>Acessar</Button>
+      {/* ══════════ ACESSO RÁPIDO ══════════ */}
+      <section className="py-16 px-4 relative">
+        <div className="absolute inset-0 bg-secondary/20" />
+        <AnimatedSection className="relative z-10">
+          <div className="max-w-md mx-auto text-center space-y-4">
+            <h2 className="text-2xl font-bold">Já é cliente?</h2>
+            <p className="text-sm text-muted-foreground">
+              Digite o slug da sua empresa para acessar diretamente.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                placeholder="minha-empresa"
+                value={slug}
+                onChange={(e) => { setSlug(e.target.value); setSlugError(""); }}
+                onKeyDown={(e) => e.key === "Enter" && handleSlugAccess()}
+                className="bg-card/60 backdrop-blur-sm border-border/50"
+              />
+              <Button onClick={handleSlugAccess}>Acessar</Button>
+            </div>
+            {slugError && <p className="text-sm text-destructive">{slugError}</p>}
+            <p className="text-xs text-muted-foreground">
+              Não sabe seu slug?{" "}
+              <button onClick={() => navigate("/auth")} className="text-primary hover:underline">
+                Faça login normalmente
+              </button>
+            </p>
           </div>
-          {slugError && <p className="text-sm text-destructive">{slugError}</p>}
-          <p className="text-xs text-muted-foreground">
-            Não sabe seu slug?{" "}
-            <button onClick={() => navigate("/auth")} className="text-primary hover:underline">
-              Faça login normalmente
-            </button>
-          </p>
-        </div>
+        </AnimatedSection>
       </section>
 
-      {/* ── Footer ── */}
-      <footer className="border-t border-border py-10 px-4">
+      {/* ══════════ FOOTER ══════════ */}
+      <footer className="border-t border-border/50 py-10 px-4">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
           <img src={orbitLogo} alt="Orbit" className="h-6" />
           <div className="flex gap-6">
-            <span className="hover:text-foreground cursor-pointer">Termos</span>
-            <span className="hover:text-foreground cursor-pointer">Privacidade</span>
-            <span className="hover:text-foreground cursor-pointer">Suporte</span>
+            <span className="hover:text-foreground cursor-pointer transition-colors">Termos</span>
+            <span className="hover:text-foreground cursor-pointer transition-colors">Privacidade</span>
+            <span className="hover:text-foreground cursor-pointer transition-colors">Suporte</span>
           </div>
           <span>© {new Date().getFullYear()} Fluxrow. Todos os direitos reservados.</span>
         </div>
