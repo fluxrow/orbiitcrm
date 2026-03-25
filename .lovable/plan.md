@@ -1,60 +1,68 @@
 
 
-# Listas com marcadores no editor de email
+# Sidebar recolhível com expansão por hover
 
-## Situacao atual
+## Resumo
+Transformar o OrbitSidebar em um menu que inicia recolhido (apenas ícones, ~64px) no desktop e expande suavemente ao hover. No mobile, usar toggle por botão. O sidebar expandido sobrepõe o conteúdo (overlay) para evitar reflow do layout.
 
-O editor TipTap ja inclui suporte a listas (StarterKit tem bulletList e orderedList) e os botoes ja estao na toolbar. O problema e que:
-1. As listas nao tem estilos inline para compatibilidade com clientes de email
-2. O preview pode nao renderizar os bullets corretamente com a classe `prose`
+## Mudanças
 
-## Mudancas
+### 1. `src/components/orbit/OrbitSidebar.tsx`
+- Adicionar estado `collapsed` (true por padrão no desktop) e `hovered` controlado por `onMouseEnter`/`onMouseLeave`
+- Usar `useIsMobile()` para desabilitar hover no mobile e usar toggle manual
+- Sidebar visível = `!collapsed || hovered`
+- Largura: colapsado `w-[68px]`, expandido `w-64`, com `transition-all duration-300`
+- Quando colapsado e sem hover:
+  - Logo: mostrar apenas o ícone/imagem sem texto
+  - Nav items: mostrar apenas ícones centralizados, com `<Tooltip>` mostrando o nome
+  - Badge de tarefas: pequeno dot indicator ao invés do número completo
+  - User footer: mostrar apenas avatar compacto
+  - Ocultar textos com `opacity-0 w-0 overflow-hidden` animado
+- Quando expandido (hover):
+  - Mostrar tudo normalmente como está hoje
+  - Sidebar fica com `position: absolute` + `z-50` para sobrepor o conteúdo sem empurrá-lo
+- Adicionar zona de hover invisível (`w-2 h-full fixed left-0`) para facilitar ativação
 
-### 1. `src/components/orbit/EmailTemplateEditor.tsx`
-- Configurar as extensoes `BulletList` e `OrderedList` do StarterKit com `HTMLAttributes` que adicionam estilos inline automaticamente:
-  - `<ul>`: `style="padding-left:20px; margin:10px 0; list-style-type:disc;"`
-  - `<ol>`: `style="padding-left:20px; margin:10px 0; list-style-type:decimal;"`
-  - `<li>`: `style="margin-bottom:6px;"`
-- Isso garante que o HTML gerado pelo editor ja contenha estilos inline compatíveis com Gmail, Outlook e Apple Mail
-- O StarterKit permite override de extensoes individuais via `configure`
+### 2. `src/components/orbit/OrbitLayout.tsx`
+- Trocar o sidebar de ocupar espaço fixo no flex para:
+  - Reservar `w-[68px]` de espaço fixo para o sidebar colapsado
+  - Sidebar expandido fica em overlay (absolute/fixed) por cima do conteúdo
+- No mobile: sidebar fica offcanvas (hidden por padrão), com botão hamburger no header
 
-### 2. `src/pages/orbit/EmailTemplateEditorPage.tsx`
-- Adicionar estilos CSS inline na div do preview para garantir que `ul`, `ol` e `li` renderizem com bullets/numeros visiveis e espaçamento adequado
-- Adicionar ao `previewHtml` um pos-processamento que injeta estilos inline nos tags `<ul>`, `<ol>` e `<li>` caso nao existam (para templates antigos sem estilos)
+### 3. `src/index.css`
+- Adicionar classe utilitária para a transição do sidebar se necessário
 
-### 3. `supabase/functions/orbit-send-email/index.ts`
-- Antes de enviar, pos-processar o `html` para garantir que `<ul>`, `<ol>` e `<li>` sem `style` recebam estilos inline padrão para compatibilidade com email
-- Regex simples para adicionar estilos se ausentes
+## Detalhes técnicos
 
-## Detalhes tecnicos
-
-Para o StarterKit, a configuracao fica:
-```tsx
-StarterKit.configure({
-  heading: { levels: [1, 2, 3] },
-  bulletList: {
-    HTMLAttributes: {
-      style: "padding-left: 20px; margin: 10px 0; list-style-type: disc;",
-    },
-  },
-  orderedList: {
-    HTMLAttributes: {
-      style: "padding-left: 20px; margin: 10px 0; list-style-type: decimal;",
-    },
-  },
-  listItem: {
-    HTMLAttributes: {
-      style: "margin-bottom: 6px;",
-    },
-  },
-})
+Estrutura do sidebar:
+```
+<div className="fixed left-0 inset-y-0 z-50" onMouseEnter/onMouseLeave>
+  {/* Hover zone invisível */}
+  <aside className={cn(
+    "h-full bg-sidebar border-r flex flex-col transition-all duration-300",
+    isExpanded ? "w-64" : "w-[68px]"
+  )}>
+    {/* Logo - condicional */}
+    {/* Nav - ícones sempre, texto condicional com tooltip */}
+    {/* User - avatar sempre, texto condicional */}
+  </aside>
+</div>
 ```
 
-Para o preview, adicionar estilos ao container:
-```tsx
-<div
-  className="prose prose-sm max-w-none text-black [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1.5"
-  dangerouslySetInnerHTML={{ __html: previewHtml }}
-/>
+Layout:
 ```
+<div className="flex h-screen">
+  <div className="w-[68px] shrink-0" /> {/* spacer */}
+  <OrbitSidebar />
+  <main className="flex-1">...</main>
+</div>
+```
+
+Tooltips nos ícones quando colapsado usando o componente `Tooltip` existente do shadcn.
+
+Mobile: sidebar hidden, botão hamburger no topo, sidebar abre como drawer overlay.
+
+## Arquivos modificados
+- `src/components/orbit/OrbitSidebar.tsx`
+- `src/components/orbit/OrbitLayout.tsx`
 
