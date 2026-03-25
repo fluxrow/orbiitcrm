@@ -34,6 +34,11 @@ export default function TrialPage() {
   const { toast } = useToast();
   const [submitted, setSubmitted] = useState(false);
 
+  useEffect(() => {
+    document.title = "Começar Trial Grátis — Orbit CRM | CRM com IA";
+    return () => { document.title = "Orbit CRM — CRM com IA para WhatsApp, Email e Vendas"; };
+  }, []);
+
   const defaultPlan = (searchParams.get("plan") || "basic") as FormValues["plan_code"];
   const validPlan = ["basic", "professional", "plus"].includes(defaultPlan) ? defaultPlan : "basic";
 

@@ -21,6 +21,11 @@ export default function AuthPage() {
   const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
+    document.title = "Login — Orbit CRM | Acesse sua conta";
+    return () => { document.title = "Orbit CRM — CRM com IA para WhatsApp, Email e Vendas"; };
+  }, []);
+
+  useEffect(() => {
     checkIfSetupNeeded();
   }, []);
 
