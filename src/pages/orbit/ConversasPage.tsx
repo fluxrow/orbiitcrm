@@ -16,6 +16,20 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
+function stripHtml(html: string): string {
+  return html
+    .replace(/<\/p>\s*<p>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&nbsp;/gi, ' ')
+    .trim();
+}
+
 function MediaPreview({ tipo_midia, url_midia, mensagem }: { tipo_midia: string | null; url_midia: string | null; mensagem?: string }) {
   if (!tipo_midia || !url_midia) return null;
 
@@ -265,7 +279,7 @@ export default function ConversasPage() {
           <ScrollArea className="flex-1">
             {isLoading ? <div className="flex justify-center py-8"><Loader2 className="animate-spin" /></div> : filtered?.map((c) => (
               <div key={c.id} onClick={() => setActiveId(c.id)} className={`p-4 border-b cursor-pointer hover:bg-muted/50 ${activeId === c.id ? "bg-muted" : ""}`}>
-                <div className="flex gap-3"><Avatar className="h-10 w-10"><AvatarFallback>{c.telefone_whatsapp[0]}</AvatarFallback></Avatar><div className="flex-1 min-w-0"><span className="font-medium truncate block">{(() => { const p = c.prospect as any; if (p?.nome_contato?.trim()) return p.nome_contato.trim(); const n = p?.nome_razao || ""; const d = n.replace(/\D/g, ""); if (/^\d{8,}$/.test(d) || n.startsWith("WhatsApp ")) return p?.nome_fantasia?.trim() || c.telefone_whatsapp; return n || c.telefone_whatsapp; })()}</span><p className="text-sm text-muted-foreground truncate">{c.ultima_mensagem_preview || "Sem mensagens"}</p></div></div>
+                <div className="flex gap-3"><Avatar className="h-10 w-10"><AvatarFallback>{c.telefone_whatsapp[0]}</AvatarFallback></Avatar><div className="flex-1 min-w-0"><span className="font-medium truncate block">{(() => { const p = c.prospect as any; if (p?.nome_contato?.trim()) return p.nome_contato.trim(); const n = p?.nome_razao || ""; const d = n.replace(/\D/g, ""); if (/^\d{8,}$/.test(d) || n.startsWith("WhatsApp ")) return p?.nome_fantasia?.trim() || c.telefone_whatsapp; return n || c.telefone_whatsapp; })()}</span><p className="text-sm text-muted-foreground truncate">{stripHtml(c.ultima_mensagem_preview || "") || "Sem mensagens"}</p></div></div>
               </div>
             ))}
           </ScrollArea>
@@ -290,7 +304,7 @@ export default function ConversasPage() {
                         <MediaPreview tipo_midia={m.tipo_midia} url_midia={m.url_midia} mensagem={m.mensagem || undefined} />
                         {/* Show text if there's no media or there's a caption */}
                         {(!m.tipo_midia || (m.mensagem && m.mensagem !== `📎 ${m.tipo_midia}` && m.mensagem !== "🎙️ Áudio")) && (
-                          <p className="text-sm">{m.mensagem}</p>
+                          <p className="text-sm whitespace-pre-wrap">{stripHtml(m.mensagem || "")}</p>
                         )}
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs opacity-70">{m.timestamp ? format(new Date(m.timestamp), "HH:mm") : ""}</span>
