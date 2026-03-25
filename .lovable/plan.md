@@ -1,149 +1,99 @@
 
 
-# Integração Stripe para Assinaturas Recorrentes no Orbit
+# Integração Billing Stripe com Lógica de Planos do Orbit
 
-## Resumo
+## Análise do Estado Atual
 
-Adicionar cobrança recorrente via Stripe ao Orbit, conectando-se às tabelas `saas_plans` e `saas_empresa` já existentes. Nenhuma arquitetura paralela será criada.
+A base já está sólida:
+- **Webhook** (`stripe-webhook`) já sincroniza `plan_id` via `findPlanByPriceId`, atualiza `status`, `stripe_status`, períodos e erros de pagamento
+- **RPCs server-side** (`saas_can_use`, `saas_increment_usage`, `saas_get_empresa_plan`) já validam features/limits com base no plano ativo da empresa
+- **Edge Functions de envio** (WhatsApp, Email, Meta, Lead Search) já chamam `saas_can_use` antes de executar
+- **MeuPlanoPage** já exibe plano, status, consumo e botões de checkout/portal
 
-## 1. Habilitar Stripe
+## Gaps Identificados
 
-Usar a ferramenta `stripe--enable_stripe` para configurar a secret key e desbloquear as ferramentas de criação de produtos/preços.
+1. **Webhook não trata `trialing`** — Stripe envia `trialing` mas o webhook não mapeia para `status = 'trial'`
+2. **Webhook não trata `incomplete`** — deveria marcar como `pending`
+3. **MeuPlanoPage não oferece upgrade/downgrade para assinantes** — só mostra "Gerenciar Assinatura" (portal), sem comparação de planos
+4. **Contagem real de usuários/prospects** não é exibida — UsageCard mostra `used: 0` hardcoded
+5. **Sem suporte a proration** — checkout cria nova assinatura em vez de alterar a existente
+6. **`saas_get_empresa_plan` não retorna `stripe_status`** — útil para UI mostrar estado real
 
-## 2. Migração: adicionar colunas Stripe
+## Plano de Implementação
 
-### Tabela `saas_plans` — vincular ao Stripe
+### 1. Migração SQL — Melhorar `saas_get_empresa_plan`
+
+Adicionar `stripe_status` ao retorno da RPC para que o frontend e enforcement tenham visibilidade completa.
 
 ```sql
-ALTER TABLE saas_plans
-  ADD COLUMN stripe_product_id text,
-  ADD COLUMN stripe_price_id_monthly text,
-  ADD COLUMN stripe_price_id_yearly text,
-  ADD COLUMN stripe_active boolean DEFAULT true;
+CREATE OR REPLACE FUNCTION public.saas_get_empresa_plan(p_empresa_id uuid)
+-- Adicionar stripe_status e billing_status ao jsonb retornado
 ```
 
-### Tabela `saas_empresa` — dados da assinatura
+### 2. Webhook — Tratar `trialing` e `incomplete`
 
-```sql
-ALTER TABLE saas_empresa
-  ADD COLUMN stripe_customer_id text,
-  ADD COLUMN stripe_subscription_id text,
-  ADD COLUMN stripe_status text,
-  ADD COLUMN current_period_start timestamptz,
-  ADD COLUMN current_period_end timestamptz,
-  ADD COLUMN cancel_at_period_end boolean DEFAULT false,
-  ADD COLUMN trial_end timestamptz,
-  ADD COLUMN last_invoice_status text,
-  ADD COLUMN last_payment_error text;
-```
+No `customer.subscription.updated`:
+- `trialing` → `status = 'trial'`
+- `incomplete` → `status = 'pending'`
 
-## 3. Edge Functions (4 funções)
+Manter mapeamentos existentes (`active`, `past_due`, `canceled`, `unpaid`).
 
-### `stripe-checkout` — criar checkout session
-- Recebe `empresa_id` e `price_id` (ou `plan_code` + `interval`)
-- Busca/cria `stripe_customer_id` na `saas_empresa`
-- Cria `Stripe.checkout.sessions.create()` com `mode: 'subscription'`
-- Retorna `session.url`
+### 3. Edge Function `stripe-change-plan` (nova)
 
-### `stripe-portal` — portal do cliente
-- Recebe `empresa_id`
-- Busca `stripe_customer_id`
-- Cria `Stripe.billingPortal.sessions.create()`
-- Retorna `session.url`
+Para upgrade/downgrade de assinantes existentes:
+- Recebe `empresa_id` e `new_price_id`
+- Valida admin + pertence à empresa
+- Usa `stripe.subscriptions.update()` com `proration_behavior: 'create_prorations'`
+- Atualiza o item da assinatura existente (não cria nova)
+- O webhook `subscription.updated` cuida do resto (sincroniza `plan_id`)
 
-### `stripe-subscription-status` — consultar status
-- Recebe `empresa_id`
-- Busca `stripe_subscription_id`
-- Retorna dados atuais da assinatura do Stripe
+### 4. Hook `useStripeSubscription` — Adicionar `changePlan`
 
-### `stripe-webhook` — webhook seguro
-- Valida assinatura com `Stripe.webhooks.constructEvent()`
-- Eventos tratados:
-  - `checkout.session.completed` → vincula `subscription_id` e `customer_id`, atualiza `saas_empresa.status` para `active`
-  - `customer.subscription.updated` → atualiza `stripe_status`, `current_period_start/end`, `cancel_at_period_end`, `trial_end`; sincroniza `plan_id` se o preço mudou
-  - `customer.subscription.deleted` → marca `stripe_status = 'canceled'`, atualiza `saas_empresa.status = 'canceled'`
-  - `invoice.paid` → atualiza `last_invoice_status = 'paid'`, `billing_status = 'paid'`
-  - `invoice.payment_failed` → atualiza `last_invoice_status = 'failed'`, `last_payment_error`
+Nova mutation `useStripeChangePlan` que invoca `stripe-change-plan`.
 
-### Segurança
-- Webhook usa secret `STRIPE_WEBHOOK_SECRET` para validação
-- Demais funções validam JWT via `auth.getUser()`
-- Verificação de que o usuário pertence à empresa (admin only)
+### 5. MeuPlanoPage — Upgrade/Downgrade + Dados Reais
 
-## 4. Secrets necessários
+**Para assinantes ativos:**
+- Mostrar cards dos outros planos com botão "Fazer Upgrade" ou "Fazer Downgrade"
+- Indicar plano atual com badge "Plano Atual"
+- Exibir preço de cada plano (do JSONB `limits` ou nova coluna)
 
-- `STRIPE_SECRET_KEY` — será coletado pelo `stripe--enable_stripe`
-- `STRIPE_WEBHOOK_SECRET` — será solicitado via `add_secret` após criar o endpoint
+**Contagens reais:**
+- Buscar contagem de usuários: `profiles` where `empresa_id`
+- Buscar contagem de prospects: `orbit_prospects` where `empresa_id`
 
-## 5. Frontend — hooks e página Meu Plano
+**Status mapping completo:**
+- Exibir `trialing`, `incomplete`, `paused` corretamente
 
-### Hook `useStripeSubscription`
-- Funções: `createCheckout(planCode, interval)`, `openPortal()`, `getStatus()`
-- Invoca edge functions via `supabase.functions.invoke()`
-
-### Atualização de `MeuPlanoPage.tsx`
-- Substituir os botões estáticos de "Solicitar Upgrade" e "Falar com Suporte"
-- Adicionar:
-  - **Dados da assinatura**: próxima cobrança (`current_period_end`), periodicidade, status Stripe
-  - **Botão "Assinar"**: visível quando `stripe_subscription_id` é null e plano não é demo
-  - **Botão "Trocar Plano"**: abre checkout com outro `price_id`
-  - **Botão "Gerenciar Assinatura"**: abre Stripe Portal (alterar cartão, cancelar, reativar)
-  - **Badge de status**: mapeia `stripe_status` (active, past_due, canceled, trialing)
-  - **Alerta de falha**: exibe `last_payment_error` quando aplicável
-
-### Atualização de `useSaasPlans.ts`
-- Estender interface `SaasPlan` com campos `stripe_*`
-- Estender interface `SaasEmpresa` com campos Stripe
-
-## 6. Fluxo completo da assinatura
+### 6. Fluxo Completo Resultante
 
 ```text
-Tenant Admin clica "Assinar"
-  → Frontend chama stripe-checkout (edge function)
-    → Cria/busca Stripe Customer
-    → Cria Checkout Session
-    → Retorna URL → redirect
-  → Usuário paga no Stripe Checkout
-  → Stripe envia webhook checkout.session.completed
-    → stripe-webhook atualiza saas_empresa:
-      - stripe_customer_id
-      - stripe_subscription_id
-      - stripe_status = 'active'
-      - status = 'active'
-      - current_period_start/end
-  → Página Meu Plano reflete status atualizado
+Checkout (novo assinante):
+  stripe-checkout → Stripe Checkout → webhook checkout.session.completed
+  → plan_id sincronizado → saas_can_use lê novo plano → recursos liberados
 
-Renovação mensal:
-  → Stripe cobra automaticamente
-  → invoice.paid → atualiza last_invoice_status
-  → subscription.updated → atualiza period_start/end
-
-Falha de pagamento:
-  → invoice.payment_failed → salva erro, marca billing_status
+Upgrade/Downgrade (assinante existente):
+  stripe-change-plan → stripe.subscriptions.update(proration)
+  → webhook subscription.updated → plan_id atualizado → recursos atualizados
 
 Cancelamento:
-  → Usuário clica "Gerenciar" → Stripe Portal → cancela
-  → subscription.updated → cancel_at_period_end = true
-  → subscription.deleted → status = 'canceled'
+  Portal Stripe → subscription.updated (cancel_at_period_end=true)
+  → subscription.deleted → status='canceled' → saas_can_use bloqueia
+
+Falha pagamento:
+  invoice.payment_failed → last_payment_error salvo → UI exibe alerta
+
+Trial → Assinatura:
+  stripe-checkout com trial ativo → webhook atualiza status para 'active'
 ```
 
-## 7. O que NÃO será alterado
-- Fluxo de trial existente (continua funcionando independente)
-- Onboarding e demo
-- Lógica de `saas_can_use` / `saas_increment_usage` (já funciona com `status`)
-- Multi-tenancy e RLS
-
-## Arquivos criados/modificados
+## Arquivos
 
 | Arquivo | Ação |
 |---------|------|
-| Migração SQL | Adicionar colunas Stripe em `saas_plans` e `saas_empresa` |
-| `supabase/functions/stripe-checkout/index.ts` | Criar |
-| `supabase/functions/stripe-portal/index.ts` | Criar |
-| `supabase/functions/stripe-subscription-status/index.ts` | Criar |
-| `supabase/functions/stripe-webhook/index.ts` | Criar |
-| `supabase/config.toml` | Adicionar `[functions.stripe-webhook] verify_jwt = false` |
-| `src/hooks/useStripeSubscription.ts` | Criar |
-| `src/hooks/useSaasPlans.ts` | Estender interfaces |
-| `src/pages/orbit/MeuPlanoPage.tsx` | Conectar ao Stripe |
+| Migração SQL | Atualizar `saas_get_empresa_plan` com `stripe_status` |
+| `supabase/functions/stripe-webhook/index.ts` | Adicionar mapping `trialing`→`trial`, `incomplete`→`pending` |
+| `supabase/functions/stripe-change-plan/index.ts` | **Criar** — upgrade/downgrade via `subscriptions.update` |
+| `src/hooks/useStripeSubscription.ts` | Adicionar `useStripeChangePlan` |
+| `src/pages/orbit/MeuPlanoPage.tsx` | Cards upgrade/downgrade, contagens reais, status completo |
 
