@@ -4,8 +4,7 @@ import { ArrowRight, Play } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
-import AnimatedBackground from "./AnimatedBackground";
-import HeroParticles from "./HeroParticles";
+import StarfieldCanvas from "./StarfieldCanvas";
 import HeroDashboardMockup from "./HeroDashboardMockup";
 
 const STATS = [
