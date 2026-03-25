@@ -12,3 +12,5 @@ Allow: /
 
 User-agent: *
 Allow: /
+
+Sitemap: https://orbiitcrm.lovable.app/sitemap.xml

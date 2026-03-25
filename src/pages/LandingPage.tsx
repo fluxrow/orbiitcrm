@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -108,6 +108,10 @@ function SectionLabel({ children }: { children: string }) {
 export default function LandingPage() {
   const navigate = useNavigate();
   const [slug, setSlug] = useState("");
+
+  useEffect(() => {
+    document.title = "Orbit CRM — CRM com IA para WhatsApp, Email e Vendas";
+  }, []);
   const [slugError, setSlugError] = useState("");
   const [isAnnual, setIsAnnual] = useState(false);
 
