@@ -80,6 +80,19 @@ function randomDelay(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1) + min);
 }
 
+function toTitleCase(str: string): string {
+  if (!str) return "";
+  const lower = ["de", "da", "do", "das", "dos", "e", "em", "na", "no", "nas", "nos", "a", "o", "as", "os", "com", "para", "por"];
+  return str
+    .toLowerCase()
+    .split(" ")
+    .map((word, i) => {
+      if (i > 0 && lower.includes(word)) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
+}
+
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return optionsResponse();
 
@@ -285,13 +298,13 @@ const handler = async (req: Request): Promise<Response> => {
         };
 
         const variaveis: Record<string, string> = {
-          "{{nome}}": getDisplayName(prospect).toUpperCase(),
-          "{{empresa}}": getCompanyName(prospect).toUpperCase(),
-          "{{nome_fantasia}}": (prospect.nome_fantasia || "").toUpperCase(),
+          "{{nome}}": toTitleCase(getDisplayName(prospect)),
+          "{{empresa}}": toTitleCase(getCompanyName(prospect)),
+          "{{nome_fantasia}}": toTitleCase(prospect.nome_fantasia || ""),
           "{{email}}": prospect.email_principal || "",
           "{{telefone}}": prospect.telefone || prospect.whatsapp || "",
-          "{{cidade}}": (prospect.cidade || "").toUpperCase(),
-          "{{segmento}}": (prospect.segmento || "").toUpperCase(),
+          "{{cidade}}": toTitleCase(prospect.cidade || ""),
+          "{{segmento}}": toTitleCase(prospect.segmento || ""),
         };
 
         for (const [key, value] of Object.entries(variaveis)) {
