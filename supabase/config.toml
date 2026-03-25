@@ -74,3 +74,15 @@ verify_jwt = false
 
 [functions.orbit-validate-whatsapp]
 verify_jwt = false
+
+[functions.stripe-checkout]
+verify_jwt = false
+
+[functions.stripe-portal]
+verify_jwt = false
+
+[functions.stripe-subscription-status]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
