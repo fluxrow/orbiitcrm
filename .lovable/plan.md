@@ -1,50 +1,76 @@
 
 
-# Variáveis de template com capitalização de nomes próprios
+# Reestruturação da Landing Page — Página de vendas completa
 
-## Problema
-Atualmente, as variáveis `{{nome}}`, `{{empresa}}`, `{{nome_fantasia}}`, `{{cidade}}` e `{{segmento}}` são convertidas para CAIXA ALTA com `.toUpperCase()` no envio de campanhas. O correto é usar Title Case (primeira letra maiúscula de cada palavra), seguindo a regra ortográfica brasileira para nomes próprios.
+## Resumo
+Reescrever a `LandingPage.tsx` como uma página de vendas persuasiva e orientada a conversão, com copy comercial forte, novas seções (Problema, Solução, Diferenciais, Para quem é, Prova de valor) e conteúdo focado 100% no que já está implementado.
 
-## Mudança
+## Estrutura final da página (seções em ordem)
 
-### `supabase/functions/send-orbit-campaign/index.ts` (~linha 287-295)
+### 1. Hero
+- **Headline**: "Sua equipe comercial no piloto automático"
+- **Subheadline**: "O Orbit é o CRM com IA que atende, qualifica e distribui leads pelo WhatsApp, email e redes sociais — para que seu time só feche negócios."
+- CTAs: "Testar grátis por 7 dias" + "Ver demonstração"
+- Badges de prova: "WhatsApp + IA", "CRM completo", "Campanhas automáticas"
 
-Criar uma função `toTitleCase` que capitalize a primeira letra de cada palavra, mantendo preposições/artigos em minúscula (de, da, do, das, dos, e, em, etc.):
+### 2. Problema (nova seção)
+- 3 cards com dores reais:
+  - "Leads perdidos no WhatsApp pessoal" — vendedores usam celular próprio, empresa perde histórico
+  - "Equipe sem processo" — sem funil, sem follow-up, oportunidades esquecidas
+  - "Tempo gasto com leads frios" — vendedores perdem horas respondendo quem não vai comprar
 
-```typescript
-const toTitleCase = (str: string): string => {
-  if (!str) return "";
-  const lower = ["de", "da", "do", "das", "dos", "e", "em", "na", "no", "nas", "nos", "a", "o", "as", "os", "com", "para", "por"];
-  return str
-    .toLowerCase()
-    .split(" ")
-    .map((word, i) => {
-      if (i > 0 && lower.includes(word)) return word;
-      return word.charAt(0).toUpperCase() + word.slice(1);
-    })
-    .join(" ");
-};
-```
+### 3. Solução (nova seção)
+- Texto direto: "O Orbit centraliza toda a operação comercial em uma plataforma com IA que trabalha 24h"
+- 3 pontos-chave com ícones: "IA qualifica antes do vendedor", "Tudo registrado automaticamente", "Distribuição inteligente entre a equipe"
 
-Trocar `.toUpperCase()` por `toTitleCase()` nas variáveis de nome próprio:
+### 4. Como funciona (5 passos — fluxo real)
+- Passo 1: Lead entra (WhatsApp, importação, busca ativa, formulário)
+- Passo 2: IA atende e qualifica automaticamente
+- Passo 3: Lead qualificado é encaminhado ao vendedor certo (handoff)
+- Passo 4: Vendedor negocia no funil Kanban com tarefas e timeline
+- Passo 5: Campanhas de follow-up por email e WhatsApp
 
-```typescript
-const variaveis: Record<string, string> = {
-  "{{nome}}": toTitleCase(getDisplayName(prospect)),
-  "{{empresa}}": toTitleCase(getCompanyName(prospect)),
-  "{{nome_fantasia}}": toTitleCase(prospect.nome_fantasia || ""),
-  "{{email}}": prospect.email_principal || "",
-  "{{telefone}}": prospect.telefone || prospect.whatsapp || "",
-  "{{cidade}}": toTitleCase(prospect.cidade || ""),
-  "{{segmento}}": toTitleCase(prospect.segmento || ""),
-};
-```
+### 5. Funcionalidades (reorganizadas em 3 colunas)
+- **IA & Automação**: Atendimento IA no WhatsApp, qualificação automática, distribuição round-robin
+- **CRM & Pipeline**: Funil Kanban, tarefas por oportunidade, timeline de interações, importação de contatos
+- **Comunicação & Campanhas**: WhatsApp bidirecional, email marketing, templates editáveis, Instagram e Facebook (Plus)
 
-Exemplos de resultado:
-- `"JOÃO DA SILVA"` → `"João da Silva"`
-- `"SAO PAULO"` → `"São Paulo"` (nota: acentuação depende do dado original)
-- `"EMPRESA DE TECNOLOGIA"` → `"Empresa de Tecnologia"`
+### 6. Diferenciais (nova seção)
+- "IA de verdade, não chatbot" — qualifica, extrai dados, encaminha com contexto
+- "Anti-bloqueio WhatsApp" — warm-up, delays aleatórios, controle de volume
+- "Multi-empresa" — cada empresa com ambiente isolado, dados separados
+- "Tudo em um só lugar" — sem precisar de 5 ferramentas diferentes
+
+### 7. Prova de valor (nova seção)
+- 3 blocos com números/benefícios:
+  - "Economia de horas" — IA responde 24h, vendedor foca no que importa
+  - "Mais conversão" — leads qualificados chegam prontos ao vendedor
+  - "Zero lead perdido" — tudo registrado, com histórico e follow-up
+
+### 8. Para quem é (nova seção)
+- Cards com perfis: Agências, Consultorias B2B, Imobiliárias, Escolas/Cursos, Clínicas, Equipes de vendas com WhatsApp
+
+### 9. Planos (mantidos, com copy melhorado)
+- Mesma estrutura de 4 cards (Demo, Basic, Professional, Plus)
+- Textos mais comerciais nos ideais
+
+### 10. FAQ (atualizado com copy mais persuasivo)
+
+### 11. CTA final (nova seção)
+- Headline: "Pronto para vender mais com menos esforço?"
+- Botão grande: "Começar agora — 7 dias grátis"
+- Texto: "Sem cartão de crédito. Cancele quando quiser."
+
+### 12. Acesso rápido (mantido)
+### 13. Footer (mantido)
 
 ## Arquivo modificado
-- `supabase/functions/send-orbit-campaign/index.ts`
+- `src/pages/LandingPage.tsx` — reescrita completa do conteúdo e adição de novas seções
+
+## Detalhes técnicos
+- Mesmos componentes UI existentes (Card, Button, Badge, Accordion, Input)
+- Mesmos ícones do Lucide (adicionando alguns novos: `BotMessageSquare`, `ShieldCheck`, `Timer`, `TrendingUp`, `Building2`, `HeartHandshake`)
+- Nenhum componente novo necessário
+- CSS existente (`glass-card`, `gradient-text`) reutilizado
+- Sem mudança no header (`HotsiteHeader`) ou layout (`PublicLayout`)
 
