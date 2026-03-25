@@ -9,10 +9,10 @@ export interface SaasPlan {
   limits: Record<string, number>;
   created_at: string;
   updated_at: string;
-  stripe_product_id: string | null;
-  stripe_price_id_monthly: string | null;
-  stripe_price_id_yearly: string | null;
-  stripe_active: boolean;
+  stripe_product_id?: string | null;
+  stripe_price_id_monthly?: string | null;
+  stripe_price_id_yearly?: string | null;
+  stripe_active?: boolean;
 }
 
 export interface SaasEmpresa {
