@@ -17,6 +17,7 @@ import orbitLogo from "@/assets/orbit-logo.png";
 import AnimatedSection from "@/components/landing/AnimatedSection";
 import GlowCard from "@/components/landing/GlowCard";
 import AnimatedBackground from "@/components/landing/AnimatedBackground";
+import HeroSection from "@/components/landing/HeroSection";
 
 /* ─── Data (unchanged) ─── */
 const PROBLEMS = [
@@ -132,82 +133,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-background text-foreground noise-bg">
 
       {/* ══════════ HERO ══════════ */}
-      <section className="relative pt-20 pb-28 px-4 overflow-hidden">
-        <AnimatedBackground />
-
-        <div className="relative z-10 max-w-4xl mx-auto text-center space-y-8">
-          <motion.img
-            src={orbitLogo}
-            alt="Orbit CRM"
-            className="h-36 mx-auto drop-shadow-[0_0_30px_hsl(187_92%_50%/0.25)]"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.7 }}
-          />
-
-          <motion.h1
-            className="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-tight"
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.2 }}
-          >
-            <span className="gradient-text">Sua equipe comercial</span>
-            <br />
-            no piloto automático
-          </motion.h1>
-
-          <motion.p
-            className="text-lg text-muted-foreground max-w-2xl mx-auto"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-          >
-            O Orbit é o CRM com IA que atende, qualifica e distribui leads pelo WhatsApp, email e redes sociais — para que seu time só feche negócios.
-          </motion.p>
-
-          <motion.div
-            className="flex flex-wrap items-center justify-center gap-3"
-            variants={stagger}
-            initial="hidden"
-            animate="show"
-          >
-            {[
-              { icon: MessageSquare, label: "WhatsApp + IA" },
-              { icon: Kanban, label: "CRM completo" },
-              { icon: Rocket, label: "Campanhas automáticas" },
-            ].map((b) => (
-              <motion.div key={b.label} variants={fadeUp}>
-                <Badge variant="secondary" className="gap-1.5 py-1.5 px-4 bg-secondary/60 backdrop-blur-sm border border-border/50">
-                  <b.icon className="w-3.5 h-3.5 text-primary" /> {b.label}
-                </Badge>
-              </motion.div>
-            ))}
-          </motion.div>
-
-          <motion.div
-            className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.7 }}
-          >
-            <Button
-              size="lg"
-              onClick={() => navigate("/trial")}
-              className="gap-2 text-base px-8 animate-glow-pulse hover:scale-105 transition-transform"
-            >
-              Testar grátis por 7 dias <ArrowRight className="w-4 h-4" />
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              onClick={() => navigate("/demo")}
-              className="text-base px-8 hover:scale-105 transition-transform border-border/50 backdrop-blur-sm"
-            >
-              Ver demonstração
-            </Button>
-          </motion.div>
-        </div>
-      </section>
+      <HeroSection />
 
       {/* ══════════ PROBLEMA ══════════ */}
       <section className="py-20 px-4 relative">
