@@ -1,76 +1,149 @@
 
 
-# Reestruturação da Landing Page — Página de vendas completa
+# Integração Stripe para Assinaturas Recorrentes no Orbit
 
 ## Resumo
-Reescrever a `LandingPage.tsx` como uma página de vendas persuasiva e orientada a conversão, com copy comercial forte, novas seções (Problema, Solução, Diferenciais, Para quem é, Prova de valor) e conteúdo focado 100% no que já está implementado.
 
-## Estrutura final da página (seções em ordem)
+Adicionar cobrança recorrente via Stripe ao Orbit, conectando-se às tabelas `saas_plans` e `saas_empresa` já existentes. Nenhuma arquitetura paralela será criada.
 
-### 1. Hero
-- **Headline**: "Sua equipe comercial no piloto automático"
-- **Subheadline**: "O Orbit é o CRM com IA que atende, qualifica e distribui leads pelo WhatsApp, email e redes sociais — para que seu time só feche negócios."
-- CTAs: "Testar grátis por 7 dias" + "Ver demonstração"
-- Badges de prova: "WhatsApp + IA", "CRM completo", "Campanhas automáticas"
+## 1. Habilitar Stripe
 
-### 2. Problema (nova seção)
-- 3 cards com dores reais:
-  - "Leads perdidos no WhatsApp pessoal" — vendedores usam celular próprio, empresa perde histórico
-  - "Equipe sem processo" — sem funil, sem follow-up, oportunidades esquecidas
-  - "Tempo gasto com leads frios" — vendedores perdem horas respondendo quem não vai comprar
+Usar a ferramenta `stripe--enable_stripe` para configurar a secret key e desbloquear as ferramentas de criação de produtos/preços.
 
-### 3. Solução (nova seção)
-- Texto direto: "O Orbit centraliza toda a operação comercial em uma plataforma com IA que trabalha 24h"
-- 3 pontos-chave com ícones: "IA qualifica antes do vendedor", "Tudo registrado automaticamente", "Distribuição inteligente entre a equipe"
+## 2. Migração: adicionar colunas Stripe
 
-### 4. Como funciona (5 passos — fluxo real)
-- Passo 1: Lead entra (WhatsApp, importação, busca ativa, formulário)
-- Passo 2: IA atende e qualifica automaticamente
-- Passo 3: Lead qualificado é encaminhado ao vendedor certo (handoff)
-- Passo 4: Vendedor negocia no funil Kanban com tarefas e timeline
-- Passo 5: Campanhas de follow-up por email e WhatsApp
+### Tabela `saas_plans` — vincular ao Stripe
 
-### 5. Funcionalidades (reorganizadas em 3 colunas)
-- **IA & Automação**: Atendimento IA no WhatsApp, qualificação automática, distribuição round-robin
-- **CRM & Pipeline**: Funil Kanban, tarefas por oportunidade, timeline de interações, importação de contatos
-- **Comunicação & Campanhas**: WhatsApp bidirecional, email marketing, templates editáveis, Instagram e Facebook (Plus)
+```sql
+ALTER TABLE saas_plans
+  ADD COLUMN stripe_product_id text,
+  ADD COLUMN stripe_price_id_monthly text,
+  ADD COLUMN stripe_price_id_yearly text,
+  ADD COLUMN stripe_active boolean DEFAULT true;
+```
 
-### 6. Diferenciais (nova seção)
-- "IA de verdade, não chatbot" — qualifica, extrai dados, encaminha com contexto
-- "Anti-bloqueio WhatsApp" — warm-up, delays aleatórios, controle de volume
-- "Multi-empresa" — cada empresa com ambiente isolado, dados separados
-- "Tudo em um só lugar" — sem precisar de 5 ferramentas diferentes
+### Tabela `saas_empresa` — dados da assinatura
 
-### 7. Prova de valor (nova seção)
-- 3 blocos com números/benefícios:
-  - "Economia de horas" — IA responde 24h, vendedor foca no que importa
-  - "Mais conversão" — leads qualificados chegam prontos ao vendedor
-  - "Zero lead perdido" — tudo registrado, com histórico e follow-up
+```sql
+ALTER TABLE saas_empresa
+  ADD COLUMN stripe_customer_id text,
+  ADD COLUMN stripe_subscription_id text,
+  ADD COLUMN stripe_status text,
+  ADD COLUMN current_period_start timestamptz,
+  ADD COLUMN current_period_end timestamptz,
+  ADD COLUMN cancel_at_period_end boolean DEFAULT false,
+  ADD COLUMN trial_end timestamptz,
+  ADD COLUMN last_invoice_status text,
+  ADD COLUMN last_payment_error text;
+```
 
-### 8. Para quem é (nova seção)
-- Cards com perfis: Agências, Consultorias B2B, Imobiliárias, Escolas/Cursos, Clínicas, Equipes de vendas com WhatsApp
+## 3. Edge Functions (4 funções)
 
-### 9. Planos (mantidos, com copy melhorado)
-- Mesma estrutura de 4 cards (Demo, Basic, Professional, Plus)
-- Textos mais comerciais nos ideais
+### `stripe-checkout` — criar checkout session
+- Recebe `empresa_id` e `price_id` (ou `plan_code` + `interval`)
+- Busca/cria `stripe_customer_id` na `saas_empresa`
+- Cria `Stripe.checkout.sessions.create()` com `mode: 'subscription'`
+- Retorna `session.url`
 
-### 10. FAQ (atualizado com copy mais persuasivo)
+### `stripe-portal` — portal do cliente
+- Recebe `empresa_id`
+- Busca `stripe_customer_id`
+- Cria `Stripe.billingPortal.sessions.create()`
+- Retorna `session.url`
 
-### 11. CTA final (nova seção)
-- Headline: "Pronto para vender mais com menos esforço?"
-- Botão grande: "Começar agora — 7 dias grátis"
-- Texto: "Sem cartão de crédito. Cancele quando quiser."
+### `stripe-subscription-status` — consultar status
+- Recebe `empresa_id`
+- Busca `stripe_subscription_id`
+- Retorna dados atuais da assinatura do Stripe
 
-### 12. Acesso rápido (mantido)
-### 13. Footer (mantido)
+### `stripe-webhook` — webhook seguro
+- Valida assinatura com `Stripe.webhooks.constructEvent()`
+- Eventos tratados:
+  - `checkout.session.completed` → vincula `subscription_id` e `customer_id`, atualiza `saas_empresa.status` para `active`
+  - `customer.subscription.updated` → atualiza `stripe_status`, `current_period_start/end`, `cancel_at_period_end`, `trial_end`; sincroniza `plan_id` se o preço mudou
+  - `customer.subscription.deleted` → marca `stripe_status = 'canceled'`, atualiza `saas_empresa.status = 'canceled'`
+  - `invoice.paid` → atualiza `last_invoice_status = 'paid'`, `billing_status = 'paid'`
+  - `invoice.payment_failed` → atualiza `last_invoice_status = 'failed'`, `last_payment_error`
 
-## Arquivo modificado
-- `src/pages/LandingPage.tsx` — reescrita completa do conteúdo e adição de novas seções
+### Segurança
+- Webhook usa secret `STRIPE_WEBHOOK_SECRET` para validação
+- Demais funções validam JWT via `auth.getUser()`
+- Verificação de que o usuário pertence à empresa (admin only)
 
-## Detalhes técnicos
-- Mesmos componentes UI existentes (Card, Button, Badge, Accordion, Input)
-- Mesmos ícones do Lucide (adicionando alguns novos: `BotMessageSquare`, `ShieldCheck`, `Timer`, `TrendingUp`, `Building2`, `HeartHandshake`)
-- Nenhum componente novo necessário
-- CSS existente (`glass-card`, `gradient-text`) reutilizado
-- Sem mudança no header (`HotsiteHeader`) ou layout (`PublicLayout`)
+## 4. Secrets necessários
+
+- `STRIPE_SECRET_KEY` — será coletado pelo `stripe--enable_stripe`
+- `STRIPE_WEBHOOK_SECRET` — será solicitado via `add_secret` após criar o endpoint
+
+## 5. Frontend — hooks e página Meu Plano
+
+### Hook `useStripeSubscription`
+- Funções: `createCheckout(planCode, interval)`, `openPortal()`, `getStatus()`
+- Invoca edge functions via `supabase.functions.invoke()`
+
+### Atualização de `MeuPlanoPage.tsx`
+- Substituir os botões estáticos de "Solicitar Upgrade" e "Falar com Suporte"
+- Adicionar:
+  - **Dados da assinatura**: próxima cobrança (`current_period_end`), periodicidade, status Stripe
+  - **Botão "Assinar"**: visível quando `stripe_subscription_id` é null e plano não é demo
+  - **Botão "Trocar Plano"**: abre checkout com outro `price_id`
+  - **Botão "Gerenciar Assinatura"**: abre Stripe Portal (alterar cartão, cancelar, reativar)
+  - **Badge de status**: mapeia `stripe_status` (active, past_due, canceled, trialing)
+  - **Alerta de falha**: exibe `last_payment_error` quando aplicável
+
+### Atualização de `useSaasPlans.ts`
+- Estender interface `SaasPlan` com campos `stripe_*`
+- Estender interface `SaasEmpresa` com campos Stripe
+
+## 6. Fluxo completo da assinatura
+
+```text
+Tenant Admin clica "Assinar"
+  → Frontend chama stripe-checkout (edge function)
+    → Cria/busca Stripe Customer
+    → Cria Checkout Session
+    → Retorna URL → redirect
+  → Usuário paga no Stripe Checkout
+  → Stripe envia webhook checkout.session.completed
+    → stripe-webhook atualiza saas_empresa:
+      - stripe_customer_id
+      - stripe_subscription_id
+      - stripe_status = 'active'
+      - status = 'active'
+      - current_period_start/end
+  → Página Meu Plano reflete status atualizado
+
+Renovação mensal:
+  → Stripe cobra automaticamente
+  → invoice.paid → atualiza last_invoice_status
+  → subscription.updated → atualiza period_start/end
+
+Falha de pagamento:
+  → invoice.payment_failed → salva erro, marca billing_status
+
+Cancelamento:
+  → Usuário clica "Gerenciar" → Stripe Portal → cancela
+  → subscription.updated → cancel_at_period_end = true
+  → subscription.deleted → status = 'canceled'
+```
+
+## 7. O que NÃO será alterado
+- Fluxo de trial existente (continua funcionando independente)
+- Onboarding e demo
+- Lógica de `saas_can_use` / `saas_increment_usage` (já funciona com `status`)
+- Multi-tenancy e RLS
+
+## Arquivos criados/modificados
+
+| Arquivo | Ação |
+|---------|------|
+| Migração SQL | Adicionar colunas Stripe em `saas_plans` e `saas_empresa` |
+| `supabase/functions/stripe-checkout/index.ts` | Criar |
+| `supabase/functions/stripe-portal/index.ts` | Criar |
+| `supabase/functions/stripe-subscription-status/index.ts` | Criar |
+| `supabase/functions/stripe-webhook/index.ts` | Criar |
+| `supabase/config.toml` | Adicionar `[functions.stripe-webhook] verify_jwt = false` |
+| `src/hooks/useStripeSubscription.ts` | Criar |
+| `src/hooks/useSaasPlans.ts` | Estender interfaces |
+| `src/pages/orbit/MeuPlanoPage.tsx` | Conectar ao Stripe |
 
