@@ -83,8 +83,12 @@ export function OrbitSidebar() {
     >
       {/* Logo */}
       <div className="p-4 border-b border-sidebar-border shrink-0">
-        <Link to={`${basePath}/dashboard`} className="flex items-center gap-3">
-          <img src={orbitLogo} alt="Orbit" className="h-9 shrink-0" />
+        <Link to={`${basePath}/dashboard`} className="flex items-center gap-3 justify-center">
+          {isExpanded ? (
+            <img src={orbitLogo} alt="Orbit" className="h-9 shrink-0" />
+          ) : (
+            <img src={orbitIcon} alt="Orbit" className="h-8 w-8 shrink-0" />
+          )}
           <div
             className={cn(
               "transition-all duration-300 overflow-hidden whitespace-nowrap",
