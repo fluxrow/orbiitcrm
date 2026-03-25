@@ -24,20 +24,25 @@ export interface SystemEmailConfig {
 export async function getSystemEmailConfig(
   supabase: ReturnType<typeof createClient>,
 ): Promise<SystemEmailConfig> {
-  let apiKey: string | null = null;
+  // 1) Dedicated PE Admin key
+  let apiKey: string | null = Deno.env.get("PE_RESEND_API_KEY") || null;
 
-  try {
-    const { data: cfg } = await supabase
-      .from("orbit_resend_config")
-      .select("api_key")
-      .is("empresa_id", null)
-      .maybeSingle();
+  // 2) Global orbit_resend_config (api_key only)
+  if (!apiKey) {
+    try {
+      const { data: cfg } = await supabase
+        .from("orbit_resend_config")
+        .select("api_key")
+        .is("empresa_id", null)
+        .maybeSingle();
 
-    if (cfg?.api_key) apiKey = cfg.api_key;
-  } catch (_e) {
-    /* ignore — fall through to env var */
+      if (cfg?.api_key) apiKey = cfg.api_key;
+    } catch (_e) {
+      /* ignore — fall through to env var */
+    }
   }
 
+  // 3) General fallback
   if (!apiKey) apiKey = Deno.env.get("RESEND_API_KEY") || null;
 
   return {
