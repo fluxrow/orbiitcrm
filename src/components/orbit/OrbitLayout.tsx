@@ -4,6 +4,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { AlertCircle, Menu } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
+import { PaymentWarningBanner } from "./PaymentWarningBanner";
 
 interface OrbitLayoutProps {
   children: ReactNode;
@@ -24,6 +25,7 @@ export function OrbitLayout({ children }: OrbitLayoutProps) {
             <MobileToggle />
           </div>
         )}
+        <PaymentWarningBanner />
         {isDemo && (
           <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center justify-center gap-2 text-sm text-amber-700 dark:text-amber-400 shrink-0">
             <AlertCircle className="h-4 w-4" />
