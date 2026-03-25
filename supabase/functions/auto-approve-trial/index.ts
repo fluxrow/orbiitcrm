@@ -139,18 +139,13 @@ Deno.serve(async (req) => {
       trialReqId = trialReq.id;
     }
 
-    // Check duplicate: existing invite for same email not yet used
-    const { data: existingInvite } = await supabase
+    // Invalidate previous invites for same email BEFORE duplicate check
+    await supabase
       .from("saas_invites")
-      .select("id")
+      .update({ expires_at: new Date().toISOString() })
       .eq("email", email)
       .is("used_at", null)
-      .gt("expires_at", new Date().toISOString())
-      .maybeSingle();
-
-    if (existingInvite) {
-      return fail(ErrorCodes.VALIDATION_ERROR, "Já existe um convite pendente para este e-mail. Verifique sua caixa de entrada.", 409);
-    }
+      .gt("expires_at", new Date().toISOString());
 
     // 2) Get plan
     const { data: plan } = await supabase.from("saas_plans").select("id, name").eq("code", body.plan_code).single();
@@ -191,13 +186,7 @@ Deno.serve(async (req) => {
       });
       if (saasErr) throw new Error(`saas_empresa: ${saasErr.message}`);
 
-      // 5) Invalidate previous invites for same email
-      await supabase
-        .from("saas_invites")
-        .update({ expires_at: new Date().toISOString() })
-        .eq("email", email)
-        .is("used_at", null)
-        .gt("expires_at", new Date().toISOString());
+      // 5) (invalidation already done above)
 
       // 6) Generate invite token
       const tokenPlaintext = generateToken();
@@ -214,8 +203,9 @@ Deno.serve(async (req) => {
       }).select("id, expires_at").single();
       if (invErr) throw new Error(`saas_invites: ${invErr.message}`);
 
-      // 7) Send activation email
-      const { apiKey: resendKey, fromEmail } = await getResendApiKey(supabase);
+      // 7) Send activation email — always use "Orbit" as sender for system emails
+      const { apiKey: resendKey } = await getResendApiKey(supabase);
+      const fromEmail = "Orbit <onboarding@resend.dev>";
       let emailSent = false;
       if (resendKey) {
         const appUrl = getAppUrl(req);
