@@ -69,6 +69,21 @@ export function EmailTemplateEditor({ content, onChange, className }: EmailTempl
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
+        bulletList: {
+          HTMLAttributes: {
+            style: "padding-left: 20px; margin: 10px 0; list-style-type: disc;",
+          },
+        },
+        orderedList: {
+          HTMLAttributes: {
+            style: "padding-left: 20px; margin: 10px 0; list-style-type: decimal;",
+          },
+        },
+        listItem: {
+          HTMLAttributes: {
+            style: "margin-bottom: 6px;",
+          },
+        },
       }),
       Underline,
       TextAlign.configure({ types: ["heading", "paragraph"] }),

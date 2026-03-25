@@ -309,7 +309,7 @@ export default function EmailTemplateEditorPage() {
                     )}
                     {form.corpo_texto ? (
                        <div
-                         className="prose prose-sm max-w-none text-black"
+                         className="prose prose-sm max-w-none text-black [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1.5"
                          dangerouslySetInnerHTML={{ __html: previewHtml }}
                        />
                     ) : (
