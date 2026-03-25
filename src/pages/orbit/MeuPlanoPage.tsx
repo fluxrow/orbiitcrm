@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/orbit/PageHeader";
 import { useTenant } from "@/contexts/TenantContext";
 import { useIsAdmin } from "@/hooks/useUserRole";
 import { useSaasEmpresa, useSaasUsage, useSaasPlans } from "@/hooks/useSaasPlans";
-import { useStripeCheckout, useStripePortal } from "@/hooks/useStripeSubscription";
+import { useStripeCheckout, useStripePortal, useStripeChangePlan } from "@/hooks/useStripeSubscription";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { Progress } from "@/components/ui/progress";
 import {
   CreditCard, Calendar, Shield, Users, UserSearch, Mail,
   MessageCircle, Instagram, Facebook, Search, Bot,
-  CheckCircle2, XCircle, ArrowUpRight, Headphones,
+  CheckCircle2, XCircle, ArrowUpRight, ArrowDownRight, Headphones,
   AlertTriangle, ExternalLink, Loader2,
 } from "lucide-react";
 import { format, parseISO, differenceInDays } from "date-fns";
@@ -21,6 +21,8 @@ import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 /* ── Status maps ── */
 
@@ -77,11 +79,13 @@ function UsageCard({ label, icon: Icon, used, limit, disabled }: UsageCardProps)
           <>
             <div className="flex items-baseline justify-between">
               <span className="text-2xl font-bold">{used}</span>
-              <span className="text-xs text-muted-foreground">/ {limit}</span>
+              <span className="text-xs text-muted-foreground">/ {limit === -1 ? "∞" : limit}</span>
             </div>
-            <Progress value={pct} className="h-2 [&>div]:transition-all">
-              <div className={cn("h-full rounded-full", barColor)} style={{ width: `${pct}%` }} />
-            </Progress>
+            {limit !== -1 && (
+              <Progress value={pct} className="h-2 [&>div]:transition-all">
+                <div className={cn("h-full rounded-full", barColor)} style={{ width: `${pct}%` }} />
+              </Progress>
+            )}
           </>
         )}
       </CardContent>
@@ -100,6 +104,42 @@ const FEATURE_LIST = [
   { key: "ai_agent", label: "Agente IA", icon: Bot },
 ];
 
+/* ── Hooks for real counts ── */
+
+function useRealCounts(empresaId: string | null) {
+  const usersQuery = useQuery({
+    queryKey: ["real-count-users", empresaId],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("profiles")
+        .select("id", { count: "exact", head: true })
+        .eq("empresa_id", empresaId!)
+        .eq("ativo", true);
+      if (error) throw error;
+      return count ?? 0;
+    },
+    enabled: !!empresaId,
+  });
+
+  const prospectsQuery = useQuery({
+    queryKey: ["real-count-prospects", empresaId],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("orbit_prospects")
+        .select("id", { count: "exact", head: true })
+        .eq("empresa_id", empresaId!);
+      if (error) throw error;
+      return count ?? 0;
+    },
+    enabled: !!empresaId,
+  });
+
+  return {
+    usersCount: usersQuery.data ?? 0,
+    prospectsCount: prospectsQuery.data ?? 0,
+  };
+}
+
 /* ── Page ── */
 
 export default function MeuPlanoPage() {
@@ -109,20 +149,24 @@ export default function MeuPlanoPage() {
   const { data: allPlans } = useSaasPlans();
   const currentPeriod = format(new Date(), "yyyy-MM");
   const { data: usage } = useSaasUsage(empresaId || undefined, currentPeriod);
+  const { usersCount, prospectsCount } = useRealCounts(empresaId);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
 
   const checkout = useStripeCheckout();
   const portal = useStripePortal();
+  const changePlan = useStripeChangePlan();
 
   // Show success/cancel toasts from Stripe redirect
   useEffect(() => {
     if (searchParams.get("success") === "1") {
       toast.success("Assinatura realizada com sucesso!");
+      queryClient.invalidateQueries({ queryKey: ["saas-empresa"] });
     } else if (searchParams.get("canceled") === "1") {
       toast.info("Checkout cancelado.");
     }
-  }, [searchParams]);
+  }, [searchParams, queryClient]);
 
   if (!isAdminLoading && !isAdmin) {
     return <Navigate to={`${basePath}/dashboard`} replace />;
@@ -145,14 +189,22 @@ export default function MeuPlanoPage() {
   const cancelAtEnd = saasEmpresa?.cancel_at_period_end;
   const paymentError = saasEmpresa?.last_payment_error;
 
-  // Available upgrade plans (non-demo plans with stripe prices)
-  const upgradePlans = (allPlans || []).filter(
-    (p) => p.code !== "demo" && p.stripe_price_id_monthly && p.stripe_active && p.id !== plan?.id
+  // All plans available for switching (exclude demo, must have stripe prices, must be active)
+  const switchablePlans = (allPlans || []).filter(
+    (p) => p.code !== "demo" && p.stripe_price_id_monthly && p.stripe_active
   );
+
+  // Sort plans by order of limits (max_users as proxy for tier level)
+  const sortedPlans = [...switchablePlans].sort(
+    (a, b) => ((a.limits as any)?.max_users ?? 0) - ((b.limits as any)?.max_users ?? 0)
+  );
+
+  const currentPlanIndex = sortedPlans.findIndex((p) => p.id === plan?.id);
+
+  const returnPath = isDemo ? "/demo/meu-plano" : `${basePath}/meu-plano`;
 
   const handleCheckout = (priceId: string) => {
     if (!empresaId) return;
-    const returnPath = isDemo ? "/demo/meu-plano" : `${basePath}/meu-plano`;
     checkout.mutate({
       empresaId,
       priceId,
@@ -163,11 +215,27 @@ export default function MeuPlanoPage() {
 
   const handlePortal = () => {
     if (!empresaId) return;
-    const returnPath = isDemo ? "/demo/meu-plano" : `${basePath}/meu-plano`;
     portal.mutate({
       empresaId,
       returnUrl: `${window.location.origin}${returnPath}`,
     });
+  };
+
+  const handleChangePlan = (newPriceId: string) => {
+    if (!empresaId) return;
+    changePlan.mutate(
+      { empresaId, newPriceId },
+      {
+        onSuccess: () => {
+          toast.success("Plano alterado com sucesso!");
+          queryClient.invalidateQueries({ queryKey: ["saas-empresa"] });
+          queryClient.invalidateQueries({ queryKey: ["saas-plans"] });
+        },
+        onError: (err: any) => {
+          toast.error(`Erro ao trocar plano: ${err.message}`);
+        },
+      }
+    );
   };
 
   return (
@@ -243,8 +311,16 @@ export default function MeuPlanoPage() {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-primary" />
-                <span className="text-xs text-muted-foreground">Somente leitura</span>
+                {hasSubscription && (
+                  <Button variant="outline" size="sm" onClick={handlePortal} disabled={portal.isPending}>
+                    {portal.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                    ) : (
+                      <ExternalLink className="w-4 h-4 mr-1" />
+                    )}
+                    Portal de Cobrança
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -253,8 +329,8 @@ export default function MeuPlanoPage() {
           <div>
             <h3 className="text-lg font-semibold mb-4">Limites e Consumo</h3>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <UsageCard label="Usuários" icon={Users} used={0} limit={limits.max_users ?? 0} />
-              <UsageCard label="Prospects" icon={UserSearch} used={0} limit={limits.max_prospects ?? 0} />
+              <UsageCard label="Usuários" icon={Users} used={usersCount} limit={limits.max_users ?? 0} />
+              <UsageCard label="Prospects" icon={UserSearch} used={prospectsCount} limit={limits.max_prospects ?? 0} />
               <UsageCard
                 label="E-mails / mês"
                 icon={Mail}
@@ -308,70 +384,128 @@ export default function MeuPlanoPage() {
             </div>
           </div>
 
-          {/* ── Actions ── */}
-          <div className="space-y-4">
-            {/* Manage subscription (has active Stripe subscription) */}
-            {hasSubscription && (
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Button onClick={handlePortal} disabled={portal.isPending}>
-                  {portal.isPending ? (
-                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                  ) : (
-                    <ExternalLink className="w-4 h-4 mr-1" />
-                  )}
-                  Gerenciar Assinatura
-                </Button>
-                <Button variant="outline" asChild>
-                  <a
-                    href="https://wa.me/5511999999999?text=Olá, gostaria de falar sobre meu plano"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <Headphones className="w-4 h-4 mr-1" />
-                    Falar com Suporte
-                  </a>
-                </Button>
-              </div>
-            )}
+          {/* ── Plans / Upgrade / Downgrade ── */}
+          {!isDemo && sortedPlans.length > 0 && (
+            <div>
+              <h3 className="text-lg font-semibold mb-4">
+                {hasSubscription ? "Trocar de Plano" : "Assinar um Plano"}
+              </h3>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {sortedPlans.map((p, idx) => {
+                  const isCurrent = p.id === plan?.id;
+                  const isUpgrade = currentPlanIndex >= 0 && idx > currentPlanIndex;
+                  const isDowngrade = currentPlanIndex >= 0 && idx < currentPlanIndex;
+                  const pLimits = (p.limits || {}) as Record<string, number>;
+                  const pFeatures = (p.features || {}) as Record<string, boolean>;
 
-            {/* Subscribe / Upgrade (no active subscription) */}
-            {!hasSubscription && !isDemo && upgradePlans.length > 0 && (
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Assinar um Plano</h3>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {upgradePlans.map((p) => (
-                    <Card key={p.id} className="flex flex-col justify-between">
+                  return (
+                    <Card
+                      key={p.id}
+                      className={cn(
+                        "flex flex-col justify-between",
+                        isCurrent && "border-primary ring-2 ring-primary/20"
+                      )}
+                    >
                       <CardHeader>
-                        <CardTitle className="text-lg">{p.name}</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <Button
-                          className="w-full"
-                          onClick={() => handleCheckout(p.stripe_price_id_monthly!)}
-                          disabled={checkout.isPending}
-                        >
-                          {checkout.isPending ? (
-                            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                          ) : (
-                            <ArrowUpRight className="w-4 h-4 mr-1" />
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-lg">{p.name}</CardTitle>
+                          {isCurrent && (
+                            <Badge variant="default" className="text-xs">Plano Atual</Badge>
                           )}
-                          Assinar Mensal
-                        </Button>
-                        {p.stripe_price_id_yearly && (
-                          <Button
-                            variant="outline"
-                            className="w-full"
-                            onClick={() => handleCheckout(p.stripe_price_id_yearly!)}
-                            disabled={checkout.isPending}
-                          >
-                            Assinar Anual
+                        </div>
+                        <div className="text-xs text-muted-foreground space-y-1 mt-2">
+                          <p>{pLimits.max_users ?? "—"} usuários · {pLimits.max_prospects ?? "—"} prospects</p>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {FEATURE_LIST.filter(f => pFeatures[f.key]).map(f => (
+                              <Badge key={f.key} variant="outline" className="text-[10px] px-1.5 py-0">
+                                {f.label}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        {isCurrent ? (
+                          <Button className="w-full" variant="outline" disabled>
+                            <CheckCircle2 className="w-4 h-4 mr-1" />
+                            Plano Atual
                           </Button>
+                        ) : hasSubscription ? (
+                          <>
+                            <Button
+                              className="w-full"
+                              variant={isUpgrade ? "default" : "outline"}
+                              onClick={() => handleChangePlan(p.stripe_price_id_monthly!)}
+                              disabled={changePlan.isPending}
+                            >
+                              {changePlan.isPending ? (
+                                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                              ) : isUpgrade ? (
+                                <ArrowUpRight className="w-4 h-4 mr-1" />
+                              ) : (
+                                <ArrowDownRight className="w-4 h-4 mr-1" />
+                              )}
+                              {isUpgrade ? "Fazer Upgrade" : isDowngrade ? "Fazer Downgrade" : "Trocar Plano"}
+                            </Button>
+                            {p.stripe_price_id_yearly && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="w-full text-xs"
+                                onClick={() => handleChangePlan(p.stripe_price_id_yearly!)}
+                                disabled={changePlan.isPending}
+                              >
+                                Trocar para Anual
+                              </Button>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <Button
+                              className="w-full"
+                              onClick={() => handleCheckout(p.stripe_price_id_monthly!)}
+                              disabled={checkout.isPending}
+                            >
+                              {checkout.isPending ? (
+                                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                              ) : (
+                                <ArrowUpRight className="w-4 h-4 mr-1" />
+                              )}
+                              Assinar Mensal
+                            </Button>
+                            {p.stripe_price_id_yearly && (
+                              <Button
+                                variant="outline"
+                                className="w-full"
+                                onClick={() => handleCheckout(p.stripe_price_id_yearly!)}
+                                disabled={checkout.isPending}
+                              >
+                                Assinar Anual
+                              </Button>
+                            )}
+                          </>
                         )}
                       </CardContent>
                     </Card>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
+            </div>
+          )}
+
+          {/* ── Actions ── */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            {hasSubscription && (
+              <Button variant="outline" asChild>
+                <a
+                  href="https://wa.me/5511999999999?text=Olá, gostaria de falar sobre meu plano"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Headphones className="w-4 h-4 mr-1" />
+                  Falar com Suporte
+                </a>
+              </Button>
             )}
 
             {/* Demo user: request access */}
@@ -382,9 +516,9 @@ export default function MeuPlanoPage() {
               </Button>
             )}
 
-            {/* No subscription and no upgrade plans available */}
-            {!hasSubscription && !isDemo && upgradePlans.length === 0 && (
-              <div className="flex flex-col sm:flex-row gap-3">
+            {/* No subscription and no plans available */}
+            {!hasSubscription && !isDemo && sortedPlans.length === 0 && (
+              <>
                 <Button asChild>
                   <a href="mailto:suporte@orbiit.com.br?subject=Solicitar Upgrade">
                     <ArrowUpRight className="w-4 h-4 mr-1" />
@@ -401,7 +535,7 @@ export default function MeuPlanoPage() {
                     Falar com Suporte
                   </a>
                 </Button>
-              </div>
+              </>
             )}
           </div>
         </div>
