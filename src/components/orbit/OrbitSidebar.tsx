@@ -12,8 +12,6 @@ import {
   LogOut,
   CreditCard,
   CheckSquare,
-  Menu,
-  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import orbitLogo from "@/assets/orbit-logo.png";
