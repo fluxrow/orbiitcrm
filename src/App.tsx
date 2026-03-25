@@ -108,6 +108,8 @@ function OrbitRoutes() {
       <Route path="funil" element={<FunilPage />} />
       <Route path="campanhas" element={<CampanhasPage />} />
       <Route path="templates" element={<TemplatesPage />} />
+      <Route path="templates/email/new" element={<EmailTemplateEditorPage />} />
+      <Route path="templates/email/:id/edit" element={<EmailTemplateEditorPage />} />
       <Route path="lead-finder" element={<LeadFinderPage />} />
       <Route path="config" element={<ConfigPage />} />
       <Route path="analytics" element={<AnalyticsPage />} />
