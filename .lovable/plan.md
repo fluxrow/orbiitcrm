@@ -1,29 +1,80 @@
 
 
-# Fix: Erro 409 ao reenviar convite + Email com remetente "PromoTrip Corporate"
+# Fix: Email sender identity leaking tenant branding into system emails
 
-## Problemas identificados
+## Root cause
 
-### 1. Erro 409 ao reenviar convite
-A função `auto-approve-trial` verifica se já existe um `saas_invites` pendente (linha 143-153) **antes** de invalidar os antigos (linha 195-200). Quando o admin clica "Reenviar", o convite anterior ainda está válido, causando o erro 409.
+The table `orbit_resend_config` has a global record (`empresa_id IS NULL`) that contains `from_name = "Promotrip Corporate"` — this is tenant data that leaked into the platform-level config. Three edge functions read this record for system emails:
 
-**Fix:** Mover a invalidação de convites antigos para **antes** da checagem de duplicatas. Assim, ao reenviar, os convites anteriores são expirados primeiro, permitindo criar um novo.
+| Function | Status | Problem |
+|----------|--------|---------|
+| `auto-approve-trial` | **Already fixed** | Hardcodes `from = "Orbit <onboarding@resend.dev>"` |
+| `create-empresa-invite` | **Broken** | Line 37: uses `cfg.from_name` → "Promotrip Corporate" |
+| `accept-empresa-invite` | **Broken** | Line 19: uses `data.from_email` but no name override → inherits global config |
 
-### 2. Email com nome "PromoTrip Corporate"
-A função `getResendApiKey` (linha 33-45) lê o registro global de `orbit_resend_config` e usa `cfg.from_name` como nome do remetente. Esse registro tem `from_name` configurado como "PromoTrip Corporate" (dados de outro cliente). Para emails de sistema (trial/ativação), o remetente deveria ser sempre "Orbit".
+## Solution
 
-**Fix:** Na função `auto-approve-trial`, forçar `from_name = "Orbit"` para emails de ativação de conta, ignorando o valor da config global. A config global serve para emails de campanha/negócio, não para emails de sistema.
+### 1. Create shared helper `supabase/functions/_shared/system-email.ts`
 
-## Alterações
+Centralize system email config resolution:
 
-### Arquivo: `supabase/functions/auto-approve-trial/index.ts`
+```typescript
+// System-level identity — NEVER from tenant config
+const SYSTEM_FROM_NAME = "Orbit";
+const SYSTEM_FROM_FALLBACK = "onboarding@resend.dev";
 
-1. **Mover invalidação** (linhas 194-200) para **antes** da checagem de duplicatas (linha 142)
-2. **Forçar remetente** "Orbit" no `buildEmailHtml` e no envio do email, independente da config global
-3. Ajustar `getResendApiKey` para retornar apenas a `api_key`, usando nome fixo "Orbit" para o `from` do email de trial
+export async function getSystemEmailConfig(supabase): Promise<{ apiKey: string | null; fromEmail: string }> {
+  // Only read API key from global config, IGNORE from_name/from_email
+  let apiKey = null;
+  const { data: cfg } = await supabase
+    .from("orbit_resend_config").select("api_key").is("empresa_id", null).maybeSingle();
+  if (cfg?.api_key) apiKey = cfg.api_key;
+  if (!apiKey) apiKey = Deno.env.get("RESEND_API_KEY") || null;
+  return { apiKey, fromEmail: `${SYSTEM_FROM_NAME} <${SYSTEM_FROM_FALLBACK}>` };
+}
+```
 
-### Resultado
-- Admin pode reenviar convites sem erro 409
-- Emails de ativação sempre mostram "Orbit" como remetente
-- Emails de campanha continuam usando a config por empresa normalmente
+### 2. Update `create-empresa-invite/index.ts`
+
+- Replace `getResendApiKey()` with import from `_shared/system-email.ts`
+- Line 124: use `getSystemEmailConfig()` instead
+- This ensures admin-created invites always show "Orbit" as sender
+
+### 3. Update `accept-empresa-invite/index.ts`
+
+- Replace `getResendApiKey()` (lines 12-23) with import from `_shared/system-email.ts`
+- Line 223: use `getSystemEmailConfig()` instead
+- Welcome/activation emails always show "Orbit" as sender
+
+### 4. Update `auto-approve-trial/index.ts`
+
+- Replace `getResendApiKey()` (lines 33-45) with import from `_shared/system-email.ts`
+- Remove the local `fromEmail` override on line 208 (now handled by shared helper)
+
+### 5. Keep `orbit-send-email/index.ts` unchanged
+
+This function handles **tenant-scoped** email sending (campaigns, individual emails). Its hierarchical config lookup (empresa_id → global fallback) is correct for that use case.
+
+## Summary of resolution priority
+
+```text
+System emails (trial, invite, activation, welcome):
+  → ALWAYS "Orbit <onboarding@resend.dev>"
+  → API key from global config or env var
+  → Never reads from_name/from_email from any config record
+
+Tenant emails (campaigns, 1:1 sends via orbit-send-email):
+  → empresa_id config first
+  → Global config as fallback (from_name + from_email)
+  → Env var RESEND_API_KEY as last resort
+```
+
+## Files
+
+| File | Action |
+|------|--------|
+| `supabase/functions/_shared/system-email.ts` | **Create** — shared system email config helper |
+| `supabase/functions/auto-approve-trial/index.ts` | **Edit** — use shared helper |
+| `supabase/functions/create-empresa-invite/index.ts` | **Edit** — use shared helper |
+| `supabase/functions/accept-empresa-invite/index.ts` | **Edit** — use shared helper |
 
