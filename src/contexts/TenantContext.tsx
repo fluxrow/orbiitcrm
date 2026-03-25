@@ -10,6 +10,7 @@ interface TenantState {
   basePath: string;
   planCode: string | null;
   saasStatus: string | null;
+  stripeStatus: string | null;
   trialEndsAt: string | null;
   isLoading: boolean;
   isBlocked: boolean;
@@ -25,6 +26,7 @@ const defaultState: TenantState = {
   basePath: "/demo",
   planCode: null,
   saasStatus: null,
+  stripeStatus: null,
   trialEndsAt: null,
   isLoading: true,
   isBlocked: false,
@@ -77,6 +79,7 @@ export function TenantProvider({ children, isDemo = false }: TenantProviderProps
         basePath: "/demo",
         planCode: "demo",
         saasStatus: "active",
+        stripeStatus: null,
         trialEndsAt: null,
         isLoading: false,
         isBlocked: false,
@@ -134,6 +137,7 @@ export function TenantProvider({ children, isDemo = false }: TenantProviderProps
         basePath: `/${slugParam}`,
         planCode: result.plan_code as string | null,
         saasStatus: result.saas_status as string | null,
+        stripeStatus: result.stripe_status as string | null,
         trialEndsAt: result.trial_ends_at as string | null,
         isLoading: false,
         isBlocked: (result.blocked as boolean) || false,
