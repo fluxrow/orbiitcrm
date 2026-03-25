@@ -65,3 +65,19 @@ export function useStripeSubscriptionStatus() {
     },
   });
 }
+
+interface ChangePlanParams {
+  empresaId: string;
+  newPriceId: string;
+}
+
+export function useStripeChangePlan() {
+  return useMutation({
+    mutationFn: async ({ empresaId, newPriceId }: ChangePlanParams) => {
+      return invokeFunction("stripe-change-plan", {
+        empresa_id: empresaId,
+        new_price_id: newPriceId,
+      });
+    },
+  });
+}
