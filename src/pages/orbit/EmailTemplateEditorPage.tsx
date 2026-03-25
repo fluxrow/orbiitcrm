@@ -293,10 +293,10 @@ export default function EmailTemplateEditorPage() {
                 <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
                   {/* Email header simulation */}
                   <div className="px-4 py-3 border-b bg-muted/20 space-y-1">
-                    <p className="text-xs text-muted-foreground">
-                      <span className="font-medium">Assunto:</span>{" "}
-                      {form.assunto_email || <span className="italic">Sem assunto</span>}
-                    </p>
+                     <p className="text-xs text-black/60">
+                       <span className="font-medium text-black">Assunto:</span>{" "}
+                       {form.assunto_email || <span className="italic">Sem assunto</span>}
+                     </p>
                     {form.categoria && (
                       <Badge variant="secondary" className="text-xs">{form.categoria}</Badge>
                     )}
@@ -308,10 +308,10 @@ export default function EmailTemplateEditorPage() {
                       <img src={form.imagem_url} alt="Header" className="w-full h-auto rounded mb-4" />
                     )}
                     {form.corpo_texto ? (
-                      <div
-                        className="prose prose-sm max-w-none text-foreground"
-                        dangerouslySetInnerHTML={{ __html: previewHtml }}
-                      />
+                       <div
+                         className="prose prose-sm max-w-none text-black"
+                         dangerouslySetInnerHTML={{ __html: previewHtml }}
+                       />
                     ) : (
                       <p className="text-muted-foreground italic text-sm">O conteúdo do email aparecerá aqui...</p>
                     )}
