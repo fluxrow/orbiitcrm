@@ -1,57 +1,19 @@
 
 
-# Ajustar SEO da Landing Page
+# Fix: Texto cortando nos cards de plano
 
-## Problemas atuais
+## Problema
 
-1. **`lang="en"`** no `index.html` — o conteúdo é em português, Google interpreta como inglês
-2. **Title genérico** — "Orbit CRM" sem palavras-chave de busca
-3. **Meta description fraca** — "Sistema de Gestao de CRM com IA avançada" (sem acento, sem keywords ricas)
-4. **Sem `og:url`** nem `og:locale`
-5. **OG image usando favicon.png** — imagem muito pequena, sem impacto visual no compartilhamento
-6. **Sem sitemap.xml** — Google não consegue descobrir páginas
-7. **robots.txt sem Sitemap reference**
-8. **Sem canonical URL**
-9. **Sem structured data (JSON-LD)** — sem rich snippets no Google
-10. **SPA sem meta tags dinâmicas** — todas as rotas mostram o mesmo title/description
+O `GlowCard` usa `overflow-hidden` para conter o overlay de gradiente. Porém, o badge "Mais popular" do plano Professional usa `-mt-9` (margem negativa) para flutuar acima do card — e é cortado pelo `overflow-hidden`.
 
-## Implementação
+## Solução
 
-### 1. `index.html` — Meta tags otimizadas
+Mover o `overflow-hidden` do container principal do `GlowCard` para apenas o overlay interno (que realmente precisa dele), liberando o conteúdo para extrapolar os limites quando necessário.
 
-- `lang="pt-BR"`
-- Title: `Orbit CRM — CRM com IA para WhatsApp, Email e Vendas`
-- Description rica com keywords: CRM, WhatsApp, IA, funil de vendas, qualificação de leads, automação comercial
-- `og:url`, `og:locale="pt_BR"`, `og:site_name`
-- Canonical link
-- JSON-LD `SoftwareApplication` structured data com nome, descrição, preços e avaliação
+### Arquivo: `src/components/landing/GlowCard.tsx`
 
-### 2. `public/sitemap.xml` — Criar
+- Remover `overflow-hidden` da `motion.div` externa
+- Adicionar `overflow-hidden` na div do overlay interno (linha 26)
 
-Listar rotas públicas: `/`, `/trial`, `/doc`, `/auth`
-
-### 3. `public/robots.txt` — Adicionar referência ao sitemap
-
-```
-Sitemap: https://orbiitcrm.lovable.app/sitemap.xml
-```
-
-### 4. `LandingPage.tsx` — Title dinâmico
-
-Usar `document.title` via `useEffect` para definir title específico da landing ao montar.
-
-### 5. `TrialPage.tsx` e `AuthPage.tsx` — Titles específicos
-
-Cada página pública define seu próprio `document.title` com keywords relevantes.
-
-## Arquivos
-
-| Arquivo | Ação |
-|---------|------|
-| `index.html` | Reescrever meta tags SEO + JSON-LD |
-| `public/sitemap.xml` | **Criar** |
-| `public/robots.txt` | Adicionar Sitemap |
-| `src/pages/LandingPage.tsx` | `useEffect` para `document.title` |
-| `src/pages/TrialPage.tsx` | `useEffect` para `document.title` |
-| `src/pages/AuthPage.tsx` | `useEffect` para `document.title` |
+Isso permite que o badge `-mt-9` apareça fora dos limites do card sem ser cortado.
 
