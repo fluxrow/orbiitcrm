@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Sparkles, Copy, Trash2, Pencil, MessageSquare, Mail, Loader2, ImagePlus, X, Link } from "lucide-react";
-import { useOrbitTemplates, useCreateTemplate, useUpdateTemplate, useDeleteTemplate } from "@/hooks/useOrbitTemplates";
+import { useOrbitTemplates, useCreateTemplate, useDeleteTemplate } from "@/hooks/useOrbitTemplates";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -34,19 +35,20 @@ interface TemplateForm {
 const emptyForm: TemplateForm = { nome: "", categoria: "geral", assunto_email: "", corpo_texto: "", imagem_url: "" };
 
 export default function TemplatesPage() {
+  const navigate = useNavigate();
   const [tab, setTab] = useState("whatsapp");
   const { data: templates, isLoading } = useOrbitTemplates({ canal: tab });
   const createTemplate = useCreateTemplate();
-  const updateTemplate = useUpdateTemplate();
   const deleteTemplate = useDeleteTemplate();
 
+  // WhatsApp dialog state
   const [showDialog, setShowDialog] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<TemplateForm>(emptyForm);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [imageMode, setImageMode] = useState<"upload" | "url">("upload");
 
+  // AI dialog state
   const [showAiDialog, setShowAiDialog] = useState(false);
   const [aiObjetivo, setAiObjetivo] = useState("");
   const [aiCategoria, setAiCategoria] = useState("geral");
@@ -58,14 +60,8 @@ export default function TemplatesPage() {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast.error("Selecione um arquivo de imagem");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Imagem deve ter no máximo 5MB");
-      return;
-    }
+    if (!file.type.startsWith("image/")) { toast.error("Selecione um arquivo de imagem"); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error("Imagem deve ter no máximo 5MB"); return; }
     try {
       setIsUploading(true);
       const { data: { user } } = await supabase.auth.getUser();
@@ -84,33 +80,42 @@ export default function TemplatesPage() {
     }
   };
 
-  const openNew = () => {
-    setEditingId(null);
+  const openNewWhatsApp = () => {
     setForm(emptyForm);
     setImageMode("upload");
     setShowDialog(true);
   };
 
-  const openEdit = (t: any) => {
-    setEditingId(t.id);
-    setForm({
-      nome: t.nome,
-      categoria: t.categoria || "geral",
-      assunto_email: t.assunto_email || "",
-      corpo_texto: t.corpo_texto || "",
-      imagem_url: t.imagem_url || "",
-    });
-    setImageMode(t.imagem_url ? "url" : "upload");
-    setShowDialog(true);
+  const handleNew = () => {
+    if (isEmail) {
+      navigate("email/new");
+    } else {
+      openNewWhatsApp();
+    }
   };
 
-  const handleSave = async () => {
+  const handleEdit = (t: any) => {
+    if (isEmail) {
+      navigate(`email/${t.id}/edit`);
+    } else {
+      setForm({
+        nome: t.nome,
+        categoria: t.categoria || "geral",
+        assunto_email: t.assunto_email || "",
+        corpo_texto: t.corpo_texto || "",
+        imagem_url: t.imagem_url || "",
+      });
+      setImageMode(t.imagem_url ? "url" : "upload");
+      setShowDialog(true);
+    }
+  };
+
+  const handleSaveWhatsApp = async () => {
     if (!form.nome.trim() || !form.corpo_texto.trim()) {
       toast.error("Nome e corpo do template são obrigatórios");
       return;
     }
-    const allText = form.corpo_texto + (isEmail ? " " + form.assunto_email : "");
-    const foundVars = allText.match(/\{\{[^}]+\}\}/g) || [];
+    const foundVars = form.corpo_texto.match(/\{\{[^}]+\}\}/g) || [];
     const invalidVars = [...new Set(foundVars.filter(v => !ALLOWED_VARS.includes(v)))];
     if (invalidVars.length > 0) {
       toast.error(`Variáveis inválidas: ${invalidVars.join(", ")}. Permitidas: ${ALLOWED_VARS.join(", ")}`);
@@ -123,32 +128,19 @@ export default function TemplatesPage() {
       const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
       if (!profile?.empresa_id) throw new Error("Empresa não encontrada");
 
-      if (editingId) {
-        await updateTemplate.mutateAsync({
-          id: editingId,
-          nome: form.nome,
-          categoria: form.categoria,
-          assunto_email: isEmail ? form.assunto_email : null,
-          corpo_texto: form.corpo_texto,
-          imagem_url: form.imagem_url || null,
-        });
-        toast.success("Template atualizado!");
-      } else {
-        await createTemplate.mutateAsync({
-          nome: form.nome,
-          canal: tab,
-          categoria: form.categoria,
-          assunto_email: isEmail ? form.assunto_email : null,
-          corpo_texto: form.corpo_texto,
-          imagem_url: form.imagem_url || null,
-          empresa_id: profile.empresa_id,
-          ativo: true,
-        });
-        toast.success("Template criado!");
-      }
+      await createTemplate.mutateAsync({
+        nome: form.nome,
+        canal: "whatsapp",
+        categoria: form.categoria,
+        assunto_email: null,
+        corpo_texto: form.corpo_texto,
+        imagem_url: form.imagem_url || null,
+        empresa_id: profile.empresa_id,
+        ativo: true,
+      });
+      toast.success("Template criado!");
       setShowDialog(false);
       setForm(emptyForm);
-      setEditingId(null);
     } catch (error: any) {
       toast.error(error.message || "Erro ao salvar template");
     } finally {
@@ -157,20 +149,14 @@ export default function TemplatesPage() {
   };
 
   const handleGenerateAi = async () => {
-    if (!aiObjetivo.trim()) {
-      toast.error("Descreva o objetivo do template");
-      return;
-    }
+    if (!aiObjetivo.trim()) { toast.error("Descreva o objetivo do template"); return; }
     try {
       setIsGenerating(true);
       setAiResult(null);
       const { data, error } = await supabase.functions.invoke("orbit-ai-generate-template", {
         body: { canal: tab, categoria: aiCategoria, objetivo: aiObjetivo },
       });
-      if (error) {
-        const msg = data?.error?.message || error.message || "Erro na geração";
-        throw new Error(msg);
-      }
+      if (error) throw new Error(data?.error?.message || error.message || "Erro na geração");
       if (!data?.ok) throw new Error(data?.error?.message || "Erro na geração");
       setAiResult({
         nome: data.data.nome,
@@ -187,9 +173,15 @@ export default function TemplatesPage() {
   };
 
   const handleSaveAiResult = () => {
-    if (aiResult) {
+    if (!aiResult) return;
+    if (isEmail) {
+      // Navigate to editor page with AI result as state
+      navigate("email/new", { state: aiResult });
+      setShowAiDialog(false);
+      setAiResult(null);
+      setAiObjetivo("");
+    } else {
       setForm(aiResult);
-      setEditingId(null);
       setShowAiDialog(false);
       setShowDialog(true);
       setAiResult(null);
@@ -207,7 +199,7 @@ export default function TemplatesPage() {
             <Button variant="outline" size="sm" onClick={() => { setAiCategoria("geral"); setAiObjetivo(""); setAiResult(null); setShowAiDialog(true); }}>
               <Sparkles className="h-4 w-4 mr-2" />Gerar IA
             </Button>
-            <Button size="sm" onClick={openNew}>
+            <Button size="sm" onClick={handleNew}>
               <Plus className="h-4 w-4 mr-2" />Novo
             </Button>
           </>
@@ -239,14 +231,14 @@ export default function TemplatesPage() {
                     <p className="text-xs text-muted-foreground mb-2">Assunto: {t.assunto_email}</p>
                   )}
                   <div className="bg-muted/50 rounded p-3 mb-3">
-                    {tab === "email" ? (
+                    {isEmail ? (
                       <div className="text-sm text-muted-foreground line-clamp-4" dangerouslySetInnerHTML={{ __html: t.corpo_texto || "Sem conteúdo" }} />
                     ) : (
                       <p className="text-sm text-muted-foreground line-clamp-4 whitespace-pre-wrap">{t.corpo_texto || "Sem conteúdo"}</p>
                     )}
                   </div>
                   <div className="flex justify-end gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => openEdit(t)}>
+                    <Button variant="ghost" size="sm" onClick={() => handleEdit(t)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(t.corpo_texto || ""); toast.success("Copiado!"); }}>
@@ -263,11 +255,11 @@ export default function TemplatesPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Dialog de criação/edição */}
+      {/* WhatsApp dialog only */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className={`${isEmail ? "sm:max-w-2xl" : "sm:max-w-lg"} max-h-[90vh] overflow-y-auto`}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingId ? "Editar Template" : "Novo Template"}</DialogTitle>
+            <DialogTitle>Novo Template WhatsApp</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -283,14 +275,7 @@ export default function TemplatesPage() {
                 </SelectContent>
               </Select>
             </div>
-            {isEmail && (
-              <div>
-                <Label>Assunto do Email</Label>
-                <Input value={form.assunto_email} onChange={(e) => setForm({ ...form, assunto_email: e.target.value })} placeholder="Assunto do email" />
-              </div>
-            )}
-
-            {/* Imagem */}
+            {/* Image */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <Label>Imagem (opcional)</Label>
@@ -303,7 +288,6 @@ export default function TemplatesPage() {
                   </Button>
                 </div>
               </div>
-
               {form.imagem_url && (
                 <div className="relative mb-2">
                   <img src={form.imagem_url} alt="Preview" className="w-full h-32 object-cover rounded border" />
@@ -312,69 +296,34 @@ export default function TemplatesPage() {
                   </Button>
                 </div>
               )}
-
               {!form.imagem_url && imageMode === "upload" && (
                 <div className="relative">
                   <Input type="file" accept="image/*" onChange={handleImageUpload} disabled={isUploading} className="cursor-pointer" />
                   {isUploading && <div className="absolute inset-0 flex items-center justify-center bg-background/80 rounded"><Loader2 className="h-4 w-4 animate-spin" /></div>}
                 </div>
               )}
-
               {!form.imagem_url && imageMode === "url" && (
                 <Input placeholder="https://exemplo.com/imagem.jpg" value={form.imagem_url} onChange={(e) => setForm({ ...form, imagem_url: e.target.value })} />
               )}
               <p className="text-xs text-muted-foreground mt-1">A imagem aparecerá antes do texto na mensagem</p>
             </div>
-
             <div>
               <Label>Corpo do Template</Label>
-              {isEmail ? (
-                <>
-                  <div className="flex gap-1 mb-1">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 w-7 p-0 font-bold"
-                      onMouseDown={(e) => { e.preventDefault(); document.execCommand("bold"); }}
-                    >
-                      B
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 w-7 p-0 italic"
-                      onMouseDown={(e) => { e.preventDefault(); document.execCommand("italic"); }}
-                    >
-                      I
-                    </Button>
-                  </div>
-                  <div
-                    contentEditable
-                    className="min-h-[250px] w-full max-w-[560px] mx-auto rounded-md border border-input bg-white text-foreground p-6 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 overflow-y-auto shadow-sm"
-                    dangerouslySetInnerHTML={{ __html: form.corpo_texto }}
-                    onBlur={(e) => setForm({ ...form, corpo_texto: e.currentTarget.innerHTML })}
-                    suppressContentEditableWarning
-                  />
-                </>
-              ) : (
-                <Textarea value={form.corpo_texto} onChange={(e) => setForm({ ...form, corpo_texto: e.target.value })} placeholder="Digite o conteúdo do template..." rows={6} />
-              )}
+              <Textarea value={form.corpo_texto} onChange={(e) => setForm({ ...form, corpo_texto: e.target.value })} placeholder="Digite o conteúdo do template..." rows={6} />
               <p className="text-xs text-muted-foreground mt-1">Variáveis: {ALLOWED_VARS.join(", ")}</p>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDialog(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={isSaving}>
+            <Button onClick={handleSaveWhatsApp} disabled={isSaving}>
               {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {editingId ? "Salvar" : "Criar"}
+              Criar
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Dialog de geração por IA */}
+      {/* AI generation dialog */}
       <Dialog open={showAiDialog} onOpenChange={setShowAiDialog}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -402,7 +351,6 @@ export default function TemplatesPage() {
               {isGenerating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
               {isGenerating ? "Gerando..." : "Gerar Template"}
             </Button>
-
             {aiResult && (
               <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
                 <h4 className="font-semibold text-sm">Resultado gerado:</h4>
