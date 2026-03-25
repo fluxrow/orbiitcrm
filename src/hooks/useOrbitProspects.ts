@@ -89,6 +89,20 @@ export function useCreateProspect() {
 
   return useMutation({
     mutationFn: async (prospect: ProspectInsert) => {
+      // Server-side plan limit check
+      if (prospect.empresa_id) {
+        const { data: check } = await supabase.rpc("saas_can_use" as any, {
+          p_empresa_id: prospect.empresa_id,
+          p_feature_code: "prospect_add",
+          p_amount: 1,
+        });
+        if (check && !(check as any).allowed) {
+          const err = new Error((check as any).reason || "PLAN_LIMIT_REACHED");
+          (err as any).code = (check as any).reason;
+          throw err;
+        }
+      }
+
       const { data, error } = await supabase
         .from("orbit_prospects")
         .insert(prospect)
@@ -111,6 +125,7 @@ export function useCreateProspect() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orbit_prospects"] });
+      queryClient.invalidateQueries({ queryKey: ["orbit_prospects_count"] });
     },
   });
 }

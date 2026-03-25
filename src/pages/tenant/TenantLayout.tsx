@@ -153,7 +153,15 @@ function TenantContent() {
   }
 
   if (tenant.isBlocked) {
-    return <TenantBlocked reason={tenant.blockReason} trialEndsAt={tenant.trialEndsAt} empresaNome={tenant.empresaNome} />;
+    return (
+      <TenantBlocked
+        reason={tenant.blockReason}
+        trialEndsAt={tenant.trialEndsAt}
+        empresaNome={tenant.empresaNome}
+        empresaId={tenant.empresaId}
+        basePath={tenant.basePath}
+      />
+    );
   }
 
   return <Outlet />;
