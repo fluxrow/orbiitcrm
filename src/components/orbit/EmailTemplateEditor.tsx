@@ -84,10 +84,29 @@ export function EmailTemplateEditor({ content, onChange, className }: EmailTempl
     },
     editorProps: {
       attributes: {
-        class: "prose prose-sm max-w-none min-h-[300px] focus:outline-none p-6 text-black [&_*]:text-inherit",
+        class: "prose prose-sm max-w-none min-h-[300px] focus:outline-none p-6 text-black [&_*]:text-inherit [&_.ProseMirror-tab]:inline-block [&_.ProseMirror-tab]:min-w-[2em]",
+      },
+      handleKeyDown(view, event) {
+        if (event.key === 'Tab') {
+          event.preventDefault();
+          const { state, dispatch } = view;
+          if (event.shiftKey) {
+            // Remove tab/spaces at cursor
+            const { from } = state.selection;
+            const textBefore = state.doc.textBetween(Math.max(0, from - 4), from);
+            if (textBefore === '    ') {
+              dispatch(state.tr.delete(from - 4, from));
+            } else if (textBefore.endsWith('\t')) {
+              dispatch(state.tr.delete(from - 1, from));
+            }
+          } else {
+            dispatch(state.tr.insertText('    '));
+          }
+          return true;
+        }
+        return false;
       },
       transformPastedHTML(html) {
-        // Strip dangerous tags but preserve inline styles (color, font, etc.)
         return html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
       },
     },
