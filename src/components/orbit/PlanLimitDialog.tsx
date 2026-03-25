@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
@@ -7,7 +8,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Lock, Clock, Ban } from "lucide-react";
+import { AlertTriangle, Lock, Clock, Ban, ArrowUpRight } from "lucide-react";
+import { useTenant } from "@/contexts/TenantContext";
 
 export type PlanLimitReason =
   | "PLAN_LIMIT_REACHED"
@@ -28,42 +30,48 @@ interface PlanLimitDialogProps {
   reason?: PlanLimitReason;
 }
 
-const reasonConfig: Record<string, { icon: typeof AlertTriangle; title: string; description: string }> = {
+const reasonConfig: Record<string, { icon: typeof AlertTriangle; title: string; description: string; showUpgrade?: boolean }> = {
   PLAN_LIMIT_REACHED: {
     icon: AlertTriangle,
     title: "Limite do plano atingido",
     description:
-      "Você atingiu o limite mensal do seu plano para esta funcionalidade. Solicite um upgrade para continuar enviando.",
+      "Você atingiu o limite do seu plano para esta funcionalidade. Faça um upgrade para continuar.",
+    showUpgrade: true,
   },
   PLAN_LIMIT: {
     icon: AlertTriangle,
     title: "Limite do plano atingido",
     description:
-      "Você atingiu o limite mensal do seu plano para esta funcionalidade. Solicite um upgrade para continuar enviando.",
+      "Você atingiu o limite mensal do seu plano para esta funcionalidade. Faça um upgrade para continuar.",
+    showUpgrade: true,
   },
   PLAN_FEATURE_DISABLED: {
     icon: Lock,
     title: "Funcionalidade não disponível",
     description:
-      "Seu plano atual não inclui esta funcionalidade. Solicite um upgrade para desbloqueá-la.",
+      "Seu plano atual não inclui esta funcionalidade. Faça um upgrade para desbloqueá-la.",
+    showUpgrade: true,
   },
   FEATURE_DISABLED: {
     icon: Lock,
     title: "Funcionalidade não disponível",
     description:
-      "Seu plano atual não inclui esta funcionalidade. Solicite um upgrade para desbloqueá-la.",
+      "Seu plano atual não inclui esta funcionalidade. Faça um upgrade para desbloqueá-la.",
+    showUpgrade: true,
   },
   TRIAL_EXPIRED: {
     icon: Clock,
     title: "Período de teste expirado",
     description:
       "Seu período de teste terminou. Ative um plano para continuar usando a plataforma.",
+    showUpgrade: true,
   },
   PLAN_STATUS_BLOCKED: {
     icon: Ban,
-    title: "Conta suspensa",
+    title: "Ação bloqueada",
     description:
-      "Sua conta está suspensa. Entre em contato com o suporte para mais informações.",
+      "Há uma pendência de pagamento na sua assinatura. Regularize para continuar usando este recurso.",
+    showUpgrade: true,
   },
   SUSPENDED: {
     icon: Ban,
@@ -94,6 +102,13 @@ const reasonConfig: Record<string, { icon: typeof AlertTriangle; title: string; 
 export function PlanLimitDialog({ open, onOpenChange, reason = "PLAN_LIMIT_REACHED" }: PlanLimitDialogProps) {
   const config = reasonConfig[reason] || reasonConfig.PLAN_LIMIT_REACHED;
   const Icon = config.icon;
+  const navigate = useNavigate();
+  const { basePath } = useTenant();
+
+  const handleGoToPlan = () => {
+    onOpenChange(false);
+    navigate(`${basePath}/meu-plano`);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -113,9 +128,12 @@ export function PlanLimitDialog({ open, onOpenChange, reason = "PLAN_LIMIT_REACH
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Fechar
           </Button>
-          <Button onClick={() => onOpenChange(false)}>
-            Solicitar upgrade
-          </Button>
+          {config.showUpgrade && (
+            <Button onClick={handleGoToPlan}>
+              <ArrowUpRight className="h-4 w-4 mr-1" />
+              Ver Meu Plano
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -23,6 +23,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { UserProfileDialog } from "@/components/orbit/UserProfileDialog";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { usePlanGuard } from "@/hooks/usePlanGuard";
 import {
   Tooltip,
   TooltipContent,
@@ -61,14 +62,16 @@ export function OrbitSidebar() {
     navigate("/");
   };
 
+  const { canUseFeature } = usePlanGuard();
+
   const navigation = [
     { name: "Prospects", href: `${basePath}/prospects`, icon: Users },
     { name: "Conversas", href: `${basePath}/conversas`, icon: MessageSquare },
     { name: "Funil", href: `${basePath}/funil`, icon: Kanban },
     { name: "Tarefas", href: `${basePath}/tarefas`, icon: CheckSquare, badge: pendingCount > 0 ? pendingCount : undefined },
-    { name: "Campanhas", href: `${basePath}/campanhas`, icon: Mail },
+    ...(canUseFeature("whatsapp") || canUseFeature("email") ? [{ name: "Campanhas", href: `${basePath}/campanhas`, icon: Mail }] : []),
     { name: "Templates", href: `${basePath}/templates`, icon: FileText },
-    { name: "Lead Finder", href: `${basePath}/lead-finder`, icon: Search },
+    ...(canUseFeature("lead_finder") ? [{ name: "Lead Finder", href: `${basePath}/lead-finder`, icon: Search }] : []),
     { name: "Analytics", href: `${basePath}/analytics`, icon: BarChart3 },
     ...(isAdmin ? [{ name: "Meu Plano", href: `${basePath}/meu-plano`, icon: CreditCard }] : []),
     { name: "Configurações", href: `${basePath}/config`, icon: Settings },
