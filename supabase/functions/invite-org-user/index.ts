@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
+import { getSystemEmailConfig } from "../_shared/system-email.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
@@ -51,32 +52,12 @@ Deno.serve(async (req) => {
     let emailError: string | null = null;
 
     try {
-      // 1) Resolve Resend API key
-      let resendApiKey: string | null = null;
-      let fromEmail = "Orbit <onboarding@resend.dev>";
-
-      const { data: resendConfig } = await supabaseAdmin
-        .from("orbit_resend_config")
-        .select("*")
-        .is("empresa_id", null)
-        .maybeSingle();
-
-      if (resendConfig) {
-        if (resendConfig.api_key) resendApiKey = resendConfig.api_key;
-        if (resendConfig.ativo && resendConfig.from_email) {
-          const fromName = resendConfig.from_name || "Orbit";
-          fromEmail = `${fromName} <${resendConfig.from_email}>`;
-        }
-      }
-
-      if (!resendApiKey) resendApiKey = Deno.env.get("RESEND_API_KEY") || null;
+      const { apiKey: resendApiKey, fromEmail } = await getSystemEmailConfig(supabaseAdmin);
 
       if (resendApiKey) {
-        // 2) Build invite link
         const appUrl = Deno.env.get("APP_URL") || "https://orbiitcrm.lovable.app";
         const inviteLink = `${appUrl}/accept-invite-pe/${token}`;
 
-        // 3) Send email
         const emailResponse = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: {

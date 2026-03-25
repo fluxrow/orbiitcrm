@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
+import { getSystemEmailConfig } from "../_shared/system-email.ts";
 
 interface CreateEmpresaRequest {
   nome: string;
@@ -13,19 +14,6 @@ interface CreateEmpresaRequest {
   admin_nome: string;
   admin_email: string;
   admin_senha: string;
-}
-
-async function getResendApiKey(supabase: any): Promise<{ apiKey: string | null; fromEmail: string }> {
-  try {
-    const { data } = await supabase
-      .from("orbit_resend_config")
-      .select("api_key, from_email")
-      .is("empresa_id", null)
-      .maybeSingle();
-    if (data?.api_key) return { apiKey: data.api_key, fromEmail: data.from_email || "noreply@orbiitcrm.com" };
-  } catch (_e) { /* ignore */ }
-  const envKey = Deno.env.get("RESEND_API_KEY");
-  return { apiKey: envKey || null, fromEmail: "noreply@orbiitcrm.com" };
 }
 
 function buildWelcomeEmailHtml(empresaNome: string, planName: string, adminNome: string): string {
@@ -130,7 +118,7 @@ Deno.serve(async (req) => {
       horario_inicio: "08:00", horario_fim: "18:00",
     });
 
-    // --- FASE 2A: Audit log + Welcome Email ---
+    // --- Welcome Email ---
     try {
       await supabaseAdmin.from("pe_audit_log").insert({
         actor_user_id: user.id, action: "EMPRESA_ACTIVATED",
@@ -138,7 +126,6 @@ Deno.serve(async (req) => {
         metadata: { empresa_id: empresa.id, plan_code: planCode, admin_email: body.admin_email },
       });
 
-      // Idempotency check
       const { data: existingEmail } = await supabaseAdmin
         .from("pe_audit_log")
         .select("id")
@@ -147,7 +134,7 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (!existingEmail) {
-        const { apiKey, fromEmail } = await getResendApiKey(supabaseAdmin);
+        const { apiKey, fromEmail } = await getSystemEmailConfig(supabaseAdmin);
         if (apiKey) {
           const emailHtml = buildWelcomeEmailHtml(empresa.nome, planName, body.admin_nome);
           const resendRes = await fetch("https://api.resend.com/emails", {
