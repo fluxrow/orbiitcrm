@@ -1,37 +1,60 @@
 
 
-# Fix: Preview branco, preview real-time e tabulação no editor
+# Listas com marcadores no editor de email
 
-## Problemas
-1. Preview com texto branco sobre fundo branco — usa `text-foreground` que herda cor do tema dark
-2. Preview já deveria atualizar em real-time mas pode não estar refletindo mudanças instantaneamente
-3. Falta suporte a tabs/indentação no editor
+## Situacao atual
 
-## Mudanças
+O editor TipTap ja inclui suporte a listas (StarterKit tem bulletList e orderedList) e os botoes ja estao na toolbar. O problema e que:
+1. As listas nao tem estilos inline para compatibilidade com clientes de email
+2. O preview pode nao renderizar os bullets corretamente com a classe `prose`
 
-### `src/pages/orbit/EmailTemplateEditorPage.tsx`
-- **Linha 312**: Trocar `text-foreground` por `text-black` na div do preview para forçar texto escuro
-- **Linha 296-298**: Adicionar `text-black` nos textos do header do preview (assunto, categoria)
+## Mudancas
 
-### `src/components/orbit/EmailTemplateEditor.tsx`
-- **Adicionar extensão `@tiptap/extension-tab-indentation` ou handler manual de Tab**: Configurar `handleKeyDown` no `editorProps` para capturar a tecla Tab e inserir indentação (4 espaços ou `\t`), e Shift+Tab para remover indentação
-- Isso permite tabulação dentro do corpo do email sem perder o foco do editor
+### 1. `src/components/orbit/EmailTemplateEditor.tsx`
+- Configurar as extensoes `BulletList` e `OrderedList` do StarterKit com `HTMLAttributes` que adicionam estilos inline automaticamente:
+  - `<ul>`: `style="padding-left:20px; margin:10px 0; list-style-type:disc;"`
+  - `<ol>`: `style="padding-left:20px; margin:10px 0; list-style-type:decimal;"`
+  - `<li>`: `style="margin-bottom:6px;"`
+- Isso garante que o HTML gerado pelo editor ja contenha estilos inline compatíveis com Gmail, Outlook e Apple Mail
+- O StarterKit permite override de extensoes individuais via `configure`
 
-## Detalhes técnicos
-- Para tabulação, usar abordagem manual no `editorProps.handleKeyDown` — mais simples que instalar extensão extra:
+### 2. `src/pages/orbit/EmailTemplateEditorPage.tsx`
+- Adicionar estilos CSS inline na div do preview para garantir que `ul`, `ol` e `li` renderizem com bullets/numeros visiveis e espaçamento adequado
+- Adicionar ao `previewHtml` um pos-processamento que injeta estilos inline nos tags `<ul>`, `<ol>` e `<li>` caso nao existam (para templates antigos sem estilos)
+
+### 3. `supabase/functions/orbit-send-email/index.ts`
+- Antes de enviar, pos-processar o `html` para garantir que `<ul>`, `<ol>` e `<li>` sem `style` recebam estilos inline padrão para compatibilidade com email
+- Regex simples para adicionar estilos se ausentes
+
+## Detalhes tecnicos
+
+Para o StarterKit, a configuracao fica:
 ```tsx
-handleKeyDown(view, event) {
-  if (event.key === 'Tab') {
-    event.preventDefault();
-    if (event.shiftKey) {
-      // opcional: outdent
-    } else {
-      editor.commands.insertContent('\t');
-    }
-    return true;
-  }
-  return false;
-}
+StarterKit.configure({
+  heading: { levels: [1, 2, 3] },
+  bulletList: {
+    HTMLAttributes: {
+      style: "padding-left: 20px; margin: 10px 0; list-style-type: disc;",
+    },
+  },
+  orderedList: {
+    HTMLAttributes: {
+      style: "padding-left: 20px; margin: 10px 0; list-style-type: decimal;",
+    },
+  },
+  listItem: {
+    HTMLAttributes: {
+      style: "margin-bottom: 6px;",
+    },
+  },
+})
 ```
-- Preview já é real-time via `form.corpo_texto` que atualiza no `onChange` do editor — o fix de cor resolverá a visibilidade
+
+Para o preview, adicionar estilos ao container:
+```tsx
+<div
+  className="prose prose-sm max-w-none text-black [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1.5"
+  dangerouslySetInnerHTML={{ __html: previewHtml }}
+/>
+```
 
