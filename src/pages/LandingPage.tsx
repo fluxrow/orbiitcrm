@@ -17,6 +17,7 @@ import orbitLogo from "@/assets/orbit-logo.png";
 import AnimatedSection from "@/components/landing/AnimatedSection";
 import GlowCard from "@/components/landing/GlowCard";
 import AnimatedBackground from "@/components/landing/AnimatedBackground";
+import HeroSection from "@/components/landing/HeroSection";
 
 /* ─── Data (unchanged) ─── */
 const PROBLEMS = [
