@@ -265,7 +265,7 @@ export default function TemplatesPage() {
 
       {/* Dialog de criação/edição */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className={`${isEmail ? "sm:max-w-2xl" : "sm:max-w-lg"} max-h-[90vh] overflow-y-auto`}>
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar Template" : "Novo Template"}</DialogTitle>
           </DialogHeader>
@@ -352,7 +352,7 @@ export default function TemplatesPage() {
                   </div>
                   <div
                     contentEditable
-                    className="flex min-h-[150px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 overflow-y-auto"
+                    className="min-h-[250px] w-full max-w-[560px] mx-auto rounded-md border border-input bg-white text-foreground p-6 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 overflow-y-auto shadow-sm"
                     dangerouslySetInnerHTML={{ __html: form.corpo_texto }}
                     onBlur={(e) => setForm({ ...form, corpo_texto: e.currentTarget.innerHTML })}
                     suppressContentEditableWarning
