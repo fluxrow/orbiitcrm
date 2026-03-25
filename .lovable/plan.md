@@ -1,72 +1,66 @@
 
 
-# Reconstrução do Hero — Landing Page Premium
+# Starfield Hyperspace Background — Hero Landing Page
 
 ## Visão geral
 
-Substituir o hero atual (logo + texto + badges + CTA) por um hero imersivo com mockup animado do sistema, efeito parallax via mouse, partículas e CTA com glow premium.
+Substituir o `AnimatedBackground` + `HeroParticles` atuais por um canvas starfield animado com efeito warp/hyperspace, mantendo o conteúdo existente (texto, CTA, mockup, parallax).
 
 ## Estrutura
 
-### 1. Novo componente `src/components/landing/HeroSection.tsx`
+### 1. Novo componente `src/components/landing/StarfieldCanvas.tsx`
 
-Componente dedicado contendo todo o hero. Substitui o bloco `{/* HERO */}` atual no `LandingPage.tsx`.
+Canvas HTML5 2D de tela cheia renderizando um starfield com efeito de velocidade.
 
-**Layout (desktop):** Duas colunas — texto à esquerda, mockup do sistema à direita.
+**Mecânica:**
+- ~300 estrelas com propriedades aleatórias (x, y, z)
+- Projeção perspectiva: estrelas se movem em Z em direção ao usuário
+- Quando z <= 0, a estrela é reciclada ao fundo (z máximo)
+- 3 camadas implícitas via profundidade Z:
+  - **Fundo** (z alto): pontos pequenos (1-2px), lentos, opacidade baixa
+  - **Meio** (z médio): pontos médios (2-3px), velocidade moderada
+  - **Frente** (z baixo): pontos maiores (3-5px), rápidos, com trail/motion blur (linha curta desenhada na direção do movimento)
+- `requestAnimationFrame` loop para ~60fps
+- Canvas redimensiona com `ResizeObserver`
 
-### 2. Background imersivo
+**Interação mouse (parallax):**
+- `onMouseMove` no canvas captura posição normalizada (-1 a 1)
+- Offset sutil aplicado ao ponto de fuga das estrelas (centro de projeção desloca com o mouse)
+- Transição suave via lerp
 
-- Manter `AnimatedBackground` existente (gradient animado + grid + blobs)
-- Adicionar campo de partículas leve com `motion.div` — ~20 pontos pequenos com animação de float aleatório (sem lib externa, apenas Framer Motion + CSS)
+**Scroll → velocidade:**
+- Listener de scroll modula a velocidade base das estrelas (scroll rápido = warp mais intenso)
 
-### 3. Mockup animado do sistema (coluna direita)
+### 2. Overlay de legibilidade
 
-Componente `src/components/landing/HeroDashboardMockup.tsx` — um "screenshot vivo" do Orbit renderizado com divs estilizadas:
+Dentro do próprio `StarfieldCanvas` ou como div irmã:
+- Gradient radial escuro do centro para fora: `radial-gradient(ellipse at center, transparent 30%, hsl(var(--background)) 80%)`
+- Gradient linear de baixo: `linear-gradient(to top, hsl(var(--background)), transparent 40%)`
 
-- **Barra lateral** mini com ícones
-- **Pipeline Kanban** com 3 colunas (Qualificação, Proposta, Fechamento) e cards animados se movendo entre colunas (loop infinito com Framer Motion)
-- **Feed de IA** no canto: mensagens aparecendo sequencialmente (typing → mensagem) simulando a IA qualificando um lead
-- **Contador de leads** incrementando automaticamente
-- Bordas com glow `border-primary/30`, fundo `bg-card/80 backdrop-blur`
+### 3. Integração no `HeroSection.tsx`
 
-### 4. Efeito parallax com mouse
+- Remover imports de `AnimatedBackground` e `HeroParticles`
+- Substituir por `<StarfieldCanvas />`
+- Manter todo o conteúdo existente (texto, stats, CTA, mockup com parallax)
+- Passar `mouseX`/`mouseY` do hero para o starfield via props ou compartilhar o mesmo handler
 
-- `onMouseMove` no container do hero captura posição do cursor
-- `useMotionValue` + `useTransform` do Framer Motion aplica `rotateX/rotateY` sutil (±3deg) no mockup
-- Camadas internas com intensidade de parallax diferente (perspectiva 3D)
+### 4. Limpeza
 
-### 5. Texto (coluna esquerda)
+- `AnimatedBackground.tsx` e `HeroParticles.tsx` podem ser mantidos (usados em outros lugares?) ou removidos se exclusivos do hero
 
-- Headline: **"Sua equipe comercial no piloto automático"** (mantida)
-- Subheadline nova: **"IA que atende, qualifica e distribui leads 24h — sem intervenção humana."**
-- Remover badges atuais — substituir por mini-stats animados (ex: "2.400+ leads qualificados", "24/7 atendimento IA")
+## Detalhes técnicos
 
-### 6. CTA premium
-
-- Botão principal com:
-  - `animate-glow-pulse` (já existe no CSS)
-  - Hover: `scale(1.05)` + aumento do glow
-  - Ícone `ArrowRight` animado (translateX no hover)
-- Botão secundário "Ver demonstração" com estilo ghost
-
-### 7. Partículas
-
-Componente `src/components/landing/HeroParticles.tsx` — ~15-20 círculos pequenos (2-4px) com posição aleatória, opacidade baixa (0.1-0.3), animação float com durations variados (8-15s). Puro CSS/Framer Motion, sem dependência externa.
+- Canvas 2D puro (sem WebGL/Three.js) — leve e sem dependências
+- Estrelas como array de objetos `{ x, y, z, prevZ }` — prevZ para calcular trail
+- Trail: `ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(prevSx, prevSy); ctx.stroke()` com opacidade proporcional à velocidade
+- Cor das estrelas: branco/azulado com leve variação (`hsl(200, 80%, 85-100%)`)
+- Canvas com `position: absolute; inset: 0` e `pointer-events: none`
+- Cleanup de listeners e animationFrame no `useEffect` return
 
 ## Arquivos
 
 | Arquivo | Ação |
 |---------|------|
-| `src/components/landing/HeroSection.tsx` | **Criar** — hero completo |
-| `src/components/landing/HeroDashboardMockup.tsx` | **Criar** — mockup animado do sistema |
-| `src/components/landing/HeroParticles.tsx` | **Criar** — partículas flutuantes |
-| `src/pages/LandingPage.tsx` | **Editar** — substituir bloco hero pelo `<HeroSection />` |
-
-## Detalhes técnicos
-
-- Todo parallax via `useMotionValue`/`useTransform` do Framer Motion (já instalado)
-- Animações do Kanban: cards com `animate` + `transition.repeat: Infinity` e delays escalonados
-- Mensagens IA: array de textos com `AnimatePresence` ciclando a cada ~3s
-- Sem bibliotecas novas — tudo com Framer Motion + Tailwind existentes
-- Responsivo: em mobile, mockup fica abaixo do texto com parallax desabilitado
+| `src/components/landing/StarfieldCanvas.tsx` | **Criar** — canvas starfield com warp, parallax mouse, scroll speed |
+| `src/components/landing/HeroSection.tsx` | **Editar** — trocar AnimatedBackground + HeroParticles por StarfieldCanvas |
 
