@@ -45,8 +45,7 @@ export default function HeroSection() {
       onMouseLeave={handleMouseLeave}
       className="relative pt-20 pb-28 px-4 overflow-hidden min-h-[90vh] flex items-center"
     >
-      <AnimatedBackground />
-      <HeroParticles />
+      <StarfieldCanvas />
 
       <div className="relative z-10 max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
         {/* Left — Text */}
