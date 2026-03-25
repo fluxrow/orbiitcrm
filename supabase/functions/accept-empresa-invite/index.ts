@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
+import { getSystemEmailConfig } from "../_shared/system-email.ts";
 
 async function hashToken(plaintext: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -9,18 +10,7 @@ async function hashToken(plaintext: string): Promise<string> {
     .join("");
 }
 
-async function getResendApiKey(supabase: any): Promise<{ apiKey: string | null; fromEmail: string }> {
-  try {
-    const { data } = await supabase
-      .from("orbit_resend_config")
-      .select("api_key, from_email")
-      .is("empresa_id", null)
-      .maybeSingle();
-    if (data?.api_key) return { apiKey: data.api_key, fromEmail: data.from_email || "noreply@orbiitcrm.com" };
-  } catch (_e) { /* ignore */ }
-  const envKey = Deno.env.get("RESEND_API_KEY");
-  return { apiKey: envKey || null, fromEmail: "noreply@orbiitcrm.com" };
-}
+// getResendApiKey removed — now using getSystemEmailConfig from _shared/system-email.ts
 
 function buildActivationEmailHtml(empresaNome: string, planName: string, userName: string, redirectUrl: string): string {
   const fullUrl = `https://orbiitcrm.lovable.app${redirectUrl}`;
@@ -220,7 +210,7 @@ Deno.serve(async (req) => {
 
       if (!existingEmail) {
         const empresaNome = body.dados_receita?.razao_social || body.full_name.trim();
-        const { apiKey, fromEmail } = await getResendApiKey(supabase);
+        const { apiKey, fromEmail } = await getSystemEmailConfig(supabase);
         if (apiKey) {
           const emailHtml = buildActivationEmailHtml(empresaNome, planName, body.full_name.trim(), redirectUrl);
           const resendRes = await fetch("https://api.resend.com/emails", {

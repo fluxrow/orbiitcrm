@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
+import { getSystemEmailConfig } from "../_shared/system-email.ts";
 
 interface TrialRequest {
   trial_id?: string;
@@ -30,19 +31,7 @@ function getAppUrl(req: Request): string {
   return "https://id-preview--143c37b1-339e-469f-b2f1-df4584af8003.lovable.app";
 }
 
-async function getResendApiKey(supabase: ReturnType<typeof createClient>): Promise<{ apiKey: string | null; fromEmail: string }> {
-  let apiKey: string | null = null;
-  let fromEmail = "Orbit <onboarding@resend.dev>";
-  try {
-    const { data: cfg } = await supabase.from("orbit_resend_config").select("*").is("empresa_id", null).maybeSingle();
-    if (cfg) {
-      if (cfg.api_key) apiKey = cfg.api_key;
-      if (cfg.ativo && cfg.from_email) fromEmail = `${cfg.from_name || "Orbit"} <${cfg.from_email}>`;
-    }
-  } catch (_e) { /* ignore */ }
-  if (!apiKey) apiKey = Deno.env.get("RESEND_API_KEY") || null;
-  return { apiKey, fromEmail };
-}
+// getResendApiKey removed — now using getSystemEmailConfig from _shared/system-email.ts
 
 function buildEmailHtml(empresaNome: string, planName: string, activationUrl: string): string {
   return `<!DOCTYPE html>
@@ -204,8 +193,7 @@ Deno.serve(async (req) => {
       if (invErr) throw new Error(`saas_invites: ${invErr.message}`);
 
       // 7) Send activation email — always use "Orbit" as sender for system emails
-      const { apiKey: resendKey } = await getResendApiKey(supabase);
-      const fromEmail = "Orbit <onboarding@resend.dev>";
+      const { apiKey: resendKey, fromEmail } = await getSystemEmailConfig(supabase);
       let emailSent = false;
       if (resendKey) {
         const appUrl = getAppUrl(req);
