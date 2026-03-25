@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate, useLocation, useBlocker } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { EmailTemplateEditor } from "@/components/orbit/EmailTemplateEditor";
 import { Button } from "@/components/ui/button";
@@ -84,11 +84,7 @@ export default function EmailTemplateEditorPage() {
 
   const hasChanges = JSON.stringify(form) !== JSON.stringify(originalForm);
 
-  // Unsaved changes guard
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      hasChanges && currentLocation.pathname !== nextLocation.pathname
-  );
+  // Unsaved changes guard (beforeunload only, since BrowserRouter doesn't support useBlocker)
 
   useEffect(() => {
     if (!hasChanges) return;
@@ -346,19 +342,6 @@ export default function EmailTemplateEditorPage() {
         </div>
       )}
 
-      {/* Unsaved changes dialog */}
-      <Dialog open={blocker.state === "blocked"} onOpenChange={() => blocker.state === "blocked" && blocker.reset?.()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Alterações não salvas</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">Você tem alterações que não foram salvas. Deseja realmente sair?</p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => blocker.reset?.()}>Continuar editando</Button>
-            <Button variant="destructive" onClick={() => blocker.proceed?.()}>Sair sem salvar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </OrbitLayout>
   );
 }
