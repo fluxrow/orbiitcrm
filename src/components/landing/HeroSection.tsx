@@ -47,9 +47,9 @@ export default function HeroSection() {
     >
       <StarfieldCanvas />
 
-      <div className="relative z-10 max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+      <div className="relative z-10 max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-12 lg:gap-8 items-center">
         {/* Left — Text */}
-        <div className="space-y-6 text-center lg:text-left">
+        <div className="space-y-8 text-center lg:text-left lg:pl-4 max-w-[640px] mx-auto lg:mx-0">
           <motion.div
             className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/5 px-4 py-1.5 text-xs font-medium text-primary backdrop-blur-sm"
             initial={{ opacity: 0, y: 20 }}
@@ -61,18 +61,18 @@ export default function HeroSection() {
           </motion.div>
 
           <motion.h1
-            className="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-[1.1]"
+            className="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-[1.15]"
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.15 }}
           >
             <span className="gradient-text">Sua equipe comercial</span>
             <br />
-            no piloto automático
+            <span className="text-primary">no piloto automático</span>
           </motion.h1>
 
           <motion.p
-            className="text-lg text-muted-foreground max-w-lg mx-auto lg:mx-0"
+            className="text-xl text-muted-foreground max-w-lg mx-auto lg:mx-0"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.35 }}
@@ -82,22 +82,22 @@ export default function HeroSection() {
 
           {/* Mini stats */}
           <motion.div
-            className="flex flex-wrap items-center justify-center lg:justify-start gap-6 pt-2"
+            className="flex flex-wrap items-center justify-center lg:justify-start gap-8 pt-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
           >
             {STATS.map((s) => (
               <div key={s.label} className="text-center lg:text-left">
-                <p className="text-xl font-bold text-primary">{s.value}</p>
-                <p className="text-[11px] text-muted-foreground">{s.label}</p>
+                <p className="text-2xl font-bold text-primary">{s.value}</p>
+                <p className="text-xs text-muted-foreground">{s.label}</p>
               </div>
             ))}
           </motion.div>
 
           {/* CTA */}
           <motion.div
-            className="flex flex-col sm:flex-row items-center gap-3 pt-4 justify-center lg:justify-start"
+            className="flex flex-col sm:flex-row items-center gap-3 pt-6 justify-center lg:justify-start"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.6 }}
