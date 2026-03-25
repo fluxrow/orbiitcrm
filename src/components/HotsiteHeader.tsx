@@ -27,19 +27,19 @@ export default function HotsiteHeader() {
   };
 
   return (
-    <header className="fixed top-0 inset-x-0 z-50 glass-card border-t-0 rounded-none border-x-0">
+    <header className="fixed top-0 inset-x-0 z-50 bg-background/70 backdrop-blur-xl border-b border-border/40">
       <div className="max-w-7xl mx-auto flex items-center justify-between px-4 h-16">
-        <button onClick={() => navigate("/")} className="shrink-0">
+        <button onClick={() => navigate("/")} className="shrink-0 hover:opacity-80 transition-opacity">
           <img src={orbitLogo} alt="Orbit" className="h-8" />
         </button>
 
         {/* Desktop nav */}
-        <nav className="hidden md:flex items-center gap-6">
+        <nav className="hidden md:flex items-center gap-6 story-link">
           {NAV_ITEMS.map((item) => (
             <button
               key={item.href}
               onClick={() => handleNavClick(item.href)}
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="relative text-sm text-muted-foreground hover:text-foreground transition-colors after:content-[''] after:absolute after:w-full after:scale-x-0 after:h-0.5 after:bottom-[-2px] after:left-0 after:bg-primary after:origin-bottom-right after:transition-transform after:duration-300 hover:after:scale-x-100 hover:after:origin-bottom-left"
             >
               {item.label}
             </button>
@@ -47,13 +47,13 @@ export default function HotsiteHeader() {
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => navigate("/demo")}>
+          <Button variant="ghost" size="sm" onClick={() => navigate("/demo")} className="hover:bg-secondary/60">
             Acessar Demo
           </Button>
-          <Button variant="outline" size="sm" onClick={() => navigate("/auth")}>
+          <Button variant="outline" size="sm" onClick={() => navigate("/auth")} className="border-border/50 backdrop-blur-sm">
             Entrar
           </Button>
-          <Button size="sm" onClick={() => navigate("/trial")}>
+          <Button size="sm" onClick={() => navigate("/trial")} className="animate-glow hover:scale-105 transition-transform">
             Começar Trial
           </Button>
         </div>
