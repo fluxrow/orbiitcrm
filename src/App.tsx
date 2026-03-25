@@ -26,6 +26,7 @@ import ConversasPage from "./pages/orbit/ConversasPage";
 import FunilPage from "./pages/orbit/FunilPage";
 import CampanhasPage from "./pages/orbit/CampanhasPage";
 import TemplatesPage from "./pages/orbit/TemplatesPage";
+import EmailTemplateEditorPage from "./pages/orbit/EmailTemplateEditorPage";
 import LeadFinderPage from "./pages/orbit/LeadFinderPage";
 import ConfigPage from "./pages/orbit/ConfigPage";
 import AnalyticsPage from "./pages/orbit/AnalyticsPage";
