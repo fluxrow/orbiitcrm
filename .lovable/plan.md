@@ -1,41 +1,37 @@
 
 
-# Fix: Texto branco e perda de formatação ao colar no editor de email
+# Fix: Preview branco, preview real-time e tabulação no editor
 
-## Problemas identificados
+## Problemas
+1. Preview com texto branco sobre fundo branco — usa `text-foreground` que herda cor do tema dark
+2. Preview já deveria atualizar em real-time mas pode não estar refletindo mudanças instantaneamente
+3. Falta suporte a tabs/indentação no editor
 
-1. **Texto branco sobre fundo branco**: A classe `prose` do Tailwind herda a cor do tema (que pode ser branca em dark mode). O editor tem `bg-white` mas o texto não tem cor forçada escura.
+## Mudanças
 
-2. **Perda de formatação ao colar**: O TipTap por padrão com StarterKit processa o conteúdo colado mas pode remover estilos inline. Precisamos garantir que `TextStyle` e `Color` sejam preservados no paste.
-
-## Solução
+### `src/pages/orbit/EmailTemplateEditorPage.tsx`
+- **Linha 312**: Trocar `text-foreground` por `text-black` na div do preview para forçar texto escuro
+- **Linha 296-298**: Adicionar `text-black` nos textos do header do preview (assunto, categoria)
 
 ### `src/components/orbit/EmailTemplateEditor.tsx`
+- **Adicionar extensão `@tiptap/extension-tab-indentation` ou handler manual de Tab**: Configurar `handleKeyDown` no `editorProps` para capturar a tecla Tab e inserir indentação (4 espaços ou `\t`), e Shift+Tab para remover indentação
+- Isso permite tabulação dentro do corpo do email sem perder o foco do editor
 
-1. **Forçar texto escuro no editor**: Adicionar `text-black` na div do editor e no `editorProps.attributes.class` para garantir que o texto seja sempre escuro independente do tema.
-
-2. **Melhorar preservação de formatação ao colar**: Adicionar `handlePaste` customizado no `editorProps` que preserva o HTML formatado, ou configurar `transformPastedHTML` para manter estilos inline de cor e fonte.
-
-Mudanças específicas:
-
-- **Linha 85-88** (editorProps): Adicionar `text-black` à classe do editor
+## Detalhes técnicos
+- Para tabulação, usar abordagem manual no `editorProps.handleKeyDown` — mais simples que instalar extensão extra:
 ```tsx
-editorProps: {
-  attributes: {
-    class: "prose prose-sm max-w-none min-h-[300px] focus:outline-none p-6 text-black",
-  },
-},
+handleKeyDown(view, event) {
+  if (event.key === 'Tab') {
+    event.preventDefault();
+    if (event.shiftKey) {
+      // opcional: outdent
+    } else {
+      editor.commands.insertContent('\t');
+    }
+    return true;
+  }
+  return false;
+}
 ```
-
-- **Linha 265** (div container do editor): Adicionar `text-black` 
-```tsx
-<div className="bg-white text-black min-h-[350px]">
-```
-
-- **Linhas 69-79** (extensions): Adicionar `FontFamily` extension (via `@tiptap/extension-font-family`) para preservar fontes coladas, e configurar `parseHTML` rules no StarterKit para aceitar estilos inline
-
-- **Alternativa mais simples para paste**: Adicionar no `editorProps` um `transformPastedHTML` que preserva os estilos de formatação ao limpar apenas tags perigosas (script, etc.) mas mantendo `style` attributes de font, color, etc.
-
-## Arquivos modificados
-- `src/components/orbit/EmailTemplateEditor.tsx` — forçar cor escura + preservar formatação no paste
+- Preview já é real-time via `form.corpo_texto` que atualiza no `onChange` do editor — o fix de cor resolverá a visibilidade
 
