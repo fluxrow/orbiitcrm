@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Users,
@@ -43,6 +43,13 @@ export function OrbitSidebar() {
   const [hovered, setHovered] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const isMobile = useIsMobile();
+
+  // Listen for mobile toggle event from OrbitLayout
+  useEffect(() => {
+    const handler = () => setMobileOpen((prev) => !prev);
+    window.addEventListener("orbit-sidebar-toggle", handler);
+    return () => window.removeEventListener("orbit-sidebar-toggle", handler);
+  }, []);
 
   const isExpanded = isMobile ? mobileOpen : hovered;
 
