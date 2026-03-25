@@ -1,97 +1,57 @@
 
 
-# Landing Page Premium — Redesign Imersivo
+# Ajustar SEO da Landing Page
 
-## Resumo
+## Problemas atuais
 
-Transformar a landing page atual (560 linhas, estática, sem animações) em uma experiência visual premium inspirada em Vercel/Linear/Stripe, com animações Framer Motion, efeitos de glassmorphism avançado, gradientes neon animados, grid tech no hero, e micro-interações em todos os elementos.
+1. **`lang="en"`** no `index.html` — o conteúdo é em português, Google interpreta como inglês
+2. **Title genérico** — "Orbit CRM" sem palavras-chave de busca
+3. **Meta description fraca** — "Sistema de Gestao de CRM com IA avançada" (sem acento, sem keywords ricas)
+4. **Sem `og:url`** nem `og:locale`
+5. **OG image usando favicon.png** — imagem muito pequena, sem impacto visual no compartilhamento
+6. **Sem sitemap.xml** — Google não consegue descobrir páginas
+7. **robots.txt sem Sitemap reference**
+8. **Sem canonical URL**
+9. **Sem structured data (JSON-LD)** — sem rich snippets no Google
+10. **SPA sem meta tags dinâmicas** — todas as rotas mostram o mesmo title/description
 
 ## Implementação
 
-### 1. Instalar Framer Motion
-- Adicionar `framer-motion` como dependência
+### 1. `index.html` — Meta tags otimizadas
 
-### 2. Criar componentes auxiliares reutilizáveis
+- `lang="pt-BR"`
+- Title: `Orbit CRM — CRM com IA para WhatsApp, Email e Vendas`
+- Description rica com keywords: CRM, WhatsApp, IA, funil de vendas, qualificação de leads, automação comercial
+- `og:url`, `og:locale="pt_BR"`, `og:site_name`
+- Canonical link
+- JSON-LD `SoftwareApplication` structured data com nome, descrição, preços e avaliação
 
-**`src/components/landing/AnimatedSection.tsx`**
-- Wrapper com `motion.div` que aplica fade+slide on scroll via `whileInView`
-- Props: `delay`, `direction` (up/down/left/right)
+### 2. `public/sitemap.xml` — Criar
 
-**`src/components/landing/GlowCard.tsx`**
-- Card com border gradient animado, backdrop-blur, hover com translateY(-4px) + glow
-- Substitui todos os `glass-card` atuais nos cards da landing
+Listar rotas públicas: `/`, `/trial`, `/doc`, `/auth`
 
-**`src/components/landing/AnimatedBackground.tsx`**
-- Canvas ou div-based animated gradient background para o hero
-- Grid tech pattern (CSS grid lines com opacity animada)
-- Blobs flutuantes com CSS animations (não JS pesado)
+### 3. `public/robots.txt` — Adicionar referência ao sitemap
 
-### 3. Reescrever `src/pages/LandingPage.tsx`
+```
+Sitemap: https://orbiitcrm.lovable.app/sitemap.xml
+```
 
-Manter toda a estrutura de dados (PROBLEMS, SOLUTIONS, STEPS, etc.) e refatorar o JSX:
+### 4. `LandingPage.tsx` — Title dinâmico
 
-**Hero:**
-- Background com gradient animado (CSS `@keyframes gradient-shift` com background-size 400%)
-- Grid pattern overlay (linhas CSS semi-transparentes)
-- Título com stagger animation (cada palavra aparece sequencialmente)
-- Badges com motion stagger
-- CTA com glow pulsante (`animate-glow` já existe) + hover scale
-- Mockup placeholder: screenshot/ilustração do dashboard flutuando com parallax leve (translateY baseado em scroll)
+Usar `document.title` via `useEffect` para definir title específico da landing ao montar.
 
-**Seção Problema:**
-- Cards com `GlowCard` + border-destructive gradient
-- Stagger animation nos 3 cards
+### 5. `TrialPage.tsx` e `AuthPage.tsx` — Titles específicos
 
-**Seção Solução:**
-- Cards com `GlowCard` + border-primary gradient
-- Ícones com hover rotate/pulse
-
-**Como Funciona:**
-- Timeline vertical/horizontal com linha SVG conectando etapas
-- Cada step aparece com stagger progressivo
-- Highlight na etapa ao hover (glow + scale)
-
-**Funcionalidades:**
-- Grid com ícones que reagem ao hover (rotate 12deg + scale)
-- Cards com `GlowCard`
-
-**Planos:**
-- Toggle mensal/anual (state local, multiplica preço por 0.8 para anual)
-- Plano destacado com glow mais forte, scale(1.05), z-10
-- CTA com animação pulse contínua no plano highlighted
-
-**FAQ:**
-- Accordion items com `GlowCard` styling
-
-**Fundo geral:**
-- Noise texture via CSS (`background-image: url(data:image/svg+xml,...)` inline SVG noise)
-- Gradient blobs posicionados absolute com blur e animação float
-
-### 4. Atualizar `src/components/HotsiteHeader.tsx`
-- Nav links com underline animado (já existe `.story-link` no CSS)
-- CTA "Começar Trial" com glow hover
-- Backdrop blur mais forte no header
-
-### 5. Atualizar `src/index.css`
-- Adicionar keyframes: `gradient-shift`, `float`, `glow-pulse`
-- Adicionar classes utilitárias: `.noise-bg`, `.gradient-border`
-- Adicionar grid pattern CSS para hero background
+Cada página pública define seu próprio `document.title` com keywords relevantes.
 
 ## Arquivos
 
 | Arquivo | Ação |
 |---------|------|
-| `package.json` | Adicionar `framer-motion` |
-| `src/components/landing/AnimatedSection.tsx` | **Criar** |
-| `src/components/landing/GlowCard.tsx` | **Criar** |
-| `src/components/landing/AnimatedBackground.tsx` | **Criar** |
-| `src/pages/LandingPage.tsx` | Reescrever JSX com animações |
-| `src/components/HotsiteHeader.tsx` | Micro-interações + glow |
-| `src/index.css` | Keyframes + utilitários novos |
-
-## Performance
-- Todas animações usam `transform` e `opacity` (GPU-accelerated)
-- `whileInView` com `once: true` para não re-animar
-- Blobs e gradientes via CSS puro (sem JS runtime)
-- Framer Motion tree-shakes bem (~15KB gzipped)
+| `index.html` | Reescrever meta tags SEO + JSON-LD |
+| `public/sitemap.xml` | **Criar** |
+| `public/robots.txt` | Adicionar Sitemap |
+| `src/pages/LandingPage.tsx` | `useEffect` para `document.title` |
+| `src/pages/TrialPage.tsx` | `useEffect` para `document.title` |
+| `src/pages/AuthPage.tsx` | `useEffect` para `document.title` |
 
