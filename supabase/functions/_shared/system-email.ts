@@ -8,8 +8,8 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const SYSTEM_FROM_NAME = "Orbit";
-const SYSTEM_FROM_EMAIL = "onboarding@resend.dev";
+const SYSTEM_FROM_NAME = "Orbit CRM";
+const SYSTEM_FROM_EMAIL = "orbit@fluxrow.pro";
 
 export interface SystemEmailConfig {
   apiKey: string | null;
