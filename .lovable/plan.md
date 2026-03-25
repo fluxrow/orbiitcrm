@@ -1,80 +1,43 @@
 
 
-# Fix: Email sender identity leaking tenant branding into system emails
+# Fix: Usuário cadastrado no trial não é vinculado como admin da organização
 
-## Root cause
+## Problema
 
-The table `orbit_resend_config` has a global record (`empresa_id IS NULL`) that contains `from_name = "Promotrip Corporate"` — this is tenant data that leaked into the platform-level config. Three edge functions read this record for system emails:
+Quando um usuário se cadastra pelo fluxo de trial (accept-empresa-invite), o sistema:
+1. Cria o auth user → trigger `handle_new_user_pe` cria `pe_users` com `organization_id = NULL` e `role_id = NULL`
+2. Chama `pe_provision_tenant` → cria a organização e o mapeamento `pe_tenant_map`
+3. **Nunca atualiza `pe_users`** para vincular o usuário à organização com role `ORG_ADMIN`
 
-| Function | Status | Problem |
-|----------|--------|---------|
-| `auto-approve-trial` | **Already fixed** | Hardcodes `from = "Orbit <onboarding@resend.dev>"` |
-| `create-empresa-invite` | **Broken** | Line 37: uses `cfg.from_name` → "Promotrip Corporate" |
-| `accept-empresa-invite` | **Broken** | Line 19: uses `data.from_email` but no name override → inherits global config |
+Resultado: o usuário fica "órfão" no PE — sem organização e sem papel. Não consegue acessar dados via RLS que dependem de `pe_get_user_org_id()`.
 
-## Solution
+## Solução
 
-### 1. Create shared helper `supabase/functions/_shared/system-email.ts`
+Atualizar a função `pe_provision_tenant` para também vincular o usuário criador como `ORG_ADMIN` da organização recém-criada.
 
-Centralize system email config resolution:
+### Arquivo: Migration SQL (nova)
 
-```typescript
-// System-level identity — NEVER from tenant config
-const SYSTEM_FROM_NAME = "Orbit";
-const SYSTEM_FROM_FALLBACK = "onboarding@resend.dev";
+Alterar a função `pe_provision_tenant` para adicionar ao final:
 
-export async function getSystemEmailConfig(supabase): Promise<{ apiKey: string | null; fromEmail: string }> {
-  // Only read API key from global config, IGNORE from_name/from_email
-  let apiKey = null;
-  const { data: cfg } = await supabase
-    .from("orbit_resend_config").select("api_key").is("empresa_id", null).maybeSingle();
-  if (cfg?.api_key) apiKey = cfg.api_key;
-  if (!apiKey) apiKey = Deno.env.get("RESEND_API_KEY") || null;
-  return { apiKey, fromEmail: `${SYSTEM_FROM_NAME} <${SYSTEM_FROM_FALLBACK}>` };
-}
+```sql
+-- Vincular o usuário criador como ORG_ADMIN da organização
+UPDATE public.pe_users
+SET organization_id = v_org_id,
+    role_id = (SELECT id FROM public.pe_roles WHERE code = 'ORG_ADMIN'),
+    is_active = true
+WHERE id = p_created_by_user_id
+  AND organization_id IS NULL;
 ```
 
-### 2. Update `create-empresa-invite/index.ts`
+Isso garante que:
+- O usuário que ativa a conta é automaticamente admin da organização
+- Funciona tanto no fluxo `accept-empresa-invite` quanto no `create-empresa` (super admin)
+- Não afeta usuários que já têm organização (condição `AND organization_id IS NULL`)
+- Nenhuma alteração necessária nas edge functions — a correção é centralizada no banco
 
-- Replace `getResendApiKey()` with import from `_shared/system-email.ts`
-- Line 124: use `getSystemEmailConfig()` instead
-- This ensures admin-created invites always show "Orbit" as sender
+### Arquivo afetado
 
-### 3. Update `accept-empresa-invite/index.ts`
-
-- Replace `getResendApiKey()` (lines 12-23) with import from `_shared/system-email.ts`
-- Line 223: use `getSystemEmailConfig()` instead
-- Welcome/activation emails always show "Orbit" as sender
-
-### 4. Update `auto-approve-trial/index.ts`
-
-- Replace `getResendApiKey()` (lines 33-45) with import from `_shared/system-email.ts`
-- Remove the local `fromEmail` override on line 208 (now handled by shared helper)
-
-### 5. Keep `orbit-send-email/index.ts` unchanged
-
-This function handles **tenant-scoped** email sending (campaigns, individual emails). Its hierarchical config lookup (empresa_id → global fallback) is correct for that use case.
-
-## Summary of resolution priority
-
-```text
-System emails (trial, invite, activation, welcome):
-  → ALWAYS "Orbit <onboarding@resend.dev>"
-  → API key from global config or env var
-  → Never reads from_name/from_email from any config record
-
-Tenant emails (campaigns, 1:1 sends via orbit-send-email):
-  → empresa_id config first
-  → Global config as fallback (from_name + from_email)
-  → Env var RESEND_API_KEY as last resort
-```
-
-## Files
-
-| File | Action |
-|------|--------|
-| `supabase/functions/_shared/system-email.ts` | **Create** — shared system email config helper |
-| `supabase/functions/auto-approve-trial/index.ts` | **Edit** — use shared helper |
-| `supabase/functions/create-empresa-invite/index.ts` | **Edit** — use shared helper |
-| `supabase/functions/accept-empresa-invite/index.ts` | **Edit** — use shared helper |
+| Arquivo | Ação |
+|---------|------|
+| Nova migration SQL | Recriar `pe_provision_tenant` com `UPDATE pe_users` |
 
