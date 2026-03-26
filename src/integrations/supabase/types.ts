@@ -3474,6 +3474,17 @@ export type Database = {
     Functions: {
       extract_domain: { Args: { p: string }; Returns: string }
       generate_unique_slug: { Args: { p_nome: string }; Returns: string }
+      get_campaign_recipient_counts: {
+        Args: { p_campaign_ids: string[] }
+        Returns: {
+          campaign_id: string
+          enviado: number
+          falhou: number
+          ignorado: number
+          pendente: number
+          total: number
+        }[]
+      }
       get_empresa_by_slug: { Args: { p_slug: string }; Returns: Json }
       get_user_empresa_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
