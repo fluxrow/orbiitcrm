@@ -1,25 +1,24 @@
 
 
-# Relatório de Campanhas na página de Analytics
+# Mostrar todos os destinatários no Analytics
 
-## Objetivo
-Adicionar uma seção de analytics de campanhas de email na página Analytics, com seletor de campanha e métricas de engajamento (aberturas, cliques, bounces, spam).
+## Problema
+O hook `useOrbitEmailAnalytics` filtra destinatários com `.neq("status", "pendente")`, excluindo quem ainda não foi processado. A campanha pode ter mais destinatários do que os 141 mostrados como "Enviados".
 
-## Alterações
+## Solução
 
-### 1. `src/pages/orbit/AnalyticsPage.tsx`
-- Importar `useOrbitCampaigns` e `useOrbitEmailAnalytics`
-- Adicionar um `Select` para escolher a campanha (filtrar apenas campanhas de email com status enviando/concluída/pausada)
-- Renderizar seção com:
-  - Cards de métricas (enviados, aberturas, cliques, bounces, spam, sem interação) com taxas percentuais
-  - Tabela de destinatários com status de engajamento (reaproveitando a mesma estrutura do `CampaignAnalyticsDialog`)
-  - Aviso sobre imprecisão de tracking de abertura
-- Posicionar esta seção após os gráficos existentes
+### `src/hooks/useOrbitEmailAnalytics.ts`
+- Remover o filtro `.neq("status", "pendente")` da query para trazer TODOS os destinatários da campanha
+- Ajustar as métricas para contar "Enviados" apenas entre os que têm `status != 'pendente'`
+- Adicionar campo `total_recipients` (total geral) separado de `total` (enviados)
 
-### 2. Sem alterações em outros arquivos
-O hook `useOrbitEmailAnalytics` e os componentes já existem — apenas reutilizamos na nova página.
+### `src/components/orbit/CampaignAnalyticsSection.tsx`
+- Adicionar card "Total Destinatários" mostrando o número completo
+- Manter "Enviados" como contagem dos efetivamente enviados
+- Calcular taxas sobre os enviados (não sobre total)
 
 | Arquivo | Ação |
 |---------|------|
-| `src/pages/orbit/AnalyticsPage.tsx` | Adicionar seção de analytics de campanhas com seletor e métricas |
+| `src/hooks/useOrbitEmailAnalytics.ts` | Remover filtro pendente, adicionar campo total_recipients |
+| `src/components/orbit/CampaignAnalyticsSection.tsx` | Exibir total de destinatários + enviados separadamente |
 
