@@ -31,12 +31,13 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 export default function CampanhasPage() {
   const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState("all");
+  const [canalFilter, setCanalFilter] = useState("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [reviewCampaignId, setReviewCampaignId] = useState<string | null>(null);
   const [analyticsCampaign, setAnalyticsCampaign] = useState<{ id: string; nome: string } | null>(null);
 
-  const { data: campaigns, isLoading, refetch } = useOrbitCampaigns({ status: statusFilter });
+  const { data: campaigns, isLoading, refetch } = useOrbitCampaigns({ status: statusFilter, canal: canalFilter });
   const updateCampaign = useUpdateCampaign();
   const deleteCampaign = useDeleteCampaign();
 
@@ -204,6 +205,16 @@ export default function CampanhasPage() {
       />
 
       <div className="flex gap-4 mb-6">
+        <Select value={canalFilter} onValueChange={setCanalFilter}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Canal" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os Canais</SelectItem>
+            <SelectItem value="email">📧 Email</SelectItem>
+            <SelectItem value="whatsapp">💬 WhatsApp</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[200px]">
             <SelectValue placeholder="Status" />
@@ -255,7 +266,12 @@ export default function CampanhasPage() {
                       )}
                     </div>
                     <div>
-                      <h3 className="font-semibold">{c.nome}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold">{c.nome}</h3>
+                        <Badge variant="outline" className={c.canal === "whatsapp" ? "border-green-500/50 text-green-500" : "border-blue-500/50 text-blue-500"}>
+                          {c.canal === "whatsapp" ? "WhatsApp" : "Email"}
+                        </Badge>
+                      </div>
                       <p className="text-sm text-muted-foreground">
                         Criada em {c.created_at ? format(new Date(c.created_at), "dd/MM/yyyy HH:mm") : "-"}
                         {c.template && ` • Template: ${(c.template as any).nome}`}
@@ -268,13 +284,22 @@ export default function CampanhasPage() {
                 </div>
 
                 <div className="grid grid-cols-5 gap-4 mb-4">
-                  {[
-                    ["Destinatários", totalRecipients],
-                    ["Enviados", counts?.enviado || c.enviados || 0],
-                    ["Aberturas", c.aberturas],
-                    ["Cliques", c.cliques],
-                    ["Respostas", c.respostas]
-                  ].map(([label, value]) => (
+                  {(c.canal === "whatsapp"
+                    ? [
+                        ["Destinatários", totalRecipients],
+                        ["Enviados", counts?.enviado || c.enviados || 0],
+                        ["Entregues", c.aberturas],
+                        ["Lidos", c.cliques],
+                        ["Respostas", c.respostas],
+                      ]
+                    : [
+                        ["Destinatários", totalRecipients],
+                        ["Enviados", counts?.enviado || c.enviados || 0],
+                        ["Aberturas", c.aberturas],
+                        ["Cliques", c.cliques],
+                        ["Respostas", c.respostas],
+                      ]
+                  ).map(([label, value]) => (
                     <div key={String(label)} className="p-3 bg-muted/50 rounded-lg">
                       <p className="text-xs text-muted-foreground">{label}</p>
                       <p className="text-lg font-semibold">{value || 0}</p>
@@ -375,7 +400,7 @@ function CampaignActions({
   const canPause = status === "enviando";
   const canCancel = !["concluida", "cancelada"].includes(status);
   const canDelete = status === "rascunho";
-  const canAnalytics = campaignCanal === "email" && ["enviando", "concluida", "pausada", "pausada_por_limite"].includes(status);
+  const canAnalytics = ["enviando", "concluida", "pausada", "pausada_por_limite"].includes(status);
 
   return (
     <div className="border-t pt-4">
