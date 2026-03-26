@@ -748,38 +748,59 @@ export type Database = {
       }
       orbit_campaign_recipients: {
         Row: {
+          bounced_at: string | null
           campaign_id: string | null
+          clicked_at: string | null
+          complained_at: string | null
           created_at: string | null
+          delivered_at: string | null
           email: string | null
           empresa_id: string | null
+          engagement_status: string | null
           enviado_em: string | null
           erro: string | null
           id: string
+          opened_at: string | null
           prospect_id: string | null
+          resend_email_id: string | null
           status: string | null
           telefone: string | null
         }
         Insert: {
+          bounced_at?: string | null
           campaign_id?: string | null
+          clicked_at?: string | null
+          complained_at?: string | null
           created_at?: string | null
+          delivered_at?: string | null
           email?: string | null
           empresa_id?: string | null
+          engagement_status?: string | null
           enviado_em?: string | null
           erro?: string | null
           id?: string
+          opened_at?: string | null
           prospect_id?: string | null
+          resend_email_id?: string | null
           status?: string | null
           telefone?: string | null
         }
         Update: {
+          bounced_at?: string | null
           campaign_id?: string | null
+          clicked_at?: string | null
+          complained_at?: string | null
           created_at?: string | null
+          delivered_at?: string | null
           email?: string | null
           empresa_id?: string | null
+          engagement_status?: string | null
           enviado_em?: string | null
           erro?: string | null
           id?: string
+          opened_at?: string | null
           prospect_id?: string | null
+          resend_email_id?: string | null
           status?: string | null
           telefone?: string | null
         }
@@ -1123,6 +1144,60 @@ export type Database = {
             columns: ["vendedor_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_email_events: {
+        Row: {
+          created_at: string | null
+          empresa_id: string | null
+          event_type: string
+          id: string
+          ip_address: string | null
+          raw_payload: Json | null
+          recipient_id: string | null
+          resend_email_id: string | null
+          url: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          empresa_id?: string | null
+          event_type: string
+          id?: string
+          ip_address?: string | null
+          raw_payload?: Json | null
+          recipient_id?: string | null
+          resend_email_id?: string | null
+          url?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          empresa_id?: string | null
+          event_type?: string
+          id?: string
+          ip_address?: string | null
+          raw_payload?: Json | null
+          recipient_id?: string | null
+          resend_email_id?: string | null
+          url?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_email_events_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_email_events_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_campaign_recipients"
             referencedColumns: ["id"]
           },
         ]
