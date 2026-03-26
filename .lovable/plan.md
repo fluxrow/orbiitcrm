@@ -1,34 +1,25 @@
 
 
-# Remover conversas de email existentes
+# Relatório de Campanhas na página de Analytics
 
-## Contexto
-A campanha de email criou 137 registros em `orbit_conversas` (canal = 'email') e suas respectivas mensagens em `orbit_mensagens`. Isso já foi corrigido no código para não acontecer novamente, mas os dados antigos precisam ser limpos.
+## Objetivo
+Adicionar uma seção de analytics de campanhas de email na página Analytics, com seletor de campanha e métricas de engajamento (aberturas, cliques, bounces, spam).
 
-## Plano
+## Alterações
 
-### Migration SQL
+### 1. `src/pages/orbit/AnalyticsPage.tsx`
+- Importar `useOrbitCampaigns` e `useOrbitEmailAnalytics`
+- Adicionar um `Select` para escolher a campanha (filtrar apenas campanhas de email com status enviando/concluída/pausada)
+- Renderizar seção com:
+  - Cards de métricas (enviados, aberturas, cliques, bounces, spam, sem interação) com taxas percentuais
+  - Tabela de destinatários com status de engajamento (reaproveitando a mesma estrutura do `CampaignAnalyticsDialog`)
+  - Aviso sobre imprecisão de tracking de abertura
+- Posicionar esta seção após os gráficos existentes
 
-Executar uma migration que:
+### 2. Sem alterações em outros arquivos
+O hook `useOrbitEmailAnalytics` e os componentes já existem — apenas reutilizamos na nova página.
 
-1. **Deletar mensagens** vinculadas a conversas de email
-2. **Deletar conversas** com canal = 'email'
-
-```sql
--- Remover mensagens de conversas de email
-DELETE FROM orbit_mensagens
-WHERE conversa_id IN (
-  SELECT id FROM orbit_conversas WHERE canal = 'email'
-);
-
--- Remover conversas de email
-DELETE FROM orbit_conversas WHERE canal = 'email';
-```
-
-| Ação | Detalhes |
-|------|----------|
-| Migration SQL | Deletar 137 conversas de email e suas mensagens |
-| Registros afetados | ~137 conversas + ~137 mensagens |
-
-Nenhuma alteração de código necessária - apenas limpeza de dados.
+| Arquivo | Ação |
+|---------|------|
+| `src/pages/orbit/AnalyticsPage.tsx` | Adicionar seção de analytics de campanhas com seletor e métricas |
 
