@@ -1,64 +1,54 @@
 
 
-# Refatorar Wizard de Campanha: Modal → Página Dedicada
+# Painel de Detalhes do Prospect na Tela de Conversas
 
 ## Resumo
 
-Transformar o fluxo de criação de campanha de modal (`Dialog`) para página dedicada com rota própria, reaproveitando toda a lógica existente do `CampaignWizard`.
+Ao clicar no nome do contato no cabeçalho da conversa, abrir um **Sheet (drawer lateral direito)** com os dados completos do prospect, ações rápidas e deals vinculados.
 
 ## Alterações
 
-### 1. Nova rota em `src/App.tsx`
-- Adicionar rota `campanhas/nova` dentro do `OrbitRoutes`
-- Preparar rota `campanhas/:id/editar` para uso futuro
+### 1. Criar `src/components/orbit/ConversaProspectDrawer.tsx`
 
-### 2. Nova página `src/pages/orbit/NovaCampanhaPage.tsx`
-- Página full-page com `OrbitLayout`
-- Cabeçalho com botão voltar para `/campanhas`, título "Nova Campanha" e subtítulo da etapa atual
-- Renderiza o conteúdo do wizard (sem Dialog wrapper)
-- Stepper horizontal bem distribuído no topo
-- Rodapé fixo (sticky bottom) com: Cancelar, Voltar, Salvar Rascunho, Próximo/Criar
-- Ao criar com sucesso, redireciona para `/campanhas`
+Componente Sheet lateral direito contendo:
 
-### 3. Refatorar `src/components/orbit/CampaignWizard.tsx`
-- Extrair toda a lógica interna (state, handlers, steps) para um componente `CampaignWizardContent` que **não** usa `Dialog`
-- O `CampaignWizardContent` recebe um `onComplete` callback e `onCancel`
-- Manter o export `CampaignWizard` como alias deprecated (ou remover se não usado em outro lugar)
-- O conteúdo do step 3 (RecipientSelector) usará largura total da página
+**Dados do prospect** (da relação `active.prospect`):
+- Nome, empresa, cargo, email, telefone, WhatsApp, cidade/estado, segmento, origem, status, responsável, tags, data criação, observações
 
-### 4. Atualizar `src/pages/orbit/CampanhasPage.tsx`
-- Botão "Nova Campanha" passa a navegar para `campanhas/nova` com `useNavigate`
-- Remover `<CampaignWizard>` dialog e state `wizardOpen`
+**Deals vinculados** — query `orbit_deals` por `prospect_id`:
+- Etapa do funil, valor estimado, status
 
-### 5. Layout da página
+**Tarefas pendentes** — query `orbit_tasks` por `prospect_id` com status pending:
+- Próximo follow-up
 
-```text
-┌─────────────────────────────────────────────┐
-│ ← Voltar   Nova Campanha                   │
-│            Etapa 2 de 5 — Template          │
-├─────────────────────────────────────────────┤
-│  ① Info  ─── ② Template ─── ③ Dest ─── ... │
-├─────────────────────────────────────────────┤
-│                                             │
-│         Conteúdo da etapa (full width)      │
-│                                             │
-│                                             │
-├─────────────────────────────────────────────┤
-│ Cancelar          [Voltar]  [Próximo]       │  ← sticky bottom
-└─────────────────────────────────────────────┘
-```
+**Ações rápidas**:
+- Copiar email / telefone (clipboard)
+- Editar prospect (abrir `ProspectDialog` existente)
+- Abrir cadastro completo (`/prospects?id=...`)
+- Ver no funil (`/funil`)
+
+**Estado vazio**: se `prospect_id` for null, mostrar mensagem "Nenhum contato vinculado"
+
+### 2. Atualizar `src/pages/orbit/ConversasPage.tsx`
+
+- Adicionar state `drawerProspectOpen`
+- No header (linha ~294), tornar o nome do prospect clicável:
+  - `cursor-pointer`, `hover:underline`, `hover:text-primary`
+  - `onClick` abre o drawer
+- Importar e renderizar `ConversaProspectDrawer`
+
+### 3. Busca de dados do responsável
+
+- Usar query simples para buscar `profiles` pelo `responsavel_id` do prospect para exibir nome do responsável
 
 ## Componentes reaproveitados
-- Toda lógica de estado, filtros, handlers do `CampaignWizard` (950 linhas)
-- `RecipientSelector` — sem alterações, apenas ganha mais espaço
-- Templates, AI generation, test email — tudo mantido
 
-## Arquivos afetados
+- `Sheet` / `SheetContent` do shadcn (já existe)
+- `ProspectDialog` para edição
+- Hooks `useOrbitDeals`, `useOrbitTasks` existentes
 
 | Arquivo | Ação |
 |---------|------|
-| `src/App.tsx` | Adicionar rota `campanhas/nova` |
-| `src/pages/orbit/NovaCampanhaPage.tsx` | Criar página dedicada |
-| `src/components/orbit/CampaignWizard.tsx` | Extrair conteúdo para `CampaignWizardContent` sem Dialog |
-| `src/pages/orbit/CampanhasPage.tsx` | Substituir modal por navegação |
+| `src/components/orbit/ConversaProspectDrawer.tsx` | Criar drawer com dados, deals e ações rápidas |
+| `src/pages/orbit/ConversasPage.tsx` | Nome clicável no header + renderizar drawer |
 
