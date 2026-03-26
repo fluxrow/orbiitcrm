@@ -29,6 +29,22 @@ export interface RecipientDetail {
   complained_at: string | null;
 }
 
+export interface TimelinePoint {
+  bucket: string;
+  enviados: number;
+  entregues: number;
+  aberturas: number;
+  cliques: number;
+}
+
+export type EngagementFilter =
+  | "todos"
+  | "abriu"
+  | "nao_abriu"
+  | "clicou"
+  | "nao_clicou"
+  | "falhou";
+
 /** Aggregated metrics via server-side RPC — no row limit */
 export function useOrbitCampaignSummary(campaignId: string | null) {
   return useQuery({
@@ -70,29 +86,79 @@ export function useOrbitCampaignSummary(campaignId: string | null) {
   });
 }
 
-/** Paginated recipients with exact count */
+/** Timeline data for charts */
+export function useOrbitCampaignTimeline(
+  campaignId: string | null,
+  interval: string = "1 day"
+) {
+  return useQuery({
+    queryKey: ["orbit_campaign_timeline", campaignId, interval],
+    queryFn: async (): Promise<TimelinePoint[]> => {
+      if (!campaignId) throw new Error("No campaign");
+
+      const { data, error } = await supabase.rpc("get_campaign_events_timeline", {
+        p_campaign_id: campaignId,
+        p_interval: interval,
+      });
+
+      if (error) throw error;
+
+      return ((data as any[]) || []).map((r) => ({
+        bucket: r.bucket,
+        enviados: Number(r.enviados || 0),
+        entregues: Number(r.entregues || 0),
+        aberturas: Number(r.aberturas || 0),
+        cliques: Number(r.cliques || 0),
+      }));
+    },
+    enabled: !!campaignId,
+  });
+}
+
+/** Paginated recipients with exact count and optional engagement filter */
 export function useOrbitCampaignRecipients(
   campaignId: string | null,
   page: number,
-  pageSize: number = 50
+  pageSize: number = 50,
+  engagementFilter: EngagementFilter = "todos"
 ) {
   return useQuery({
-    queryKey: ["orbit_campaign_recipients_page", campaignId, page, pageSize],
+    queryKey: ["orbit_campaign_recipients_page", campaignId, page, pageSize, engagementFilter],
     queryFn: async () => {
       if (!campaignId) throw new Error("No campaign");
 
       const from = page * pageSize;
       const to = from + pageSize - 1;
 
-      const { data, error, count } = await supabase
+      let query = supabase
         .from("orbit_campaign_recipients")
         .select(
           "id, email, status, engagement_status, enviado_em, delivered_at, opened_at, clicked_at, bounced_at, complained_at, prospect:orbit_prospects(nome_razao)",
           { count: "exact" }
         )
         .eq("campaign_id", campaignId)
-        .order("enviado_em", { ascending: false, nullsFirst: false })
-        .range(from, to);
+        .order("enviado_em", { ascending: false, nullsFirst: false });
+
+      // Apply server-side engagement filters
+      switch (engagementFilter) {
+        case "abriu":
+          query = query.not("opened_at", "is", null);
+          break;
+        case "nao_abriu":
+          query = query.is("opened_at", null).neq("status", "pendente");
+          break;
+        case "clicou":
+          query = query.not("clicked_at", "is", null);
+          break;
+        case "nao_clicou":
+          query = query.is("clicked_at", null).not("opened_at", "is", null);
+          break;
+        case "falhou":
+          query = query.in("engagement_status", ["bounced", "complained"]);
+          break;
+      }
+
+      const { data, error, count } = await query.range(from, to);
 
       if (error) throw error;
 
