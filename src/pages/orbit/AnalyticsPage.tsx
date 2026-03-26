@@ -9,6 +9,7 @@ import {
   Target,
   Clock,
 } from "lucide-react";
+import { CampaignAnalyticsSection } from "@/components/orbit/CampaignAnalyticsSection";
 import {
   AreaChart,
   Area,
@@ -232,6 +233,11 @@ export default function AnalyticsPage() {
             icon={DollarSign}
           />
         </div>
+      </div>
+
+      {/* Campaign Email Analytics */}
+      <div className="mt-6">
+        <CampaignAnalyticsSection />
       </div>
     </OrbitLayout>
   );
