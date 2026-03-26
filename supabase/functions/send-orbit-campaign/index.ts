@@ -561,74 +561,76 @@ const handler = async (req: Request): Promise<Response> => {
           }
         }
 
-        // ── Registrar em Conversas ──
-        const phoneForConversa = campaign.canal === "whatsapp" ? (validatedPhone || candidatePhone || "") : (prospect.telefone || prospect.whatsapp || "");
-        if (phoneForConversa && campaign.empresa_id) {
-          try {
-            let conversaId: string | null = null;
-            const { data: existingConversa } = await supabase
-              .from("orbit_conversas")
-              .select("id, ai_contexto")
-              .eq("prospect_id", prospect.id)
-              .eq("empresa_id", campaign.empresa_id)
-              .eq("status", "aberta")
-              .maybeSingle();
-
-            if (existingConversa) {
-              conversaId = existingConversa.id;
-              const existingCtx = (existingConversa as any).ai_contexto || {};
-              await supabase.from("orbit_conversas").update({
-                ai_contexto: {
-                  ...existingCtx,
-                  origin: "outbound_campaign",
-                  campaign_id: campaign.id,
-                  intro_already_sent: true,
-                  estado: "aguardando_resposta",
-                },
-                ultima_mensagem_at: new Date().toISOString(),
-                ultima_mensagem_preview: mensagem.substring(0, 100),
-              }).eq("id", conversaId);
-            } else {
-              const { data: novaConversa } = await supabase
+        // ── Registrar em Conversas (apenas WhatsApp) ──
+        if (campaign.canal === "whatsapp") {
+          const phoneForConversa = validatedPhone || candidatePhone || "";
+          if (phoneForConversa && campaign.empresa_id) {
+            try {
+              let conversaId: string | null = null;
+              const { data: existingConversa } = await supabase
                 .from("orbit_conversas")
-                .insert({
-                  empresa_id: campaign.empresa_id,
-                  prospect_id: prospect.id,
-                  canal: campaign.canal,
-                  telefone_whatsapp: phoneForConversa,
-                  status: "aberta",
-                  ultima_mensagem_at: new Date().toISOString(),
-                  ultima_mensagem_preview: mensagem.substring(0, 100),
+                .select("id, ai_contexto")
+                .eq("prospect_id", prospect.id)
+                .eq("empresa_id", campaign.empresa_id)
+                .eq("status", "aberta")
+                .maybeSingle();
+
+              if (existingConversa) {
+                conversaId = existingConversa.id;
+                const existingCtx = (existingConversa as any).ai_contexto || {};
+                await supabase.from("orbit_conversas").update({
                   ai_contexto: {
+                    ...existingCtx,
                     origin: "outbound_campaign",
                     campaign_id: campaign.id,
                     intro_already_sent: true,
                     estado: "aguardando_resposta",
                   },
-                })
-                .select("id")
-                .single();
-              conversaId = novaConversa?.id || null;
-            }
+                  ultima_mensagem_at: new Date().toISOString(),
+                  ultima_mensagem_preview: mensagem.substring(0, 100),
+                }).eq("id", conversaId);
+              } else {
+                const { data: novaConversa } = await supabase
+                  .from("orbit_conversas")
+                  .insert({
+                    empresa_id: campaign.empresa_id,
+                    prospect_id: prospect.id,
+                    canal: campaign.canal,
+                    telefone_whatsapp: phoneForConversa,
+                    status: "aberta",
+                    ultima_mensagem_at: new Date().toISOString(),
+                    ultima_mensagem_preview: mensagem.substring(0, 100),
+                    ai_contexto: {
+                      origin: "outbound_campaign",
+                      campaign_id: campaign.id,
+                      intro_already_sent: true,
+                      estado: "aguardando_resposta",
+                    },
+                  })
+                  .select("id")
+                  .single();
+                conversaId = novaConversa?.id || null;
+              }
 
-            if (conversaId) {
-              await supabase.from("orbit_mensagens").insert({
-                conversa_id: conversaId,
-                empresa_id: campaign.empresa_id,
-                direcao: "OUT",
-                mensagem,
-                canal: campaign.canal,
-                status: isDemo ? "simulated" : "enviada",
-                campaign_id: campaign.id,
-              });
+              if (conversaId) {
+                await supabase.from("orbit_mensagens").insert({
+                  conversa_id: conversaId,
+                  empresa_id: campaign.empresa_id,
+                  direcao: "OUT",
+                  mensagem,
+                  canal: campaign.canal,
+                  status: isDemo ? "simulated" : "enviada",
+                  campaign_id: campaign.id,
+                });
 
-              await supabase.from("orbit_conversas").update({
-                ultima_mensagem_at: new Date().toISOString(),
-                ultima_mensagem_preview: mensagem.substring(0, 100),
-              }).eq("id", conversaId);
+                await supabase.from("orbit_conversas").update({
+                  ultima_mensagem_at: new Date().toISOString(),
+                  ultima_mensagem_preview: mensagem.substring(0, 100),
+                }).eq("id", conversaId);
+              }
+            } catch (convError: any) {
+              console.error(`Erro ao registrar conversa para ${recipient.id}:`, convError.message);
             }
-          } catch (convError: any) {
-            console.error(`Erro ao registrar conversa para ${recipient.id}:`, convError.message);
           }
         }
 
