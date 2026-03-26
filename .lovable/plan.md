@@ -1,33 +1,59 @@
 
 
-# Filtro por Canal na Tela de Campanhas
+# Paginação Server-Side na Tabela de Destinatários do Analytics
 
-## O que já existe
-- Campo `canal` já existe em `orbit_campaigns` (valores: `email`, `whatsapp`)
-- Cards já mostram ícone diferenciado por canal (linhas 250-255)
-- Hook `useOrbitCampaigns` já suporta filtro `canal` (linhas 22-24 do hook)
-- Nenhuma mudança de banco necessária
+## Problema
 
-## Alterações — apenas `src/pages/orbit/CampanhasPage.tsx`
+O hook `useOrbitCampaignAnalytics` busca todos os recipients sem `.range()`, batendo no limite de 1000 linhas do banco. Além disso, renderiza todos na tabela de uma vez.
 
-### 1. Adicionar state e Select para filtro de canal
-- Novo state `canalFilter` (default `"all"`)
-- Passar para o hook: `useOrbitCampaigns({ status: statusFilter, canal: canalFilter })`
-- Adicionar Select ao lado do filtro de status existente com opções: Todos os Canais, Email, WhatsApp
+## Solução
 
-### 2. Adicionar badge de canal no card
-- Ao lado do ícone existente, adicionar label textual: "Email" ou "WhatsApp"
-- Pequeno badge/texto para reforçar leitura rápida
+### 1. Criar RPC para métricas agregadas (Migration SQL)
 
-### 3. Métricas contextuais por canal
-- Email: Destinatários, Enviados, Aberturas, Cliques, Respostas
-- WhatsApp: Destinatários, Enviados, Entregues, Lidos, Respostas
-- Condicional no `canal` da campanha para escolher quais métricas exibir
+Separar métricas (contagens) dos dados da tabela. Criar função que retorna apenas os totais agregados para uma campanha, sem limite de linhas:
 
-### 4. Analytics para WhatsApp
-- Linha 378: remover restrição `campaignCanal === "email"` do `canAnalytics`, permitindo analytics para ambos os canais
+```sql
+CREATE OR REPLACE FUNCTION get_campaign_analytics_summary(p_campaign_id uuid)
+RETURNS TABLE(total_recipients bigint, total_sent bigint, delivered bigint, opened bigint, clicked bigint, bounced bigint, complained bigint, no_interaction bigint)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT 
+    count(*),
+    count(*) FILTER (WHERE status != 'pendente'),
+    count(*) FILTER (WHERE delivered_at IS NOT NULL),
+    count(*) FILTER (WHERE opened_at IS NOT NULL),
+    count(*) FILTER (WHERE clicked_at IS NOT NULL),
+    count(*) FILTER (WHERE bounced_at IS NOT NULL),
+    count(*) FILTER (WHERE complained_at IS NOT NULL),
+    count(*) FILTER (WHERE delivered_at IS NOT NULL AND opened_at IS NULL AND clicked_at IS NULL AND bounced_at IS NULL AND complained_at IS NULL)
+  FROM orbit_campaign_recipients
+  WHERE campaign_id = p_campaign_id;
+$$;
+```
+
+### 2. Refatorar `src/hooks/useOrbitEmailAnalytics.ts`
+
+- **Novo hook `useOrbitCampaignSummary(campaignId)`**: chama a RPC para métricas agregadas (sem limite de linhas)
+- **Novo hook `useOrbitCampaignRecipients(campaignId, page, pageSize)`**: busca recipients com `.range(from, to)` paginado, 50 por página, + `.select("*", { count: "exact" })` para obter total real
+
+### 3. Atualizar `src/components/orbit/CampaignAnalyticsSection.tsx`
+
+- Usar `useOrbitCampaignSummary` para os cards de métricas (dados precisos)
+- Usar `useOrbitCampaignRecipients` com state `page` para a tabela
+- Adicionar controles de paginação abaixo da tabela:
+  - "Mostrando 1–50 de 532"
+  - Botões Anterior / Próxima
+  - Números de página
+- Remover `ScrollArea` (não precisa mais com paginação)
+
+### 4. Atualizar `src/components/orbit/CampaignAnalyticsDialog.tsx`
+
+Aplicar a mesma paginação para manter consistência.
 
 | Arquivo | Ação |
 |---------|------|
-| `src/pages/orbit/CampanhasPage.tsx` | Filtro de canal + badge + métricas contextuais |
+| Migration SQL | Criar `get_campaign_analytics_summary` |
+| `src/hooks/useOrbitEmailAnalytics.ts` | Dois hooks: summary (RPC) + recipients paginados |
+| `src/components/orbit/CampaignAnalyticsSection.tsx` | Paginação server-side com controles |
+| `src/components/orbit/CampaignAnalyticsDialog.tsx` | Mesma paginação |
 
