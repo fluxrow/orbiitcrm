@@ -4,6 +4,7 @@ import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
 import { CampaignWizard } from "@/components/orbit/CampaignWizard";
 import { CampaignReviewDialog } from "@/components/orbit/CampaignReviewDialog";
+import { CampaignAnalyticsDialog } from "@/components/orbit/CampaignAnalyticsDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
