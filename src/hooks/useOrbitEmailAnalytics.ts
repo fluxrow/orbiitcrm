@@ -30,7 +30,7 @@ export interface RecipientDetail {
   complained_at: string | null;
 }
 
-export function useOrbitEmailAnalytics(campaignId: string | null) {
+export function useOrbitCampaignAnalytics(campaignId: string | null) {
   return useQuery({
     queryKey: ["orbit_email_analytics", campaignId],
     queryFn: async (): Promise<EmailAnalytics> => {
