@@ -33,6 +33,7 @@ import AnalyticsPage from "./pages/orbit/AnalyticsPage";
 import MeuPlanoPage from "./pages/orbit/MeuPlanoPage";
 import UsuariosEmpresaPage from "./pages/orbit/UsuariosEmpresaPage";
 import TarefasPage from "./pages/orbit/TarefasPage";
+import NovaCampanhaPage from "./pages/orbit/NovaCampanhaPage";
 
 // Super Admin Pages (legacy)
 import SuperAdminDashboard from "./pages/super-admin/SuperAdminDashboard";
@@ -107,6 +108,8 @@ function OrbitRoutes() {
       <Route path="conversas" element={<ConversasPage />} />
       <Route path="funil" element={<FunilPage />} />
       <Route path="campanhas" element={<CampanhasPage />} />
+      <Route path="campanhas/nova" element={<NovaCampanhaPage />} />
+      <Route path="campanhas/:id/editar" element={<NovaCampanhaPage />} />
       <Route path="templates" element={<TemplatesPage />} />
       <Route path="templates/email/new" element={<EmailTemplateEditorPage />} />
       <Route path="templates/email/:id/edit" element={<EmailTemplateEditorPage />} />

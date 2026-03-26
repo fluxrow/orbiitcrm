@@ -1,8 +1,8 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
-import { CampaignWizard } from "@/components/orbit/CampaignWizard";
 import { CampaignReviewDialog } from "@/components/orbit/CampaignReviewDialog";
 import { CampaignAnalyticsDialog } from "@/components/orbit/CampaignAnalyticsDialog";
 import { Button } from "@/components/ui/button";
@@ -29,8 +29,8 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 };
 
 export default function CampanhasPage() {
+  const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState("all");
-  const [wizardOpen, setWizardOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [reviewCampaignId, setReviewCampaignId] = useState<string | null>(null);
@@ -195,7 +195,7 @@ export default function CampanhasPage() {
         title="Campanhas"
         description="Gerencie campanhas de email e WhatsApp"
         action={
-          <Button size="sm" onClick={() => setWizardOpen(true)}>
+          <Button size="sm" onClick={() => navigate("nova")}>
             <Plus className="h-4 w-4 mr-2" />Nova Campanha
           </Button>
         }
@@ -227,7 +227,7 @@ export default function CampanhasPage() {
       ) : campaigns?.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <p>Nenhuma campanha encontrada</p>
-          <Button variant="link" onClick={() => setWizardOpen(true)}>
+          <Button variant="link" onClick={() => navigate("nova")}>
             Criar primeira campanha
           </Button>
         </div>
@@ -307,7 +307,7 @@ export default function CampanhasPage() {
         </div>
       )}
 
-      <CampaignWizard open={wizardOpen} onOpenChange={setWizardOpen} />
+      
 
       <CampaignReviewDialog
         open={!!reviewCampaignId}
