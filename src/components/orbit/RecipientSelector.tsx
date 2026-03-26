@@ -97,6 +97,36 @@ export function RecipientSelector({
     },
   });
 
+  // Fetch past campaigns for segmentation filters
+  const { data: pastCampaigns } = useQuery({
+    queryKey: ["past-campaigns-for-segmentation"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("orbit_campaigns")
+        .select("id, nome, canal, status")
+        .in("status", ["enviando", "concluida", "pausada", "pausada_por_limite"])
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch recipient prospect_ids for active campaign filters
+  const campaignFilterId = filtros.excluir_campanha_id || filtros.apenas_abriu_campanha_id || filtros.nao_abriu_campanha_id || null;
+  const { data: campaignRecipients } = useQuery({
+    queryKey: ["campaign-recipients-filter", campaignFilterId],
+    queryFn: async () => {
+      if (!campaignFilterId) return null;
+      const { data, error } = await supabase
+        .from("orbit_campaign_recipients")
+        .select("prospect_id, status, opened_at")
+        .eq("campaign_id", campaignFilterId);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!campaignFilterId,
+  });
+
   const distinctValues = useMemo(() => {
     if (!prospects) return { segmentos: [], estados: [], cidades: [], origens_contato: [], origens_lead: [], tags: [] };
     return {
