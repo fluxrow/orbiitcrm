@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface EmailAnalytics {
+  totalRecipients: number;
   total: number;
   delivered: number;
   opened: number;
@@ -38,13 +39,13 @@ export function useOrbitEmailAnalytics(campaignId: string | null) {
       const { data: recipients, error } = await supabase
         .from("orbit_campaign_recipients")
         .select("id, email, status, engagement_status, enviado_em, delivered_at, opened_at, clicked_at, bounced_at, complained_at, prospect:orbit_prospects(nome_razao)")
-        .eq("campaign_id", campaignId)
-        .neq("status", "pendente");
+        .eq("campaign_id", campaignId);
 
       if (error) throw error;
 
       const items = (recipients || []) as any[];
-      const total = items.length;
+      const totalRecipients = items.length;
+      const total = items.filter(r => r.status !== "pendente").length;
       const delivered = items.filter(r => r.delivered_at).length;
       const opened = items.filter(r => r.opened_at).length;
       const clicked = items.filter(r => r.clicked_at).length;
@@ -55,6 +56,7 @@ export function useOrbitEmailAnalytics(campaignId: string | null) {
       ).length;
 
       return {
+        totalRecipients,
         total,
         delivered,
         opened,
