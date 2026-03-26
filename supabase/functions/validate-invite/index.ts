@@ -34,19 +34,19 @@ Deno.serve(async (req) => {
 
     if (error) {
       console.error("Query error:", error);
-      return fail(ErrorCodes.INTERNAL_ERROR, "Erro ao buscar convite", 500);
+      return fail(ErrorCodes.INTERNAL_ERROR, "Erro ao buscar convite", 200);
     }
 
     if (!invite) {
-      return fail(ErrorCodes.INVITE_INVALID, "Convite não encontrado ou token inválido", 404);
+      return fail(ErrorCodes.INVITE_INVALID, "Convite não encontrado ou token inválido", 200);
     }
 
     if (invite.used_at) {
-      return fail(ErrorCodes.INVITE_USED, "Este convite já foi utilizado", 410);
+      return fail(ErrorCodes.INVITE_USED, "Este convite já foi utilizado", 200);
     }
 
     if (new Date(invite.expires_at) < new Date()) {
-      return fail(ErrorCodes.INVITE_EXPIRED, "Este convite expirou", 410);
+      return fail(ErrorCodes.INVITE_EXPIRED, "Este convite expirou", 200);
     }
 
     const empresa = invite.orbit_empresas as any;

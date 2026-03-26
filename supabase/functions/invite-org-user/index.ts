@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
       const { apiKey: resendApiKey, fromEmail } = await getSystemEmailConfig(supabaseAdmin);
 
       if (resendApiKey) {
-        const appUrl = Deno.env.get("APP_URL") || "https://orbiitcrm.lovable.app";
+        const appUrl = Deno.env.get("APP_URL") || "https://orbit.fluxrow.pro";
         const inviteLink = `${appUrl}/accept-invite-pe/${token}`;
 
         const emailResponse = await fetch("https://api.resend.com/emails", {

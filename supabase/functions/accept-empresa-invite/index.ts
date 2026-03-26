@@ -13,7 +13,8 @@ async function hashToken(plaintext: string): Promise<string> {
 // getResendApiKey removed — now using getSystemEmailConfig from _shared/system-email.ts
 
 function buildActivationEmailHtml(empresaNome: string, planName: string, userName: string, redirectUrl: string): string {
-  const fullUrl = `https://orbiitcrm.lovable.app${redirectUrl}`;
+  const appUrl = Deno.env.get("APP_URL") || "https://orbit.fluxrow.pro";
+  const fullUrl = `${appUrl}${redirectUrl}`;
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
 <body style="font-family:Arial,sans-serif;background:#f4f4f5;padding:40px 0;">
