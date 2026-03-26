@@ -234,6 +234,11 @@ export default function AnalyticsPage() {
           />
         </div>
       </div>
+
+      {/* Campaign Email Analytics */}
+      <div className="mt-6">
+        <CampaignAnalyticsSection />
+      </div>
     </OrbitLayout>
   );
 }
