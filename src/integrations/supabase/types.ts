@@ -1150,6 +1150,7 @@ export type Database = {
       }
       orbit_email_events: {
         Row: {
+          canal: string
           created_at: string | null
           empresa_id: string | null
           event_type: string
@@ -1162,6 +1163,7 @@ export type Database = {
           user_agent: string | null
         }
         Insert: {
+          canal?: string
           created_at?: string | null
           empresa_id?: string | null
           event_type: string
@@ -1174,6 +1176,7 @@ export type Database = {
           user_agent?: string | null
         }
         Update: {
+          canal?: string
           created_at?: string | null
           empresa_id?: string | null
           event_type?: string
