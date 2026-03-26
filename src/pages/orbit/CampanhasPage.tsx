@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Plus, MessageSquare, Mail, Loader2, Play, Pause, X, Send, Trash2, Info, Eye } from "lucide-react";
+import { Plus, MessageSquare, Mail, Loader2, Play, Pause, X, Send, Trash2, Info, Eye, BarChart3 } from "lucide-react";
 import { useOrbitCampaigns, useUpdateCampaign, useDeleteCampaign } from "@/hooks/useOrbitCampaigns";
 import { supabase } from "@/integrations/supabase/client";
 import { handleApiResponse } from "@/lib/api-envelope";
@@ -34,6 +34,7 @@ export default function CampanhasPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [reviewCampaignId, setReviewCampaignId] = useState<string | null>(null);
+  const [analyticsCampaign, setAnalyticsCampaign] = useState<{ id: string; nome: string } | null>(null);
 
   const { data: campaigns, isLoading, refetch } = useOrbitCampaigns({ status: statusFilter });
   const updateCampaign = useUpdateCampaign();
@@ -288,6 +289,7 @@ export default function CampanhasPage() {
                 <CampaignActions
                   status={status}
                   campaignId={c.id}
+                  campaignCanal={c.canal}
                   loading={loading}
                   totalRecipients={totalRecipients}
                   pendingRecipients={pendingRecipients}
@@ -297,6 +299,7 @@ export default function CampanhasPage() {
                   onPause={handlePause}
                   onCancel={handleCancel}
                   onDelete={(id) => setDeleteDialog({ open: true, id })}
+                  onAnalytics={() => setAnalyticsCampaign({ id: c.id, nome: c.nome })}
                 />
               </div>
             );
@@ -313,6 +316,13 @@ export default function CampanhasPage() {
         recipientCounts={reviewCampaignId ? recipientCounts?.[reviewCampaignId] : undefined}
         onApproveForSend={handleApproveForSend}
         loading={actionLoading === reviewCampaignId}
+      />
+
+      <CampaignAnalyticsDialog
+        open={!!analyticsCampaign}
+        onOpenChange={(open) => !open && setAnalyticsCampaign(null)}
+        campaignId={analyticsCampaign?.id || null}
+        campaignName={analyticsCampaign?.nome}
       />
 
       <AlertDialog open={deleteDialog.open} onOpenChange={(open) => setDeleteDialog({ open, id: open ? deleteDialog.id : null })}>
@@ -340,6 +350,7 @@ export default function CampanhasPage() {
 interface CampaignActionsProps {
   status: string;
   campaignId: string;
+  campaignCanal: string;
   loading: boolean;
   totalRecipients: number;
   pendingRecipients: number;
@@ -349,11 +360,12 @@ interface CampaignActionsProps {
   onPause: (id: string) => void;
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
+  onAnalytics: () => void;
 }
 
 function CampaignActions({
-  status, campaignId, loading, totalRecipients, pendingRecipients,
-  hasTemplate, onReview, onSend, onPause, onCancel, onDelete,
+  status, campaignId, campaignCanal, loading, totalRecipients, pendingRecipients,
+  hasTemplate, onReview, onSend, onPause, onCancel, onDelete, onAnalytics,
 }: CampaignActionsProps) {
   const canReview = ["rascunho", "em_revisao"].includes(status) && hasTemplate && totalRecipients > 0;
   const canSend = status === "aprovada_para_envio" && pendingRecipients > 0;
@@ -361,6 +373,7 @@ function CampaignActions({
   const canPause = status === "enviando";
   const canCancel = !["concluida", "cancelada"].includes(status);
   const canDelete = status === "rascunho";
+  const canAnalytics = campaignCanal === "email" && ["enviando", "concluida", "pausada", "pausada_por_limite"].includes(status);
 
   return (
     <div className="border-t pt-4">
@@ -401,6 +414,12 @@ function CampaignActions({
         {canDelete && (
           <Button size="sm" variant="outline" className="text-destructive border-destructive/50 hover:bg-destructive/10" onClick={() => onDelete(campaignId)} disabled={loading}>
             <Trash2 className="h-4 w-4 mr-2" />Excluir
+          </Button>
+        )}
+
+        {canAnalytics && (
+          <Button size="sm" variant="outline" onClick={onAnalytics}>
+            <BarChart3 className="h-4 w-4 mr-2" />Analytics
           </Button>
         )}
 
