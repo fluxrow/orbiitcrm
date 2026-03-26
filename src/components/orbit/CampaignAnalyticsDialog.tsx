@@ -1,10 +1,13 @@
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Mail, MailOpen, MousePointerClick, AlertTriangle, ShieldAlert, Info } from "lucide-react";
-import { useOrbitEmailAnalytics } from "@/hooks/useOrbitEmailAnalytics";
+import { Loader2, Mail, MailOpen, MousePointerClick, AlertTriangle, Info, ChevronLeft, ChevronRight } from "lucide-react";
+import { useOrbitCampaignSummary, useOrbitCampaignRecipients } from "@/hooks/useOrbitEmailAnalytics";
 import { format } from "date-fns";
+
+const PAGE_SIZE = 50;
 
 interface Props {
   open: boolean;
@@ -23,96 +26,130 @@ const engagementBadge: Record<string, { label: string; className: string }> = {
 };
 
 export function CampaignAnalyticsDialog({ open, onOpenChange, campaignId, campaignName }: Props) {
-  const { data, isLoading } = useOrbitEmailAnalytics(open ? campaignId : null);
+  const [page, setPage] = useState(0);
+  const activeId = open ? campaignId : null;
+  const { data: summary, isLoading: loadingSummary } = useOrbitCampaignSummary(activeId);
+  const { data: recipientsData, isLoading: loadingRecipients } = useOrbitCampaignRecipients(activeId, page, PAGE_SIZE);
+
+  const totalCount = recipientsData?.totalCount || 0;
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  const from = page * PAGE_SIZE + 1;
+  const to = Math.min((page + 1) * PAGE_SIZE, totalCount);
+
+  // Reset page when dialog reopens
+  const handleOpenChange = (v: boolean) => {
+    if (!v) setPage(0);
+    onOpenChange(v);
+  };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Analytics: {campaignName || "Campanha"}</DialogTitle>
         </DialogHeader>
 
-        {isLoading ? (
+        {loadingSummary ? (
           <div className="flex justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin" />
           </div>
-        ) : data ? (
+        ) : summary ? (
           <div className="space-y-6 overflow-hidden flex flex-col">
-            {/* Stats Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <StatCard icon={<Mail className="h-4 w-4" />} label="Enviados" value={data.total} />
-              <StatCard icon={<MailOpen className="h-4 w-4" />} label="Aberturas" value={data.opened} sub={`${data.openRate.toFixed(1)}%`} />
-              <StatCard icon={<MousePointerClick className="h-4 w-4" />} label="Cliques" value={data.clicked} sub={`${data.clickRate.toFixed(1)}%`} />
-              <StatCard icon={<AlertTriangle className="h-4 w-4" />} label="Bounces" value={data.bounced} sub={`${data.bounceRate.toFixed(1)}%`} />
+              <StatCard icon={<Mail className="h-4 w-4" />} label="Enviados" value={summary.total} />
+              <StatCard icon={<MailOpen className="h-4 w-4" />} label="Aberturas" value={summary.opened} sub={`${summary.openRate.toFixed(1)}%`} />
+              <StatCard icon={<MousePointerClick className="h-4 w-4" />} label="Cliques" value={summary.clicked} sub={`${summary.clickRate.toFixed(1)}%`} />
+              <StatCard icon={<AlertTriangle className="h-4 w-4" />} label="Bounces" value={summary.bounced} sub={`${summary.bounceRate.toFixed(1)}%`} />
             </div>
 
             <div className="grid grid-cols-3 gap-3">
               <div className="p-3 bg-muted/50 rounded-lg">
                 <p className="text-xs text-muted-foreground">Entregues</p>
-                <p className="text-lg font-semibold">{data.delivered}</p>
+                <p className="text-lg font-semibold">{summary.delivered}</p>
               </div>
               <div className="p-3 bg-muted/50 rounded-lg">
                 <p className="text-xs text-muted-foreground">Spam</p>
-                <p className="text-lg font-semibold">{data.complained}</p>
+                <p className="text-lg font-semibold">{summary.complained}</p>
               </div>
               <div className="p-3 bg-muted/50 rounded-lg">
                 <p className="text-xs text-muted-foreground">Sem Interação</p>
-                <p className="text-lg font-semibold">{data.noInteraction}</p>
+                <p className="text-lg font-semibold">{summary.noInteraction}</p>
               </div>
             </div>
 
-            {/* Warning */}
             <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
               <Info className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
               <p className="text-xs text-amber-500">
-                Taxas de abertura podem ser imprecisas — alguns clientes de email bloqueiam imagens de tracking (Apple Mail Privacy, Outlook). 
+                Taxas de abertura podem ser imprecisas — alguns clientes de email bloqueiam imagens de tracking (Apple Mail Privacy, Outlook).
                 "Sem interação" não significa necessariamente spam — pode ser filtro, aba promoções ou pixel bloqueado.
               </p>
             </div>
 
-            {/* Recipients Table */}
-            <ScrollArea className="flex-1 max-h-[40vh]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Destinatário</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Entregue</TableHead>
-                    <TableHead>Aberto</TableHead>
-                    <TableHead>Clicado</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.recipients.map((r) => {
-                    const badge = engagementBadge[r.engagement_status || "pending"] || engagementBadge.pending;
-                    return (
-                      <TableRow key={r.id}>
-                        <TableCell>
-                          <div>
-                            <p className="text-sm font-medium">{r.prospect_name || r.email || "-"}</p>
-                            {r.email && r.prospect_name && (
-                              <p className="text-xs text-muted-foreground">{r.email}</p>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={badge.className}>{badge.label}</Badge>
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          {r.delivered_at ? format(new Date(r.delivered_at), "dd/MM HH:mm") : "-"}
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          {r.opened_at ? format(new Date(r.opened_at), "dd/MM HH:mm") : "-"}
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          {r.clicked_at ? format(new Date(r.clicked_at), "dd/MM HH:mm") : "-"}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </ScrollArea>
+            {loadingRecipients ? (
+              <div className="flex justify-center py-6">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="flex-1 overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Destinatário</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Entregue</TableHead>
+                      <TableHead>Aberto</TableHead>
+                      <TableHead>Clicado</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(recipientsData?.recipients || []).map((r) => {
+                      const badge = engagementBadge[r.engagement_status || "pending"] || engagementBadge.pending;
+                      return (
+                        <TableRow key={r.id}>
+                          <TableCell>
+                            <div>
+                              <p className="text-sm font-medium">{r.prospect_name || r.email || "-"}</p>
+                              {r.email && r.prospect_name && (
+                                <p className="text-xs text-muted-foreground">{r.email}</p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={badge.className}>{badge.label}</Badge>
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {r.delivered_at ? format(new Date(r.delivered_at), "dd/MM HH:mm") : "-"}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {r.opened_at ? format(new Date(r.opened_at), "dd/MM HH:mm") : "-"}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {r.clicked_at ? format(new Date(r.clicked_at), "dd/MM HH:mm") : "-"}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+
+                {totalCount > 0 && (
+                  <div className="flex items-center justify-between pt-3">
+                    <p className="text-sm text-muted-foreground">
+                      Mostrando {from}–{to} de {totalCount}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+                        <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
+                      </Button>
+                      <span className="text-sm text-muted-foreground">{page + 1} / {totalPages}</span>
+                      <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>
+                        Próxima <ChevronRight className="h-4 w-4 ml-1" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : null}
       </DialogContent>

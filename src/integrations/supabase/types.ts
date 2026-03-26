@@ -3474,6 +3474,19 @@ export type Database = {
     Functions: {
       extract_domain: { Args: { p: string }; Returns: string }
       generate_unique_slug: { Args: { p_nome: string }; Returns: string }
+      get_campaign_analytics_summary: {
+        Args: { p_campaign_id: string }
+        Returns: {
+          bounced: number
+          clicked: number
+          complained: number
+          delivered: number
+          no_interaction: number
+          opened: number
+          total_recipients: number
+          total_sent: number
+        }[]
+      }
       get_campaign_recipient_counts: {
         Args: { p_campaign_ids: string[] }
         Returns: {
