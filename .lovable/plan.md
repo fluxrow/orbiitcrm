@@ -1,26 +1,34 @@
 
 
-# Não criar conversas para campanhas de email
+# Remover conversas de email existentes
 
-## Problema
-Quando uma campanha de email é enviada, o sistema cria registros em `orbit_conversas` e `orbit_mensagens`, fazendo os emails aparecerem na página de Conversas. Conversas só fazem sentido para WhatsApp (bidirecional).
+## Contexto
+A campanha de email criou 137 registros em `orbit_conversas` (canal = 'email') e suas respectivas mensagens em `orbit_mensagens`. Isso já foi corrigido no código para não acontecer novamente, mas os dados antigos precisam ser limpos.
 
-## Solução
+## Plano
 
-### Arquivo: `supabase/functions/send-orbit-campaign/index.ts`
+### Migration SQL
 
-Envolver o bloco "Registrar em Conversas" (linhas 564-633) com uma condição que só executa para campanhas WhatsApp:
+Executar uma migration que:
 
-```typescript
-// ── Registrar em Conversas (apenas WhatsApp) ──
-if (campaign.canal === "whatsapp") {
-  // ... bloco existente de criação/atualização de conversas ...
-}
+1. **Deletar mensagens** vinculadas a conversas de email
+2. **Deletar conversas** com canal = 'email'
+
+```sql
+-- Remover mensagens de conversas de email
+DELETE FROM orbit_mensagens
+WHERE conversa_id IN (
+  SELECT id FROM orbit_conversas WHERE canal = 'email'
+);
+
+-- Remover conversas de email
+DELETE FROM orbit_conversas WHERE canal = 'email';
 ```
 
-Isso mantém o tracking de conversas para WhatsApp (onde respostas chegam pelo webhook) e elimina a criação desnecessária para email (onde o tracking é feito via `orbit_email_events`).
+| Ação | Detalhes |
+|------|----------|
+| Migration SQL | Deletar 137 conversas de email e suas mensagens |
+| Registros afetados | ~137 conversas + ~137 mensagens |
 
-| Arquivo | Ação |
-|---------|------|
-| `supabase/functions/send-orbit-campaign/index.ts` | Condicionar criação de conversas apenas para canal WhatsApp |
+Nenhuma alteração de código necessária - apenas limpeza de dados.
 
