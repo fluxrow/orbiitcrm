@@ -37,6 +37,9 @@ interface CampaignFilters {
   tem_email?: boolean;
   tem_telefone?: boolean;
   tipo?: string;
+  excluir_campanha_id?: string;
+  apenas_abriu_campanha_id?: string;
+  nao_abriu_campanha_id?: string;
 }
 
 interface RecipientSelectorProps {
