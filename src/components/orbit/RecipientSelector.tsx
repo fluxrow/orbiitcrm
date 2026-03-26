@@ -183,6 +183,22 @@ export function RecipientSelector({
     if (filtros.tem_telefone) list = list.filter(p => !!p.telefone || !!p.whatsapp);
     if (filtros.tipo) list = list.filter(p => p.tipo === filtros.tipo);
 
+    // Campaign-based segmentation filters
+    if (campaignRecipients) {
+      const recipientProspectIds = new Set(campaignRecipients.map(r => r.prospect_id));
+      const openedProspectIds = new Set(campaignRecipients.filter(r => r.opened_at).map(r => r.prospect_id));
+
+      if (filtros.excluir_campanha_id) {
+        list = list.filter(p => !recipientProspectIds.has(p.id));
+      }
+      if (filtros.apenas_abriu_campanha_id) {
+        list = list.filter(p => openedProspectIds.has(p.id));
+      }
+      if (filtros.nao_abriu_campanha_id) {
+        list = list.filter(p => recipientProspectIds.has(p.id) && !openedProspectIds.has(p.id));
+      }
+    }
+
     // Sort
     list.sort((a, b) => {
       let va = "", vb = "";
@@ -194,7 +210,7 @@ export function RecipientSelector({
     });
 
     return list;
-  }, [prospects, search, filtros, sortKey, sortDir, canal]);
+  }, [prospects, search, filtros, sortKey, sortDir, canal, campaignRecipients]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProspects.length / PAGE_SIZE));
   const pagedProspects = filteredProspects.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
