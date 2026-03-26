@@ -34,7 +34,7 @@ function MetricCard({ icon, label, value, sub }: { icon: React.ReactNode; label:
 
 export function CampaignAnalyticsSection() {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
-  const { data: campaigns } = useOrbitCampaigns({ canal: "email" });
+  const { data: campaigns } = useOrbitCampaigns({});
   const { data, isLoading } = useOrbitCampaignAnalytics(selectedCampaignId);
 
   const emailCampaigns = (campaigns || []).filter(
