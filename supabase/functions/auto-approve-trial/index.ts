@@ -28,7 +28,7 @@ function getAppUrl(req: Request): string {
   if (envUrl) return envUrl.replace(/\/$/, "");
   const origin = req.headers.get("origin") || req.headers.get("referer");
   if (origin) { try { return new URL(origin).origin; } catch { /* ignore */ } }
-  return "https://id-preview--143c37b1-339e-469f-b2f1-df4584af8003.lovable.app";
+  return "https://orbit.fluxrow.pro";
 }
 
 // getResendApiKey removed — now using getSystemEmailConfig from _shared/system-email.ts
