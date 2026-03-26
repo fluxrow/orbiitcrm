@@ -15,6 +15,7 @@ import { useOrbitHandoff } from "@/hooks/useOrbitHandoffs";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { ConversaProspectDrawer } from "@/components/orbit/ConversaProspectDrawer";
 
 function stripHtml(html: string): string {
   return html
