@@ -45,12 +45,12 @@ export default function CampanhasPage() {
     queryKey: ["campaign_recipient_counts", campaignIds],
     queryFn: async () => {
       if (!campaignIds.length) return {};
-      const { data, error } = await supabase.rpc("get_campaign_recipient_counts", {
+      const { data, error } = await supabase.rpc("get_campaign_recipient_counts" as any, {
         p_campaign_ids: campaignIds,
       });
       if (error) throw error;
       const counts: Record<string, { total: number; pendente: number; enviado: number; falhou: number; ignorado: number }> = {};
-      (data || []).forEach((r: any) => {
+      ((data as any[]) || []).forEach((r: any) => {
         counts[r.campaign_id] = {
           total: Number(r.total) || 0,
           pendente: Number(r.pendente) || 0,
