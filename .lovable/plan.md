@@ -1,58 +1,64 @@
 
 
-# Rastreamento Estruturado de Envios por Lead
+# Refatorar Wizard de Campanha: Modal → Página Dedicada
 
-## O que já existe
+## Resumo
 
-O sistema já possui a base necessária:
-- **`orbit_campaign_recipients`**: registra cada prospect por campanha com timestamps de engajamento (enviado_em, delivered_at, opened_at, clicked_at, bounced_at, complained_at)
-- **`orbit_email_events`**: log granular de eventos de email com recipient_id, event_type, created_at
-- **Prevenção de duplicidade no envio**: apenas recipients com `status = "pendente"` são processados
-- **Tracking pixel + reescrita de links**: já implementados para email
-- **Resend webhook**: já atualiza timestamps dos recipients
+Transformar o fluxo de criação de campanha de modal (`Dialog`) para página dedicada com rota própria, reaproveitando toda a lógica existente do `CampaignWizard`.
 
-## O que falta implementar
+## Alterações
 
-### 1. Prevenção de duplicidade na criação de recipients
-**Arquivo**: `src/components/orbit/CampaignWizard.tsx`
-- Antes de inserir recipients, verificar se o prospect já tem registro `orbit_campaign_recipients` para a mesma campanha
-- Na prática, o wizard já cria recipients únicos, mas falta constraint no banco
+### 1. Nova rota em `src/App.tsx`
+- Adicionar rota `campanhas/nova` dentro do `OrbitRoutes`
+- Preparar rota `campanhas/:id/editar` para uso futuro
 
-**Migration SQL**:
-- Adicionar constraint UNIQUE em `orbit_campaign_recipients(campaign_id, prospect_id)` para garantir integridade
+### 2. Nova página `src/pages/orbit/NovaCampanhaPage.tsx`
+- Página full-page com `OrbitLayout`
+- Cabeçalho com botão voltar para `/campanhas`, título "Nova Campanha" e subtítulo da etapa atual
+- Renderiza o conteúdo do wizard (sem Dialog wrapper)
+- Stepper horizontal bem distribuído no topo
+- Rodapé fixo (sticky bottom) com: Cancelar, Voltar, Salvar Rascunho, Próximo/Criar
+- Ao criar com sucesso, redireciona para `/campanhas`
 
-### 2. Unificar tracking para WhatsApp
-**Migration SQL**:
-- Adicionar coluna `canal` (text, default 'email') na tabela `orbit_email_events`
-- Renomear conceptualmente para eventos de campanha (a tabela continua `orbit_email_events` para não quebrar código existente)
+### 3. Refatorar `src/components/orbit/CampaignWizard.tsx`
+- Extrair toda a lógica interna (state, handlers, steps) para um componente `CampaignWizardContent` que **não** usa `Dialog`
+- O `CampaignWizardContent` recebe um `onComplete` callback e `onCancel`
+- Manter o export `CampaignWizard` como alias deprecated (ou remover se não usado em outro lugar)
+- O conteúdo do step 3 (RecipientSelector) usará largura total da página
 
-**Arquivo**: `supabase/functions/send-orbit-campaign/index.ts`
-- Após envio WhatsApp bem-sucedido, inserir evento `sent` em `orbit_email_events` com `canal = 'whatsapp'`
+### 4. Atualizar `src/pages/orbit/CampanhasPage.tsx`
+- Botão "Nova Campanha" passa a navegar para `campanhas/nova` com `useNavigate`
+- Remover `<CampaignWizard>` dialog e state `wizardOpen`
 
-### 3. Expandir Analytics para WhatsApp
-**Arquivo**: `src/hooks/useOrbitEmailAnalytics.ts`
-- Renomear para `useOrbitCampaignAnalytics` (manter export antigo como alias)
-- Suportar campanhas de qualquer canal
+### 5. Layout da página
 
-**Arquivo**: `src/components/orbit/CampaignAnalyticsSection.tsx`
-- Remover filtro `canal: "email"` para mostrar todas as campanhas
-- Adaptar métricas conforme o canal (WhatsApp não tem open/click tracking)
+```text
+┌─────────────────────────────────────────────┐
+│ ← Voltar   Nova Campanha                   │
+│            Etapa 2 de 5 — Template          │
+├─────────────────────────────────────────────┤
+│  ① Info  ─── ② Template ─── ③ Dest ─── ... │
+├─────────────────────────────────────────────┤
+│                                             │
+│         Conteúdo da etapa (full width)      │
+│                                             │
+│                                             │
+├─────────────────────────────────────────────┤
+│ Cancelar          [Voltar]  [Próximo]       │  ← sticky bottom
+└─────────────────────────────────────────────┘
+```
 
-### 4. Consultas de segmentação
-**Arquivo**: `src/components/orbit/CampaignWizard.tsx`
-- No passo de seleção de público, adicionar filtros:
-  - "Excluir quem já recebeu campanha X"
-  - "Apenas quem abriu campanha X"
-  - "Apenas quem NÃO abriu campanha X"
-- Consultar `orbit_campaign_recipients` para filtrar prospect_ids
+## Componentes reaproveitados
+- Toda lógica de estado, filtros, handlers do `CampaignWizard` (950 linhas)
+- `RecipientSelector` — sem alterações, apenas ganha mais espaço
+- Templates, AI generation, test email — tudo mantido
 
-## Resumo de alterações
+## Arquivos afetados
 
 | Arquivo | Ação |
 |---------|------|
-| Migration SQL | UNIQUE constraint + coluna `canal` em orbit_email_events |
-| `supabase/functions/send-orbit-campaign/index.ts` | Registrar evento `sent` para WhatsApp |
-| `src/hooks/useOrbitEmailAnalytics.ts` | Suportar ambos os canais |
-| `src/components/orbit/CampaignAnalyticsSection.tsx` | Mostrar campanhas de todos os canais |
-| `src/components/orbit/CampaignWizard.tsx` | Filtros de segmentação por histórico de campanha |
+| `src/App.tsx` | Adicionar rota `campanhas/nova` |
+| `src/pages/orbit/NovaCampanhaPage.tsx` | Criar página dedicada |
+| `src/components/orbit/CampaignWizard.tsx` | Extrair conteúdo para `CampaignWizardContent` sem Dialog |
+| `src/pages/orbit/CampanhasPage.tsx` | Substituir modal por navegação |
 
