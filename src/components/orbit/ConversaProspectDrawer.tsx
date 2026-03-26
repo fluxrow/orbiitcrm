@@ -235,7 +235,6 @@ export function ConversaProspectDrawer({ open, onOpenChange, prospect, empresaId
           open={editOpen}
           onOpenChange={setEditOpen}
           prospect={prospect}
-          empresaId={empresaId || prospect.empresa_id}
         />
       )}
     </>
