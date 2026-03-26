@@ -224,7 +224,8 @@ export function RecipientSelector({
   const hasActiveFilters = !!(
     filtros.status_qualificacao?.length || filtros.segmento || filtros.estado || filtros.cidade ||
     filtros.origem_contato || filtros.origem_lead || filtros.tags?.length || (filtros.score_min && filtros.score_min > 0) ||
-    filtros.responsavel_id || filtros.apenas_consentimento || filtros.tem_email || filtros.tem_telefone || filtros.tipo
+    filtros.responsavel_id || filtros.apenas_consentimento || filtros.tem_email || filtros.tem_telefone || filtros.tipo ||
+    filtros.excluir_campanha_id || filtros.apenas_abriu_campanha_id || filtros.nao_abriu_campanha_id
   );
 
   const toggleSort = (key: SortKey) => {
