@@ -371,6 +371,30 @@ const handler = async (req: Request): Promise<Response> => {
             emailSubject = emailSubject.replace(new RegExp(key, "g"), value);
           }
 
+          // ── Tracking: inject pixel + rewrite links ──
+          const trackBaseUrl = `${supabaseUrl}/functions/v1/orbit-email-track`;
+          const trackPixel = `<img src="${trackBaseUrl}?type=open&rid=${recipient.id}" width="1" height="1" style="display:none" alt="" />`;
+
+          // Rewrite links for click tracking
+          emailHtml = emailHtml.replace(
+            /<a\s+([^>]*?)href=["']([^"']+)["']([^>]*?)>/gi,
+            (_match: string, before: string, href: string, after: string) => {
+              // Skip mailto, tel, unsubscribe, and tracking URLs
+              if (href.startsWith("mailto:") || href.startsWith("tel:") || href.includes("orbit-email-track")) {
+                return `<a ${before}href="${href}"${after}>`;
+              }
+              const trackedUrl = `${trackBaseUrl}?type=click&rid=${recipient.id}&url=${encodeURIComponent(href)}`;
+              return `<a ${before}href="${trackedUrl}"${after}>`;
+            }
+          );
+
+          // Append tracking pixel
+          if (emailHtml.includes("</body>")) {
+            emailHtml = emailHtml.replace("</body>", `${trackPixel}</body>`);
+          } else {
+            emailHtml += trackPixel;
+          }
+
           const emailRes = await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: { Authorization: `Bearer ${resendConfig.api_key}`, "Content-Type": "application/json" },
@@ -387,6 +411,26 @@ const handler = async (req: Request): Promise<Response> => {
             const err = await emailRes.json();
             throw new Error(err.message || "Erro ao enviar email");
           }
+
+          // Capture resend_email_id
+          const emailResult = await emailRes.json();
+          const resendEmailId = emailResult?.id || null;
+
+          if (resendEmailId) {
+            await supabase
+              .from("orbit_campaign_recipients")
+              .update({ resend_email_id: resendEmailId })
+              .eq("id", recipient.id);
+          }
+
+          // Log sent event
+          await supabase.from("orbit_email_events").insert({
+            recipient_id: recipient.id,
+            empresa_id: campaign.empresa_id,
+            resend_email_id: resendEmailId,
+            event_type: "sent",
+          });
+
           enviados++;
         } else {
           // ── WhatsApp sending with rate limiting ──
