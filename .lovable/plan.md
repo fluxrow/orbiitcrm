@@ -1,44 +1,67 @@
 
 
-# Corrigir contagem de "Enviados" no relatório de campanhas
+# Corrigir contagem truncada de destinatários nas campanhas
 
 ## Problema
 
-O card "Enviados" na lista de campanhas usa `c.enviados` da tabela `orbit_campaigns`, que é um contador incremental atualizado ao final de cada execução. Este contador pode ficar desatualizado (ex: campanha pausada mostra 0 enviados mesmo com 141 recipients enviados).
+A query em `CampanhasPage.tsx` (linha 48-51) busca **todos os recipients de todas as campanhas** em uma única query:
+```typescript
+.from("orbit_campaign_recipients")
+.select("campaign_id, status")
+.in("campaign_id", campaignIds)
+```
 
-O sistema já busca os dados reais dos recipients em `recipientCounts`, mas só usa `total` e `pendente`.
+O banco tem limite padrão de 1000 linhas por query. Com múltiplas campanhas (ex: uma com 141 + outra com 41 + outras), o resultado é truncado e as contagens ficam erradas. O analytics funciona porque busca uma campanha por vez.
 
 ## Solução
 
 ### `src/pages/orbit/CampanhasPage.tsx`
 
-1. **Expandir `recipientCounts`** para incluir contagem de `enviado`, `falhou`, `ignorado`:
-   - No query existente (linha 53), adicionar contadores: `enviado`, `falhou`, `ignorado`
-   - Contar recipients com `status === "enviado"` ou `status === "simulated"`
+Substituir a query única por uma **database function (RPC)** que faz `GROUP BY` e `COUNT` no servidor, ou paginar a query para buscar todos os registros.
 
-2. **Usar contagem real no card** (linha 271):
-   - Trocar `c.enviados` por `counts?.enviado || 0`
-   - Isso reflete os dados reais da tabela `orbit_campaign_recipients`
+**Abordagem mais simples — paginar a query:**
+- Usar `.range()` ou buscar em lotes por campanha
+- Ou melhor: criar uma view/RPC que retorna contagens agregadas
 
-3. **Também corrigir aberturas/cliques** se estiverem usando campos da campanha:
-   - Manter `c.aberturas` e `c.cliques` por enquanto (esses são atualizados pelo tracking pixel/webhook e são mais confiáveis)
+**Abordagem recomendada — RPC no banco:**
 
-### Migration SQL (opcional)
+### Migration SQL
 
-Sincronizar o campo `orbit_campaigns.enviados` com a contagem real para campanhas existentes:
+Criar função que retorna contagens agrupadas:
 
 ```sql
-UPDATE orbit_campaigns oc SET enviados = sub.cnt
-FROM (
-  SELECT campaign_id, count(*) as cnt 
-  FROM orbit_campaign_recipients 
-  WHERE status IN ('enviado', 'simulated') 
-  GROUP BY campaign_id
-) sub
-WHERE oc.id = sub.campaign_id AND oc.enviados != sub.cnt;
+CREATE OR REPLACE FUNCTION get_campaign_recipient_counts(p_campaign_ids uuid[])
+RETURNS TABLE(campaign_id uuid, total bigint, pendente bigint, enviado bigint, falhou bigint, ignorado bigint)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT 
+    cr.campaign_id,
+    count(*) as total,
+    count(*) FILTER (WHERE cr.status = 'pendente') as pendente,
+    count(*) FILTER (WHERE cr.status IN ('enviado', 'simulated')) as enviado,
+    count(*) FILTER (WHERE cr.status = 'falhou') as falhou,
+    count(*) FILTER (WHERE cr.status = 'ignorado') as ignorado
+  FROM orbit_campaign_recipients cr
+  WHERE cr.campaign_id = ANY(p_campaign_ids)
+  GROUP BY cr.campaign_id;
+$$;
 ```
+
+### `src/pages/orbit/CampanhasPage.tsx`
+
+Trocar a query direta pela chamada RPC:
+
+```typescript
+const { data } = await supabase.rpc("get_campaign_recipient_counts", {
+  p_campaign_ids: campaignIds
+});
+```
+
+Isso elimina o limite de 1000 linhas porque a agregação acontece no servidor.
 
 | Arquivo | Ação |
 |---------|------|
-| `src/pages/orbit/CampanhasPage.tsx` | Usar contagem real de recipients enviados nos cards |
-| Migration SQL | Sincronizar contadores existentes |
+| Migration SQL | Criar função `get_campaign_recipient_counts` |
+| `src/pages/orbit/CampanhasPage.tsx` | Usar RPC ao invés de query direta |
+
