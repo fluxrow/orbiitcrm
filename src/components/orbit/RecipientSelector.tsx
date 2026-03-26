@@ -424,6 +424,72 @@ export function RecipientSelector({
                       </div>
                     </div>
                   )}
+
+                  {/* Campaign segmentation filters */}
+                  {pastCampaigns && pastCampaigns.length > 0 && (
+                    <div className="space-y-2 border-t border-border pt-3">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Histórico de Campanhas</Label>
+                      
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] text-muted-foreground">Excluir quem recebeu</Label>
+                        <Select 
+                          value={filtros.excluir_campanha_id || "__none__"} 
+                          onValueChange={(v) => { 
+                            onFiltrosChange({ ...filtros, excluir_campanha_id: v === "__none__" ? undefined : v, apenas_abriu_campanha_id: undefined, nao_abriu_campanha_id: undefined }); 
+                            setPage(1); 
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Nenhuma</SelectItem>
+                            {pastCampaigns.map(c => (
+                              <SelectItem key={c.id} value={c.id}>
+                                {c.canal === "email" ? "📧" : "📱"} {c.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] text-muted-foreground">Apenas quem abriu</Label>
+                        <Select 
+                          value={filtros.apenas_abriu_campanha_id || "__none__"} 
+                          onValueChange={(v) => { 
+                            onFiltrosChange({ ...filtros, apenas_abriu_campanha_id: v === "__none__" ? undefined : v, excluir_campanha_id: undefined, nao_abriu_campanha_id: undefined }); 
+                            setPage(1); 
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Nenhuma</SelectItem>
+                            {pastCampaigns.filter(c => c.canal === "email").map(c => (
+                              <SelectItem key={c.id} value={c.id}>📧 {c.nome}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] text-muted-foreground">Quem NÃO abriu</Label>
+                        <Select 
+                          value={filtros.nao_abriu_campanha_id || "__none__"} 
+                          onValueChange={(v) => { 
+                            onFiltrosChange({ ...filtros, nao_abriu_campanha_id: v === "__none__" ? undefined : v, excluir_campanha_id: undefined, apenas_abriu_campanha_id: undefined }); 
+                            setPage(1); 
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Nenhuma</SelectItem>
+                            {pastCampaigns.filter(c => c.canal === "email").map(c => (
+                              <SelectItem key={c.id} value={c.id}>📧 {c.nome}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </ScrollArea>
             )}
