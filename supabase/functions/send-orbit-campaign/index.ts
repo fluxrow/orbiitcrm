@@ -533,6 +533,14 @@ const handler = async (req: Request): Promise<Response> => {
             throw new Error(err.message || "Erro ao enviar WhatsApp");
           }
 
+          // Log sent event for WhatsApp
+          await supabase.from("orbit_email_events").insert({
+            recipient_id: recipient.id,
+            empresa_id: campaign.empresa_id,
+            event_type: "sent",
+            canal: "whatsapp",
+          });
+
           if (wasValidated) {
             validados_enviados++;
           } else {

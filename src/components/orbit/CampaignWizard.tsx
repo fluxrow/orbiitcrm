@@ -43,6 +43,9 @@ interface CampaignData {
     score_min?: number;
     responsavel_id?: string;
     apenas_consentimento?: boolean;
+    excluir_campanha_id?: string;
+    apenas_abriu_campanha_id?: string;
+    nao_abriu_campanha_id?: string;
   };
   selected_prospect_ids?: string[];
   selected_group_ids?: string[];
@@ -183,7 +186,10 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
       f.tags?.length ||
       (f.score_min !== undefined && f.score_min > 0) ||
       f.responsavel_id ||
-      f.apenas_consentimento
+      f.apenas_consentimento ||
+      f.excluir_campanha_id ||
+      f.apenas_abriu_campanha_id ||
+      f.nao_abriu_campanha_id
     );
 
     if (hasAnyFilter) {

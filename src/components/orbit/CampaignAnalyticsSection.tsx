@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Mail, MailOpen, MousePointerClick, AlertTriangle, Info, Loader2 } from "lucide-react";
 import { useOrbitCampaigns } from "@/hooks/useOrbitCampaigns";
-import { useOrbitEmailAnalytics } from "@/hooks/useOrbitEmailAnalytics";
+import { useOrbitCampaignAnalytics } from "@/hooks/useOrbitEmailAnalytics";
 import { format } from "date-fns";
 
 const engagementBadge: Record<string, { label: string; className: string }> = {
@@ -34,11 +34,11 @@ function MetricCard({ icon, label, value, sub }: { icon: React.ReactNode; label:
 
 export function CampaignAnalyticsSection() {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
-  const { data: campaigns } = useOrbitCampaigns({ canal: "email" });
-  const { data, isLoading } = useOrbitEmailAnalytics(selectedCampaignId);
+  const { data: campaigns } = useOrbitCampaigns({});
+  const { data, isLoading } = useOrbitCampaignAnalytics(selectedCampaignId);
 
   const emailCampaigns = (campaigns || []).filter(
-    (c) => ["enviando", "concluida", "pausada"].includes(c.status || "")
+    (c) => ["enviando", "concluida", "pausada", "pausada_por_limite"].includes(c.status || "")
   );
 
   return (

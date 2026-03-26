@@ -37,6 +37,9 @@ interface CampaignFilters {
   tem_email?: boolean;
   tem_telefone?: boolean;
   tipo?: string;
+  excluir_campanha_id?: string;
+  apenas_abriu_campanha_id?: string;
+  nao_abriu_campanha_id?: string;
 }
 
 interface RecipientSelectorProps {
@@ -92,6 +95,36 @@ export function RecipientSelector({
       if (error) throw error;
       return data;
     },
+  });
+
+  // Fetch past campaigns for segmentation filters
+  const { data: pastCampaigns } = useQuery({
+    queryKey: ["past-campaigns-for-segmentation"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("orbit_campaigns")
+        .select("id, nome, canal, status")
+        .in("status", ["enviando", "concluida", "pausada", "pausada_por_limite"])
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch recipient prospect_ids for active campaign filters
+  const campaignFilterId = filtros.excluir_campanha_id || filtros.apenas_abriu_campanha_id || filtros.nao_abriu_campanha_id || null;
+  const { data: campaignRecipients } = useQuery({
+    queryKey: ["campaign-recipients-filter", campaignFilterId],
+    queryFn: async () => {
+      if (!campaignFilterId) return null;
+      const { data, error } = await supabase
+        .from("orbit_campaign_recipients")
+        .select("prospect_id, status, opened_at")
+        .eq("campaign_id", campaignFilterId);
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!campaignFilterId,
   });
 
   const distinctValues = useMemo(() => {
@@ -150,6 +183,22 @@ export function RecipientSelector({
     if (filtros.tem_telefone) list = list.filter(p => !!p.telefone || !!p.whatsapp);
     if (filtros.tipo) list = list.filter(p => p.tipo === filtros.tipo);
 
+    // Campaign-based segmentation filters
+    if (campaignRecipients) {
+      const recipientProspectIds = new Set(campaignRecipients.map(r => r.prospect_id));
+      const openedProspectIds = new Set(campaignRecipients.filter(r => r.opened_at).map(r => r.prospect_id));
+
+      if (filtros.excluir_campanha_id) {
+        list = list.filter(p => !recipientProspectIds.has(p.id));
+      }
+      if (filtros.apenas_abriu_campanha_id) {
+        list = list.filter(p => openedProspectIds.has(p.id));
+      }
+      if (filtros.nao_abriu_campanha_id) {
+        list = list.filter(p => recipientProspectIds.has(p.id) && !openedProspectIds.has(p.id));
+      }
+    }
+
     // Sort
     list.sort((a, b) => {
       let va = "", vb = "";
@@ -161,7 +210,7 @@ export function RecipientSelector({
     });
 
     return list;
-  }, [prospects, search, filtros, sortKey, sortDir, canal]);
+  }, [prospects, search, filtros, sortKey, sortDir, canal, campaignRecipients]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProspects.length / PAGE_SIZE));
   const pagedProspects = filteredProspects.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -175,7 +224,8 @@ export function RecipientSelector({
   const hasActiveFilters = !!(
     filtros.status_qualificacao?.length || filtros.segmento || filtros.estado || filtros.cidade ||
     filtros.origem_contato || filtros.origem_lead || filtros.tags?.length || (filtros.score_min && filtros.score_min > 0) ||
-    filtros.responsavel_id || filtros.apenas_consentimento || filtros.tem_email || filtros.tem_telefone || filtros.tipo
+    filtros.responsavel_id || filtros.apenas_consentimento || filtros.tem_email || filtros.tem_telefone || filtros.tipo ||
+    filtros.excluir_campanha_id || filtros.apenas_abriu_campanha_id || filtros.nao_abriu_campanha_id
   );
 
   const toggleSort = (key: SortKey) => {
@@ -371,6 +421,72 @@ export function RecipientSelector({
                             </Badge>
                           );
                         })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Campaign segmentation filters */}
+                  {pastCampaigns && pastCampaigns.length > 0 && (
+                    <div className="space-y-2 border-t border-border pt-3">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Histórico de Campanhas</Label>
+                      
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] text-muted-foreground">Excluir quem recebeu</Label>
+                        <Select 
+                          value={filtros.excluir_campanha_id || "__none__"} 
+                          onValueChange={(v) => { 
+                            onFiltrosChange({ ...filtros, excluir_campanha_id: v === "__none__" ? undefined : v, apenas_abriu_campanha_id: undefined, nao_abriu_campanha_id: undefined }); 
+                            setPage(1); 
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Nenhuma</SelectItem>
+                            {pastCampaigns.map(c => (
+                              <SelectItem key={c.id} value={c.id}>
+                                {c.canal === "email" ? "📧" : "📱"} {c.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] text-muted-foreground">Apenas quem abriu</Label>
+                        <Select 
+                          value={filtros.apenas_abriu_campanha_id || "__none__"} 
+                          onValueChange={(v) => { 
+                            onFiltrosChange({ ...filtros, apenas_abriu_campanha_id: v === "__none__" ? undefined : v, excluir_campanha_id: undefined, nao_abriu_campanha_id: undefined }); 
+                            setPage(1); 
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Nenhuma</SelectItem>
+                            {pastCampaigns.filter(c => c.canal === "email").map(c => (
+                              <SelectItem key={c.id} value={c.id}>📧 {c.nome}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] text-muted-foreground">Quem NÃO abriu</Label>
+                        <Select 
+                          value={filtros.nao_abriu_campanha_id || "__none__"} 
+                          onValueChange={(v) => { 
+                            onFiltrosChange({ ...filtros, nao_abriu_campanha_id: v === "__none__" ? undefined : v, excluir_campanha_id: undefined, apenas_abriu_campanha_id: undefined }); 
+                            setPage(1); 
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Nenhuma</SelectItem>
+                            {pastCampaigns.filter(c => c.canal === "email").map(c => (
+                              <SelectItem key={c.id} value={c.id}>📧 {c.nome}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                   )}
