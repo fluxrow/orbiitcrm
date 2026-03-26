@@ -1,54 +1,44 @@
 
 
-# Painel de Detalhes do Prospect na Tela de Conversas
+# Corrigir contagem de "Enviados" no relatório de campanhas
 
-## Resumo
+## Problema
 
-Ao clicar no nome do contato no cabeçalho da conversa, abrir um **Sheet (drawer lateral direito)** com os dados completos do prospect, ações rápidas e deals vinculados.
+O card "Enviados" na lista de campanhas usa `c.enviados` da tabela `orbit_campaigns`, que é um contador incremental atualizado ao final de cada execução. Este contador pode ficar desatualizado (ex: campanha pausada mostra 0 enviados mesmo com 141 recipients enviados).
 
-## Alterações
+O sistema já busca os dados reais dos recipients em `recipientCounts`, mas só usa `total` e `pendente`.
 
-### 1. Criar `src/components/orbit/ConversaProspectDrawer.tsx`
+## Solução
 
-Componente Sheet lateral direito contendo:
+### `src/pages/orbit/CampanhasPage.tsx`
 
-**Dados do prospect** (da relação `active.prospect`):
-- Nome, empresa, cargo, email, telefone, WhatsApp, cidade/estado, segmento, origem, status, responsável, tags, data criação, observações
+1. **Expandir `recipientCounts`** para incluir contagem de `enviado`, `falhou`, `ignorado`:
+   - No query existente (linha 53), adicionar contadores: `enviado`, `falhou`, `ignorado`
+   - Contar recipients com `status === "enviado"` ou `status === "simulated"`
 
-**Deals vinculados** — query `orbit_deals` por `prospect_id`:
-- Etapa do funil, valor estimado, status
+2. **Usar contagem real no card** (linha 271):
+   - Trocar `c.enviados` por `counts?.enviado || 0`
+   - Isso reflete os dados reais da tabela `orbit_campaign_recipients`
 
-**Tarefas pendentes** — query `orbit_tasks` por `prospect_id` com status pending:
-- Próximo follow-up
+3. **Também corrigir aberturas/cliques** se estiverem usando campos da campanha:
+   - Manter `c.aberturas` e `c.cliques` por enquanto (esses são atualizados pelo tracking pixel/webhook e são mais confiáveis)
 
-**Ações rápidas**:
-- Copiar email / telefone (clipboard)
-- Editar prospect (abrir `ProspectDialog` existente)
-- Abrir cadastro completo (`/prospects?id=...`)
-- Ver no funil (`/funil`)
+### Migration SQL (opcional)
 
-**Estado vazio**: se `prospect_id` for null, mostrar mensagem "Nenhum contato vinculado"
+Sincronizar o campo `orbit_campaigns.enviados` com a contagem real para campanhas existentes:
 
-### 2. Atualizar `src/pages/orbit/ConversasPage.tsx`
-
-- Adicionar state `drawerProspectOpen`
-- No header (linha ~294), tornar o nome do prospect clicável:
-  - `cursor-pointer`, `hover:underline`, `hover:text-primary`
-  - `onClick` abre o drawer
-- Importar e renderizar `ConversaProspectDrawer`
-
-### 3. Busca de dados do responsável
-
-- Usar query simples para buscar `profiles` pelo `responsavel_id` do prospect para exibir nome do responsável
-
-## Componentes reaproveitados
-
-- `Sheet` / `SheetContent` do shadcn (já existe)
-- `ProspectDialog` para edição
-- Hooks `useOrbitDeals`, `useOrbitTasks` existentes
+```sql
+UPDATE orbit_campaigns oc SET enviados = sub.cnt
+FROM (
+  SELECT campaign_id, count(*) as cnt 
+  FROM orbit_campaign_recipients 
+  WHERE status IN ('enviado', 'simulated') 
+  GROUP BY campaign_id
+) sub
+WHERE oc.id = sub.campaign_id AND oc.enviados != sub.cnt;
+```
 
 | Arquivo | Ação |
 |---------|------|
-| `src/components/orbit/ConversaProspectDrawer.tsx` | Criar drawer com dados, deals e ações rápidas |
-| `src/pages/orbit/ConversasPage.tsx` | Nome clicável no header + renderizar drawer |
-
+| `src/pages/orbit/CampanhasPage.tsx` | Usar contagem real de recipients enviados nos cards |
+| Migration SQL | Sincronizar contadores existentes |
