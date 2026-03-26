@@ -85,3 +85,6 @@ export function useOrbitCampaignAnalytics(campaignId: string | null) {
     enabled: !!campaignId,
   });
 }
+
+/** @deprecated Use useOrbitCampaignAnalytics instead */
+export const useOrbitEmailAnalytics = useOrbitCampaignAnalytics;

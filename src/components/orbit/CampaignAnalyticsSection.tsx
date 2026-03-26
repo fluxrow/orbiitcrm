@@ -35,10 +35,10 @@ function MetricCard({ icon, label, value, sub }: { icon: React.ReactNode; label:
 export function CampaignAnalyticsSection() {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const { data: campaigns } = useOrbitCampaigns({ canal: "email" });
-  const { data, isLoading } = useOrbitEmailAnalytics(selectedCampaignId);
+  const { data, isLoading } = useOrbitCampaignAnalytics(selectedCampaignId);
 
   const emailCampaigns = (campaigns || []).filter(
-    (c) => ["enviando", "concluida", "pausada"].includes(c.status || "")
+    (c) => ["enviando", "concluida", "pausada", "pausada_por_limite"].includes(c.status || "")
   );
 
   return (
