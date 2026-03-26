@@ -77,7 +77,8 @@ export function CampaignAnalyticsSection() {
       {data && (
         <>
           {/* Metric cards */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+            <MetricCard icon={<Mail className="h-4 w-4" />} label="Destinatários" value={data.totalRecipients} />
             <MetricCard icon={<Mail className="h-4 w-4" />} label="Enviados" value={data.total} />
             <MetricCard icon={<Mail className="h-4 w-4" />} label="Entregues" value={data.delivered} />
             <MetricCard icon={<MailOpen className="h-4 w-4" />} label="Aberturas" value={data.opened} sub={`${data.openRate.toFixed(1)}%`} />
