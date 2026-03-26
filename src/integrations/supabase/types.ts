@@ -3487,6 +3487,16 @@ export type Database = {
           total_sent: number
         }[]
       }
+      get_campaign_events_timeline: {
+        Args: { p_campaign_id: string; p_interval?: string }
+        Returns: {
+          aberturas: number
+          bucket: string
+          cliques: number
+          entregues: number
+          enviados: number
+        }[]
+      }
       get_campaign_recipient_counts: {
         Args: { p_campaign_ids: string[] }
         Returns: {
