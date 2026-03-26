@@ -50,12 +50,15 @@ export default function CampanhasPage() {
         .select("campaign_id, status")
         .in("campaign_id", campaignIds);
       if (error) throw error;
-      const counts: Record<string, { total: number; pendente: number }> = {};
+      const counts: Record<string, { total: number; pendente: number; enviado: number; falhou: number; ignorado: number }> = {};
       (data || []).forEach(r => {
         if (!r.campaign_id) return;
-        if (!counts[r.campaign_id]) counts[r.campaign_id] = { total: 0, pendente: 0 };
+        if (!counts[r.campaign_id]) counts[r.campaign_id] = { total: 0, pendente: 0, enviado: 0, falhou: 0, ignorado: 0 };
         counts[r.campaign_id].total++;
         if (r.status === "pendente") counts[r.campaign_id].pendente++;
+        if (r.status === "enviado" || r.status === "simulated") counts[r.campaign_id].enviado++;
+        if (r.status === "falhou") counts[r.campaign_id].falhou++;
+        if (r.status === "ignorado") counts[r.campaign_id].ignorado++;
       });
       return counts;
     },
@@ -268,7 +271,7 @@ export default function CampanhasPage() {
                 <div className="grid grid-cols-5 gap-4 mb-4">
                   {[
                     ["Destinatários", totalRecipients],
-                    ["Enviados", c.enviados],
+                    ["Enviados", counts?.enviado || c.enviados || 0],
                     ["Aberturas", c.aberturas],
                     ["Cliques", c.cliques],
                     ["Respostas", c.respostas]
