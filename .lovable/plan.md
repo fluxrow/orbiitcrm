@@ -1,85 +1,84 @@
 
 
-# Analytics Avançado de Campanhas — Estilo Meta Ads / HubSpot
+# Analytics Completo para Campanhas de WhatsApp
 
 ## Resumo
 
-Refatorar completamente o `CampaignAnalyticsSection` para um dashboard avançado com gráfico temporal, funil de conversão visual, tabela com filtros, insights automáticos e ações rápidas. Tudo usando dados reais do banco.
+Adaptar o sistema de analytics para campanhas de WhatsApp, adicionando colunas de rastreamento específicas (`read_at`, `replied_at`), uma RPC de summary dedicada, e condicionando o componente `CampaignAnalyticsSection` para renderizar métricas, funil, gráfico e tabela com terminologia e lógica do canal WhatsApp.
+
+## Estado Atual
+
+- `orbit_campaign_recipients` tem `status` com valores WhatsApp (`entregue`, `lido`, `respondeu`), mas **não tem** colunas de timestamp `read_at` / `replied_at`
+- As colunas de email (`opened_at`, `clicked_at`, `bounced_at`, `complained_at`) não se aplicam a WhatsApp
+- A RPC `get_campaign_analytics_summary` conta apenas colunas de email
+- O componente mostra terminologia de email (Aberturas, Cliques, Bounce, Spam)
+- `orbit_campaigns` já tem campo `canal` (`email` / `whatsapp`)
 
 ## Alterações
 
-### 1. RPC para dados temporais (Migration SQL)
+### 1. Migration SQL — Adicionar colunas WhatsApp + RPC
 
-Criar função `get_campaign_events_timeline(p_campaign_id, p_interval)` que retorna contagens agrupadas por hora/dia:
-
+**Novas colunas em `orbit_campaign_recipients`:**
 ```sql
-CREATE OR REPLACE FUNCTION get_campaign_events_timeline(
-  p_campaign_id uuid, p_interval text DEFAULT '1 day'
-)
-RETURNS TABLE(bucket timestamptz, enviados bigint, entregues bigint, aberturas bigint, cliques bigint)
+ALTER TABLE orbit_campaign_recipients ADD COLUMN IF NOT EXISTS read_at timestamptz;
+ALTER TABLE orbit_campaign_recipients ADD COLUMN IF NOT EXISTS replied_at timestamptz;
 ```
 
-Agrupa `orbit_campaign_recipients` por `date_trunc` nos campos `enviado_em`, `delivered_at`, `opened_at`, `clicked_at`.
+**Nova RPC `get_whatsapp_campaign_summary`:**
+- Retorna: `total_recipients`, `total_sent`, `delivered`, `read`, `replied`, `failed`, `pending`
+- Conta baseado em `status` (`enviado`, `entregue`, `lido`, `respondeu`, `falhou`) + timestamps `delivered_at`, `read_at`, `replied_at`
 
-### 2. Hook `useOrbitCampaignTimeline` em `src/hooks/useOrbitEmailAnalytics.ts`
+**Atualizar RPC `get_campaign_events_timeline`:**
+- Adicionar colunas `leituras` e `respostas` ao retorno, usando `read_at` e `replied_at`
 
-Novo hook que chama a RPC com parâmetro de intervalo (1h, 1 day, 7 days). Retorna array de pontos para o gráfico.
+### 2. Hook `src/hooks/useOrbitEmailAnalytics.ts`
 
-### 3. Refatorar `src/components/orbit/CampaignAnalyticsSection.tsx`
+- Adicionar interface `WhatsAppCampaignSummary` com campos: `totalRecipients`, `total`, `delivered`, `read`, `replied`, `failed`, `pending`, `readRate`, `replyRate`
+- Adicionar `useWhatsAppCampaignSummary(campaignId)` chamando a nova RPC
+- Adicionar tipo `WhatsAppEngagementFilter` com valores: `todos`, `enviado`, `entregue`, `lido`, `respondeu`, `falhou`, `sem_resposta`
+- Adicionar `useWhatsAppCampaignRecipients(campaignId, page, pageSize, filter)` com:
+  - Select incluindo `telefone`, `read_at`, `replied_at`, `erro`
+  - Prospect join com `nome_razao`, `nome_fantasia`
+  - Filtros server-side baseados nos novos campos
 
-Substituir o componente atual por um dashboard completo com seções:
+### 3. Componente `CampaignAnalyticsSection.tsx`
 
-**A. Metric Cards (topo)** — 7 cards existentes + comparação textual:
-- Enviados, Entregues, Aberturas (%), Cliques (%), Respostas, Bounces (%), Spam
-- Sub-texto com comparação (calculada client-side vs média das outras campanhas)
+Condicionar toda a renderização com base no `canal` da campanha selecionada:
 
-**B. Gráfico Temporal (recharts LineChart)**
-- Linhas: Envios, Aberturas, Cliques
-- Filtro de período: Select com 1h / 24h / 7d / 30d
-- Usa dados da nova RPC
+**Quando `canal === "whatsapp"`:**
 
-**C. Funil de Conversão Visual**
-- Barras horizontais decrescentes (CSS puro, sem componente externo)
-- Etapas: Enviados -> Entregues -> Abertos -> Clicados -> Responderam
-- Taxa de conversão entre cada etapa (ex: "92%", "34%", "12%")
-- Dados do summary RPC existente
+**A. Metric Cards:**
+- Destinatários, Enviados, Entregues, Lidos (+ taxa), Respondidos (+ taxa), Falhas, Pendentes
 
-**D. Tabela Avançada de Leads**
-- Adicionar filtro Select no topo: Todos / Abriu / Não Abriu / Clicou / Não Clicou / Respondeu / Falhou
-- O filtro é aplicado client-side sobre os recipients da página (já paginados)
-- OU melhor: adicionar parâmetro de filtro na query de recipients para filtrar server-side
-- Colunas: Nome, Email, Status (badge colorido), Último Evento, Horário
-- Manter paginação existente
+**B. Funil:**
+- Destinatários → Enviados → Entregues → Lidos → Responderam
 
-**E. Insights Automáticos**
-- Seção com cards de texto gerados client-side a partir do summary:
-  - "Taxa de abertura X% acima/abaixo da média" (comparar com outras campanhas)
-  - "Melhor horário de engajamento: XX:00" (calcular do timeline)
-  - "X leads sem interação — considere reenviar"
+**C. Gráfico temporal:**
+- Linhas: Envios, Entregas, Leituras, Respostas (no lugar de Aberturas/Cliques)
 
-**F. Ações Rápidas**
-- Botões: "Reenviar para não abertos" (futuro, disabled com tooltip)
-- "Exportar engajados" (futuro, disabled)
-- Estes ficam como placeholders visuais por agora
+**D. Tabela:**
+- Colunas: Nome, Telefone, Status (badge), Enviado em, Entregue em, Lido em, Respondeu em, Erro
+- Filtros: Todos, Enviado, Entregue, Lido, Respondeu, Falhou, Sem Resposta
 
-### 4. Filtro server-side na tabela — atualizar hook `useOrbitCampaignRecipients`
+**E. Insights adaptados:**
+- "Taxa de leitura X% — acima/abaixo da média"
+- "X leads sem resposta — considere follow-up"
+- "X falhas — verifique números/WhatsApp"
 
-Adicionar parâmetro opcional `engagementFilter` ao hook. Aplicar `.eq("engagement_status", filter)` ou condições compostas (ex: "opened" = `opened_at IS NOT NULL`). Usar filtros do Supabase:
-- "abriu": `.not("opened_at", "is", null)`
-- "nao_abriu": `.is("opened_at", null).not("status", "eq", "pendente")`
-- "clicou": `.not("clicked_at", "is", null)`
-- "falhou": `.in("engagement_status", ["bounced", "complained"])`
+**F. Tracking note:**
+- Nota específica para WhatsApp (sem menção a imagens de tracking)
 
-### 5. Atualizar `CampaignAnalyticsDialog.tsx`
+**Quando `canal === "email"`:** comportamento atual mantido intacto.
 
-Manter versão simplificada (modal) mas usar os mesmos metric cards melhorados.
+### 4. Buscar canal da campanha
+
+No componente, ao selecionar campanha, identificar `canal` da lista `campaigns` e usar para decidir qual branch de UI renderizar.
 
 ## Arquivos afetados
 
-| Arquivo | Acao |
+| Arquivo | Ação |
 |---------|------|
-| Migration SQL | Criar `get_campaign_events_timeline` |
-| `src/hooks/useOrbitEmailAnalytics.ts` | Adicionar `useOrbitCampaignTimeline` + filtro no recipients |
-| `src/components/orbit/CampaignAnalyticsSection.tsx` | Reescrever com dashboard completo |
-| `src/components/orbit/CampaignAnalyticsDialog.tsx` | Metric cards atualizados |
+| Migration SQL | Colunas `read_at`, `replied_at` + RPC `get_whatsapp_campaign_summary` + atualizar timeline |
+| `src/hooks/useOrbitEmailAnalytics.ts` | Hooks WhatsApp: summary, recipients, timeline |
+| `src/components/orbit/CampaignAnalyticsSection.tsx` | Renderização condicional por canal |
 
