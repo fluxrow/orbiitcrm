@@ -3495,6 +3495,8 @@ export type Database = {
           cliques: number
           entregues: number
           enviados: number
+          leituras: number
+          respostas: number
         }[]
       }
       get_campaign_recipient_counts: {
