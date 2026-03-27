@@ -235,7 +235,7 @@ export function useWhatsAppCampaignSummary(campaignId: string | null) {
     queryFn: async (): Promise<WhatsAppCampaignSummary> => {
       if (!campaignId) throw new Error("No campaign");
 
-      const { data, error } = await supabase.rpc("get_whatsapp_campaign_summary", {
+      const { data, error } = await (supabase.rpc as any)("get_whatsapp_campaign_summary", {
         p_campaign_id: campaignId,
       });
 
