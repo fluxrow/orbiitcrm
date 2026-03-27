@@ -3511,6 +3511,10 @@ export type Database = {
         }[]
       }
       get_empresa_by_slug: { Args: { p_slug: string }; Returns: Json }
+      get_orbit_analytics_summary: {
+        Args: { p_empresa_id: string }
+        Returns: Json
+      }
       get_user_empresa_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
