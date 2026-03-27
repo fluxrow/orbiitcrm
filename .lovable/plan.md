@@ -1,84 +1,54 @@
 
 
-# Analytics Completo para Campanhas de WhatsApp
+# Métricas Reais no Analytics Dashboard
 
-## Resumo
+## Problema
+Todos os valores na página de Analytics são hardcoded (1,234 leads, 89 conversas, etc.). Precisamos buscar dados reais do banco.
 
-Adaptar o sistema de analytics para campanhas de WhatsApp, adicionando colunas de rastreamento específicas (`read_at`, `replied_at`), uma RPC de summary dedicada, e condicionando o componente `CampaignAnalyticsSection` para renderizar métricas, funil, gráfico e tabela com terminologia e lógica do canal WhatsApp.
+## Abordagem
 
-## Estado Atual
+### 1. Migration SQL — Criar RPC `get_orbit_analytics_summary`
 
-- `orbit_campaign_recipients` tem `status` com valores WhatsApp (`entregue`, `lido`, `respondeu`), mas **não tem** colunas de timestamp `read_at` / `replied_at`
-- As colunas de email (`opened_at`, `clicked_at`, `bounced_at`, `complained_at`) não se aplicam a WhatsApp
-- A RPC `get_campaign_analytics_summary` conta apenas colunas de email
-- O componente mostra terminologia de email (Aberturas, Cliques, Bounce, Spam)
-- `orbit_campaigns` já tem campo `canal` (`email` / `whatsapp`)
+Uma única RPC que retorna todas as métricas agregadas para uma empresa:
 
-## Alterações
-
-### 1. Migration SQL — Adicionar colunas WhatsApp + RPC
-
-**Novas colunas em `orbit_campaign_recipients`:**
 ```sql
-ALTER TABLE orbit_campaign_recipients ADD COLUMN IF NOT EXISTS read_at timestamptz;
-ALTER TABLE orbit_campaign_recipients ADD COLUMN IF NOT EXISTS replied_at timestamptz;
+CREATE FUNCTION get_orbit_analytics_summary(p_empresa_id uuid)
+RETURNS jsonb
 ```
 
-**Nova RPC `get_whatsapp_campaign_summary`:**
-- Retorna: `total_recipients`, `total_sent`, `delivered`, `read`, `replied`, `failed`, `pending`
-- Conta baseado em `status` (`enviado`, `entregue`, `lido`, `respondeu`, `falhou`) + timestamps `delivered_at`, `read_at`, `replied_at`
+Retorna:
+- **total_prospects**: `count(*)` de `orbit_prospects`
+- **prospects_mes_atual** e **prospects_mes_anterior**: para calcular variação %
+- **conversas_ativas**: `count(*)` de `orbit_conversas` com `status = 'aberta'`
+- **conversas_ontem**: conversas abertas criadas ontem (para "+X desde ontem")
+- **pipeline_total**: `sum(valor_estimado)` de `orbit_deals` com `status = 'open'`
+- **pipeline_mes_anterior**: para variação %
+- **deals_total / deals_won**: para taxa de conversão
+- **deals_won_anterior**: para variação da taxa
+- **origem_contato_distribution**: agrupamento por `origem_contato` dos prospects (para gráfico de pizza)
+- **prospects_por_mes**: últimos 6 meses, agrupados por `created_at` (para gráfico de funil)
+- **deals_por_mes**: últimos 6 meses com status open/won
+- **performance_equipe**: prospects + deals won agrupados por `responsavel_id` com nome do perfil
 
-**Atualizar RPC `get_campaign_events_timeline`:**
-- Adicionar colunas `leituras` e `respostas` ao retorno, usando `read_at` e `replied_at`
+### 2. Hook `src/hooks/useOrbitAnalytics.ts`
 
-### 2. Hook `src/hooks/useOrbitEmailAnalytics.ts`
+Novo hook `useOrbitAnalyticsSummary(empresaId)` que chama a RPC e transforma os dados para os formatos esperados pelos charts.
 
-- Adicionar interface `WhatsAppCampaignSummary` com campos: `totalRecipients`, `total`, `delivered`, `read`, `replied`, `failed`, `pending`, `readRate`, `replyRate`
-- Adicionar `useWhatsAppCampaignSummary(campaignId)` chamando a nova RPC
-- Adicionar tipo `WhatsAppEngagementFilter` com valores: `todos`, `enviado`, `entregue`, `lido`, `respondeu`, `falhou`, `sem_resposta`
-- Adicionar `useWhatsAppCampaignRecipients(campaignId, page, pageSize, filter)` com:
-  - Select incluindo `telefone`, `read_at`, `replied_at`, `erro`
-  - Prospect join com `nome_razao`, `nome_fantasia`
-  - Filtros server-side baseados nos novos campos
+### 3. Atualizar `src/pages/orbit/AnalyticsPage.tsx`
 
-### 3. Componente `CampaignAnalyticsSection.tsx`
+- Remover dados hardcoded (`conversionData`, `channelData`, `performanceData`)
+- Importar `useTenant` para obter `empresaId`
+- Chamar o novo hook
+- Preencher StatsCards com valores reais e variações calculadas
+- Alimentar gráficos com dados reais
+- Mostrar loading state enquanto carrega
+- Formatar valores (R$ com abreviação, percentuais)
 
-Condicionar toda a renderização com base no `canal` da campanha selecionada:
-
-**Quando `canal === "whatsapp"`:**
-
-**A. Metric Cards:**
-- Destinatários, Enviados, Entregues, Lidos (+ taxa), Respondidos (+ taxa), Falhas, Pendentes
-
-**B. Funil:**
-- Destinatários → Enviados → Entregues → Lidos → Responderam
-
-**C. Gráfico temporal:**
-- Linhas: Envios, Entregas, Leituras, Respostas (no lugar de Aberturas/Cliques)
-
-**D. Tabela:**
-- Colunas: Nome, Telefone, Status (badge), Enviado em, Entregue em, Lido em, Respondeu em, Erro
-- Filtros: Todos, Enviado, Entregue, Lido, Respondeu, Falhou, Sem Resposta
-
-**E. Insights adaptados:**
-- "Taxa de leitura X% — acima/abaixo da média"
-- "X leads sem resposta — considere follow-up"
-- "X falhas — verifique números/WhatsApp"
-
-**F. Tracking note:**
-- Nota específica para WhatsApp (sem menção a imagens de tracking)
-
-**Quando `canal === "email"`:** comportamento atual mantido intacto.
-
-### 4. Buscar canal da campanha
-
-No componente, ao selecionar campanha, identificar `canal` da lista `campaigns` e usar para decidir qual branch de UI renderizar.
-
-## Arquivos afetados
+## Detalhes técnicos
 
 | Arquivo | Ação |
 |---------|------|
-| Migration SQL | Colunas `read_at`, `replied_at` + RPC `get_whatsapp_campaign_summary` + atualizar timeline |
-| `src/hooks/useOrbitEmailAnalytics.ts` | Hooks WhatsApp: summary, recipients, timeline |
-| `src/components/orbit/CampaignAnalyticsSection.tsx` | Renderização condicional por canal |
+| Migration SQL | Criar `get_orbit_analytics_summary` |
+| `src/hooks/useOrbitAnalytics.ts` | Novo hook consumindo a RPC |
+| `src/pages/orbit/AnalyticsPage.tsx` | Substituir dados mock por dados reais |
 
