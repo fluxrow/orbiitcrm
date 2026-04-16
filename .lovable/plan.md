@@ -1,54 +1,26 @@
 
 
-# Métricas Reais no Analytics Dashboard
+# Transferir Todos os Prospects para Flavia Furlan
 
-## Problema
-Todos os valores na página de Analytics são hardcoded (1,234 leads, 89 conversas, etc.). Precisamos buscar dados reais do banco.
+## Resumo
 
-## Abordagem
+Atualizar o campo `responsavel_id` de todos os 1.212 prospects da tabela `orbit_prospects` para o ID da usuária Flavia Furlan.
 
-### 1. Migration SQL — Criar RPC `get_orbit_analytics_summary`
+## Alteração
 
-Uma única RPC que retorna todas as métricas agregadas para uma empresa:
+### Migration SQL
 
 ```sql
-CREATE FUNCTION get_orbit_analytics_summary(p_empresa_id uuid)
-RETURNS jsonb
+UPDATE orbit_prospects
+SET responsavel_id = '6bfd92d3-1751-458c-ba83-b67341625834';
 ```
 
-Retorna:
-- **total_prospects**: `count(*)` de `orbit_prospects`
-- **prospects_mes_atual** e **prospects_mes_anterior**: para calcular variação %
-- **conversas_ativas**: `count(*)` de `orbit_conversas` com `status = 'aberta'`
-- **conversas_ontem**: conversas abertas criadas ontem (para "+X desde ontem")
-- **pipeline_total**: `sum(valor_estimado)` de `orbit_deals` com `status = 'open'`
-- **pipeline_mes_anterior**: para variação %
-- **deals_total / deals_won**: para taxa de conversão
-- **deals_won_anterior**: para variação da taxa
-- **origem_contato_distribution**: agrupamento por `origem_contato` dos prospects (para gráfico de pizza)
-- **prospects_por_mes**: últimos 6 meses, agrupados por `created_at` (para gráfico de funil)
-- **deals_por_mes**: últimos 6 meses com status open/won
-- **performance_equipe**: prospects + deals won agrupados por `responsavel_id` com nome do perfil
+- **Flavia Furlan**: `6bfd92d3-1751-458c-ba83-b67341625834` / `flavia@promotripcorporate.com`
+- **Total afetado**: 1.212 prospects
 
-### 2. Hook `src/hooks/useOrbitAnalytics.ts`
-
-Novo hook `useOrbitAnalyticsSummary(empresaId)` que chama a RPC e transforma os dados para os formatos esperados pelos charts.
-
-### 3. Atualizar `src/pages/orbit/AnalyticsPage.tsx`
-
-- Remover dados hardcoded (`conversionData`, `channelData`, `performanceData`)
-- Importar `useTenant` para obter `empresaId`
-- Chamar o novo hook
-- Preencher StatsCards com valores reais e variações calculadas
-- Alimentar gráficos com dados reais
-- Mostrar loading state enquanto carrega
-- Formatar valores (R$ com abreviação, percentuais)
-
-## Detalhes técnicos
+## Arquivos
 
 | Arquivo | Ação |
 |---------|------|
-| Migration SQL | Criar `get_orbit_analytics_summary` |
-| `src/hooks/useOrbitAnalytics.ts` | Novo hook consumindo a RPC |
-| `src/pages/orbit/AnalyticsPage.tsx` | Substituir dados mock por dados reais |
+| Migration SQL | UPDATE em massa do `responsavel_id` |
 
