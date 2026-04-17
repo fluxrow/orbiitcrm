@@ -25,18 +25,62 @@ function normalizePhone(raw: string): string {
   return digits;
 }
 
+type ValidationResult = "valid" | "invalid" | "inconclusive";
+
 async function validateWhatsAppNumber(
   phone: string,
   zapiBaseUrl: string,
   headers: Record<string, string>
-): Promise<boolean> {
-  const res = await fetch(`${zapiBaseUrl}/phone-exists/${phone}`, {
-    method: "GET",
-    headers,
-  });
-  if (!res.ok) return false;
-  const result = await res.json();
-  return result.exists === true;
+): Promise<ValidationResult> {
+  try {
+    const res = await fetch(`${zapiBaseUrl}/phone-exists/${phone}`, {
+      method: "GET",
+      headers,
+    });
+    const bodyText = await res.text();
+    let result: any = null;
+    try { result = JSON.parse(bodyText); } catch { /* ignore */ }
+
+    console.log(`[validate] phone=${phone} http=${res.status} body=${bodyText.slice(0, 300)}`);
+
+    if (!res.ok) {
+      console.warn(`[validate] HTTP ${res.status} → inconclusive`);
+      return "inconclusive";
+    }
+    if (!result || typeof result !== "object") {
+      return "inconclusive";
+    }
+    // Z-API may return error / connected:false with HTTP 200
+    if (result.error || result.connected === false) {
+      console.warn(`[validate] Z-API error/disconnected → inconclusive`);
+      return "inconclusive";
+    }
+    if (result.exists === true) return "valid";
+    if (result.exists === false) return "invalid";
+    // exists ausente / null → inconclusivo (não cachear como inválido)
+    return "inconclusive";
+  } catch (err) {
+    console.error(`[validate] Exception for ${phone}:`, err);
+    return "inconclusive";
+  }
+}
+
+async function checkZapiInstanceStatus(
+  zapiBaseUrl: string,
+  headers: Record<string, string>
+): Promise<{ connected: boolean; raw: any; httpStatus: number }> {
+  try {
+    const res = await fetch(`${zapiBaseUrl}/status`, { method: "GET", headers });
+    const bodyText = await res.text();
+    let raw: any = null;
+    try { raw = JSON.parse(bodyText); } catch { /* ignore */ }
+    console.log(`[zapi-status] http=${res.status} body=${bodyText.slice(0, 300)}`);
+    const connected = !!(raw && (raw.connected === true || raw.smartphoneConnected === true));
+    return { connected, raw, httpStatus: res.status };
+  } catch (err) {
+    console.error(`[zapi-status] Exception:`, err);
+    return { connected: false, raw: null, httpStatus: 0 };
+  }
 }
 
 interface SendingConfig {
