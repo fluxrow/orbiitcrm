@@ -60,6 +60,37 @@ serve(async (req) => {
 
     const payloadInstanceId = payload.instanceId || null;
     const payloadPhone = payload.phone?.replace(/\D/g, "") || payload.from?.replace(/\D/g, "") || null;
+    const payloadType = payload.type as string | undefined;
+
+    // Z-API status callbacks que NUNCA representam mensagem nova de conteúdo
+    const STATUS_ONLY_CALLBACKS = new Set([
+      "ConnectedCallback",
+      "DisconnectedCallback",
+      "PresenceChatCallback",
+      "MessageStatusCallback",
+      "DeliveryCallback",
+      "ChatPresenceCallback",
+      "NotificationCallback",
+    ]);
+
+    if (payloadType && STATUS_ONLY_CALLBACKS.has(payloadType) && eventType !== "message-status" && eventType !== "presence" && eventType !== "on-connect" && eventType !== "on-disconnect") {
+      console.log(`[orbit-webhook] Ignorando callback de status: ${payloadType}`);
+      const { data: logRow } = await supabase
+        .from("orbit_webhook_logs")
+        .insert({
+          event_type: eventType,
+          instance_id: payloadInstanceId,
+          phone: payloadPhone,
+          payload,
+          status: "ignored",
+          error_message: `status_callback:${payloadType}`,
+        })
+        .select("id")
+        .single();
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "status_callback", type: payloadType }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const { data: logRow } = await supabase
       .from("orbit_webhook_logs")
@@ -192,6 +223,15 @@ serve(async (req) => {
     }
 
     const messageId = payload.messageId || payload.id;
+
+    // Defesa em profundidade: sem conteúdo, sem mídia e sem messageId → não é mensagem
+    if (!messageText && !tipoMidia && !messageId) {
+      console.log("[orbit-webhook] Payload sem conteúdo/mídia/messageId — ignorando (provável status callback)");
+      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "empty_payload" }).eq("id", logId);
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "empty_payload" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     if (!phone || (fromMe && eventType !== "on-send")) {
       if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "no phone or skipped fromMe" }).eq("id", logId);
