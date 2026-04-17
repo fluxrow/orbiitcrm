@@ -304,6 +304,23 @@ const handler = async (req: Request): Promise<Response> => {
 
     const templateImageUrl = campaign.template?.imagem_url || null;
 
+    // ── Pré-check da instância Z-API (apenas WhatsApp) ──
+    if (campaign.canal === "whatsapp" && zapiConfig?.instance_id && zapiConfig?.token) {
+      const status = await checkZapiInstanceStatus(zapiBaseUrl, zapiHeaders);
+      if (!status.connected) {
+        console.error(`[send-campaign] Z-API instance not connected — aborting campaign ${campaign_id}`);
+        await supabase
+          .from("orbit_campaigns")
+          .update({ status: "falha", erro: "ZAPI_DISCONNECTED" })
+          .eq("id", campaign_id);
+        return fail(
+          ErrorCodes.PROVIDER_NOT_CONFIGURED,
+          "A instância do WhatsApp (Z-API) está desconectada. Reconecte e tente novamente. Nenhum prospect foi marcado como inválido.",
+          400
+        );
+      }
+    }
+
     for (const recipient of recipients) {
       try {
         const prospect = recipient.prospect;
