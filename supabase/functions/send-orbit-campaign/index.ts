@@ -25,18 +25,62 @@ function normalizePhone(raw: string): string {
   return digits;
 }
 
+type ValidationResult = "valid" | "invalid" | "inconclusive";
+
 async function validateWhatsAppNumber(
   phone: string,
   zapiBaseUrl: string,
   headers: Record<string, string>
-): Promise<boolean> {
-  const res = await fetch(`${zapiBaseUrl}/phone-exists/${phone}`, {
-    method: "GET",
-    headers,
-  });
-  if (!res.ok) return false;
-  const result = await res.json();
-  return result.exists === true;
+): Promise<ValidationResult> {
+  try {
+    const res = await fetch(`${zapiBaseUrl}/phone-exists/${phone}`, {
+      method: "GET",
+      headers,
+    });
+    const bodyText = await res.text();
+    let result: any = null;
+    try { result = JSON.parse(bodyText); } catch { /* ignore */ }
+
+    console.log(`[validate] phone=${phone} http=${res.status} body=${bodyText.slice(0, 300)}`);
+
+    if (!res.ok) {
+      console.warn(`[validate] HTTP ${res.status} → inconclusive`);
+      return "inconclusive";
+    }
+    if (!result || typeof result !== "object") {
+      return "inconclusive";
+    }
+    // Z-API may return error / connected:false with HTTP 200
+    if (result.error || result.connected === false) {
+      console.warn(`[validate] Z-API error/disconnected → inconclusive`);
+      return "inconclusive";
+    }
+    if (result.exists === true) return "valid";
+    if (result.exists === false) return "invalid";
+    // exists ausente / null → inconclusivo (não cachear como inválido)
+    return "inconclusive";
+  } catch (err) {
+    console.error(`[validate] Exception for ${phone}:`, err);
+    return "inconclusive";
+  }
+}
+
+async function checkZapiInstanceStatus(
+  zapiBaseUrl: string,
+  headers: Record<string, string>
+): Promise<{ connected: boolean; raw: any; httpStatus: number }> {
+  try {
+    const res = await fetch(`${zapiBaseUrl}/status`, { method: "GET", headers });
+    const bodyText = await res.text();
+    let raw: any = null;
+    try { raw = JSON.parse(bodyText); } catch { /* ignore */ }
+    console.log(`[zapi-status] http=${res.status} body=${bodyText.slice(0, 300)}`);
+    const connected = !!(raw && (raw.connected === true || raw.smartphoneConnected === true));
+    return { connected, raw, httpStatus: res.status };
+  } catch (err) {
+    console.error(`[zapi-status] Exception:`, err);
+    return { connected: false, raw: null, httpStatus: 0 };
+  }
 }
 
 interface SendingConfig {
@@ -260,6 +304,23 @@ const handler = async (req: Request): Promise<Response> => {
 
     const templateImageUrl = campaign.template?.imagem_url || null;
 
+    // ── Pré-check da instância Z-API (apenas WhatsApp) ──
+    if (campaign.canal === "whatsapp" && zapiConfig?.instance_id && zapiConfig?.token) {
+      const status = await checkZapiInstanceStatus(zapiBaseUrl, zapiHeaders);
+      if (!status.connected) {
+        console.error(`[send-campaign] Z-API instance not connected — aborting campaign ${campaign_id}`);
+        await supabase
+          .from("orbit_campaigns")
+          .update({ status: "falha", motivo_reprovacao: "ZAPI_DISCONNECTED" })
+          .eq("id", campaign_id);
+        return fail(
+          ErrorCodes.PROVIDER_NOT_CONFIGURED,
+          "A instância do WhatsApp (Z-API) está desconectada. Reconecte e tente novamente. Nenhum prospect foi marcado como inválido.",
+          400
+        );
+      }
+    }
+
     for (const recipient of recipients) {
       try {
         const prospect = recipient.prospect;
@@ -476,32 +537,46 @@ const handler = async (req: Request): Promise<Response> => {
 
           if (!isRecentlyValid) {
             await delayMs(300);
-            let exists = await validateWhatsAppNumber(candidatePhone, zapiBaseUrl, zapiHeaders);
+            let result = await validateWhatsAppNumber(candidatePhone, zapiBaseUrl, zapiHeaders);
 
-            if (!exists) {
+            if (result === "invalid") {
               const stripped = candidatePhone.startsWith("55") ? candidatePhone.slice(2) : candidatePhone;
               if (stripped.length === 10) {
                 const ddd = stripped.slice(0, 2);
                 const rest = stripped.slice(2);
                 const phoneWith9 = "55" + ddd + "9" + rest;
                 await delayMs(300);
-                exists = await validateWhatsAppNumber(phoneWith9, zapiBaseUrl, zapiHeaders);
-                if (exists) {
+                const result9 = await validateWhatsAppNumber(phoneWith9, zapiBaseUrl, zapiHeaders);
+                if (result9 === "valid") {
                   validatedPhone = phoneWith9;
+                  result = "valid";
+                } else if (result9 === "inconclusive") {
+                  result = "inconclusive";
                 }
               }
             }
 
+            if (result === "inconclusive") {
+              // NÃO marcar invalido, NÃO cachear — pular sem alterar status do prospect
+              console.warn(`[send-campaign] Validation inconclusive for prospect ${prospect.id} phone ${candidatePhone} — skipping without caching`);
+              await supabase
+                .from("orbit_campaign_recipients")
+                .update({ status: "falhou", erro: "ZAPI_INCONCLUSIVE" })
+                .eq("id", recipient.id);
+              falhas++;
+              continue;
+            }
+
             const updateData: Record<string, any> = {
-              whatsapp_status: exists ? "valido" : "invalido",
+              whatsapp_status: result === "valid" ? "valido" : "invalido",
               whatsapp_last_check_at: new Date().toISOString(),
             };
-            if (exists) {
+            if (result === "valid") {
               updateData.whatsapp = validatedPhone;
             }
             await supabase.from("orbit_prospects").update(updateData).eq("id", prospect.id);
 
-            if (!exists) {
+            if (result === "invalid") {
               await supabase.from("orbit_campaign_recipients").update({ status: "ignorado", erro: "IGNORED_NO_WHATSAPP" }).eq("id", recipient.id);
               ignorados_sem_whatsapp++;
               continue;
