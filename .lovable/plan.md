@@ -1,24 +1,103 @@
 
 
-## Traduzir alertas do Supabase Auth na redefinição de senha
+## Mensagens Fantasmas — Causa Raiz
 
-**Problema:** Mensagens de erro do Supabase aparecem em inglês (ex: "New password should be different from the old password") porque `toast.error(error.message)` exibe o erro bruto.
+A conversa `554188667876` (próprio número da instância Z-API) tem **109 mensagens vazias** porque o webhook `orbit-webhook` está tratando **callbacks de status da instância** como mensagens recebidas.
 
-**Solução:** Criar um mapeador de mensagens do Supabase Auth para PT-BR em `ResetPasswordPage.tsx`, cobrindo os erros mais comuns no fluxo de redefinição:
+### O que está acontecendo
 
-| Mensagem original (Supabase) | Tradução PT-BR |
+Cada vez que a instância Z-API reconecta (queda de rede, bateria, etc.), a Z-API faz POST no webhook com:
+```json
+{ "type": "ConnectedCallback", "phone": "554188667876", "instanceId": "...", "connected": true }
+```
+ou `DisconnectedCallback`. Esses payloads **não têm texto, mídia, nem messageId**.
+
+O `orbit-webhook/index.ts` decide o tipo do evento pela **query string** (`?event=on-receive`), **ignora o campo `type` do payload**, cai no `default` do switch e processa como mensagem normal — criando uma linha em `orbit_mensagens` com `mensagem=''`, `tipo_midia=null`, `provider_message_id=null`.
+
+Histórico do número `554188667876`:
+
+| `payload.type` | event_type | Contagem |
+|---|---|---|
+| **ConnectedCallback** | on-receive | **162** ← fantasmas |
+| ReceivedCallback (real) | on-receive | 49 |
+| DeliveryCallback | on-send | 47 |
+| MessageStatusCallback | message-status | 47 |
+| DisconnectedCallback | on-receive | 2 ← fantasmas |
+
+A página `ConversasPage.tsx` ainda renderiza a bolha (só com horário) porque o JSX desenha o container mesmo sem texto/mídia.
+
+### Correção (2 partes)
+
+**1. `supabase/functions/orbit-webhook/index.ts` — filtrar callbacks de status**
+
+Logo após ler `payload`, adicionar guarda explícita por `payload.type`:
+
+```ts
+const payloadType = payload.type as string | undefined;
+
+// Z-API status callbacks que NÃO são mensagens
+const STATUS_CALLBACKS = new Set([
+  "ConnectedCallback",
+  "DisconnectedCallback", 
+  "PresenceChatCallback",
+  "ReceivedCallback",      // só processar se tiver conteúdo (ver abaixo)
+  "MessageStatusCallback", // já tratado em case message-status
+  "DeliveryCallback",      // status, não conteúdo novo
+]);
+```
+
+E na seção de processamento de mensagem, adicionar guarda dupla:
+- Ignorar (`status: "ignored"`, retorna `{ ok:true, skipped:true }`) se `payloadType` for um dos callbacks de status SEM conteúdo, OU
+- Se **não houver** `messageText` **nem** `tipoMidia` **nem** `messageId` → ignorar (defesa em profundidade).
+
+Isso bloqueia novas mensagens fantasmas independente do tipo de callback futuro.
+
+**2. Limpeza dos fantasmas existentes**
+
+Migration SQL para remover as 109+ mensagens vazias e zerar contadores:
+
+```sql
+-- Apagar mensagens fantasmas (sem texto, sem mídia, sem provider_message_id)
+DELETE FROM orbit_mensagens
+WHERE (mensagem IS NULL OR mensagem = '')
+  AND tipo_midia IS NULL
+  AND url_midia IS NULL
+  AND provider_message_id IS NULL;
+
+-- Recalcular preview e contador da conversa afetada
+UPDATE orbit_conversas c
+SET 
+  ultima_mensagem_preview = sub.preview,
+  ultima_mensagem_at = sub.ts,
+  mensagens_nao_lidas = 0
+FROM (
+  SELECT conversa_id, mensagem AS preview, timestamp AS ts
+  FROM orbit_mensagens m
+  WHERE m.id = (
+    SELECT id FROM orbit_mensagens 
+    WHERE conversa_id = c.id 
+    ORDER BY timestamp DESC LIMIT 1
+  )
+) sub
+WHERE c.id = sub.conversa_id
+  AND c.id = '44944504-4472-45af-81e7-6f777e851f04';
+```
+
+A query de limpeza é **global** (não só essa conversa) para o caso de outras instâncias terem sofrido o mesmo problema.
+
+### Defesa adicional (frontend, opcional)
+
+`ConversasPage.tsx` — esconder bolhas totalmente vazias para evitar resíduos visuais caso algo escape no futuro:
+
+```tsx
+{mensagens?.filter(m => m.mensagem || m.tipo_midia).map(...)}
+```
+
+### Arquivos afetados
+
+| Arquivo | Ação |
 |---|---|
-| "New password should be different from the old password" | "A nova senha deve ser diferente da senha atual." |
-| "Password should be at least 6 characters" / similar | "A senha deve ter pelo menos 8 caracteres." |
-| "Auth session missing" / "session_not_found" | "Sessão expirada. Solicite um novo link de recuperação." |
-| "Token has expired or is invalid" | "Link expirado ou inválido. Solicite um novo link." |
-| "Password is too weak" / "weak_password" | "Senha muito fraca. Use letras, números e símbolos." |
-| "Email rate limit exceeded" / "over_email_send_rate_limit" | "Muitas tentativas. Aguarde alguns minutos e tente novamente." |
-| Fallback (qualquer outro) | "Não foi possível redefinir sua senha. Tente novamente." |
-
-**Mudança:**
-
-- `src/pages/ResetPasswordPage.tsx`: adicionar função `translateAuthError(error)` que inspeciona `error.message` e `error.code` (case-insensitive, busca por substring) e retorna o texto em PT-BR. Trocar `toast.error(error.message || ...)` por `toast.error(translateAuthError(error))`.
-
-Sem mudanças em outros arquivos — o `ForgotPasswordDialog` já está todo em PT-BR.
+| `supabase/functions/orbit-webhook/index.ts` | Adicionar guarda por `payload.type` e por payload sem conteúdo |
+| Migration SQL | DELETE mensagens fantasmas + recalcular preview/contador |
+| `src/pages/orbit/ConversasPage.tsx` | (opcional) filtrar bolhas vazias no render |
 
