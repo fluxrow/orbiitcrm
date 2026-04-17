@@ -224,6 +224,15 @@ serve(async (req) => {
 
     const messageId = payload.messageId || payload.id;
 
+    // Defesa em profundidade: sem conteúdo, sem mídia e sem messageId → não é mensagem
+    if (!messageText && !tipoMidia && !messageId) {
+      console.log("[orbit-webhook] Payload sem conteúdo/mídia/messageId — ignorando (provável status callback)");
+      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "empty_payload" }).eq("id", logId);
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "empty_payload" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (!phone || (fromMe && eventType !== "on-send")) {
       if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "no phone or skipped fromMe" }).eq("id", logId);
       return new Response(JSON.stringify({ ok: true, skipped: true }), {
