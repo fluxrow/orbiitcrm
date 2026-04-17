@@ -46,20 +46,19 @@ export function ForgotPasswordDialog({ open, onOpenChange, onBackToLogin, defaul
     setStatus("loading");
 
     try {
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(parsed.data, {
-        redirectTo: `${window.location.origin}/reset-password`,
+      const { error: invokeError } = await supabase.functions.invoke("orbit-send-recovery-email", {
+        body: { email: parsed.data },
       });
 
-      if (resetError) {
-        // Surface technical errors (rate limit, etc.) but never reveal account existence
-        const msg = resetError.message?.toLowerCase() ?? "";
-        if (msg.includes("rate") || msg.includes("limit") || msg.includes("too many")) {
+      if (invokeError) {
+        const msg = invokeError.message?.toLowerCase() ?? "";
+        if (msg.includes("rate") || msg.includes("limit") || msg.includes("too many") || msg.includes("429")) {
           toast.error("Muitas tentativas. Aguarde alguns minutos e tente novamente.");
           setStatus("idle");
           return;
         }
-        // For any other error, still show neutral success to avoid user enumeration
-        console.error("resetPasswordForEmail error:", resetError);
+        // Para qualquer outro erro técnico, ainda mostra sucesso neutro (anti-enumeração)
+        console.error("orbit-send-recovery-email error:", invokeError);
       }
 
       setStatus("success");

@@ -86,3 +86,6 @@ verify_jwt = false
 
 [functions.stripe-webhook]
 verify_jwt = false
+
+[functions.orbit-send-recovery-email]
+verify_jwt = false
