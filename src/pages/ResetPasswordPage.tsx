@@ -20,6 +20,40 @@ const passwordSchema = z.object({
 
 type Phase = "validating" | "invalid" | "ready" | "saving" | "success";
 
+function translateAuthError(error: unknown): string {
+  const err = error as { message?: string; code?: string } | null;
+  const raw = `${err?.message ?? ""} ${err?.code ?? ""}`.toLowerCase();
+
+  if (!raw.trim()) return "Não foi possível redefinir sua senha. Tente novamente.";
+
+  if (raw.includes("different from the old password") || raw.includes("same_password")) {
+    return "A nova senha deve ser diferente da senha atual.";
+  }
+  if (raw.includes("at least") && raw.includes("character")) {
+    return "A senha deve ter pelo menos 8 caracteres.";
+  }
+  if (raw.includes("weak_password") || raw.includes("password is too weak") || raw.includes("too weak")) {
+    return "Senha muito fraca. Use letras, números e símbolos.";
+  }
+  if (raw.includes("auth session missing") || raw.includes("session_not_found") || raw.includes("no session")) {
+    return "Sessão expirada. Solicite um novo link de recuperação.";
+  }
+  if (raw.includes("token has expired") || raw.includes("invalid token") || raw.includes("otp_expired") || raw.includes("token is invalid")) {
+    return "Link expirado ou inválido. Solicite um novo link.";
+  }
+  if (raw.includes("rate limit") || raw.includes("over_email_send_rate_limit") || raw.includes("too many requests")) {
+    return "Muitas tentativas. Aguarde alguns minutos e tente novamente.";
+  }
+  if (raw.includes("invalid email") || raw.includes("email_address_invalid")) {
+    return "E-mail inválido.";
+  }
+  if (raw.includes("user not found") || raw.includes("user_not_found")) {
+    return "Usuário não encontrado.";
+  }
+
+  return "Não foi possível redefinir sua senha. Tente novamente.";
+}
+
 export default function ResetPasswordPage() {
   const navigate = useNavigate();
   const [phase, setPhase] = useState<Phase>("validating");
@@ -82,7 +116,7 @@ export default function ResetPasswordPage() {
 
     const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
     if (error) {
-      toast.error(error.message || "Não foi possível redefinir sua senha.");
+      toast.error(translateAuthError(error));
       setPhase("ready");
       return;
     }
