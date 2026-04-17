@@ -300,7 +300,7 @@ export default function ConversasPage() {
               {/* Messages */}
               <ScrollArea className="flex-1 p-4">
                 <div className="space-y-4">
-                  {mensagens?.map((m) => (
+                  {mensagens?.filter((m) => m.mensagem || m.tipo_midia || m.url_midia).map((m) => (
                     <div key={m.id} className={`flex ${m.direcao === "OUT" ? "justify-end" : "justify-start"}`}>
                       <div className={`max-w-[70%] rounded-lg p-3 ${m.direcao === "OUT" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
                         <MediaPreview tipo_midia={m.tipo_midia} url_midia={m.url_midia} mensagem={m.mensagem || undefined} />
