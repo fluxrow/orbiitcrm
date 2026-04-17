@@ -116,7 +116,7 @@ export default function ResetPasswordPage() {
 
     const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
     if (error) {
-      toast.error(error.message || "Não foi possível redefinir sua senha.");
+      toast.error(translateAuthError(error));
       setPhase("ready");
       return;
     }
