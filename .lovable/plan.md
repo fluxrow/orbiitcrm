@@ -1,84 +1,56 @@
 
 
-Plan: implementar fluxo de "Esqueci minha senha" no Orbit usando Supabase Auth + emails customizados via auth-email-hook do domínio @fluxrow.pro.
+O usuário quer que o e-mail de recuperação de senha seja enviado pela API do Resend (em vez do Resend padrão do Supabase). O domínio `fluxrow.pro` já está em uso para emails do sistema (vide `supabase/functions/_shared/system-email.ts`), e a chave `PE_RESEND_API_KEY` já está configurada como secret.
 
-Análise:
-- O projeto usa Supabase Auth (`useAuth` em `src/hooks/useAuth.tsx`).
-- A tela de login (`src/pages/AuthPage.tsx`) NÃO tem link de recuperação.
-- Não existe rota `/reset-password`.
-- Não existe `auth-email-hook` no projeto — emails de auth hoje saem com template padrão do Supabase.
-- O domínio `fluxrow.pro` já é usado para emails de sistema (`orbit@fluxrow.pro`), então provavelmente já está verificado no workspace.
-- Supabase Auth já gerencia tokens seguros, expiração, uso único e hash de senha — não precisamos reinventar isso.
+A forma correta de fazer isso no Supabase é usar o **Auth Email Hook** (Send Email Hook), que intercepta os emails de auth e permite enviá-los pelo provedor próprio (Resend). Já existe a ferramenta `email_domain--scaffold_auth_email_templates` que faz exatamente esse scaffold.
 
-# Fluxo de Recuperação de Senha
+Plano enxuto:
 
-## 1. Modal "Esqueci minha senha" na tela de login
+# Enviar e-mail de recuperação via Resend (@fluxrow.pro)
 
-**Arquivo:** `src/pages/AuthPage.tsx`
+## Estratégia
 
-- Adicionar link "Esqueci minha senha?" abaixo do campo de senha (visível apenas no modo login).
-- Criar componente novo `src/components/auth/ForgotPasswordDialog.tsx` (Dialog do shadcn) com:
-  - Título "Recuperar senha" + texto de apoio
-  - Campo email com validação (zod: obrigatório + formato)
-  - Estados: idle / loading / success / error
-  - Botão "Enviar link de recuperação" (loading com spinner)
-  - Botão "Voltar para login"
-  - Auto-foco no email, submit no Enter, bloqueio durante envio
-- Lógica de envio: `supabase.auth.resetPasswordForEmail(email, { redirectTo: \`${window.location.origin}/reset-password\` })`
-- Resposta sempre neutra: "Se este e-mail estiver cadastrado, enviaremos um link..."
-- Toast em caso de erro técnico (ex: rate limit do Supabase).
+Usar o **Auth Email Hook** do Supabase para interceptar o e-mail de recuperação e enviá-lo via Resend, com a identidade `Orbit CRM <orbit@fluxrow.pro>` — mantendo consistência com os outros emails de sistema (`system-email.ts`).
 
-## 2. Página `/reset-password`
+## Etapas
 
-**Arquivos:**
-- `src/pages/ResetPasswordPage.tsx` (novo)
-- `src/App.tsx` (registrar rota pública dentro de `PublicLayout`)
+### 1. Scaffold do Auth Email Hook
+- Rodar `email_domain--scaffold_auth_email_templates` (o domínio `fluxrow.pro` já está configurado).
+- Isso cria:
+  - `supabase/functions/auth-email-hook/index.ts` — função que roteia eventos de auth pelo Resend
+  - `supabase/functions/_shared/email-templates/recovery.tsx` — template React Email do reset de senha
+  - Mais 5 templates (signup, magic-link, invite, email-change, reauthentication) com branding consistente
+  - Atualização de `supabase/config.toml`
 
-**Comportamento:**
-- Estado "validando token" → Supabase coloca a sessão de recovery automaticamente via hash da URL. Detectar via `onAuthStateChange` evento `PASSWORD_RECOVERY`.
-- Se não houver sessão de recovery após mount, exibir tela "Link inválido ou expirado" com botão "Solicitar novo link" (volta para `/auth` e abre o modal).
-- Formulário: nova senha + confirmar senha
-  - Validação zod: mínimo 8 caracteres, senhas coincidem, ambos obrigatórios
-- Submit: `supabase.auth.updateUser({ password })`
-- Sucesso: toast "Senha redefinida com sucesso" → `signOut()` → redirecionar `/auth`
-- Erros tratados com mensagens amigáveis
-
-## 3. Email customizado pelo domínio @fluxrow.pro
-
-**Pré-requisito:** verificar se `fluxrow.pro` já está configurado como domínio de email no workspace (já é usado em `system-email.ts`). Se sim, o setup só precisa scaffoldar o hook.
-
-**Ação:** scaffoldar `auth-email-hook` para customizar o template de **recovery** com:
+### 2. Customizar o template `recovery.tsx`
 - Remetente: `Orbit CRM <orbit@fluxrow.pro>`
-- Assunto: "Recuperação de senha - Orbit"
-- Corpo conforme spec (aviso, botão "Redefinir senha", validade 60 min, ignorar se não foi você)
-- Aplicar identidade visual do Orbit (cores do `index.css`, logo se disponível em `src/assets`)
+- Assunto: **"Recuperação de senha - Orbit"**
+- Corpo conforme spec original:
+  - Aviso de solicitação
+  - Botão **"Redefinir senha"** apontando para `{{ .ConfirmationURL }}` (Supabase preenche com o link real e token seguro)
+  - Aviso de validade (60 minutos)
+  - "Se não foi você, ignore este e-mail"
+- Identidade visual leve do Orbit (cores do `index.css`, tipografia limpa, tom escuro/claro consistente)
 
-**Sequência:**
-1. `email_domain--scaffold_auth_email_templates`
-2. Customizar `recovery.tsx` (e demais templates com branding leve do Orbit)
-3. `supabase--deploy_edge_functions(["auth-email-hook"])`
-4. Botão `<lov-open-email>` para o usuário monitorar status
+### 3. Aplicar o mesmo branding leve nos outros 5 templates
+- Apenas header/footer/cores consistentes — para evitar inconsistência caso o Supabase use outro evento (ex: invite).
 
-> Token, expiração (Supabase default 1h, configurável), uso único e hash seguro são gerenciados nativamente pelo Supabase Auth — nada a implementar.
+### 4. Deploy
+- `supabase--deploy_edge_functions(["auth-email-hook"])` para ativar o hook.
+- Após o deploy, o Supabase passa a rotear todos os emails de auth pela função, que envia via Resend usando `PE_RESEND_API_KEY` (já configurada).
 
-## 4. Rota e navegação
+## O que NÃO precisa mudar
 
-`src/App.tsx`:
-```
-<Route path="/reset-password" element={<ResetPasswordPage />} />
-```
-Dentro de `PublicLayout` (rota pública, sem `ProtectedRoute`).
+- Frontend (`ForgotPasswordDialog.tsx`, `ResetPasswordPage.tsx`): continuam chamando `supabase.auth.resetPasswordForEmail()` e `supabase.auth.updateUser()`. O hook é transparente.
+- Token, expiração, uso único, hash de senha: gerenciados nativamente pelo Supabase Auth.
 
 ## Arquivos afetados
 
 | Arquivo | Ação |
 |---|---|
-| `src/components/auth/ForgotPasswordDialog.tsx` | **Novo** — modal com form + estados |
-| `src/pages/AuthPage.tsx` | Adicionar link "Esqueci minha senha?" + integrar dialog |
-| `src/pages/ResetPasswordPage.tsx` | **Novo** — página de redefinição |
-| `src/App.tsx` | Registrar rota `/reset-password` |
-| `supabase/functions/auth-email-hook/index.ts` | **Novo** (scaffold) — roteia emails de auth |
-| `supabase/functions/_shared/email-templates/recovery.tsx` | **Novo** (scaffold) — customizar para Orbit |
-| `supabase/functions/_shared/email-templates/*.tsx` | **Novo** (scaffold) — branding consistente |
+| `supabase/functions/auth-email-hook/index.ts` | **Novo** (scaffold) — roteia auth emails via Resend |
+| `supabase/functions/auth-email-hook/deno.json` | **Novo** (scaffold) — config JSX |
+| `supabase/functions/_shared/email-templates/recovery.tsx` | **Novo** (scaffold) + customização Orbit |
+| `supabase/functions/_shared/email-templates/*.tsx` | **Novo** (scaffold) — branding leve consistente |
 | `supabase/config.toml` | Atualizado pelo scaffold |
 
