@@ -537,32 +537,46 @@ const handler = async (req: Request): Promise<Response> => {
 
           if (!isRecentlyValid) {
             await delayMs(300);
-            let exists = await validateWhatsAppNumber(candidatePhone, zapiBaseUrl, zapiHeaders);
+            let result = await validateWhatsAppNumber(candidatePhone, zapiBaseUrl, zapiHeaders);
 
-            if (!exists) {
+            if (result === "invalid") {
               const stripped = candidatePhone.startsWith("55") ? candidatePhone.slice(2) : candidatePhone;
               if (stripped.length === 10) {
                 const ddd = stripped.slice(0, 2);
                 const rest = stripped.slice(2);
                 const phoneWith9 = "55" + ddd + "9" + rest;
                 await delayMs(300);
-                exists = await validateWhatsAppNumber(phoneWith9, zapiBaseUrl, zapiHeaders);
-                if (exists) {
+                const result9 = await validateWhatsAppNumber(phoneWith9, zapiBaseUrl, zapiHeaders);
+                if (result9 === "valid") {
                   validatedPhone = phoneWith9;
+                  result = "valid";
+                } else if (result9 === "inconclusive") {
+                  result = "inconclusive";
                 }
               }
             }
 
+            if (result === "inconclusive") {
+              // NÃO marcar invalido, NÃO cachear — pular sem alterar status do prospect
+              console.warn(`[send-campaign] Validation inconclusive for prospect ${prospect.id} phone ${candidatePhone} — skipping without caching`);
+              await supabase
+                .from("orbit_campaign_recipients")
+                .update({ status: "falhou", erro: "ZAPI_INCONCLUSIVE" })
+                .eq("id", recipient.id);
+              falhas++;
+              continue;
+            }
+
             const updateData: Record<string, any> = {
-              whatsapp_status: exists ? "valido" : "invalido",
+              whatsapp_status: result === "valid" ? "valido" : "invalido",
               whatsapp_last_check_at: new Date().toISOString(),
             };
-            if (exists) {
+            if (result === "valid") {
               updateData.whatsapp = validatedPhone;
             }
             await supabase.from("orbit_prospects").update(updateData).eq("id", prospect.id);
 
-            if (!exists) {
+            if (result === "invalid") {
               await supabase.from("orbit_campaign_recipients").update({ status: "ignorado", erro: "IGNORED_NO_WHATSAPP" }).eq("id", recipient.id);
               ignorados_sem_whatsapp++;
               continue;
