@@ -311,7 +311,7 @@ const handler = async (req: Request): Promise<Response> => {
         console.error(`[send-campaign] Z-API instance not connected — aborting campaign ${campaign_id}`);
         await supabase
           .from("orbit_campaigns")
-          .update({ status: "falha", erro: "ZAPI_DISCONNECTED" })
+          .update({ status: "falha", motivo_reprovacao: "ZAPI_DISCONNECTED" })
           .eq("id", campaign_id);
         return fail(
           ErrorCodes.PROVIDER_NOT_CONFIGURED,
