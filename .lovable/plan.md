@@ -1,56 +1,69 @@
 
 
-O usuário quer que o e-mail de recuperação de senha seja enviado pela API do Resend (em vez do Resend padrão do Supabase). O domínio `fluxrow.pro` já está em uso para emails do sistema (vide `supabase/functions/_shared/system-email.ts`), e a chave `PE_RESEND_API_KEY` já está configurada como secret.
+O usuário confirma que já existe configuração Resend ativa com `orbit@fluxrow.pro` no super admin (vide `system-email.ts` que lê de `orbit_resend_config` global e/ou `PE_RESEND_API_KEY`). Não precisa do fluxo de "configurar domínio" do Lovable nem do auth-email-hook scaffold padrão.
 
-A forma correta de fazer isso no Supabase é usar o **Auth Email Hook** (Send Email Hook), que intercepta os emails de auth e permite enviá-los pelo provedor próprio (Resend). Já existe a ferramenta `email_domain--scaffold_auth_email_templates` que faz exatamente esse scaffold.
+A solução é: criar uma edge function própria que envia o e-mail de recuperação via Resend (mesma chave/remetente do `system-email.ts`), e mudar o frontend para chamar essa função em vez do `supabase.auth.resetPasswordForEmail`.
 
-Plano enxuto:
+Estratégia:
+- Gerar o link de recovery no servidor via `supabase.auth.admin.generateLink({ type: 'recovery' })` — isso retorna o `action_link` com token seguro do Supabase, sem disparar o email default.
+- Enviar via Resend usando `getSystemEmailConfig()` (mesmo padrão dos demais emails de sistema).
+- Resposta neutra: sempre 200 OK, nunca revelar se o e-mail existe.
 
-# Enviar e-mail de recuperação via Resend (@fluxrow.pro)
+# Recuperação de Senha via Resend (@fluxrow.pro)
 
-## Estratégia
+## Arquitetura
 
-Usar o **Auth Email Hook** do Supabase para interceptar o e-mail de recuperação e enviá-lo via Resend, com a identidade `Orbit CRM <orbit@fluxrow.pro>` — mantendo consistência com os outros emails de sistema (`system-email.ts`).
+```
+ForgotPasswordDialog
+   │
+   ▼
+supabase.functions.invoke('orbit-send-recovery-email', { email })
+   │
+   ▼
+Edge Function (verify_jwt=false, service role)
+   ├─ admin.generateLink({ type:'recovery', redirectTo:/reset-password })  → action_link
+   ├─ getSystemEmailConfig()  →  Orbit CRM <orbit@fluxrow.pro>
+   ├─ Resend POST /emails  →  template HTML do Orbit
+   └─ sempre retorna { ok:true } (resposta neutra)
+```
 
-## Etapas
+## Mudanças
 
-### 1. Scaffold do Auth Email Hook
-- Rodar `email_domain--scaffold_auth_email_templates` (o domínio `fluxrow.pro` já está configurado).
-- Isso cria:
-  - `supabase/functions/auth-email-hook/index.ts` — função que roteia eventos de auth pelo Resend
-  - `supabase/functions/_shared/email-templates/recovery.tsx` — template React Email do reset de senha
-  - Mais 5 templates (signup, magic-link, invite, email-change, reauthentication) com branding consistente
-  - Atualização de `supabase/config.toml`
+### 1. Nova edge function `orbit-send-recovery-email`
+- `verify_jwt = false` (usuário não está autenticado)
+- Input: `{ email }`
+- Validação: formato de email; se inválido, ainda retorna `{ ok:true }` (anti-enumeração)
+- Usa **service role** para chamar `supabase.auth.admin.generateLink({ type: 'recovery', email, options: { redirectTo: \`${APP_URL}/reset-password\` } })`
+- Se o usuário não existir, `generateLink` retorna erro → captura e retorna `{ ok:true }` mesmo assim
+- Se gerou link: envia via Resend com:
+  - **From**: `Orbit CRM <orbit@fluxrow.pro>` (via `getSystemEmailConfig`)
+  - **Subject**: "Recuperação de senha - Orbit"
+  - **HTML**: template inline com identidade do Orbit (dark, glass-card vibe), botão "Redefinir senha" → `action_link`, aviso de validade 60 min, "se não foi você, ignore"
+- Logs estruturados (sem expor email completo) para auditoria
+- Sempre retorna `{ ok: true, data: { sent: true } }` no formato padrão
 
-### 2. Customizar o template `recovery.tsx`
-- Remetente: `Orbit CRM <orbit@fluxrow.pro>`
-- Assunto: **"Recuperação de senha - Orbit"**
-- Corpo conforme spec original:
-  - Aviso de solicitação
-  - Botão **"Redefinir senha"** apontando para `{{ .ConfirmationURL }}` (Supabase preenche com o link real e token seguro)
-  - Aviso de validade (60 minutos)
-  - "Se não foi você, ignore este e-mail"
-- Identidade visual leve do Orbit (cores do `index.css`, tipografia limpa, tom escuro/claro consistente)
+### 2. `supabase/config.toml`
+- Adicionar bloco `[functions.orbit-send-recovery-email]` com `verify_jwt = false`
 
-### 3. Aplicar o mesmo branding leve nos outros 5 templates
-- Apenas header/footer/cores consistentes — para evitar inconsistência caso o Supabase use outro evento (ex: invite).
+### 3. `src/components/auth/ForgotPasswordDialog.tsx`
+- Trocar `supabase.auth.resetPasswordForEmail(...)` por `supabase.functions.invoke('orbit-send-recovery-email', { body: { email } })`
+- Manter validação zod, estados (idle/loading/success), mensagem neutra de sucesso, tratamento de rate limit
+- Sem mudança visual
 
-### 4. Deploy
-- `supabase--deploy_edge_functions(["auth-email-hook"])` para ativar o hook.
-- Após o deploy, o Supabase passa a rotear todos os emails de auth pela função, que envia via Resend usando `PE_RESEND_API_KEY` (já configurada).
+### 4. (Opcional) Limpar scaffold do hook
+- Remover `supabase/functions/auth-email-hook/*` e `supabase/functions/_shared/email-templates/*` se foram criados, e bloco correspondente do `config.toml` — para evitar dois caminhos paralelos. **Confirmar com o usuário se quer remover.**
 
-## O que NÃO precisa mudar
+## O que NÃO muda
 
-- Frontend (`ForgotPasswordDialog.tsx`, `ResetPasswordPage.tsx`): continuam chamando `supabase.auth.resetPasswordForEmail()` e `supabase.auth.updateUser()`. O hook é transparente.
-- Token, expiração, uso único, hash de senha: gerenciados nativamente pelo Supabase Auth.
+- `ResetPasswordPage.tsx`: continua igual — o link gerado pelo `admin.generateLink` ativa a sessão de recovery do Supabase normalmente, e a página detecta via `onAuthStateChange`/hash URL.
+- Token, expiração (1h padrão Supabase), uso único, hash da nova senha: nativos do Supabase Auth.
 
 ## Arquivos afetados
 
 | Arquivo | Ação |
 |---|---|
-| `supabase/functions/auth-email-hook/index.ts` | **Novo** (scaffold) — roteia auth emails via Resend |
-| `supabase/functions/auth-email-hook/deno.json` | **Novo** (scaffold) — config JSX |
-| `supabase/functions/_shared/email-templates/recovery.tsx` | **Novo** (scaffold) + customização Orbit |
-| `supabase/functions/_shared/email-templates/*.tsx` | **Novo** (scaffold) — branding leve consistente |
-| `supabase/config.toml` | Atualizado pelo scaffold |
+| `supabase/functions/orbit-send-recovery-email/index.ts` | **Novo** — gera link + envia via Resend |
+| `supabase/config.toml` | Adicionar `verify_jwt=false` para a função |
+| `src/components/auth/ForgotPasswordDialog.tsx` | Trocar chamada para a edge function |
+| `supabase/functions/auth-email-hook/*` | (opcional) remover scaffold se existir |
 
