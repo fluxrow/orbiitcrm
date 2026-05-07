@@ -297,7 +297,13 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
         status: data.agendada_para ? "agendada" : "rascunho",
         total_destinatarios: recipientIds.length,
         empresa_id: profile.empresa_id, created_by: user.id,
-      });
+        whatsapp_cta_override: !!data.whatsapp_cta_override,
+        whatsapp_cta_enabled: data.whatsapp_cta_override ? !!data.whatsapp_cta_enabled : null,
+        whatsapp_cta_numero: data.whatsapp_cta_override ? data.whatsapp_cta_numero || null : null,
+        whatsapp_cta_texto_botao: data.whatsapp_cta_override ? data.whatsapp_cta_texto_botao || null : null,
+        whatsapp_cta_mensagem_inicial: data.whatsapp_cta_override ? data.whatsapp_cta_mensagem_inicial || null : null,
+        whatsapp_cta_posicao: data.whatsapp_cta_override ? data.whatsapp_cta_posicao || null : null,
+      } as any);
       if (campaign) {
         const recipients = recipientProspects.map(p => ({
           campaign_id: campaign.id, empresa_id: profile.empresa_id,
