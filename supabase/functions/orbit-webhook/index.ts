@@ -425,6 +425,49 @@ serve(async (req) => {
       url_midia: urlMidia,
     });
 
+    // 4b. Email-CTA attribution: if this is an inbound message and the prospect
+    // recently clicked an email CTA (last 14 days), record a one-time attribution event.
+    if (!fromMe && empresaId && prospect?.id) {
+      try {
+        const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+        const { data: ctaClick } = await supabase
+          .from("orbit_campaign_recipients")
+          .select("campaign_id, clicked_at")
+          .eq("empresa_id", empresaId)
+          .eq("prospect_id", prospect.id)
+          .not("clicked_at", "is", null)
+          .gte("clicked_at", since)
+          .order("clicked_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (ctaClick?.campaign_id) {
+          const { data: alreadyLogged } = await supabase
+            .from("prospect_events")
+            .select("id")
+            .eq("prospect_id", prospect.id)
+            .eq("event_type", "email_cta_whatsapp_reply")
+            .contains("metadata", { campaign_id: ctaClick.campaign_id })
+            .maybeSingle();
+
+          if (!alreadyLogged) {
+            await supabase.from("prospect_events").insert({
+              empresa_id: empresaId,
+              prospect_id: prospect.id,
+              event_type: "email_cta_whatsapp_reply",
+              titulo: "Resposta via CTA de email",
+              descricao: "Lead respondeu no WhatsApp após clicar no botão do email",
+              metadata: { campaign_id: ctaClick.campaign_id, clicked_at: ctaClick.clicked_at },
+            });
+            console.log("[orbit-webhook] CTA attribution registered for prospect", prospect.id);
+          }
+        }
+      } catch (attrErr) {
+        console.warn("[orbit-webhook] CTA attribution skipped:", attrErr);
+      }
+    }
+
+
     // 5. Update conversation
     await supabase
       .from("orbit_conversas")
