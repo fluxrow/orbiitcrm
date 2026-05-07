@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Mail, MessageSquare, Check, Calendar, Sparkles, Send, Eye, Upload, X } from "lucide-react";
+import { Loader2, Mail, MessageSquare, Check, Calendar, Sparkles, Send, Eye, Upload, X, MessageCircle } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { handleApiResponse } from "@/lib/api-envelope";
 import { useOrbitTemplates, useCreateTemplate } from "@/hooks/useOrbitTemplates";
 import { useOrbitProspects } from "@/hooks/useOrbitProspects";
