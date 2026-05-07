@@ -46,6 +46,13 @@ interface CampaignData {
   selected_prospect_ids?: string[];
   selected_group_ids?: string[];
   agendada_para?: string;
+  // WhatsApp CTA override (per-campaign)
+  whatsapp_cta_override?: boolean;
+  whatsapp_cta_enabled?: boolean;
+  whatsapp_cta_numero?: string;
+  whatsapp_cta_texto_botao?: string;
+  whatsapp_cta_mensagem_inicial?: string;
+  whatsapp_cta_posicao?: "topo" | "rodape";
 }
 
 const steps = [
