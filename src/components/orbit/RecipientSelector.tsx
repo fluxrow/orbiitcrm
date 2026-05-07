@@ -40,6 +40,12 @@ interface CampaignFilters {
   excluir_campanha_id?: string;
   apenas_abriu_campanha_id?: string;
   nao_abriu_campanha_id?: string;
+  // Email engagement filters (aggregate across all campaigns)
+  engaj_comportamento?: "abriu" | "clicou" | "engajou" | "nao_abriu" | "nunca_recebeu" | "qualquer";
+  engaj_janela_dias?: number; // 7 / 30 / 90 / 180 / 0 (todos)
+  engaj_min_aberturas?: number;
+  engaj_min_cliques?: number;
+  excluir_bounced?: boolean;
 }
 
 interface RecipientSelectorProps {
