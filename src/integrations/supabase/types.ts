@@ -852,6 +852,12 @@ export type Database = {
           template_id: string | null
           total_destinatarios: number | null
           updated_at: string | null
+          whatsapp_cta_enabled: boolean | null
+          whatsapp_cta_mensagem_inicial: string | null
+          whatsapp_cta_numero: string | null
+          whatsapp_cta_override: boolean | null
+          whatsapp_cta_posicao: string | null
+          whatsapp_cta_texto_botao: string | null
         }
         Insert: {
           aberturas?: number | null
@@ -876,6 +882,12 @@ export type Database = {
           template_id?: string | null
           total_destinatarios?: number | null
           updated_at?: string | null
+          whatsapp_cta_enabled?: boolean | null
+          whatsapp_cta_mensagem_inicial?: string | null
+          whatsapp_cta_numero?: string | null
+          whatsapp_cta_override?: boolean | null
+          whatsapp_cta_posicao?: string | null
+          whatsapp_cta_texto_botao?: string | null
         }
         Update: {
           aberturas?: number | null
@@ -900,6 +912,12 @@ export type Database = {
           template_id?: string | null
           total_destinatarios?: number | null
           updated_at?: string | null
+          whatsapp_cta_enabled?: boolean | null
+          whatsapp_cta_mensagem_inicial?: string | null
+          whatsapp_cta_numero?: string | null
+          whatsapp_cta_override?: boolean | null
+          whatsapp_cta_posicao?: string | null
+          whatsapp_cta_texto_botao?: string | null
         }
         Relationships: [
           {
@@ -1921,6 +1939,11 @@ export type Database = {
           nome: string
           updated_at: string | null
           variaveis: string[] | null
+          whatsapp_cta_enabled: boolean | null
+          whatsapp_cta_mensagem_inicial: string | null
+          whatsapp_cta_numero: string | null
+          whatsapp_cta_posicao: string | null
+          whatsapp_cta_texto_botao: string | null
         }
         Insert: {
           assunto_email?: string | null
@@ -1936,6 +1959,11 @@ export type Database = {
           nome: string
           updated_at?: string | null
           variaveis?: string[] | null
+          whatsapp_cta_enabled?: boolean | null
+          whatsapp_cta_mensagem_inicial?: string | null
+          whatsapp_cta_numero?: string | null
+          whatsapp_cta_posicao?: string | null
+          whatsapp_cta_texto_botao?: string | null
         }
         Update: {
           assunto_email?: string | null
@@ -1951,6 +1979,11 @@ export type Database = {
           nome?: string
           updated_at?: string | null
           variaveis?: string[] | null
+          whatsapp_cta_enabled?: boolean | null
+          whatsapp_cta_mensagem_inicial?: string | null
+          whatsapp_cta_numero?: string | null
+          whatsapp_cta_posicao?: string | null
+          whatsapp_cta_texto_botao?: string | null
         }
         Relationships: [
           {
@@ -3514,6 +3547,20 @@ export type Database = {
       get_orbit_analytics_summary: {
         Args: { p_empresa_id: string }
         Returns: Json
+      }
+      get_prospect_engagement_summary: {
+        Args: { p_dias?: number; p_empresa_id: string }
+        Returns: {
+          bounced: boolean
+          complained: boolean
+          engajamento_score: number
+          prospect_id: string
+          total_aberturas: number
+          total_cliques: number
+          total_emails: number
+          ultima_abertura_em: string
+          ultimo_clique_em: string
+        }[]
       }
       get_user_empresa_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
