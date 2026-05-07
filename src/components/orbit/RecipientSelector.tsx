@@ -666,6 +666,25 @@ export function RecipientSelector({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-0.5">
                             <span className="font-medium text-sm truncate">{p.nome_razao}</span>
+                            {canal === "email" && engagementMap?.get(p.id) && (() => {
+                              const e = engagementMap.get(p.id)!;
+                              return (
+                                <span className="flex items-center gap-1">
+                                  {e.engajamento_score >= 70 && (
+                                    <span title={`Engajado (${e.engajamento_score})`}><Flame className="h-3 w-3 text-orange-500" /></span>
+                                  )}
+                                  {e.total_cliques > 0 && e.engajamento_score < 70 && (
+                                    <span title={`${e.total_cliques} clique(s)`}><MousePointerClick className="h-3 w-3 text-primary" /></span>
+                                  )}
+                                  {e.total_aberturas > 0 && e.total_cliques === 0 && (
+                                    <span title={`${e.total_aberturas} abertura(s)`}><Eye className="h-3 w-3 text-blue-500" /></span>
+                                  )}
+                                  {(e.bounced || e.complained) && (
+                                    <span title={e.bounced ? "Bounced" : "Marcou como spam"}><AlertOctagon className="h-3 w-3 text-destructive" /></span>
+                                  )}
+                                </span>
+                              );
+                            })()}
                             {!valid && canal === "whatsapp" && noPhone && (
                               <span className="text-destructive" title="Sem telefone">
                                 <AlertTriangle className="h-3 w-3" />
