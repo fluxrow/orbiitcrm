@@ -15,10 +15,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useOrbitProspects, useOrbitProspectsCount } from "@/hooks/useOrbitProspects";
 import { useOrbitSendGroups, useCreateSendGroup, useDeleteSendGroup } from "@/hooks/useOrbitSendGroups";
+import { useProspectEngagement } from "@/hooks/useProspectEngagement";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Loader2 } from "lucide-react";
+import { Loader2, Flame, Eye, MousePointerClick, AlertOctagon } from "lucide-react";
 import { toast } from "sonner";
 
 type Canal = "email" | "whatsapp";
