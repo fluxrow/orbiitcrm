@@ -104,6 +104,11 @@ export function RecipientSelector({
     },
   });
 
+  // Resolve empresa_id from prospects to load engagement summary
+  const empresaId = prospects?.[0]?.empresa_id || null;
+  const engajJanela = filtros.engaj_janela_dias ?? 90;
+  const { data: engagementMap } = useProspectEngagement(empresaId, engajJanela);
+
   // Fetch past campaigns for segmentation filters
   const { data: pastCampaigns } = useQuery({
     queryKey: ["past-campaigns-for-segmentation"],
