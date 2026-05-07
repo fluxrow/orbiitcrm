@@ -86,6 +86,11 @@ export default function EmailTemplateEditorPage() {
           assunto_email: t.assunto_email || "",
           corpo_texto: t.corpo_texto || "",
           imagem_url: (t as any).imagem_url || "",
+          whatsapp_cta_enabled: (t as any).whatsapp_cta_enabled ?? false,
+          whatsapp_cta_numero: (t as any).whatsapp_cta_numero || "",
+          whatsapp_cta_texto_botao: (t as any).whatsapp_cta_texto_botao || "Falar no WhatsApp",
+          whatsapp_cta_mensagem_inicial: (t as any).whatsapp_cta_mensagem_inicial || "Olá! Vim pelo email da {{empresa}}.",
+          whatsapp_cta_posicao: ((t as any).whatsapp_cta_posicao || "rodape") as "topo" | "rodape",
         };
         setForm(loaded);
         setOriginalForm(loaded);
