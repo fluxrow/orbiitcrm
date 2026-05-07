@@ -460,3 +460,16 @@ export default function EmailTemplateEditorPage() {
     </OrbitLayout>
   );
 }
+
+function CtaPreviewButton({ text }: { text: string }) {
+  return (
+    <div className="my-4 text-center">
+      <span
+        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-md text-white font-semibold text-sm shadow-sm"
+        style={{ backgroundColor: "#25D366" }}
+      >
+        <MessageCircle className="h-4 w-4" /> {text}
+      </span>
+    </div>
+  );
+}
