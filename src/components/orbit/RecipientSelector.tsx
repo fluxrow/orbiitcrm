@@ -263,7 +263,10 @@ export function RecipientSelector({
     filtros.status_qualificacao?.length || filtros.segmento || filtros.estado || filtros.cidade ||
     filtros.origem_contato || filtros.origem_lead || filtros.tags?.length || (filtros.score_min && filtros.score_min > 0) ||
     filtros.responsavel_id || filtros.apenas_consentimento || filtros.tem_email || filtros.tem_telefone || filtros.tipo ||
-    filtros.excluir_campanha_id || filtros.apenas_abriu_campanha_id || filtros.nao_abriu_campanha_id
+    filtros.excluir_campanha_id || filtros.apenas_abriu_campanha_id || filtros.nao_abriu_campanha_id ||
+    (filtros.engaj_comportamento && filtros.engaj_comportamento !== "qualquer") ||
+    (filtros.engaj_min_aberturas && filtros.engaj_min_aberturas > 0) ||
+    (filtros.engaj_min_cliques && filtros.engaj_min_cliques > 0)
   );
 
   const toggleSort = (key: SortKey) => {
@@ -463,6 +466,82 @@ export function RecipientSelector({
                     </div>
                   )}
 
+                  {/* Email engagement filters (aggregate across all campaigns) */}
+                  {canal === "email" && (
+                    <div className="space-y-2 border-t border-border pt-3">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                        <Flame className="h-3 w-3 text-orange-500" />
+                        Engajamento de Email
+                      </Label>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] text-muted-foreground">Comportamento</Label>
+                        <Select
+                          value={filtros.engaj_comportamento || "qualquer"}
+                          onValueChange={(v) => {
+                            onFiltrosChange({ ...filtros, engaj_comportamento: v === "qualquer" ? undefined : (v as any) });
+                            setPage(1);
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="qualquer">Qualquer</SelectItem>
+                            <SelectItem value="abriu">📩 Abriu pelo menos 1</SelectItem>
+                            <SelectItem value="clicou">🖱️ Clicou em link</SelectItem>
+                            <SelectItem value="engajou">🔥 Abriu E clicou</SelectItem>
+                            <SelectItem value="nao_abriu">🙈 Recebeu mas não abriu</SelectItem>
+                            <SelectItem value="nunca_recebeu">🆕 Nunca recebeu email</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] text-muted-foreground">Janela</Label>
+                        <Select
+                          value={String(filtros.engaj_janela_dias ?? 90)}
+                          onValueChange={(v) => { onFiltrosChange({ ...filtros, engaj_janela_dias: parseInt(v, 10) }); setPage(1); }}
+                        >
+                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="7">Últimos 7 dias</SelectItem>
+                            <SelectItem value="30">Últimos 30 dias</SelectItem>
+                            <SelectItem value="90">Últimos 90 dias</SelectItem>
+                            <SelectItem value="180">Últimos 180 dias</SelectItem>
+                            <SelectItem value="0">Todos os tempos</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] text-muted-foreground">Mín. aberturas: {filtros.engaj_min_aberturas || 0}</Label>
+                        <Slider
+                          value={[filtros.engaj_min_aberturas || 0]}
+                          min={0} max={10} step={1}
+                          onValueChange={([v]) => { onFiltrosChange({ ...filtros, engaj_min_aberturas: v }); setPage(1); }}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] text-muted-foreground">Mín. cliques: {filtros.engaj_min_cliques || 0}</Label>
+                        <Slider
+                          value={[filtros.engaj_min_cliques || 0]}
+                          min={0} max={5} step={1}
+                          onValueChange={([v]) => { onFiltrosChange({ ...filtros, engaj_min_cliques: v }); setPage(1); }}
+                        />
+                      </div>
+
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                          className="h-3.5 w-3.5"
+                          checked={filtros.excluir_bounced ?? true}
+                          onCheckedChange={(c) => { onFiltrosChange({ ...filtros, excluir_bounced: !!c }); setPage(1); }}
+                        />
+                        <AlertOctagon className="h-3 w-3 text-destructive" />
+                        <span className="text-xs">Excluir bounced/spam</span>
+                      </label>
+                    </div>
+                  )}
+
                   {/* Campaign segmentation filters */}
                   {pastCampaigns && pastCampaigns.length > 0 && (
                     <div className="space-y-2 border-t border-border pt-3">
@@ -590,6 +669,25 @@ export function RecipientSelector({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-0.5">
                             <span className="font-medium text-sm truncate">{p.nome_razao}</span>
+                            {canal === "email" && engagementMap?.get(p.id) && (() => {
+                              const e = engagementMap.get(p.id)!;
+                              return (
+                                <span className="flex items-center gap-1">
+                                  {e.engajamento_score >= 70 && (
+                                    <span title={`Engajado (${e.engajamento_score})`}><Flame className="h-3 w-3 text-orange-500" /></span>
+                                  )}
+                                  {e.total_cliques > 0 && e.engajamento_score < 70 && (
+                                    <span title={`${e.total_cliques} clique(s)`}><MousePointerClick className="h-3 w-3 text-primary" /></span>
+                                  )}
+                                  {e.total_aberturas > 0 && e.total_cliques === 0 && (
+                                    <span title={`${e.total_aberturas} abertura(s)`}><Eye className="h-3 w-3 text-blue-500" /></span>
+                                  )}
+                                  {(e.bounced || e.complained) && (
+                                    <span title={e.bounced ? "Bounced" : "Marcou como spam"}><AlertOctagon className="h-3 w-3 text-destructive" /></span>
+                                  )}
+                                </span>
+                              );
+                            })()}
                             {!valid && canal === "whatsapp" && noPhone && (
                               <span className="text-destructive" title="Sem telefone">
                                 <AlertTriangle className="h-3 w-3" />

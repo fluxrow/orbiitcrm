@@ -7,7 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Save, Loader2, ImagePlus, Link, X, Eye, EyeOff, Info } from "lucide-react";
+import { ArrowLeft, Save, Loader2, ImagePlus, Link, X, Eye, EyeOff, Info, MessageCircle } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useOrbitTemplates, useCreateTemplate, useUpdateTemplate } from "@/hooks/useOrbitTemplates";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -27,9 +29,21 @@ interface TemplateForm {
   assunto_email: string;
   corpo_texto: string;
   imagem_url: string;
+  whatsapp_cta_enabled: boolean;
+  whatsapp_cta_numero: string;
+  whatsapp_cta_texto_botao: string;
+  whatsapp_cta_mensagem_inicial: string;
+  whatsapp_cta_posicao: "topo" | "rodape";
 }
 
-const emptyForm: TemplateForm = { nome: "", categoria: "geral", assunto_email: "", corpo_texto: "", imagem_url: "" };
+const emptyForm: TemplateForm = {
+  nome: "", categoria: "geral", assunto_email: "", corpo_texto: "", imagem_url: "",
+  whatsapp_cta_enabled: false,
+  whatsapp_cta_numero: "",
+  whatsapp_cta_texto_botao: "Falar no WhatsApp",
+  whatsapp_cta_mensagem_inicial: "Olá! Vim pelo email da {{empresa}}.",
+  whatsapp_cta_posicao: "rodape",
+};
 
 export default function EmailTemplateEditorPage() {
   const { id } = useParams();
@@ -72,6 +86,11 @@ export default function EmailTemplateEditorPage() {
           assunto_email: t.assunto_email || "",
           corpo_texto: t.corpo_texto || "",
           imagem_url: (t as any).imagem_url || "",
+          whatsapp_cta_enabled: (t as any).whatsapp_cta_enabled ?? false,
+          whatsapp_cta_numero: (t as any).whatsapp_cta_numero || "",
+          whatsapp_cta_texto_botao: (t as any).whatsapp_cta_texto_botao || "Falar no WhatsApp",
+          whatsapp_cta_mensagem_inicial: (t as any).whatsapp_cta_mensagem_inicial || "Olá! Vim pelo email da {{empresa}}.",
+          whatsapp_cta_posicao: ((t as any).whatsapp_cta_posicao || "rodape") as "topo" | "rodape",
         };
         setForm(loaded);
         setOriginalForm(loaded);
@@ -137,6 +156,14 @@ export default function EmailTemplateEditorPage() {
       const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
       if (!profile?.empresa_id) throw new Error("Empresa não encontrada");
 
+      const ctaPayload = {
+        whatsapp_cta_enabled: form.whatsapp_cta_enabled,
+        whatsapp_cta_numero: form.whatsapp_cta_enabled ? form.whatsapp_cta_numero || null : null,
+        whatsapp_cta_texto_botao: form.whatsapp_cta_enabled ? form.whatsapp_cta_texto_botao || null : null,
+        whatsapp_cta_mensagem_inicial: form.whatsapp_cta_enabled ? form.whatsapp_cta_mensagem_inicial || null : null,
+        whatsapp_cta_posicao: form.whatsapp_cta_enabled ? form.whatsapp_cta_posicao : null,
+      };
+
       if (isEditing && id) {
         await updateTemplate.mutateAsync({
           id,
@@ -145,7 +172,8 @@ export default function EmailTemplateEditorPage() {
           assunto_email: form.assunto_email || null,
           corpo_texto: form.corpo_texto,
           imagem_url: form.imagem_url || null,
-        });
+          ...ctaPayload,
+        } as any);
         toast.success("Template atualizado!");
         setOriginalForm(form);
       } else {
@@ -158,7 +186,8 @@ export default function EmailTemplateEditorPage() {
           imagem_url: form.imagem_url || null,
           empresa_id: profile.empresa_id,
           ativo: true,
-        });
+          ...ctaPayload,
+        } as any);
         toast.success("Template criado!");
         setOriginalForm(form);
       }
@@ -276,6 +305,84 @@ export default function EmailTemplateEditorPage() {
               />
             </div>
 
+            {/* WhatsApp CTA Button */}
+            <Card className="border-green-500/30">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <MessageCircle className="h-4 w-4 text-green-500" />
+                    Botão WhatsApp no email
+                  </CardTitle>
+                  <Switch
+                    checked={form.whatsapp_cta_enabled}
+                    onCheckedChange={(c) => setForm({ ...form, whatsapp_cta_enabled: c })}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Adiciona um botão "Falar no WhatsApp" no email. O lead clica e abre direto a conversa com o consultor.
+                </p>
+              </CardHeader>
+              {form.whatsapp_cta_enabled && (
+                <CardContent className="space-y-3 pt-0">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">Número (formato E.164)</Label>
+                      <Input
+                        placeholder="+5511999999999"
+                        value={form.whatsapp_cta_numero}
+                        onChange={(e) => setForm({ ...form, whatsapp_cta_numero: e.target.value })}
+                        className="mt-1 h-9"
+                      />
+                      <p className="text-[11px] text-muted-foreground mt-1">Ex: +55 11 99999-9999 → +5511999999999</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Texto do botão</Label>
+                      <Input
+                        placeholder="Falar no WhatsApp"
+                        value={form.whatsapp_cta_texto_botao}
+                        onChange={(e) => setForm({ ...form, whatsapp_cta_texto_botao: e.target.value })}
+                        className="mt-1 h-9"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Mensagem inicial pré-preenchida</Label>
+                    <Input
+                      placeholder="Olá! Vim pelo email da {{empresa}}."
+                      value={form.whatsapp_cta_mensagem_inicial}
+                      onChange={(e) => setForm({ ...form, whatsapp_cta_mensagem_inicial: e.target.value })}
+                      className="mt-1 h-9"
+                    />
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {["{{nome}}", "{{empresa}}"].map(v => (
+                        <Badge
+                          key={v}
+                          variant="outline"
+                          className="text-[10px] font-mono cursor-pointer hover:bg-muted"
+                          onClick={() => setForm({ ...form, whatsapp_cta_mensagem_inicial: form.whatsapp_cta_mensagem_inicial + " " + v })}
+                        >
+                          + {v}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Posição no email</Label>
+                    <Select
+                      value={form.whatsapp_cta_posicao}
+                      onValueChange={(v: "topo" | "rodape") => setForm({ ...form, whatsapp_cta_posicao: v })}
+                    >
+                      <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="topo">Topo (acima do conteúdo)</SelectItem>
+                        <SelectItem value="rodape">Rodapé (abaixo do conteúdo)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+
             {/* Signature note */}
             <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/50 border text-sm text-muted-foreground">
               <Info className="h-4 w-4 mt-0.5 shrink-0" />
@@ -307,6 +414,11 @@ export default function EmailTemplateEditorPage() {
                     {form.imagem_url && (
                       <img src={form.imagem_url} alt="Header" className="w-full h-auto rounded mb-4" />
                     )}
+
+                    {form.whatsapp_cta_enabled && form.whatsapp_cta_posicao === "topo" && (
+                      <CtaPreviewButton text={form.whatsapp_cta_texto_botao || "Falar no WhatsApp"} />
+                    )}
+
                     {form.corpo_texto ? (
                        <div
                          className="prose prose-sm max-w-none text-black [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1.5"
@@ -314,6 +426,10 @@ export default function EmailTemplateEditorPage() {
                        />
                     ) : (
                       <p className="text-muted-foreground italic text-sm">O conteúdo do email aparecerá aqui...</p>
+                    )}
+
+                    {form.whatsapp_cta_enabled && form.whatsapp_cta_posicao === "rodape" && (
+                      <CtaPreviewButton text={form.whatsapp_cta_texto_botao || "Falar no WhatsApp"} />
                     )}
 
                     {/* Signature simulation */}
@@ -342,5 +458,18 @@ export default function EmailTemplateEditorPage() {
       )}
 
     </OrbitLayout>
+  );
+}
+
+function CtaPreviewButton({ text }: { text: string }) {
+  return (
+    <div className="my-4 text-center">
+      <span
+        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-md text-white font-semibold text-sm shadow-sm"
+        style={{ backgroundColor: "#25D366" }}
+      >
+        <MessageCircle className="h-4 w-4" /> {text}
+      </span>
+    </div>
   );
 }

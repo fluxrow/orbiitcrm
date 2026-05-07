@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Mail, MessageSquare, Check, Calendar, Sparkles, Send, Eye, Upload, X } from "lucide-react";
+import { Loader2, Mail, MessageSquare, Check, Calendar, Sparkles, Send, Eye, Upload, X, MessageCircle } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { handleApiResponse } from "@/lib/api-envelope";
 import { useOrbitTemplates, useCreateTemplate } from "@/hooks/useOrbitTemplates";
 import { useOrbitProspects } from "@/hooks/useOrbitProspects";
@@ -46,6 +47,13 @@ interface CampaignData {
   selected_prospect_ids?: string[];
   selected_group_ids?: string[];
   agendada_para?: string;
+  // WhatsApp CTA override (per-campaign)
+  whatsapp_cta_override?: boolean;
+  whatsapp_cta_enabled?: boolean;
+  whatsapp_cta_numero?: string;
+  whatsapp_cta_texto_botao?: string;
+  whatsapp_cta_mensagem_inicial?: string;
+  whatsapp_cta_posicao?: "topo" | "rodape";
 }
 
 const steps = [
@@ -289,7 +297,13 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
         status: data.agendada_para ? "agendada" : "rascunho",
         total_destinatarios: recipientIds.length,
         empresa_id: profile.empresa_id, created_by: user.id,
-      });
+        whatsapp_cta_override: !!data.whatsapp_cta_override,
+        whatsapp_cta_enabled: data.whatsapp_cta_override ? !!data.whatsapp_cta_enabled : null,
+        whatsapp_cta_numero: data.whatsapp_cta_override ? data.whatsapp_cta_numero || null : null,
+        whatsapp_cta_texto_botao: data.whatsapp_cta_override ? data.whatsapp_cta_texto_botao || null : null,
+        whatsapp_cta_mensagem_inicial: data.whatsapp_cta_override ? data.whatsapp_cta_mensagem_inicial || null : null,
+        whatsapp_cta_posicao: data.whatsapp_cta_override ? data.whatsapp_cta_posicao || null : null,
+      } as any);
       if (campaign) {
         const recipients = recipientProspects.map(p => ({
           campaign_id: campaign.id, empresa_id: profile.empresa_id,
@@ -540,6 +554,102 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
                       ))}
                     </div>
                   )}
+                  {data.template_id && data.canal === "email" && (() => {
+                    const tpl = selectedTemplate as any;
+                    const tplCtaEnabled = !!tpl?.whatsapp_cta_enabled;
+                    return (
+                      <Card className="border-green-500/30">
+                        <CardContent className="p-4 space-y-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <MessageCircle className="h-4 w-4 text-green-500" />
+                              <div>
+                                <p className="text-sm font-medium">Botão WhatsApp no email</p>
+                                <p className="text-[11px] text-muted-foreground">
+                                  {data.whatsapp_cta_override
+                                    ? "Sobrescrevendo configuração do template"
+                                    : tplCtaEnabled
+                                      ? `Usando template: ${tpl?.whatsapp_cta_numero || "(sem número)"}`
+                                      : "Template não tem botão WhatsApp"}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Label className="text-xs">Sobrescrever</Label>
+                              <Switch
+                                checked={!!data.whatsapp_cta_override}
+                                onCheckedChange={(c) => setData({
+                                  ...data,
+                                  whatsapp_cta_override: c,
+                                  whatsapp_cta_enabled: c ? (data.whatsapp_cta_enabled ?? tplCtaEnabled) : undefined,
+                                  whatsapp_cta_numero: c ? (data.whatsapp_cta_numero ?? tpl?.whatsapp_cta_numero ?? "") : undefined,
+                                  whatsapp_cta_texto_botao: c ? (data.whatsapp_cta_texto_botao ?? tpl?.whatsapp_cta_texto_botao ?? "Falar no WhatsApp") : undefined,
+                                  whatsapp_cta_mensagem_inicial: c ? (data.whatsapp_cta_mensagem_inicial ?? tpl?.whatsapp_cta_mensagem_inicial ?? "Olá! Vim pelo email da {{empresa}}.") : undefined,
+                                  whatsapp_cta_posicao: c ? (data.whatsapp_cta_posicao ?? tpl?.whatsapp_cta_posicao ?? "rodape") : undefined,
+                                })}
+                              />
+                            </div>
+                          </div>
+
+                          {data.whatsapp_cta_override && (
+                            <div className="space-y-3 pt-2 border-t">
+                              <div className="flex items-center gap-2">
+                                <Switch
+                                  checked={!!data.whatsapp_cta_enabled}
+                                  onCheckedChange={(c) => setData({ ...data, whatsapp_cta_enabled: c })}
+                                />
+                                <Label className="text-xs">Botão ativo nesta campanha</Label>
+                              </div>
+                              {data.whatsapp_cta_enabled && (
+                                <>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                      <Label className="text-xs">Número (E.164)</Label>
+                                      <Input
+                                        placeholder="+5511999999999"
+                                        value={data.whatsapp_cta_numero || ""}
+                                        onChange={(e) => setData({ ...data, whatsapp_cta_numero: e.target.value })}
+                                        className="mt-1 h-9"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label className="text-xs">Texto do botão</Label>
+                                      <Input
+                                        value={data.whatsapp_cta_texto_botao || ""}
+                                        onChange={(e) => setData({ ...data, whatsapp_cta_texto_botao: e.target.value })}
+                                        className="mt-1 h-9"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs">Mensagem inicial</Label>
+                                    <Input
+                                      value={data.whatsapp_cta_mensagem_inicial || ""}
+                                      onChange={(e) => setData({ ...data, whatsapp_cta_mensagem_inicial: e.target.value })}
+                                      className="mt-1 h-9"
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs">Posição</Label>
+                                    <Select
+                                      value={data.whatsapp_cta_posicao || "rodape"}
+                                      onValueChange={(v: "topo" | "rodape") => setData({ ...data, whatsapp_cta_posicao: v })}
+                                    >
+                                      <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="topo">Topo</SelectItem>
+                                        <SelectItem value="rodape">Rodapé</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
                   {data.template_id && data.canal === "email" && (
                     <div className="pt-2">
                       {!showTestEmail ? (
