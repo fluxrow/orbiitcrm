@@ -305,6 +305,84 @@ export default function EmailTemplateEditorPage() {
               />
             </div>
 
+            {/* WhatsApp CTA Button */}
+            <Card className="border-green-500/30">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <MessageCircle className="h-4 w-4 text-green-500" />
+                    Botão WhatsApp no email
+                  </CardTitle>
+                  <Switch
+                    checked={form.whatsapp_cta_enabled}
+                    onCheckedChange={(c) => setForm({ ...form, whatsapp_cta_enabled: c })}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Adiciona um botão "Falar no WhatsApp" no email. O lead clica e abre direto a conversa com o consultor.
+                </p>
+              </CardHeader>
+              {form.whatsapp_cta_enabled && (
+                <CardContent className="space-y-3 pt-0">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">Número (formato E.164)</Label>
+                      <Input
+                        placeholder="+5511999999999"
+                        value={form.whatsapp_cta_numero}
+                        onChange={(e) => setForm({ ...form, whatsapp_cta_numero: e.target.value })}
+                        className="mt-1 h-9"
+                      />
+                      <p className="text-[11px] text-muted-foreground mt-1">Ex: +55 11 99999-9999 → +5511999999999</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Texto do botão</Label>
+                      <Input
+                        placeholder="Falar no WhatsApp"
+                        value={form.whatsapp_cta_texto_botao}
+                        onChange={(e) => setForm({ ...form, whatsapp_cta_texto_botao: e.target.value })}
+                        className="mt-1 h-9"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Mensagem inicial pré-preenchida</Label>
+                    <Input
+                      placeholder="Olá! Vim pelo email da {{empresa}}."
+                      value={form.whatsapp_cta_mensagem_inicial}
+                      onChange={(e) => setForm({ ...form, whatsapp_cta_mensagem_inicial: e.target.value })}
+                      className="mt-1 h-9"
+                    />
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {["{{nome}}", "{{empresa}}"].map(v => (
+                        <Badge
+                          key={v}
+                          variant="outline"
+                          className="text-[10px] font-mono cursor-pointer hover:bg-muted"
+                          onClick={() => setForm({ ...form, whatsapp_cta_mensagem_inicial: form.whatsapp_cta_mensagem_inicial + " " + v })}
+                        >
+                          + {v}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Posição no email</Label>
+                    <Select
+                      value={form.whatsapp_cta_posicao}
+                      onValueChange={(v: "topo" | "rodape") => setForm({ ...form, whatsapp_cta_posicao: v })}
+                    >
+                      <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="topo">Topo (acima do conteúdo)</SelectItem>
+                        <SelectItem value="rodape">Rodapé (abaixo do conteúdo)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+
             {/* Signature note */}
             <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/50 border text-sm text-muted-foreground">
               <Info className="h-4 w-4 mt-0.5 shrink-0" />
