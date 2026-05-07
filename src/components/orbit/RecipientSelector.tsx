@@ -211,6 +211,32 @@ export function RecipientSelector({
       }
     }
 
+    // Email engagement filters (aggregated across all campaigns)
+    if (canal === "email" && engagementMap && filtros.engaj_comportamento && filtros.engaj_comportamento !== "qualquer") {
+      list = list.filter(p => {
+        const e = engagementMap.get(p.id);
+        const aberturas = e?.total_aberturas || 0;
+        const cliques = e?.total_cliques || 0;
+        const recebidos = e?.total_emails || 0;
+        if ((filtros.engaj_min_aberturas || 0) > aberturas) return false;
+        if ((filtros.engaj_min_cliques || 0) > cliques) return false;
+        switch (filtros.engaj_comportamento) {
+          case "abriu": return aberturas > 0;
+          case "clicou": return cliques > 0;
+          case "engajou": return aberturas > 0 && cliques > 0;
+          case "nao_abriu": return recebidos > 0 && aberturas === 0;
+          case "nunca_recebeu": return recebidos === 0;
+          default: return true;
+        }
+      });
+    }
+    if (canal === "email" && engagementMap && filtros.excluir_bounced) {
+      list = list.filter(p => {
+        const e = engagementMap.get(p.id);
+        return !e || (!e.bounced && !e.complained);
+      });
+    }
+
     // Sort
     list.sort((a, b) => {
       let va = "", vb = "";
