@@ -29,9 +29,21 @@ interface TemplateForm {
   assunto_email: string;
   corpo_texto: string;
   imagem_url: string;
+  whatsapp_cta_enabled: boolean;
+  whatsapp_cta_numero: string;
+  whatsapp_cta_texto_botao: string;
+  whatsapp_cta_mensagem_inicial: string;
+  whatsapp_cta_posicao: "topo" | "rodape";
 }
 
-const emptyForm: TemplateForm = { nome: "", categoria: "geral", assunto_email: "", corpo_texto: "", imagem_url: "" };
+const emptyForm: TemplateForm = {
+  nome: "", categoria: "geral", assunto_email: "", corpo_texto: "", imagem_url: "",
+  whatsapp_cta_enabled: false,
+  whatsapp_cta_numero: "",
+  whatsapp_cta_texto_botao: "Falar no WhatsApp",
+  whatsapp_cta_mensagem_inicial: "Olá! Vim pelo email da {{empresa}}.",
+  whatsapp_cta_posicao: "rodape",
+};
 
 export default function EmailTemplateEditorPage() {
   const { id } = useParams();
