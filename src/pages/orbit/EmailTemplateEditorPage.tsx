@@ -156,6 +156,14 @@ export default function EmailTemplateEditorPage() {
       const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
       if (!profile?.empresa_id) throw new Error("Empresa não encontrada");
 
+      const ctaPayload = {
+        whatsapp_cta_enabled: form.whatsapp_cta_enabled,
+        whatsapp_cta_numero: form.whatsapp_cta_enabled ? form.whatsapp_cta_numero || null : null,
+        whatsapp_cta_texto_botao: form.whatsapp_cta_enabled ? form.whatsapp_cta_texto_botao || null : null,
+        whatsapp_cta_mensagem_inicial: form.whatsapp_cta_enabled ? form.whatsapp_cta_mensagem_inicial || null : null,
+        whatsapp_cta_posicao: form.whatsapp_cta_enabled ? form.whatsapp_cta_posicao : null,
+      };
+
       if (isEditing && id) {
         await updateTemplate.mutateAsync({
           id,
@@ -164,7 +172,8 @@ export default function EmailTemplateEditorPage() {
           assunto_email: form.assunto_email || null,
           corpo_texto: form.corpo_texto,
           imagem_url: form.imagem_url || null,
-        });
+          ...ctaPayload,
+        } as any);
         toast.success("Template atualizado!");
         setOriginalForm(form);
       } else {
@@ -177,7 +186,8 @@ export default function EmailTemplateEditorPage() {
           imagem_url: form.imagem_url || null,
           empresa_id: profile.empresa_id,
           ativo: true,
-        });
+          ...ctaPayload,
+        } as any);
         toast.success("Template criado!");
         setOriginalForm(form);
       }
