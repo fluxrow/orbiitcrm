@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, fromPlanCheck, ErrorCodes } from "../_shared/responses.ts";
+import { resolveCtaConfig, buildCtaButtonHtml, injectCta } from "../_shared/whatsapp-cta.ts";
 
 interface CampaignRequest {
   campaign_id: string;
@@ -435,6 +436,18 @@ const handler = async (req: Request): Promise<Response> => {
           // ── Tracking: inject pixel + rewrite links ──
           const trackBaseUrl = `${supabaseUrl}/functions/v1/orbit-email-track`;
           const trackPixel = `<img src="${trackBaseUrl}?type=open&rid=${recipient.id}" width="1" height="1" style="display:none" alt="" />`;
+
+          // ── WhatsApp CTA button (template/campanha config) ──
+          const ctaCfg = resolveCtaConfig(campaign as any, campaign.template as any, zapiConfig?.numero_origem);
+          if (ctaCfg) {
+            const ctaHtml = buildCtaButtonHtml(
+              ctaCfg,
+              variaveis,
+              (raw) => `${trackBaseUrl}?type=click&rid=${recipient.id}&url=${encodeURIComponent(raw)}`,
+            );
+            emailHtml = injectCta(emailHtml, ctaHtml, ctaCfg.posicao);
+          }
+
 
           // Rewrite links for click tracking
           emailHtml = emailHtml.replace(

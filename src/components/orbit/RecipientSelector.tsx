@@ -15,10 +15,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useOrbitProspects, useOrbitProspectsCount } from "@/hooks/useOrbitProspects";
 import { useOrbitSendGroups, useCreateSendGroup, useDeleteSendGroup } from "@/hooks/useOrbitSendGroups";
+import { useProspectEngagement } from "@/hooks/useProspectEngagement";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Loader2 } from "lucide-react";
+import { Loader2, Flame, Eye, MousePointerClick, AlertOctagon } from "lucide-react";
 import { toast } from "sonner";
 
 type Canal = "email" | "whatsapp";
@@ -40,6 +41,12 @@ interface CampaignFilters {
   excluir_campanha_id?: string;
   apenas_abriu_campanha_id?: string;
   nao_abriu_campanha_id?: string;
+  // Email engagement filters (aggregate across all campaigns)
+  engaj_comportamento?: "abriu" | "clicou" | "engajou" | "nao_abriu" | "nunca_recebeu" | "qualquer";
+  engaj_janela_dias?: number; // 7 / 30 / 90 / 180 / 0 (todos)
+  engaj_min_aberturas?: number;
+  engaj_min_cliques?: number;
+  excluir_bounced?: boolean;
 }
 
 interface RecipientSelectorProps {
@@ -96,6 +103,11 @@ export function RecipientSelector({
       return data;
     },
   });
+
+  // Resolve empresa_id from prospects to load engagement summary
+  const empresaId = prospects?.[0]?.empresa_id || null;
+  const engajJanela = filtros.engaj_janela_dias ?? 90;
+  const { data: engagementMap } = useProspectEngagement(empresaId, engajJanela);
 
   // Fetch past campaigns for segmentation filters
   const { data: pastCampaigns } = useQuery({
@@ -197,6 +209,32 @@ export function RecipientSelector({
       if (filtros.nao_abriu_campanha_id) {
         list = list.filter(p => recipientProspectIds.has(p.id) && !openedProspectIds.has(p.id));
       }
+    }
+
+    // Email engagement filters (aggregated across all campaigns)
+    if (canal === "email" && engagementMap && filtros.engaj_comportamento && filtros.engaj_comportamento !== "qualquer") {
+      list = list.filter(p => {
+        const e = engagementMap.get(p.id);
+        const aberturas = e?.total_aberturas || 0;
+        const cliques = e?.total_cliques || 0;
+        const recebidos = e?.total_emails || 0;
+        if ((filtros.engaj_min_aberturas || 0) > aberturas) return false;
+        if ((filtros.engaj_min_cliques || 0) > cliques) return false;
+        switch (filtros.engaj_comportamento) {
+          case "abriu": return aberturas > 0;
+          case "clicou": return cliques > 0;
+          case "engajou": return aberturas > 0 && cliques > 0;
+          case "nao_abriu": return recebidos > 0 && aberturas === 0;
+          case "nunca_recebeu": return recebidos === 0;
+          default: return true;
+        }
+      });
+    }
+    if (canal === "email" && engagementMap && filtros.excluir_bounced) {
+      list = list.filter(p => {
+        const e = engagementMap.get(p.id);
+        return !e || (!e.bounced && !e.complained);
+      });
     }
 
     // Sort
