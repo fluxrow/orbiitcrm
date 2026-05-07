@@ -263,7 +263,10 @@ export function RecipientSelector({
     filtros.status_qualificacao?.length || filtros.segmento || filtros.estado || filtros.cidade ||
     filtros.origem_contato || filtros.origem_lead || filtros.tags?.length || (filtros.score_min && filtros.score_min > 0) ||
     filtros.responsavel_id || filtros.apenas_consentimento || filtros.tem_email || filtros.tem_telefone || filtros.tipo ||
-    filtros.excluir_campanha_id || filtros.apenas_abriu_campanha_id || filtros.nao_abriu_campanha_id
+    filtros.excluir_campanha_id || filtros.apenas_abriu_campanha_id || filtros.nao_abriu_campanha_id ||
+    (filtros.engaj_comportamento && filtros.engaj_comportamento !== "qualquer") ||
+    (filtros.engaj_min_aberturas && filtros.engaj_min_aberturas > 0) ||
+    (filtros.engaj_min_cliques && filtros.engaj_min_cliques > 0)
   );
 
   const toggleSort = (key: SortKey) => {
