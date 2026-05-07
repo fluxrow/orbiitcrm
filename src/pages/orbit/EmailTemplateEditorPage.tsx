@@ -414,6 +414,11 @@ export default function EmailTemplateEditorPage() {
                     {form.imagem_url && (
                       <img src={form.imagem_url} alt="Header" className="w-full h-auto rounded mb-4" />
                     )}
+
+                    {form.whatsapp_cta_enabled && form.whatsapp_cta_posicao === "topo" && (
+                      <CtaPreviewButton text={form.whatsapp_cta_texto_botao || "Falar no WhatsApp"} />
+                    )}
+
                     {form.corpo_texto ? (
                        <div
                          className="prose prose-sm max-w-none text-black [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1.5"
@@ -421,6 +426,10 @@ export default function EmailTemplateEditorPage() {
                        />
                     ) : (
                       <p className="text-muted-foreground italic text-sm">O conteúdo do email aparecerá aqui...</p>
+                    )}
+
+                    {form.whatsapp_cta_enabled && form.whatsapp_cta_posicao === "rodape" && (
+                      <CtaPreviewButton text={form.whatsapp_cta_texto_botao || "Falar no WhatsApp"} />
                     )}
 
                     {/* Signature simulation */}
