@@ -255,12 +255,46 @@ export function SourcesTab() {
                         />
                       </div>
                     )}
+                    {selectedType === "csv" && (
+                      <div className="space-y-2">
+                        <Label htmlFor="csv-file">Arquivo CSV de leads</Label>
+                        <Input
+                          id="csv-file"
+                          ref={fileRef}
+                          type="file"
+                          accept=".csv,.txt"
+                          onChange={handleCsvFile}
+                          className="mt-1.5"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Colunas aceitas: nome, email, telefone, cargo, empresa, cidade, estado, linkedin
+                        </p>
+                        {csvFile && (
+                          <div className="text-xs space-y-1 p-2 rounded bg-muted/40">
+                            <div className="font-medium">{csvFile.name}</div>
+                            <div className="text-muted-foreground">
+                              {csvRows.length} leads válidos
+                              {csvErrors.length > 0 && ` · ${csvErrors.length} linhas ignoradas`}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <Button
                       onClick={handleAddSource}
-                      disabled={createSource.isPending || !sourceName.trim()}
+                      disabled={
+                        createSource.isPending ||
+                        importLeads.isPending ||
+                        !sourceName.trim() ||
+                        (selectedType === "csv" && csvRows.length === 0)
+                      }
                       className="w-full"
                     >
-                      {createSource.isPending ? "Adicionando..." : "Adicionar Fonte"}
+                      {createSource.isPending || importLeads.isPending
+                        ? "Processando..."
+                        : selectedType === "csv" && csvRows.length > 0
+                        ? `Criar fonte e importar ${csvRows.length} leads`
+                        : "Adicionar Fonte"}
                     </Button>
                   </>
                 )}
