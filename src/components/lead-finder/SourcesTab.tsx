@@ -1,9 +1,14 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   useLeadSources,
   useCreateLeadSource,
   useDeleteLeadSource,
+  useImportLeadsCSV,
+  parseLeadsCSV,
+  type ParsedLeadRow,
 } from "@/hooks/useLeadFinder";
+import { useTenant } from "@/contexts/TenantContext";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,29 +65,79 @@ const SOURCE_TYPES = [
 ];
 
 export function SourcesTab() {
+  const { empresaId } = useTenant();
   const { data: sources, isLoading } = useLeadSources();
   const createSource = useCreateLeadSource();
   const deleteSource = useDeleteLeadSource();
+  const importLeads = useImportLeadsCSV();
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [sourceName, setSourceName] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvRows, setCsvRows] = useState<ParsedLeadRow[]>([]);
+  const [csvErrors, setCsvErrors] = useState<{ row: number; message: string }[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleCsvFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.match(/\.(csv|txt)$/i)) {
+      toast.error("Apenas arquivos .csv são aceitos");
+      return;
+    }
+    const text = await file.text();
+    const { rows, errors } = parseLeadsCSV(text);
+    setCsvFile(file);
+    setCsvRows(rows);
+    setCsvErrors(errors);
+    if (!sourceName) setSourceName(file.name.replace(/\.(csv|txt)$/i, ""));
+  };
+
+  const resetForm = () => {
+    setSelectedType(null);
+    setSourceName("");
+    setApiKey("");
+    setCsvFile(null);
+    setCsvRows([]);
+    setCsvErrors([]);
+    if (fileRef.current) fileRef.current.value = "";
+  };
 
   const handleAddSource = async () => {
     if (!selectedType || !sourceName.trim()) return;
 
-    await createSource.mutateAsync({
-      nome: sourceName,
-      tipo: selectedType,
-      config: apiKey ? { api_key: apiKey } : {},
-      ativo: true,
-    });
+    try {
+      const source = await createSource.mutateAsync({
+        nome: sourceName,
+        tipo: selectedType,
+        config: apiKey ? { api_key: apiKey } : {},
+        ativo: true,
+        empresa_id: empresaId,
+      });
 
-    setShowAddDialog(false);
-    setSelectedType(null);
-    setSourceName("");
-    setApiKey("");
+      // If CSV with parsed rows, import them attached to this source
+      if (selectedType === "csv" && csvRows.length > 0 && empresaId) {
+        const result = await importLeads.mutateAsync({
+          rows: csvRows,
+          sourceId: source.id,
+          empresaId,
+        });
+        if (result.errors.length) {
+          toast.error(`Importação parcial: ${result.inserted} leads. Erros: ${result.errors[0]}`);
+        } else {
+          toast.success(`Fonte criada e ${result.inserted} leads importados${result.skipped ? ` (${result.skipped} duplicados ignorados)` : ""}`);
+        }
+      } else {
+        toast.success("Fonte criada com sucesso!");
+      }
+
+      setShowAddDialog(false);
+      resetForm();
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao criar fonte");
+    }
   };
 
   const handleDeleteSource = async (id: string) => {
@@ -200,12 +255,46 @@ export function SourcesTab() {
                         />
                       </div>
                     )}
+                    {selectedType === "csv" && (
+                      <div className="space-y-2">
+                        <Label htmlFor="csv-file">Arquivo CSV de leads</Label>
+                        <Input
+                          id="csv-file"
+                          ref={fileRef}
+                          type="file"
+                          accept=".csv,.txt"
+                          onChange={handleCsvFile}
+                          className="mt-1.5"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Colunas aceitas: nome, email, telefone, cargo, empresa, cidade, estado, linkedin
+                        </p>
+                        {csvFile && (
+                          <div className="text-xs space-y-1 p-2 rounded bg-muted/40">
+                            <div className="font-medium">{csvFile.name}</div>
+                            <div className="text-muted-foreground">
+                              {csvRows.length} leads válidos
+                              {csvErrors.length > 0 && ` · ${csvErrors.length} linhas ignoradas`}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <Button
                       onClick={handleAddSource}
-                      disabled={createSource.isPending || !sourceName.trim()}
+                      disabled={
+                        createSource.isPending ||
+                        importLeads.isPending ||
+                        !sourceName.trim() ||
+                        (selectedType === "csv" && csvRows.length === 0)
+                      }
                       className="w-full"
                     >
-                      {createSource.isPending ? "Adicionando..." : "Adicionar Fonte"}
+                      {createSource.isPending || importLeads.isPending
+                        ? "Processando..."
+                        : selectedType === "csv" && csvRows.length > 0
+                        ? `Criar fonte e importar ${csvRows.length} leads`
+                        : "Adicionar Fonte"}
                     </Button>
                   </>
                 )}
