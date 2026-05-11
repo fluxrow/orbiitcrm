@@ -78,6 +78,7 @@ export function SourcesTab() {
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvRows, setCsvRows] = useState<ParsedLeadRow[]>([]);
   const [csvErrors, setCsvErrors] = useState<{ row: number; message: string }[]>([]);
+  const [mergeMode, setMergeMode] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleCsvFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -102,6 +103,7 @@ export function SourcesTab() {
     setCsvFile(null);
     setCsvRows([]);
     setCsvErrors([]);
+    setMergeMode(false);
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -123,11 +125,18 @@ export function SourcesTab() {
           rows: csvRows,
           sourceId: source.id,
           empresaId,
+          mergeMode,
         });
+        const parts: string[] = [];
+        if (result.inserted) parts.push(`${result.inserted} novos`);
+        if (result.updated) parts.push(`${result.updated} atualizados`);
+        if (result.skipped) parts.push(`${result.skipped} ignorados`);
+        if (result.mergedUntouched) parts.push(`${result.mergedUntouched} sem alterações`);
+        const summary = parts.length ? parts.join(" · ") : "nenhum lead processado";
         if (result.errors.length) {
-          toast.error(`Importação parcial: ${result.inserted} leads. Erros: ${result.errors[0]}`);
+          toast.error(`Importação parcial: ${summary}. Erro: ${result.errors[0]}`);
         } else {
-          toast.success(`Fonte criada e ${result.inserted} leads importados${result.skipped ? ` (${result.skipped} duplicados ignorados)` : ""}`);
+          toast.success(`Fonte criada · ${summary}`);
         }
       } else {
         toast.success("Fonte criada com sucesso!");
@@ -278,6 +287,20 @@ export function SourcesTab() {
                             </div>
                           </div>
                         )}
+                        <label className="flex items-start gap-2 text-xs cursor-pointer pt-1">
+                          <input
+                            type="checkbox"
+                            checked={mergeMode}
+                            onChange={(e) => setMergeMode(e.target.checked)}
+                            className="mt-0.5 accent-primary"
+                          />
+                          <span>
+                            <span className="font-medium text-foreground">Atualizar duplicados</span>
+                            <span className="block text-muted-foreground">
+                              Quando o lead já existir (por email ou telefone), preencher campos vazios com os dados do CSV em vez de pular.
+                            </span>
+                          </span>
+                        </label>
                       </div>
                     )}
                     <Button
