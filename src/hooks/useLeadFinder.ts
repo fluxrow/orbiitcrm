@@ -554,3 +554,129 @@ export function useLeadFinderStats() {
       : 0,
   };
 }
+
+// ============= CSV Lead Import =============
+
+export interface ParsedLeadRow {
+  nome?: string;
+  email?: string;
+  telefone?: string;
+  cargo?: string;
+  empresa_nome?: string;
+  cidade?: string;
+  estado?: string;
+  pais?: string;
+  linkedin_url?: string;
+  empresa_linkedin?: string;
+}
+
+const LEAD_COLUMN_MAP: Record<string, keyof ParsedLeadRow> = {
+  nome: "nome", name: "nome", "nome completo": "nome", "full name": "nome", contato: "nome",
+  email: "email", "e-mail": "email", "email principal": "email",
+  telefone: "telefone", phone: "telefone", celular: "telefone", whatsapp: "telefone",
+  cargo: "cargo", title: "cargo", "job title": "cargo", funcao: "cargo",
+  empresa: "empresa_nome", empresa_nome: "empresa_nome", company: "empresa_nome", "razao social": "empresa_nome", razao_social: "empresa_nome",
+  cidade: "cidade", city: "cidade",
+  estado: "estado", uf: "estado", state: "estado",
+  pais: "pais", country: "pais",
+  linkedin: "linkedin_url", linkedin_url: "linkedin_url", "linkedin url": "linkedin_url",
+  empresa_linkedin: "empresa_linkedin", "company linkedin": "empresa_linkedin",
+};
+
+function detectSep(line: string): string {
+  return (line.match(/;/g) || []).length > (line.match(/,/g) || []).length ? ";" : ",";
+}
+
+function parseCsvLine(line: string, sep: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let q = false;
+  for (const c of line) {
+    if (c === '"') q = !q;
+    else if (c === sep && !q) { out.push(cur.trim()); cur = ""; }
+    else cur += c;
+  }
+  out.push(cur.trim());
+  return out;
+}
+
+export function parseLeadsCSV(text: string): { rows: ParsedLeadRow[]; errors: { row: number; message: string }[] } {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  const errors: { row: number; message: string }[] = [];
+  if (lines.length < 2) return { rows: [], errors: [{ row: 0, message: "Arquivo vazio ou sem dados" }] };
+
+  const sep = detectSep(lines[0]);
+  const headers = parseCsvLine(lines[0], sep).map(h => h.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim());
+  const mapped = headers.map(h => LEAD_COLUMN_MAP[h] ?? null);
+
+  const rows: ParsedLeadRow[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = parseCsvLine(lines[i], sep);
+    const row: ParsedLeadRow = {};
+    mapped.forEach((key, idx) => {
+      if (key && cells[idx]) (row as any)[key] = cells[idx];
+    });
+    if (!row.nome && !row.email && !row.empresa_nome) {
+      errors.push({ row: i + 1, message: "Linha sem nome, email ou empresa" });
+      continue;
+    }
+    rows.push(row);
+  }
+  return { rows, errors };
+}
+
+export function useImportLeadsCSV() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ rows, sourceId, empresaId }: { rows: ParsedLeadRow[]; sourceId: string; empresaId: string }) => {
+      if (!rows.length) throw new Error("Nenhum lead para importar");
+
+      // Dedup by email within file
+      const seen = new Set<string>();
+      const cleaned = rows.filter(r => {
+        const key = (r.email || "").toLowerCase().trim();
+        if (!key) return true;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      const payload = cleaned.map(r => ({
+        empresa_id: empresaId,
+        search_id: null as string | null,
+        nome: r.nome || null,
+        email: r.email?.toLowerCase().trim() || null,
+        telefone: r.telefone || null,
+        cargo: r.cargo || null,
+        empresa_nome: r.empresa_nome || null,
+        cidade: r.cidade || null,
+        estado: r.estado || null,
+        pais: r.pais || null,
+        linkedin_url: r.linkedin_url || null,
+        empresa_linkedin: r.empresa_linkedin || null,
+        status: "novo",
+        enrichment_status: "pendente",
+        dados_raw: { source_id: sourceId, imported_at: new Date().toISOString() },
+      }));
+
+      // Insert in batches of 500
+      let inserted = 0;
+      const errors: string[] = [];
+      for (let i = 0; i < payload.length; i += 500) {
+        const batch = payload.slice(i, i + 500);
+        const { error, count } = await supabase.from("orbit_leads").insert(batch, { count: "exact" });
+        if (error) {
+          errors.push(error.message);
+        } else {
+          inserted += count ?? batch.length;
+        }
+      }
+
+      return { inserted, skipped: rows.length - cleaned.length, errors };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      queryClient.invalidateQueries({ queryKey: ["lead-finder-stats"] });
+    },
+  });
+}
