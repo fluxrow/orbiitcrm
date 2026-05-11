@@ -631,13 +631,57 @@ export function useImportLeadsCSV() {
     mutationFn: async ({ rows, sourceId, empresaId }: { rows: ParsedLeadRow[]; sourceId: string; empresaId: string }) => {
       if (!rows.length) throw new Error("Nenhum lead para importar");
 
-      // Dedup by email within file
-      const seen = new Set<string>();
-      const cleaned = rows.filter(r => {
-        const key = (r.email || "").toLowerCase().trim();
-        if (!key) return true;
-        if (seen.has(key)) return false;
-        seen.add(key);
+      const normEmail = (v?: string | null) => (v || "").toLowerCase().trim() || null;
+      const normPhone = (v?: string | null) => {
+        const digits = (v || "").replace(/\D/g, "");
+        return digits.length >= 8 ? digits : null;
+      };
+
+      // 1) Dedup within the file by email AND by phone
+      const seenEmail = new Set<string>();
+      const seenPhone = new Set<string>();
+      const fileDedup = rows.filter(r => {
+        const e = normEmail(r.email);
+        const p = normPhone(r.telefone);
+        if (e && seenEmail.has(e)) return false;
+        if (p && seenPhone.has(p)) return false;
+        if (e) seenEmail.add(e);
+        if (p) seenPhone.add(p);
+        return true;
+      });
+
+      // 2) Dedup against existing leads in the same empresa (email or phone match)
+      const emails = Array.from(seenEmail);
+      const phones = Array.from(seenPhone);
+      const existingEmails = new Set<string>();
+      const existingPhones = new Set<string>();
+
+      if (emails.length) {
+        const { data } = await supabase
+          .from("orbit_leads")
+          .select("email")
+          .eq("empresa_id", empresaId)
+          .in("email", emails);
+        (data || []).forEach((r: any) => r.email && existingEmails.add(String(r.email).toLowerCase().trim()));
+      }
+      if (phones.length) {
+        // Fetch all phones for this empresa once and normalize on client (avoids ILIKE per row)
+        const { data } = await supabase
+          .from("orbit_leads")
+          .select("telefone")
+          .eq("empresa_id", empresaId)
+          .not("telefone", "is", null);
+        (data || []).forEach((r: any) => {
+          const p = normPhone(r.telefone);
+          if (p) existingPhones.add(p);
+        });
+      }
+
+      const cleaned = fileDedup.filter(r => {
+        const e = normEmail(r.email);
+        const p = normPhone(r.telefone);
+        if (e && existingEmails.has(e)) return false;
+        if (p && existingPhones.has(p)) return false;
         return true;
       });
 
@@ -645,7 +689,7 @@ export function useImportLeadsCSV() {
         empresa_id: empresaId,
         search_id: null as string | null,
         nome: r.nome || null,
-        email: r.email?.toLowerCase().trim() || null,
+        email: normEmail(r.email),
         telefone: r.telefone || null,
         cargo: r.cargo || null,
         empresa_nome: r.empresa_nome || null,
