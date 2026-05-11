@@ -628,7 +628,7 @@ export function parseLeadsCSV(text: string): { rows: ParsedLeadRow[]; errors: { 
 export function useImportLeadsCSV() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ rows, sourceId, empresaId }: { rows: ParsedLeadRow[]; sourceId: string; empresaId: string }) => {
+    mutationFn: async ({ rows, sourceId, empresaId, mergeMode = false }: { rows: ParsedLeadRow[]; sourceId: string; empresaId: string; mergeMode?: boolean }) => {
       if (!rows.length) throw new Error("Nenhum lead para importar");
 
       const normEmail = (v?: string | null) => (v || "").toLowerCase().trim() || null;
@@ -636,6 +636,7 @@ export function useImportLeadsCSV() {
         const digits = (v || "").replace(/\D/g, "");
         return digits.length >= 8 ? digits : null;
       };
+      const isEmpty = (v: any) => v === null || v === undefined || (typeof v === "string" && v.trim() === "");
 
       // 1) Dedup within the file by email AND by phone
       const seenEmail = new Set<string>();
@@ -650,42 +651,58 @@ export function useImportLeadsCSV() {
         return true;
       });
 
-      // 2) Dedup against existing leads in the same empresa (email or phone match)
+      // 2) Fetch existing leads (full record) so we can either skip or merge
       const emails = Array.from(seenEmail);
       const phones = Array.from(seenPhone);
-      const existingEmails = new Set<string>();
-      const existingPhones = new Set<string>();
+      const existingByEmail = new Map<string, any>();
+      const existingByPhone = new Map<string, any>();
+
+      const FIELDS = "id, nome, email, telefone, cargo, empresa_nome, empresa_linkedin, cidade, estado, pais, linkedin_url";
 
       if (emails.length) {
         const { data } = await supabase
           .from("orbit_leads")
-          .select("email")
+          .select(FIELDS)
           .eq("empresa_id", empresaId)
           .in("email", emails);
-        (data || []).forEach((r: any) => r.email && existingEmails.add(String(r.email).toLowerCase().trim()));
+        (data || []).forEach((r: any) => {
+          const e = normEmail(r.email);
+          if (e) existingByEmail.set(e, r);
+        });
       }
       if (phones.length) {
-        // Fetch all phones for this empresa once and normalize on client (avoids ILIKE per row)
         const { data } = await supabase
           .from("orbit_leads")
-          .select("telefone")
+          .select(FIELDS)
           .eq("empresa_id", empresaId)
           .not("telefone", "is", null);
         (data || []).forEach((r: any) => {
           const p = normPhone(r.telefone);
-          if (p) existingPhones.add(p);
+          if (p) existingByPhone.set(p, r);
         });
       }
 
-      const cleaned = fileDedup.filter(r => {
+      // 3) Split rows into: new inserts vs. existing matches
+      const toInsert: ParsedLeadRow[] = [];
+      const toMerge: { existing: any; row: ParsedLeadRow }[] = [];
+      let skipped = rows.length - fileDedup.length;
+
+      for (const r of fileDedup) {
         const e = normEmail(r.email);
         const p = normPhone(r.telefone);
-        if (e && existingEmails.has(e)) return false;
-        if (p && existingPhones.has(p)) return false;
-        return true;
-      });
+        const existing = (e && existingByEmail.get(e)) || (p && existingByPhone.get(p)) || null;
+        if (existing) {
+          if (mergeMode) toMerge.push({ existing, row: r });
+          else skipped++;
+        } else {
+          toInsert.push(r);
+        }
+      }
 
-      const payload = cleaned.map(r => ({
+      // 4) Inserts in batches
+      const errors: string[] = [];
+      let inserted = 0;
+      const insertPayload = toInsert.map(r => ({
         empresa_id: empresaId,
         search_id: null as string | null,
         nome: r.nome || null,
@@ -702,21 +719,42 @@ export function useImportLeadsCSV() {
         enrichment_status: "pendente",
         dados_raw: { source_id: sourceId, imported_at: new Date().toISOString() },
       }));
-
-      // Insert in batches of 500
-      let inserted = 0;
-      const errors: string[] = [];
-      for (let i = 0; i < payload.length; i += 500) {
-        const batch = payload.slice(i, i + 500);
+      for (let i = 0; i < insertPayload.length; i += 500) {
+        const batch = insertPayload.slice(i, i + 500);
         const { error, count } = await supabase.from("orbit_leads").insert(batch, { count: "exact" });
-        if (error) {
-          errors.push(error.message);
-        } else {
-          inserted += count ?? batch.length;
-        }
+        if (error) errors.push(error.message);
+        else inserted += count ?? batch.length;
       }
 
-      return { inserted, skipped: rows.length - cleaned.length, errors };
+      // 5) Merge updates: only fill empty fields on the existing record
+      let updated = 0;
+      let mergedUntouched = 0;
+      const mergeFields: (keyof ParsedLeadRow)[] = [
+        "nome", "email", "telefone", "cargo", "empresa_nome",
+        "empresa_linkedin", "cidade", "estado", "pais", "linkedin_url",
+      ];
+      for (const { existing, row } of toMerge) {
+        const patch: Record<string, any> = {};
+        for (const f of mergeFields) {
+          const incoming = f === "email" ? normEmail(row.email) : (row[f] || null);
+          if (!isEmpty(incoming) && isEmpty(existing[f])) {
+            patch[f] = incoming;
+          }
+        }
+        if (Object.keys(patch).length === 0) {
+          mergedUntouched++;
+          continue;
+        }
+        const { error } = await supabase
+          .from("orbit_leads")
+          .update(patch)
+          .eq("id", existing.id)
+          .eq("empresa_id", empresaId);
+        if (error) errors.push(`Merge ${existing.id}: ${error.message}`);
+        else updated++;
+      }
+
+      return { inserted, updated, skipped, mergedUntouched, errors };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
