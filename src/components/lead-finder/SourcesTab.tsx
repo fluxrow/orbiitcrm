@@ -287,6 +287,20 @@ export function SourcesTab() {
                             </div>
                           </div>
                         )}
+                        <label className="flex items-start gap-2 text-xs cursor-pointer pt-1">
+                          <input
+                            type="checkbox"
+                            checked={mergeMode}
+                            onChange={(e) => setMergeMode(e.target.checked)}
+                            className="mt-0.5 accent-primary"
+                          />
+                          <span>
+                            <span className="font-medium text-foreground">Atualizar duplicados</span>
+                            <span className="block text-muted-foreground">
+                              Quando o lead já existir (por email ou telefone), preencher campos vazios com os dados do CSV em vez de pular.
+                            </span>
+                          </span>
+                        </label>
                       </div>
                     )}
                     <Button
