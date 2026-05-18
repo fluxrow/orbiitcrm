@@ -10,6 +10,7 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { orbitCampaignKeys } from "@/lib/query-keys";
 
 interface RecipientCounts {
   total: number;
@@ -55,8 +56,7 @@ export function CampaignReviewDialog({
       if (error) throw error;
       const inserted = (data as any)?.inserted ?? 0;
       const total = (data as any)?.total ?? 0;
-      await queryClient.invalidateQueries({ queryKey: ["campaign_recipient_counts"] });
-      await queryClient.invalidateQueries({ queryKey: ["orbit_campaigns"] });
+      await queryClient.invalidateQueries({ queryKey: orbitCampaignKeys.all });
       if (total === 0) {
         toast.warning("Nenhum destinatário elegível encontrado para os filtros desta campanha.");
       } else {

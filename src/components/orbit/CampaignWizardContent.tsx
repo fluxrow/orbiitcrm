@@ -18,6 +18,7 @@ import { useOrbitSendGroups } from "@/hooks/useOrbitSendGroups";
 import { RecipientSelector } from "./RecipientSelector";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { orbitCampaignKeys } from "@/lib/query-keys";
 
 interface CampaignWizardContentProps {
   onComplete: () => void;
@@ -313,10 +314,7 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
         if (popError) throw popError;
         const inserted = (popResult as any)?.inserted ?? 0;
         const total = (popResult as any)?.total ?? 0;
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["campaign_recipient_counts"] }),
-          queryClient.invalidateQueries({ queryKey: ["orbit_campaigns"] }),
-        ]);
+        await queryClient.invalidateQueries({ queryKey: orbitCampaignKeys.all });
         if (total === 0) {
           toast.warning("Campanha criada, mas nenhum destinatário elegível foi encontrado.");
         } else {

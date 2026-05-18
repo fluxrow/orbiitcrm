@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { handleApiResponse } from "@/lib/api-envelope";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { orbitCampaignKeys } from "@/lib/query-keys";
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   rascunho: { label: "Rascunho", className: "bg-muted text-muted-foreground" },
@@ -43,7 +44,7 @@ export default function CampanhasPage() {
 
   const campaignIds = campaigns?.map(c => c.id) || [];
   const { data: recipientCounts } = useQuery({
-    queryKey: ["campaign_recipient_counts", campaignIds],
+    queryKey: orbitCampaignKeys.countsByIds(campaignIds),
     queryFn: async () => {
       if (!campaignIds.length) return {};
       const { data, error } = await supabase.rpc("get_campaign_recipient_counts" as any, {
@@ -77,7 +78,7 @@ export default function CampanhasPage() {
       updateCampaign.mutate({ id: campaignId, status: "em_revisao" });
     }
     // Force fresh recipient counts when opening the dialog
-    queryClient.invalidateQueries({ queryKey: ["campaign_recipient_counts"] });
+    queryClient.invalidateQueries({ queryKey: orbitCampaignKeys.counts() });
   };
 
   const handleApproveForSend = async (campaignId: string) => {

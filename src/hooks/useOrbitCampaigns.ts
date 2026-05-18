@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
+import { orbitCampaignKeys } from "@/lib/query-keys";
+
 
 type Campaign = Tables<"orbit_campaigns">;
 type CampaignInsert = TablesInsert<"orbit_campaigns">;
@@ -13,7 +15,7 @@ interface CampaignFilters {
 
 export function useOrbitCampaigns(filters?: CampaignFilters) {
   return useQuery({
-    queryKey: ["orbit_campaigns", filters],
+    queryKey: orbitCampaignKeys.list(filters),
     queryFn: async () => {
       let query = supabase
         .from("orbit_campaigns")
@@ -49,7 +51,7 @@ export function useCreateCampaign() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["orbit_campaigns"] });
+      queryClient.invalidateQueries({ queryKey: orbitCampaignKeys.all });
     },
   });
 }
@@ -69,7 +71,7 @@ export function useUpdateCampaign() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["orbit_campaigns"] });
+      queryClient.invalidateQueries({ queryKey: orbitCampaignKeys.all });
     },
   });
 }
@@ -86,7 +88,7 @@ export function useDeleteCampaign() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["orbit_campaigns"] });
+      queryClient.invalidateQueries({ queryKey: orbitCampaignKeys.all });
     },
   });
 }
