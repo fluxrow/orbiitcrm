@@ -66,6 +66,7 @@ export default function ProspectsPage() {
   const [funnelProspects, setFunnelProspects] = useState<any[]>([]);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [importOpen, setImportOpen] = useState(false);
 
   const { user } = useAuth();
   const { data: myProfile } = useQuery({
