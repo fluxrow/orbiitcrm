@@ -87,6 +87,7 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
+  const queryClient = useQueryClient();
   const { data: templates } = useOrbitTemplates();
   const { data: prospects } = useOrbitProspects();
   const createCampaign = useCreateCampaign();
