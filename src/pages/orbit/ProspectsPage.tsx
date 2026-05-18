@@ -182,6 +182,8 @@ export default function ProspectsPage() {
           empresaId={myProfile?.empresa_id}
         />
 
+        <ImportHistoryPanel empresaId={myProfile?.empresa_id} />
+
         {/* Search & Filters */}
         <div className="space-y-3 mb-6">
           <div className="relative">
