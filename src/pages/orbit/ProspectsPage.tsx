@@ -166,10 +166,20 @@ export default function ProspectsPage() {
           title="Prospects"
           description="Lead Action Hub — gerencie e interaja com seus prospects"
           action={
-            <Button size="sm" onClick={() => { setSelectedProspect(null); setDialogOpen(true); }}>
-              <Plus className="h-4 w-4 mr-2" />Novo Prospect
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
+                <Upload className="h-4 w-4 mr-2" />Importar CSV
+              </Button>
+              <Button size="sm" onClick={() => { setSelectedProspect(null); setDialogOpen(true); }}>
+                <Plus className="h-4 w-4 mr-2" />Novo Prospect
+              </Button>
+            </div>
           }
+        />
+        <ImportProspectsDialog
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          empresaId={myProfile?.empresa_id}
         />
 
         {/* Search & Filters */}
