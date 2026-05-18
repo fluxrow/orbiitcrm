@@ -10,7 +10,7 @@
 export const orbitCampaignKeys = {
   all: ["orbit_campaigns"] as const,
   lists: () => [...orbitCampaignKeys.all, "list"] as const,
-  list: (filters?: Record<string, unknown>) =>
+  list: (filters?: Record<string, unknown> | object) =>
     [...orbitCampaignKeys.lists(), filters ?? {}] as const,
   counts: () => [...orbitCampaignKeys.all, "recipient_counts"] as const,
   countsByIds: (ids: string[]) =>
