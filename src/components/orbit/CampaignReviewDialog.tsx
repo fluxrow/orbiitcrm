@@ -201,6 +201,21 @@ export function CampaignReviewDialog({
                 Nenhum destinatário pendente para envio.
               </div>
             )}
+            <div className="mt-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReloadRecipients}
+                disabled={reloading}
+              >
+                {reloading ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                Recarregar destinatários
+              </Button>
+            </div>
           </div>
         </div>
 
