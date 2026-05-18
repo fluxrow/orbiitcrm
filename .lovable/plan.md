@@ -1,45 +1,73 @@
 ## Diagnóstico
 
-Sim, está lento — e é "normal" só pela forma como foi implementado, não porque 2.500 contatos seja muito.
+A campanha **"Inicial Clientes PR"** (id `966bdd93…`) foi criada com `total_destinatarios = 2324`, mas a tabela `orbit_campaign_recipients` está **com 0 linhas para essa campanha**. Por isso o dialog mostra:
 
-O hook `useBackfillImportAsList` (em `src/hooks/useOrbitProspects.ts`) está fazendo, **do navegador**, **um `UPDATE` por prospect** dentro de um `for`:
+- Total: 2324 (vem de `campaigns.total_destinatarios`)
+- Pendentes: 0 (vem da contagem real em `orbit_campaign_recipients`)
+- Já enviados / Inválidos: 2324 (calculado como `total - pendentes`)
+
+E o botão "Aprovar para Envio" fica desabilitado porque `pendingRecipients === 0`.
+
+Confirmei no banco que existem **2350 prospects elegíveis** (com `email_principal`, sem `optout_email`) com a tag `lista:contatos-parana-2026-…`. Ou seja, os destinatários existem — a inserção que deveria ter rodado no `handleCreate` do wizard falhou silenciosamente.
+
+### Causa raiz
+
+Em `src/components/orbit/CampaignWizardContent.tsx` (linha 313):
 
 ```ts
-for (const p of candidates) {
-  await supabase.from("orbit_prospects").update({ tags: next }).eq("id", p.id)...
-}
+if (recipients.length > 0) await supabase.from("orbit_campaign_recipients").insert(recipients);
 ```
 
-Para ~2.474 prospects = ~2.474 requisições HTTP sequenciais ao PostgREST. Mesmo com 150 ms cada, dá **~6 minutos**. Em rede mais lenta passa fácil de 10 min. Ou seja: o gargalo não é o banco, é o round-trip do navegador.
+- Insert único de ~2300 linhas pelo navegador → estoura limite de payload / timeout / RLS, e o erro **não é checado** (sem `.throwOnError()` nem verificação de `error`). O toast diz "Campanha criada com sucesso" mesmo quando o insert falha.
+- Mesmo quando funciona, é lento e arriscado para listas grandes.
 
-## Plano: mover o backfill para uma função no banco (1 chamada só)
+## Plano de correção
 
-### 1. Criar RPC `pe_backfill_import_as_lista(p_import_id, p_empresa_id, p_window_minutes)`
-- Carrega o `orbit_import_history` (valida `empresa_id`).
-- Gera o `listaTag` com a mesma convenção do front (`lista:<slug>-<YYYYMMDD-HHmm>` no fuso local salvo no `created_at`).
-- Faz **um único `UPDATE`** em `orbit_prospects`:
-  - Filtra por `empresa_id`, `origem_contato = 'IMPORTACAO'`, `created_at BETWEEN center ± window`.
-  - `SET tags = (SELECT array_agg(DISTINCT x) FROM unnest(COALESCE(tags,'{}') || ARRAY[listaTag]) x)` para manter idempotência.
-  - `WHERE NOT (listaTag = ANY(COALESCE(tags,'{}')))` para contar só os novos.
-- Retorna `jsonb { lista_tag, candidates, tagged, already_tagged }`.
-- `SECURITY DEFINER`, `search_path = public`, com checagem de acesso à empresa (mesma regra usada nas outras RPCs da empresa).
+### 1. RPC server-side para popular destinatários
 
-### 2. Atualizar `useBackfillImportAsList`
-- Trocar todo o laço por uma única chamada `supabase.rpc("pe_backfill_import_as_lista", { p_import_id, p_empresa_id, p_window_minutes: 10 })`.
-- Manter o mesmo retorno (`{ listaTag, candidates, tagged, alreadyTagged, errors: [] }`) para não mexer no `ImportHistoryPanel`.
+Criar `pe_populate_campaign_recipients(p_campaign_id uuid)` que:
+- Lê a campanha (valida `empresa_id`, canal, `filtros_json`).
+- Calcula os prospects elegíveis em uma única query, aplicando os mesmos filtros do wizard server-side:
+  - `empresa_id` da campanha,
+  - filtros de `filtros_json` (tags, segmento, estado, status_qualificacao, origem_contato, origem_lead, score_min, responsavel_id, cidade, apenas_consentimento, etc.),
+  - canal email → `email_principal IS NOT NULL AND optout_email IS NOT TRUE`,
+  - canal whatsapp → `(whatsapp OR telefone) IS NOT NULL AND optout_whatsapp IS NOT TRUE`.
+- Faz `INSERT ... ON CONFLICT (campaign_id, prospect_id) DO NOTHING` em `orbit_campaign_recipients` com `status='pendente'`.
+- Atualiza `orbit_campaigns.total_destinatarios` = count real.
+- Retorna `{ inserted, already_present, total }`.
 
-### 3. UX no `ImportHistoryPanel`
-- Trocar o spinner pelo texto **"Vinculando ~N prospects…"** enquanto roda (ainda que agora rode em segundos).
-- Manter o `busyId` e os toasts existentes.
+Garantir índice/uniqueness `(campaign_id, prospect_id)` (provavelmente já existe — verificar antes de criar).
 
-## Resultado esperado
-- 2.500 contatos: de ~5–10 min para **< 2 s**.
-- Mesma idempotência (re-clicar não duplica).
-- Sem mudanças no fluxo de envio nem no wizard de campanha.
+### 2. Usar a RPC na criação (wizard)
+
+Em `handleCreate`:
+- Após criar a campanha, chamar `supabase.rpc("pe_populate_campaign_recipients", { p_campaign_id })` em vez do `insert` do navegador.
+- Tratar erro corretamente (toast vermelho + abortar fluxo).
+
+### 3. Botão "Repopular destinatários" no dialog de revisão
+
+Em `src/components/orbit/CampaignReviewDialog.tsx`, quando `pendingRecipients === 0 && totalRecipients > 0` (ou sempre, como ação secundária para o status `em_revisao`/`rascunho`):
+- Mostrar botão "Recarregar destinatários".
+- Chama a mesma RPC; após sucesso invalida `campaign_recipient_counts` e mostra toast com `inserted`.
+- Isso resolve **a campanha atual** sem precisar recriar.
+
+### 4. Backfill imediato da campanha já criada
+
+Após a RPC estar pronta, executar uma vez no banco:
+```sql
+SELECT pe_populate_campaign_recipients('966bdd93-2dee-4e74-bbe0-c409ddaea304');
+```
+para destravar o envio da "Inicial Clientes PR" sem clique adicional do usuário.
 
 ## Arquivos afetados
-- Nova migração SQL: função `pe_backfill_import_as_lista`.
-- `src/hooks/useOrbitProspects.ts`: substituir o corpo de `useBackfillImportAsList` por `rpc`.
-- `src/components/orbit/ImportHistoryPanel.tsx`: pequeno ajuste de texto no botão (opcional).
 
-Posso aplicar?
+- **Nova migration SQL**: função `pe_populate_campaign_recipients` + (se faltar) índice único `(campaign_id, prospect_id)`.
+- `src/components/orbit/CampaignWizardContent.tsx` — substituir insert manual pela RPC, com checagem de erro.
+- `src/components/orbit/CampaignReviewDialog.tsx` — adicionar botão "Recarregar destinatários" + hook para chamar a RPC.
+- `src/pages/orbit/CampanhasPage.tsx` — invalidar `campaign_recipient_counts` após recarregar.
+
+## Resultado esperado
+
+- "Inicial Clientes PR" passa a mostrar ~2350 pendentes e o botão "Aprovar para Envio" libera.
+- Próximas campanhas grandes (>1k destinatários) são criadas de forma confiável em <2s, sem inserts perdidos.
+- Qualquer campanha futura que entre nesse estado (0 pendentes / total > 0) é recuperável com 1 clique.
