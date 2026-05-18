@@ -407,11 +407,11 @@ export function useImportProspectsCSV() {
             patch[f] = incoming;
           }
         }
-        // merge tags
-        if (row.tags) {
-          const incomingTags = row.tags.split(/[;,|]/).map(t => t.trim()).filter(Boolean);
+        // merge tags (always add the lista tag, plus any incoming tags from CSV)
+        {
+          const incomingTags = row.tags ? row.tags.split(/[;,|]/).map(t => t.trim()).filter(Boolean) : [];
           const existingTags: string[] = Array.isArray(existing.tags) ? existing.tags : [];
-          const merged = Array.from(new Set([...existingTags, ...incomingTags]));
+          const merged = Array.from(new Set([...existingTags, ...incomingTags, listaTag]));
           if (merged.length > existingTags.length) patch.tags = merged;
         }
         if (Object.keys(patch).length === 0) { mergedUntouched++; continue; }
