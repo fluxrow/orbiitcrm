@@ -13,8 +13,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   Search, Plus, Loader2, ChevronLeft, ChevronRight, X,
-  GitBranch, Send, Trash2, Tag,
+  GitBranch, Send, Trash2, Tag, Upload,
 } from "lucide-react";
+import { ImportProspectsDialog } from "@/components/orbit/ImportProspectsDialog";
 import { Badge } from "@/components/ui/badge";
 import { useOrbitProspects, useDeleteProspect } from "@/hooks/useOrbitProspects";
 import { useOrbitPeLinks } from "@/hooks/usePromoteProspect";
