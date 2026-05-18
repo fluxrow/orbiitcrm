@@ -151,6 +151,42 @@ export function RecipientSelector({
     };
   }, [prospects]);
 
+  // Imported CSV lists derived from prospects' `lista:*` tags
+  const importedLists = useMemo(() => {
+    if (!prospects) return [] as { tag: string; label: string; prospectIds: string[]; eligibleCount: number }[];
+    const byTag = new Map<string, string[]>();
+    for (const p of prospects) {
+      const tags = (p.tags as string[]) || [];
+      for (const t of tags) {
+        if (!t || !t.startsWith("lista:")) continue;
+        if (!byTag.has(t)) byTag.set(t, []);
+        byTag.get(t)!.push(p.id);
+      }
+    }
+    const eligible = (p: any) =>
+      canal === "email" ? !!p.email_principal && !p.optout_email : !!(p.whatsapp || p.telefone) && !p.optout_whatsapp;
+    const result = Array.from(byTag.entries()).map(([tag, ids]) => {
+      const raw = tag.replace(/^lista:/, "");
+      // parse trailing -YYYYMMDD-HHmm if present
+      const m = raw.match(/^(.*)-(\d{8})-(\d{4})$/);
+      let label = raw;
+      if (m) {
+        const name = m[1].replace(/-/g, " ");
+        const d = m[2], h = m[3];
+        label = `${name} · ${d.slice(6, 8)}/${d.slice(4, 6)}/${d.slice(0, 4)} ${h.slice(0, 2)}:${h.slice(2, 4)}`;
+      } else {
+        label = raw.replace(/-/g, " ");
+      }
+      const elig = ids.filter(id => {
+        const p = prospects.find(pr => pr.id === id);
+        return p && eligible(p);
+      });
+      return { tag, label, prospectIds: ids, eligibleCount: elig.length };
+    });
+    return result.sort((a, b) => b.tag.localeCompare(a.tag));
+  }, [prospects, canal]);
+
+
   // Apply filters + search
   const filteredProspects = useMemo(() => {
     if (!prospects) return [];
@@ -328,6 +364,7 @@ export function RecipientSelector({
               <Tabs value={activeTab} onValueChange={setActiveTab} className="h-auto">
                 <TabsList className="h-7 p-0.5">
                   <TabsTrigger value="individual" className="h-6 text-xs px-2 gap-1"><UserCheck className="h-3 w-3" />Individual</TabsTrigger>
+                  <TabsTrigger value="listas" className="h-6 text-xs px-2 gap-1"><Users className="h-3 w-3" />Listas{importedLists.length > 0 ? ` (${importedLists.length})` : ""}</TabsTrigger>
                   <TabsTrigger value="grupos" className="h-6 text-xs px-2 gap-1"><Users className="h-3 w-3" />Grupos</TabsTrigger>
                 </TabsList>
               </Tabs>
@@ -766,6 +803,56 @@ export function RecipientSelector({
                 </div>
               )}
             </div>
+          </div>
+        ) : activeTab === "listas" ? (
+          /* Listas importadas tab */
+          <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex justify-between items-center mb-3">
+              <p className="text-sm text-muted-foreground">
+                Listas criadas a partir de importações de CSV. Selecione para enviar a campanha para a lista inteira.
+              </p>
+            </div>
+            {importedLists.length > 0 ? (
+              <ScrollArea className="flex-1">
+                <div className="space-y-2 pr-2">
+                  {importedLists.map(lista => {
+                    const allSelected = lista.prospectIds.every(id => selectedProspectIds.includes(id));
+                    const someSelected = !allSelected && lista.prospectIds.some(id => selectedProspectIds.includes(id));
+                    return (
+                      <Card key={lista.tag} className={`transition-all ${allSelected ? "border-primary ring-1 ring-primary" : ""}`}>
+                        <CardContent className="p-3 flex items-center gap-3">
+                          <Checkbox
+                            checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                const merged = Array.from(new Set([...selectedProspectIds, ...lista.prospectIds]));
+                                onSelectedProspectIdsChange(merged);
+                              } else {
+                                const remaining = selectedProspectIds.filter(id => !lista.prospectIds.includes(id));
+                                onSelectedProspectIdsChange(remaining);
+                              }
+                            }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{lista.label}</p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {lista.eligibleCount} elegíveis para {canal === "email" ? "e-mail" : "WhatsApp"} · {lista.prospectIds.length} prospects no total
+                            </p>
+                          </div>
+                          <Badge variant="secondary" className="text-xs">{lista.eligibleCount}</Badge>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                <Users className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Nenhuma lista importada ainda.</p>
+                <p className="text-xs mt-1">Importe um CSV na página de Prospects para criar uma lista.</p>
+              </div>
+            )}
           </div>
         ) : (
           /* Grupos tab */

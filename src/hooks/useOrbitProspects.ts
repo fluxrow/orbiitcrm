@@ -278,6 +278,18 @@ export function useImportProspectsCSV() {
     }) => {
       if (!rows.length) throw new Error("Nenhum prospect para importar");
 
+      // Generate a unique list tag based on the file name + timestamp
+      const slugify = (s: string) =>
+        stripDiacritics(s)
+          .replace(/\.[^.]+$/, "")
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 60) || "import";
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+      const listaTag = `lista:${slugify(fileName)}-${stamp}`;
+
       const normEmail = (v?: string | null) => (v || "").toLowerCase().trim() || null;
       const normPhone = (v?: string | null) => {
         const digits = (v || "").replace(/\D/g, "");
@@ -364,7 +376,10 @@ export function useImportProspectsCSV() {
         origem_lead: r.origem_lead || null,
         observacoes: r.observacoes || null,
         nome_contato: r.nome_contato || null,
-        tags: r.tags ? r.tags.split(/[;,|]/).map(t => t.trim()).filter(Boolean) : [],
+        tags: (() => {
+          const base = r.tags ? r.tags.split(/[;,|]/).map(t => t.trim()).filter(Boolean) : [];
+          return Array.from(new Set([...base, listaTag]));
+        })(),
         status_qualificacao: "novo",
       }));
 
@@ -392,11 +407,11 @@ export function useImportProspectsCSV() {
             patch[f] = incoming;
           }
         }
-        // merge tags
-        if (row.tags) {
-          const incomingTags = row.tags.split(/[;,|]/).map(t => t.trim()).filter(Boolean);
+        // merge tags (always add the lista tag, plus any incoming tags from CSV)
+        {
+          const incomingTags = row.tags ? row.tags.split(/[;,|]/).map(t => t.trim()).filter(Boolean) : [];
           const existingTags: string[] = Array.isArray(existing.tags) ? existing.tags : [];
-          const merged = Array.from(new Set([...existingTags, ...incomingTags]));
+          const merged = Array.from(new Set([...existingTags, ...incomingTags, listaTag]));
           if (merged.length > existingTags.length) patch.tags = merged;
         }
         if (Object.keys(patch).length === 0) { mergedUntouched++; continue; }
@@ -423,7 +438,7 @@ export function useImportProspectsCSV() {
         // non-blocking
       }
 
-      return { inserted, updated, skipped, mergedUntouched, errors };
+      return { inserted, updated, skipped, mergedUntouched, errors, listaTag };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orbit_prospects"] });
