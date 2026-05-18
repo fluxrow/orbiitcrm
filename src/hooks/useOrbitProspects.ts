@@ -446,3 +446,102 @@ export function useImportProspectsCSV() {
     },
   });
 }
+
+// ===== Backfill: vincular import antigo como "lista" =====
+
+export function useImportHistory(empresaId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["orbit_import_history", empresaId],
+    enabled: !!empresaId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("orbit_import_history")
+        .select("id, arquivo_nome, total_registros, sucesso, erros, created_at")
+        .eq("empresa_id", empresaId!)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+}
+
+const slugifyName = (s: string) =>
+  stripDiacritics(s)
+    .replace(/\.[^.]+$/, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || "import";
+
+export function buildListaTagFromImport(arquivoNome: string, createdAt: string): string {
+  const d = new Date(createdAt);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+  return `lista:${slugifyName(arquivoNome)}-${stamp}`;
+}
+
+export function useBackfillImportAsList() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      importId, empresaId, windowMinutes = 10,
+    }: { importId: string; empresaId: string; windowMinutes?: number }) => {
+      // 1) Fetch the import row
+      const { data: imp, error: impErr } = await supabase
+        .from("orbit_import_history")
+        .select("id, arquivo_nome, created_at")
+        .eq("id", importId)
+        .eq("empresa_id", empresaId)
+        .single();
+      if (impErr || !imp) throw new Error(impErr?.message || "Importação não encontrada");
+
+      const listaTag = buildListaTagFromImport(imp.arquivo_nome, imp.created_at);
+      const center = new Date(imp.created_at).getTime();
+      const startIso = new Date(center - windowMinutes * 60_000).toISOString();
+      const endIso = new Date(center + windowMinutes * 60_000).toISOString();
+
+      // 2) Fetch matching prospects (paginated select all)
+      const PAGE = 1000;
+      let from = 0;
+      const candidates: { id: string; tags: any }[] = [];
+      while (true) {
+        const { data, error } = await supabase
+          .from("orbit_prospects")
+          .select("id, tags")
+          .eq("empresa_id", empresaId)
+          .eq("origem_contato", "IMPORTACAO")
+          .gte("created_at", startIso)
+          .lte("created_at", endIso)
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        candidates.push(...data);
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+
+      // 3) Apply the tag idempotently
+      let tagged = 0;
+      let alreadyTagged = 0;
+      const errors: string[] = [];
+      for (const p of candidates) {
+        const existing: string[] = Array.isArray(p.tags) ? p.tags : [];
+        if (existing.includes(listaTag)) { alreadyTagged++; continue; }
+        const next = Array.from(new Set([...existing, listaTag]));
+        const { error } = await supabase
+          .from("orbit_prospects")
+          .update({ tags: next })
+          .eq("id", p.id)
+          .eq("empresa_id", empresaId);
+        if (error) errors.push(error.message);
+        else tagged++;
+      }
+
+      return { listaTag, candidates: candidates.length, tagged, alreadyTagged, errors };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orbit_prospects"] });
+      queryClient.invalidateQueries({ queryKey: ["orbit_prospects_count"] });
+    },
+  });
+}
