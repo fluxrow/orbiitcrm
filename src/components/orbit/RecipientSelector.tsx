@@ -151,6 +151,42 @@ export function RecipientSelector({
     };
   }, [prospects]);
 
+  // Imported CSV lists derived from prospects' `lista:*` tags
+  const importedLists = useMemo(() => {
+    if (!prospects) return [] as { tag: string; label: string; prospectIds: string[]; eligibleCount: number }[];
+    const byTag = new Map<string, string[]>();
+    for (const p of prospects) {
+      const tags = (p.tags as string[]) || [];
+      for (const t of tags) {
+        if (!t || !t.startsWith("lista:")) continue;
+        if (!byTag.has(t)) byTag.set(t, []);
+        byTag.get(t)!.push(p.id);
+      }
+    }
+    const eligible = (p: any) =>
+      canal === "email" ? !!p.email_principal && !p.optout_email : !!(p.whatsapp || p.telefone) && !p.optout_whatsapp;
+    const result = Array.from(byTag.entries()).map(([tag, ids]) => {
+      const raw = tag.replace(/^lista:/, "");
+      // parse trailing -YYYYMMDD-HHmm if present
+      const m = raw.match(/^(.*)-(\d{8})-(\d{4})$/);
+      let label = raw;
+      if (m) {
+        const name = m[1].replace(/-/g, " ");
+        const d = m[2], h = m[3];
+        label = `${name} · ${d.slice(6, 8)}/${d.slice(4, 6)}/${d.slice(0, 4)} ${h.slice(0, 2)}:${h.slice(2, 4)}`;
+      } else {
+        label = raw.replace(/-/g, " ");
+      }
+      const elig = ids.filter(id => {
+        const p = prospects.find(pr => pr.id === id);
+        return p && eligible(p);
+      });
+      return { tag, label, prospectIds: ids, eligibleCount: elig.length };
+    });
+    return result.sort((a, b) => b.tag.localeCompare(a.tag));
+  }, [prospects, canal]);
+
+
   // Apply filters + search
   const filteredProspects = useMemo(() => {
     if (!prospects) return [];
