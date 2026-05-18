@@ -2,10 +2,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle, MessageSquare, Mail, Loader2, Users, AlertTriangle, Info } from "lucide-react";
+import { CheckCircle, MessageSquare, Mail, Loader2, Users, AlertTriangle, Info, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { usePeAuth } from "@/hooks/usePeAuth";
+import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 interface RecipientCounts {
   total: number;
@@ -32,11 +36,38 @@ export function CampaignReviewDialog({
   const { user } = useAuth();
   const { peUser } = usePeAuth();
 
+  const queryClient = useQueryClient();
+  const [reloading, setReloading] = useState(false);
+
   if (!campaign) return null;
 
   const template = campaign.template as any;
   const totalRecipients = recipientCounts?.total || campaign.total_destinatarios || 0;
   const pendingRecipients = recipientCounts?.pendente || 0;
+
+  const handleReloadRecipients = async () => {
+    try {
+      setReloading(true);
+      const { data, error } = await supabase.rpc(
+        "pe_populate_campaign_recipients" as any,
+        { p_campaign_id: campaign.id },
+      );
+      if (error) throw error;
+      const inserted = (data as any)?.inserted ?? 0;
+      const total = (data as any)?.total ?? 0;
+      await queryClient.invalidateQueries({ queryKey: ["campaign_recipient_counts"] });
+      await queryClient.invalidateQueries({ queryKey: ["orbit_campaigns"] });
+      if (total === 0) {
+        toast.warning("Nenhum destinatário elegível encontrado para os filtros desta campanha.");
+      } else {
+        toast.success(`${inserted} novo(s) destinatário(s) carregado(s). Total: ${total}.`);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao recarregar destinatários");
+    } finally {
+      setReloading(false);
+    }
+  };
   const invalidRecipients = totalRecipients - pendingRecipients;
 
   const isEmail = campaign.canal === "email";
@@ -170,6 +201,21 @@ export function CampaignReviewDialog({
                 Nenhum destinatário pendente para envio.
               </div>
             )}
+            <div className="mt-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReloadRecipients}
+                disabled={reloading}
+              >
+                {reloading ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                Recarregar destinatários
+              </Button>
+            </div>
           </div>
         </div>
 

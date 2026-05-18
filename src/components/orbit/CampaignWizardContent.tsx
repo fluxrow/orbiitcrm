@@ -305,12 +305,20 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
         whatsapp_cta_posicao: data.whatsapp_cta_override ? data.whatsapp_cta_posicao || null : null,
       } as any);
       if (campaign) {
-        const recipients = recipientProspects.map(p => ({
-          campaign_id: campaign.id, empresa_id: profile.empresa_id,
-          prospect_id: p.id, email: p.email_principal,
-          telefone: p.whatsapp || p.telefone, status: "pendente",
-        }));
-        if (recipients.length > 0) await supabase.from("orbit_campaign_recipients").insert(recipients);
+        const { data: popResult, error: popError } = await supabase.rpc(
+          "pe_populate_campaign_recipients" as any,
+          { p_campaign_id: campaign.id },
+        );
+        if (popError) throw popError;
+        const inserted = (popResult as any)?.inserted ?? 0;
+        const total = (popResult as any)?.total ?? 0;
+        if (total === 0) {
+          toast.warning("Campanha criada, mas nenhum destinatário elegível foi encontrado.");
+        } else {
+          toast.success(`Campanha criada com ${inserted} destinatário(s)!`);
+        }
+        onComplete();
+        return;
       }
       toast.success("Campanha criada com sucesso!");
       onComplete();

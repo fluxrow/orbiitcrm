@@ -3590,6 +3590,10 @@ export type Database = {
       pe_get_user_org_id: { Args: { p_user_id: string }; Returns: string }
       pe_get_user_role_code: { Args: { p_user_id: string }; Returns: string }
       pe_is_super_admin: { Args: { p_user_id: string }; Returns: boolean }
+      pe_populate_campaign_recipients: {
+        Args: { p_campaign_id: string }
+        Returns: Json
+      }
       pe_promote_prospect: {
         Args: {
           p_create_opportunity?: boolean
