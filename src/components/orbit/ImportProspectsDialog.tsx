@@ -39,7 +39,7 @@ export function ImportProspectsDialog({ open, onOpenChange, empresaId }: Props) 
         rows, empresaId, mergeMode, fileName: file?.name || "prospects.csv",
       });
       toast.success(
-        `${res.inserted} novos · ${res.updated} atualizados · ${res.skipped} ignorados · ${res.mergedUntouched} sem alterações`
+        `Lista criada: ${res.listaTag.replace(/^lista:/, "")} · ${res.inserted} novos · ${res.updated} atualizados · ${res.skipped} ignorados`
       );
       if (res.errors.length) toast.warning(`${res.errors.length} erro(s) durante a importação.`);
       reset();
