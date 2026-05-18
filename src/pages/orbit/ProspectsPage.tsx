@@ -16,6 +16,7 @@ import {
   GitBranch, Send, Trash2, Tag, Upload,
 } from "lucide-react";
 import { ImportProspectsDialog } from "@/components/orbit/ImportProspectsDialog";
+import { ImportHistoryPanel } from "@/components/orbit/ImportHistoryPanel";
 import { Badge } from "@/components/ui/badge";
 import { useOrbitProspects, useDeleteProspect } from "@/hooks/useOrbitProspects";
 import { useOrbitPeLinks } from "@/hooks/usePromoteProspect";
@@ -181,6 +182,8 @@ export default function ProspectsPage() {
           onOpenChange={setImportOpen}
           empresaId={myProfile?.empresa_id}
         />
+
+        <ImportHistoryPanel empresaId={myProfile?.empresa_id} />
 
         {/* Search & Filters */}
         <div className="space-y-3 mb-6">
