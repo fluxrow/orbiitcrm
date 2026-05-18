@@ -36,11 +36,38 @@ export function CampaignReviewDialog({
   const { user } = useAuth();
   const { peUser } = usePeAuth();
 
+  const queryClient = useQueryClient();
+  const [reloading, setReloading] = useState(false);
+
   if (!campaign) return null;
 
   const template = campaign.template as any;
   const totalRecipients = recipientCounts?.total || campaign.total_destinatarios || 0;
   const pendingRecipients = recipientCounts?.pendente || 0;
+
+  const handleReloadRecipients = async () => {
+    try {
+      setReloading(true);
+      const { data, error } = await supabase.rpc(
+        "pe_populate_campaign_recipients" as any,
+        { p_campaign_id: campaign.id },
+      );
+      if (error) throw error;
+      const inserted = (data as any)?.inserted ?? 0;
+      const total = (data as any)?.total ?? 0;
+      await queryClient.invalidateQueries({ queryKey: ["campaign_recipient_counts"] });
+      await queryClient.invalidateQueries({ queryKey: ["orbit_campaigns"] });
+      if (total === 0) {
+        toast.warning("Nenhum destinatário elegível encontrado para os filtros desta campanha.");
+      } else {
+        toast.success(`${inserted} novo(s) destinatário(s) carregado(s). Total: ${total}.`);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao recarregar destinatários");
+    } finally {
+      setReloading(false);
+    }
+  };
   const invalidRecipients = totalRecipients - pendingRecipients;
 
   const isEmail = campaign.canal === "email";
