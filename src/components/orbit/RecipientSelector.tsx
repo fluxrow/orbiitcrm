@@ -364,6 +364,7 @@ export function RecipientSelector({
               <Tabs value={activeTab} onValueChange={setActiveTab} className="h-auto">
                 <TabsList className="h-7 p-0.5">
                   <TabsTrigger value="individual" className="h-6 text-xs px-2 gap-1"><UserCheck className="h-3 w-3" />Individual</TabsTrigger>
+                  <TabsTrigger value="listas" className="h-6 text-xs px-2 gap-1"><Users className="h-3 w-3" />Listas{importedLists.length > 0 ? ` (${importedLists.length})` : ""}</TabsTrigger>
                   <TabsTrigger value="grupos" className="h-6 text-xs px-2 gap-1"><Users className="h-3 w-3" />Grupos</TabsTrigger>
                 </TabsList>
               </Tabs>
