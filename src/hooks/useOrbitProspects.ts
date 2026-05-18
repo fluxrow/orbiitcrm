@@ -438,7 +438,7 @@ export function useImportProspectsCSV() {
         // non-blocking
       }
 
-      return { inserted, updated, skipped, mergedUntouched, errors };
+      return { inserted, updated, skipped, mergedUntouched, errors, listaTag };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orbit_prospects"] });
