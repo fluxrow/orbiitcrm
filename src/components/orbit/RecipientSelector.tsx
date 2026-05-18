@@ -804,6 +804,56 @@ export function RecipientSelector({
               )}
             </div>
           </div>
+        ) : activeTab === "listas" ? (
+          /* Listas importadas tab */
+          <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex justify-between items-center mb-3">
+              <p className="text-sm text-muted-foreground">
+                Listas criadas a partir de importações de CSV. Selecione para enviar a campanha para a lista inteira.
+              </p>
+            </div>
+            {importedLists.length > 0 ? (
+              <ScrollArea className="flex-1">
+                <div className="space-y-2 pr-2">
+                  {importedLists.map(lista => {
+                    const allSelected = lista.prospectIds.every(id => selectedProspectIds.includes(id));
+                    const someSelected = !allSelected && lista.prospectIds.some(id => selectedProspectIds.includes(id));
+                    return (
+                      <Card key={lista.tag} className={`transition-all ${allSelected ? "border-primary ring-1 ring-primary" : ""}`}>
+                        <CardContent className="p-3 flex items-center gap-3">
+                          <Checkbox
+                            checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                const merged = Array.from(new Set([...selectedProspectIds, ...lista.prospectIds]));
+                                onSelectedProspectIdsChange(merged);
+                              } else {
+                                const remaining = selectedProspectIds.filter(id => !lista.prospectIds.includes(id));
+                                onSelectedProspectIdsChange(remaining);
+                              }
+                            }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{lista.label}</p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {lista.eligibleCount} elegíveis para {canal === "email" ? "e-mail" : "WhatsApp"} · {lista.prospectIds.length} prospects no total
+                            </p>
+                          </div>
+                          <Badge variant="secondary" className="text-xs">{lista.eligibleCount}</Badge>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                <Users className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Nenhuma lista importada ainda.</p>
+                <p className="text-xs mt-1">Importe um CSV na página de Prospects para criar uma lista.</p>
+              </div>
+            )}
+          </div>
         ) : (
           /* Grupos tab */
           <div className="flex-1 min-h-0 flex flex-col">
