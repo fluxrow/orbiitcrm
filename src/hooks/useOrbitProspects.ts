@@ -376,7 +376,10 @@ export function useImportProspectsCSV() {
         origem_lead: r.origem_lead || null,
         observacoes: r.observacoes || null,
         nome_contato: r.nome_contato || null,
-        tags: r.tags ? r.tags.split(/[;,|]/).map(t => t.trim()).filter(Boolean) : [],
+        tags: (() => {
+          const base = r.tags ? r.tags.split(/[;,|]/).map(t => t.trim()).filter(Boolean) : [];
+          return Array.from(new Set([...base, listaTag]));
+        })(),
         status_qualificacao: "novo",
       }));
 
