@@ -1,43 +1,44 @@
-## Diagnóstico
 
-A planilha **foi importada com sucesso**, mas em um lugar diferente do que a campanha enxerga:
+# Listas por importação de CSV no disparo de campanha
 
-- Em **Lead Finder → Fontes → CSV**, o importador grava na tabela `orbit_leads` (universo de prospecção fria do Lead Finder, com enrichment, score, etc).
-- O **Wizard de Campanhas** (`CampaignWizardContent.tsx`, passo 1) só oferece três origens fixas: **"Apenas Prospects"**, **"Apenas Prometheus"** e **"Ambos"** — todas lendo da tabela `orbit_prospects`. Não há opção para selecionar uma lista/fonte de `orbit_leads`.
-- O envio (`send-orbit-campaign`) também trabalha em cima de `orbit_campaign_recipients` ligados a `orbit_prospects` (`select("*, prospect:orbit_prospects(*)")`), então mesmo se trocássemos só a UI, o envio não funcionaria.
+## Objetivo
+Quando o usuário importa um CSV em Prospects, todos os prospects daquele arquivo passam a formar uma “lista” identificável. No wizard de campanha (passo 3 – Destinatários), essas listas aparecem como opção pronta de seleção, permitindo enviar para a base inteira do arquivo em um clique.
 
-Por isso a lista importada **nunca aparece** no seletor da campanha — não é bug de UI, é uma ponte que ainda não existe entre Lead Finder e Campanhas.
+Sem mexer em schema do banco, sem mexer em edge functions, sem mexer no envio. Tudo é resolvido por tag + UI.
 
-## Plano de correção (2 frentes — recomendo a 1)
+## Como funciona
 
-### Opção 1 — Mais rápida e segura: importar o CSV direto em Prospects
+1. **Na importação (`useImportProspectsCSV`)**
+   - Gera um identificador da lista a partir do nome do arquivo: `lista:<slug-do-arquivo>-<YYYYMMDD-HHmm>` (ex.: `lista:promotrip-base-202605-1830`). O timestamp evita colisão se o mesmo arquivo for reimportado.
+   - Adiciona esse identificador como tag em todos os prospects inseridos **e** nos que sofreram merge.
+   - Continua gravando em `orbit_import_history` (já existe) para auditoria.
 
-Adicionar, na tela de **Prospects**, um botão **"Importar CSV"** que insere as linhas em `orbit_prospects` (universo já consumido por campanhas, conversas, funil etc).
+2. **No `RecipientSelector` (passo 3 do wizard)**
+   - Nova aba/seção “Listas importadas” acima de “Listas salvas”.
+   - Lista derivada client-side: agrupa os prospects por tag iniciada em `lista:`; cada item mostra nome amigável (slug original do arquivo), data e quantidade de prospects elegíveis no canal escolhido.
+   - Marcar uma lista adiciona todos os `prospect_ids` daquela tag ao `selected_prospect_ids` já consumido pelo wizard. Reaproveita 100% do fluxo existente de `calculateAllRecipientIds` → `orbit_campaign_recipients`.
+   - Permite combinar lista importada + filtros + outros grupos, como hoje.
 
-1. Criar `useImportProspectsCSV` em `src/hooks/useOrbitProspects.ts`, reaproveitando parser, normalização de telefone e dedupe já consolidados em `useImportLeadsCSV`:
-   - Mapeamento das colunas do arquivo enviado:
-     `nome da empresa → nome_razao/nome_fantasia`, `cnpj → cnpj`,
-     `e-mail → email_principal`, `telefone/whatsapp → telefone/whatsapp` (normalizados),
-     `cidade/estado/segmento/origem/observações/tags → campos equivalentes`.
-   - Dedupe por email + telefone normalizado dentro do arquivo e contra `orbit_prospects` da mesma `empresa_id`.
-   - Modo merge opcional (preencher só campos vazios), igual ao feito recentemente para leads.
-   - Inserção em lotes de 500 com retorno: novos, atualizados, ignorados, sem alterações.
-2. Botão **"Importar CSV"** no header de `src/pages/orbit/ProspectsPage.tsx`, abrindo um diálogo com upload, preview das primeiras linhas e checkbox "Atualizar duplicados".
-3. Cada importação grava 1 linha em `orbit_import_history` (já existe) com nome do arquivo, totais e erros.
+3. **Display do nome da lista**
+   - Função utilitária `parseImportTag(tag)` → `{ id, label, importedAt }` para mostrar “Promotrip Base · 18/05 18:30 · 1.245 contatos”.
 
-Resultado: Tarcísio sobe a planilha **uma vez em Prospects** e a base aparece imediatamente no Wizard de Campanhas como "Apenas Prospects", com os filtros que ele já usa (cidade, segmento, tag, origem).
+## Por que esta abordagem
 
-### Opção 2 — Mais ampla: ligar Lead Finder ao Wizard de Campanhas
+- **Sem risco para o envio**: não toca em `orbit_campaign_recipients`, `send-orbit-campaign`, RLS ou edge functions.
+- **Sem migração**: usa o array `tags` que já existe em `orbit_prospects` e já é filtrável.
+- **Retroativo opcional**: para listas já importadas antes desta mudança, oferecer botão único “Marcar imports antigos” em Prospects que lê `orbit_import_history` e aplica a tag onde possível (fora de escopo desta entrega, anotado como follow-up).
+- **Compatível com Send Groups**: continuam existindo; lista importada é uma camada a mais.
 
-Manter o CSV em `orbit_leads` e ensinar a campanha a consumir leads:
+## Arquivos a alterar
 
-1. **DB**: adicionar coluna `lead_id uuid` em `orbit_campaign_recipients`.
-2. **Wizard**: nova opção "Lista do Lead Finder" + `<Select>` populado por `orbit_lead_sources`/`orbit_lead_searches` da empresa, com contagem e filtro por `enrichment_status`.
-3. **Edge `send-orbit-campaign`**: se o recipient tiver `lead_id` em vez de `prospect_id`, ler de `orbit_leads`; senão, manter o caminho atual.
-4. **Analytics**: garantir compatibilidade em `CampaignAnalyticsSection.tsx`.
+- `src/hooks/useOrbitProspects.ts` — gerar `listaTag` no início da mutation; incluir em `insertPayload.tags` e no merge de `patch.tags`; retornar `listaTag` no resultado.
+- `src/components/orbit/ImportProspectsDialog.tsx` — toast de sucesso com o nome da lista criada.
+- `src/components/orbit/RecipientSelector.tsx` — nova seção “Listas importadas”, derivação por tag `lista:*`, seleção que injeta prospect_ids.
+- `src/components/orbit/CampaignWizardContent.tsx` — nenhuma mudança de lógica (já usa `selected_prospect_ids`); apenas confirmar que o contador de destinatários reflete a seleção.
 
-Mais poderoso, mas mexe em DB, edge function de envio e analytics — risco e tempo maiores.
+## Critérios de aceite
 
-## Recomendação
-
-Ir de **Opção 1** agora (resolve hoje o caso do Tarcísio, sem tocar em DB/edge functions). A Opção 2 fica como evolução quando quiserem unificar Lead Finder + Campanhas oficialmente.
+- Importar CSV em Prospects cria automaticamente uma lista nomeada.
+- No wizard de campanha, passo Destinatários, a lista aparece selecionável com contagem correta para o canal escolhido (email vs WhatsApp, respeitando opt-out).
+- Selecionar a lista e seguir para Revisão mostra o total esperado e a campanha é criada/agendada normalmente.
+- Listas antigas (anteriores à mudança) continuam disponíveis via filtros/Send Groups — não regridem.
