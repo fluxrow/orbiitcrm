@@ -1,44 +1,45 @@
 
-# Listas por importação de CSV no disparo de campanha
+# Vincular a lista "Contatos Paraná 2026" (e futuras antigas) ao seletor de campanha
 
-## Objetivo
-Quando o usuário importa um CSV em Prospects, todos os prospects daquele arquivo passam a formar uma “lista” identificável. No wizard de campanha (passo 3 – Destinatários), essas listas aparecem como opção pronta de seleção, permitindo enviar para a base inteira do arquivo em um clique.
+## Diagnóstico
+A importação **"Contatos Paraná 2026 - prospects_final_validated.csv"** (2.497 prospects criados em 18/05 13:14) aconteceu antes da feature de "Listas importadas" entrar no ar. Por isso ela existe em `orbit_import_history`, mas **nenhum prospect recebeu a tag `lista:*`** — daí a aba "Listas" aparecer vazia.
 
-Sem mexer em schema do banco, sem mexer em edge functions, sem mexer no envio. Tudo é resolvido por tag + UI.
+Confirmado no banco:
+- `orbit_import_history`: 1 registro com esse nome, 2.497 sucesso, em 18/05 13:14.
+- `orbit_prospects` com `tags ~ 'lista:%'` na empresa: **0**.
+- `orbit_prospects` com `origem_contato='IMPORTACAO'` criados ±5 min do import: **2.474** (≈ os 2.497 menos os atualizados/merge cujo `created_at` é antigo).
 
-## Como funciona
+## Solução
 
-1. **Na importação (`useImportProspectsCSV`)**
-   - Gera um identificador da lista a partir do nome do arquivo: `lista:<slug-do-arquivo>-<YYYYMMDD-HHmm>` (ex.: `lista:promotrip-base-202605-1830`). O timestamp evita colisão se o mesmo arquivo for reimportado.
-   - Adiciona esse identificador como tag em todos os prospects inseridos **e** nos que sofreram merge.
-   - Continua gravando em `orbit_import_history` (já existe) para auditoria.
+### 1. Botão de "Vincular como lista" no histórico de importações
+Na página de Prospects, adicionar (ou expor, se já existir) um card "Importações recentes" lendo `orbit_import_history`. Em cada linha sem tag vinculada, mostrar botão **"Marcar como lista para campanhas"** que executa o backfill.
 
-2. **No `RecipientSelector` (passo 3 do wizard)**
-   - Nova aba/seção “Listas importadas” acima de “Listas salvas”.
-   - Lista derivada client-side: agrupa os prospects por tag iniciada em `lista:`; cada item mostra nome amigável (slug original do arquivo), data e quantidade de prospects elegíveis no canal escolhido.
-   - Marcar uma lista adiciona todos os `prospect_ids` daquela tag ao `selected_prospect_ids` já consumido pelo wizard. Reaproveita 100% do fluxo existente de `calculateAllRecipientIds` → `orbit_campaign_recipients`.
-   - Permite combinar lista importada + filtros + outros grupos, como hoje.
+### 2. Backfill server-side (RPC ou query client-side)
+Para o registro de `orbit_import_history` escolhido:
+- Gera o `listaTag` com a mesma convenção do código novo (`lista:<slug-do-arquivo>-<YYYYMMDD-HHmm>` usando o `created_at` do registro).
+- Seleciona `orbit_prospects` da mesma `empresa_id` com `origem_contato='IMPORTACAO'` e `created_at` entre `import.created_at − 10min` e `import.created_at + 10min`.
+- Para cada um, adiciona a tag em `tags` (idempotente: ignora se já existir).
+- Atualiza um campo opcional `detalhes_erros`/extra do `orbit_import_history` para sinalizar "vinculado" e evitar re-aplicar.
 
-3. **Display do nome da lista**
-   - Função utilitária `parseImportTag(tag)` → `{ id, label, importedAt }` para mostrar “Promotrip Base · 18/05 18:30 · 1.245 contatos”.
+Limites e proteções:
+- Janela ±10min cobre importações grandes; ajustável.
+- Apenas `origem_contato='IMPORTACAO'` evita pegar prospects criados manualmente no mesmo intervalo.
+- Operação respeita RLS (empresa_id).
+- Confirmação no UI antes de aplicar (mostra "vai marcar N prospects como esta lista").
 
-## Por que esta abordagem
+### 3. Resultado para o caso atual
+Ao clicar em "Marcar como lista" na linha "Contatos Paraná 2026", os ~2.474 prospects ganham a tag `lista:contatos-parana-2026-prospects-final-validated-20260518-1314`. Imediatamente a aba **Listas** do wizard de campanha mostra:
+> Contatos parana 2026 prospects final validated · 18/05/2026 13:14 · 2.474 elegíveis
 
-- **Sem risco para o envio**: não toca em `orbit_campaign_recipients`, `send-orbit-campaign`, RLS ou edge functions.
-- **Sem migração**: usa o array `tags` que já existe em `orbit_prospects` e já é filtrável.
-- **Retroativo opcional**: para listas já importadas antes desta mudança, oferecer botão único “Marcar imports antigos” em Prospects que lê `orbit_import_history` e aplica a tag onde possível (fora de escopo desta entrega, anotado como follow-up).
-- **Compatível com Send Groups**: continuam existindo; lista importada é uma camada a mais.
+Selecionando, o disparo vai para a lista inteira.
 
 ## Arquivos a alterar
-
-- `src/hooks/useOrbitProspects.ts` — gerar `listaTag` no início da mutation; incluir em `insertPayload.tags` e no merge de `patch.tags`; retornar `listaTag` no resultado.
-- `src/components/orbit/ImportProspectsDialog.tsx` — toast de sucesso com o nome da lista criada.
-- `src/components/orbit/RecipientSelector.tsx` — nova seção “Listas importadas”, derivação por tag `lista:*`, seleção que injeta prospect_ids.
-- `src/components/orbit/CampaignWizardContent.tsx` — nenhuma mudança de lógica (já usa `selected_prospect_ids`); apenas confirmar que o contador de destinatários reflete a seleção.
+- `src/hooks/useOrbitProspects.ts` — novo hook `useBackfillImportAsList(importId)` que executa o passo 2 acima em lote.
+- `src/pages/orbit/ProspectsPage.tsx` — pequena seção "Importações recentes" (top 5 de `orbit_import_history`) com botão de vincular por linha.
+- Sem mudança em schema, edge function ou no fluxo de envio.
 
 ## Critérios de aceite
-
-- Importar CSV em Prospects cria automaticamente uma lista nomeada.
-- No wizard de campanha, passo Destinatários, a lista aparece selecionável com contagem correta para o canal escolhido (email vs WhatsApp, respeitando opt-out).
-- Selecionar a lista e seguir para Revisão mostra o total esperado e a campanha é criada/agendada normalmente.
-- Listas antigas (anteriores à mudança) continuam disponíveis via filtros/Send Groups — não regridem.
+- O usuário vê a importação "Contatos Paraná 2026" listada e consegue vinculá-la com 1 clique.
+- Após o vínculo, a aba "Listas" do wizard exibe a lista com a contagem correta de elegíveis para o canal (email/WhatsApp).
+- Re-clicar em "Marcar como lista" não duplica nada (operação idempotente).
+- Importações futuras continuam sendo marcadas automaticamente, sem precisar deste botão.
