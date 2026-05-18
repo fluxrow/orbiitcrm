@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
+import { orbitCampaignKeys } from "@/lib/query-keys";
+
 
 type Campaign = Tables<"orbit_campaigns">;
 type CampaignInsert = TablesInsert<"orbit_campaigns">;
