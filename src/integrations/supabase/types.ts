@@ -3574,6 +3574,15 @@ export type Database = {
       normalize_name: { Args: { p: string }; Returns: string }
       normalize_phone: { Args: { p: string }; Returns: string }
       normalize_slug: { Args: { p: string }; Returns: string }
+      pe_backfill_import_as_lista: {
+        Args: {
+          p_empresa_id: string
+          p_import_id: string
+          p_lista_tag: string
+          p_window_minutes?: number
+        }
+        Returns: Json
+      }
       pe_delete_tenant_map: {
         Args: { p_empresa_id: string }
         Returns: undefined

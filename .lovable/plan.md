@@ -1,45 +1,45 @@
-
-# Vincular a lista "Contatos Paraná 2026" (e futuras antigas) ao seletor de campanha
-
 ## Diagnóstico
-A importação **"Contatos Paraná 2026 - prospects_final_validated.csv"** (2.497 prospects criados em 18/05 13:14) aconteceu antes da feature de "Listas importadas" entrar no ar. Por isso ela existe em `orbit_import_history`, mas **nenhum prospect recebeu a tag `lista:*`** — daí a aba "Listas" aparecer vazia.
 
-Confirmado no banco:
-- `orbit_import_history`: 1 registro com esse nome, 2.497 sucesso, em 18/05 13:14.
-- `orbit_prospects` com `tags ~ 'lista:%'` na empresa: **0**.
-- `orbit_prospects` com `origem_contato='IMPORTACAO'` criados ±5 min do import: **2.474** (≈ os 2.497 menos os atualizados/merge cujo `created_at` é antigo).
+Sim, está lento — e é "normal" só pela forma como foi implementado, não porque 2.500 contatos seja muito.
 
-## Solução
+O hook `useBackfillImportAsList` (em `src/hooks/useOrbitProspects.ts`) está fazendo, **do navegador**, **um `UPDATE` por prospect** dentro de um `for`:
 
-### 1. Botão de "Vincular como lista" no histórico de importações
-Na página de Prospects, adicionar (ou expor, se já existir) um card "Importações recentes" lendo `orbit_import_history`. Em cada linha sem tag vinculada, mostrar botão **"Marcar como lista para campanhas"** que executa o backfill.
+```ts
+for (const p of candidates) {
+  await supabase.from("orbit_prospects").update({ tags: next }).eq("id", p.id)...
+}
+```
 
-### 2. Backfill server-side (RPC ou query client-side)
-Para o registro de `orbit_import_history` escolhido:
-- Gera o `listaTag` com a mesma convenção do código novo (`lista:<slug-do-arquivo>-<YYYYMMDD-HHmm>` usando o `created_at` do registro).
-- Seleciona `orbit_prospects` da mesma `empresa_id` com `origem_contato='IMPORTACAO'` e `created_at` entre `import.created_at − 10min` e `import.created_at + 10min`.
-- Para cada um, adiciona a tag em `tags` (idempotente: ignora se já existir).
-- Atualiza um campo opcional `detalhes_erros`/extra do `orbit_import_history` para sinalizar "vinculado" e evitar re-aplicar.
+Para ~2.474 prospects = ~2.474 requisições HTTP sequenciais ao PostgREST. Mesmo com 150 ms cada, dá **~6 minutos**. Em rede mais lenta passa fácil de 10 min. Ou seja: o gargalo não é o banco, é o round-trip do navegador.
 
-Limites e proteções:
-- Janela ±10min cobre importações grandes; ajustável.
-- Apenas `origem_contato='IMPORTACAO'` evita pegar prospects criados manualmente no mesmo intervalo.
-- Operação respeita RLS (empresa_id).
-- Confirmação no UI antes de aplicar (mostra "vai marcar N prospects como esta lista").
+## Plano: mover o backfill para uma função no banco (1 chamada só)
 
-### 3. Resultado para o caso atual
-Ao clicar em "Marcar como lista" na linha "Contatos Paraná 2026", os ~2.474 prospects ganham a tag `lista:contatos-parana-2026-prospects-final-validated-20260518-1314`. Imediatamente a aba **Listas** do wizard de campanha mostra:
-> Contatos parana 2026 prospects final validated · 18/05/2026 13:14 · 2.474 elegíveis
+### 1. Criar RPC `pe_backfill_import_as_lista(p_import_id, p_empresa_id, p_window_minutes)`
+- Carrega o `orbit_import_history` (valida `empresa_id`).
+- Gera o `listaTag` com a mesma convenção do front (`lista:<slug>-<YYYYMMDD-HHmm>` no fuso local salvo no `created_at`).
+- Faz **um único `UPDATE`** em `orbit_prospects`:
+  - Filtra por `empresa_id`, `origem_contato = 'IMPORTACAO'`, `created_at BETWEEN center ± window`.
+  - `SET tags = (SELECT array_agg(DISTINCT x) FROM unnest(COALESCE(tags,'{}') || ARRAY[listaTag]) x)` para manter idempotência.
+  - `WHERE NOT (listaTag = ANY(COALESCE(tags,'{}')))` para contar só os novos.
+- Retorna `jsonb { lista_tag, candidates, tagged, already_tagged }`.
+- `SECURITY DEFINER`, `search_path = public`, com checagem de acesso à empresa (mesma regra usada nas outras RPCs da empresa).
 
-Selecionando, o disparo vai para a lista inteira.
+### 2. Atualizar `useBackfillImportAsList`
+- Trocar todo o laço por uma única chamada `supabase.rpc("pe_backfill_import_as_lista", { p_import_id, p_empresa_id, p_window_minutes: 10 })`.
+- Manter o mesmo retorno (`{ listaTag, candidates, tagged, alreadyTagged, errors: [] }`) para não mexer no `ImportHistoryPanel`.
 
-## Arquivos a alterar
-- `src/hooks/useOrbitProspects.ts` — novo hook `useBackfillImportAsList(importId)` que executa o passo 2 acima em lote.
-- `src/pages/orbit/ProspectsPage.tsx` — pequena seção "Importações recentes" (top 5 de `orbit_import_history`) com botão de vincular por linha.
-- Sem mudança em schema, edge function ou no fluxo de envio.
+### 3. UX no `ImportHistoryPanel`
+- Trocar o spinner pelo texto **"Vinculando ~N prospects…"** enquanto roda (ainda que agora rode em segundos).
+- Manter o `busyId` e os toasts existentes.
 
-## Critérios de aceite
-- O usuário vê a importação "Contatos Paraná 2026" listada e consegue vinculá-la com 1 clique.
-- Após o vínculo, a aba "Listas" do wizard exibe a lista com a contagem correta de elegíveis para o canal (email/WhatsApp).
-- Re-clicar em "Marcar como lista" não duplica nada (operação idempotente).
-- Importações futuras continuam sendo marcadas automaticamente, sem precisar deste botão.
+## Resultado esperado
+- 2.500 contatos: de ~5–10 min para **< 2 s**.
+- Mesma idempotência (re-clicar não duplica).
+- Sem mudanças no fluxo de envio nem no wizard de campanha.
+
+## Arquivos afetados
+- Nova migração SQL: função `pe_backfill_import_as_lista`.
+- `src/hooks/useOrbitProspects.ts`: substituir o corpo de `useBackfillImportAsList` por `rpc`.
+- `src/components/orbit/ImportHistoryPanel.tsx`: pequeno ajuste de texto no botão (opcional).
+
+Posso aplicar?
