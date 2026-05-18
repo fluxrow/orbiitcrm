@@ -16,6 +16,7 @@ import {
   GitBranch, Send, Trash2, Tag, Upload,
 } from "lucide-react";
 import { ImportProspectsDialog } from "@/components/orbit/ImportProspectsDialog";
+import { ImportHistoryPanel } from "@/components/orbit/ImportHistoryPanel";
 import { Badge } from "@/components/ui/badge";
 import { useOrbitProspects, useDeleteProspect } from "@/hooks/useOrbitProspects";
 import { useOrbitPeLinks } from "@/hooks/usePromoteProspect";
