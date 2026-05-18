@@ -486,7 +486,7 @@ export function useBackfillImportAsList() {
     mutationFn: async ({
       importId, empresaId, windowMinutes = 10,
     }: { importId: string; empresaId: string; windowMinutes?: number }) => {
-      // 1) Fetch the import row
+      // Fetch the import row to compute the tag with the same convention used at import time
       const { data: imp, error: impErr } = await supabase
         .from("orbit_import_history")
         .select("id, arquivo_nome, created_at")
@@ -496,48 +496,25 @@ export function useBackfillImportAsList() {
       if (impErr || !imp) throw new Error(impErr?.message || "Importação não encontrada");
 
       const listaTag = buildListaTagFromImport(imp.arquivo_nome, imp.created_at);
-      const center = new Date(imp.created_at).getTime();
-      const startIso = new Date(center - windowMinutes * 60_000).toISOString();
-      const endIso = new Date(center + windowMinutes * 60_000).toISOString();
 
-      // 2) Fetch matching prospects (paginated select all)
-      const PAGE = 1000;
-      let from = 0;
-      const candidates: { id: string; tags: any }[] = [];
-      while (true) {
-        const { data, error } = await supabase
-          .from("orbit_prospects")
-          .select("id, tags")
-          .eq("empresa_id", empresaId)
-          .eq("origem_contato", "IMPORTACAO")
-          .gte("created_at", startIso)
-          .lte("created_at", endIso)
-          .range(from, from + PAGE - 1);
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        candidates.push(...data);
-        if (data.length < PAGE) break;
-        from += PAGE;
-      }
+      // Single server-side bulk update
+      const { data, error } = await supabase.rpc("pe_backfill_import_as_lista", {
+        p_import_id: importId,
+        p_empresa_id: empresaId,
+        p_lista_tag: listaTag,
+        p_window_minutes: windowMinutes,
+      });
+      if (error) throw error;
 
-      // 3) Apply the tag idempotently
-      let tagged = 0;
-      let alreadyTagged = 0;
-      const errors: string[] = [];
-      for (const p of candidates) {
-        const existing: string[] = Array.isArray(p.tags) ? p.tags : [];
-        if (existing.includes(listaTag)) { alreadyTagged++; continue; }
-        const next = Array.from(new Set([...existing, listaTag]));
-        const { error } = await supabase
-          .from("orbit_prospects")
-          .update({ tags: next })
-          .eq("id", p.id)
-          .eq("empresa_id", empresaId);
-        if (error) errors.push(error.message);
-        else tagged++;
-      }
+      const res = (data ?? {}) as { lista_tag?: string; candidates?: number; tagged?: number; already_tagged?: number };
 
-      return { listaTag, candidates: candidates.length, tagged, alreadyTagged, errors };
+      return {
+        listaTag: res.lista_tag ?? listaTag,
+        candidates: res.candidates ?? 0,
+        tagged: res.tagged ?? 0,
+        alreadyTagged: res.already_tagged ?? 0,
+        errors: [] as string[],
+      };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orbit_prospects"] });
