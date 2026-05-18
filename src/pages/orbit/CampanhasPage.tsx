@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
 import { CampaignReviewDialog } from "@/components/orbit/CampaignReviewDialog";
@@ -67,6 +67,8 @@ export default function CampanhasPage() {
 
   const reviewCampaign = campaigns?.find(c => c.id === reviewCampaignId) || null;
 
+  const queryClient = useQueryClient();
+
   const handleReview = (campaignId: string) => {
     setReviewCampaignId(campaignId);
     // Update status to em_revisao if still rascunho
@@ -74,6 +76,8 @@ export default function CampanhasPage() {
     if (campaign?.status === "rascunho") {
       updateCampaign.mutate({ id: campaignId, status: "em_revisao" });
     }
+    // Force fresh recipient counts when opening the dialog
+    queryClient.invalidateQueries({ queryKey: ["campaign_recipient_counts"] });
   };
 
   const handleApproveForSend = async (campaignId: string) => {

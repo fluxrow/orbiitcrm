@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -87,6 +87,7 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
+  const queryClient = useQueryClient();
   const { data: templates } = useOrbitTemplates();
   const { data: prospects } = useOrbitProspects();
   const createCampaign = useCreateCampaign();
@@ -312,6 +313,10 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
         if (popError) throw popError;
         const inserted = (popResult as any)?.inserted ?? 0;
         const total = (popResult as any)?.total ?? 0;
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["campaign_recipient_counts"] }),
+          queryClient.invalidateQueries({ queryKey: ["orbit_campaigns"] }),
+        ]);
         if (total === 0) {
           toast.warning("Campanha criada, mas nenhum destinatário elegível foi encontrado.");
         } else {
