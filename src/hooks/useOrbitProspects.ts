@@ -278,6 +278,18 @@ export function useImportProspectsCSV() {
     }) => {
       if (!rows.length) throw new Error("Nenhum prospect para importar");
 
+      // Generate a unique list tag based on the file name + timestamp
+      const slugify = (s: string) =>
+        stripDiacritics(s)
+          .replace(/\.[^.]+$/, "")
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 60) || "import";
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+      const listaTag = `lista:${slugify(fileName)}-${stamp}`;
+
       const normEmail = (v?: string | null) => (v || "").toLowerCase().trim() || null;
       const normPhone = (v?: string | null) => {
         const digits = (v || "").replace(/\D/g, "");
