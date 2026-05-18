@@ -2,10 +2,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle, MessageSquare, Mail, Loader2, Users, AlertTriangle, Info } from "lucide-react";
+import { CheckCircle, MessageSquare, Mail, Loader2, Users, AlertTriangle, Info, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { usePeAuth } from "@/hooks/usePeAuth";
+import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 interface RecipientCounts {
   total: number;
