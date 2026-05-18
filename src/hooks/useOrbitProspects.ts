@@ -167,3 +167,267 @@ export function useDeleteProspect() {
     },
   });
 }
+
+// ===== CSV Import =====
+
+const stripDiacritics = (s: string) =>
+  s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+
+const PROSPECT_COLUMN_MAP: Record<string, string> = {
+  "nome da empresa": "nome_razao",
+  "razao social": "nome_razao",
+  "nome": "nome_razao",
+  "empresa": "nome_razao",
+  "nome fantasia": "nome_fantasia",
+  "cnpj": "cnpj_cpf",
+  "cpf": "cnpj_cpf",
+  "cnpj/cpf": "cnpj_cpf",
+  "email": "email_principal",
+  "e-mail": "email_principal",
+  "email principal": "email_principal",
+  "telefone": "telefone",
+  "fone": "telefone",
+  "whatsapp": "whatsapp",
+  "wpp": "whatsapp",
+  "cidade": "cidade",
+  "estado": "estado",
+  "uf": "estado",
+  "segmento": "segmento",
+  "origem": "origem_lead",
+  "origem do lead": "origem_lead",
+  "observacoes": "observacoes",
+  "observacao": "observacoes",
+  "obs": "observacoes",
+  "tags": "tags",
+  "nome do contato": "nome_contato",
+  "contato": "nome_contato",
+};
+
+export type ParsedProspectRow = {
+  nome_razao?: string;
+  nome_fantasia?: string;
+  cnpj_cpf?: string;
+  email_principal?: string;
+  telefone?: string;
+  whatsapp?: string;
+  cidade?: string;
+  estado?: string;
+  segmento?: string;
+  origem_lead?: string;
+  observacoes?: string;
+  tags?: string;
+  nome_contato?: string;
+};
+
+function parseCsvLine(line: string, sep: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let q = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (q) {
+      if (c === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (c === '"') q = false;
+      else cur += c;
+    } else {
+      if (c === '"') q = true;
+      else if (c === sep) { out.push(cur); cur = ""; }
+      else cur += c;
+    }
+  }
+  out.push(cur);
+  return out.map(s => s.trim());
+}
+
+export function parseProspectsCSV(text: string): { rows: ParsedProspectRow[]; errors: { row: number; message: string }[] } {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  const errors: { row: number; message: string }[] = [];
+  if (lines.length < 2) return { rows: [], errors: [{ row: 0, message: "Arquivo vazio ou sem dados" }] };
+
+  const firstLine = lines[0];
+  const sep = (firstLine.match(/;/g)?.length ?? 0) > (firstLine.match(/,/g)?.length ?? 0) ? ";" : ",";
+  const headers = parseCsvLine(firstLine, sep).map(stripDiacritics);
+  const mapped = headers.map(h => PROSPECT_COLUMN_MAP[h] ?? null);
+
+  const rows: ParsedProspectRow[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = parseCsvLine(lines[i], sep);
+    const row: any = {};
+    mapped.forEach((key, idx) => {
+      if (key && cells[idx]) row[key] = cells[idx];
+    });
+    if (!row.nome_razao && !row.email_principal && !row.telefone && !row.whatsapp) {
+      errors.push({ row: i + 1, message: "Linha sem nome, email ou telefone" });
+      continue;
+    }
+    rows.push(row);
+  }
+  return { rows, errors };
+}
+
+export function useImportProspectsCSV() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      rows, empresaId, mergeMode = false, fileName = "import.csv",
+    }: {
+      rows: ParsedProspectRow[];
+      empresaId: string;
+      mergeMode?: boolean;
+      fileName?: string;
+    }) => {
+      if (!rows.length) throw new Error("Nenhum prospect para importar");
+
+      const normEmail = (v?: string | null) => (v || "").toLowerCase().trim() || null;
+      const normPhone = (v?: string | null) => {
+        const digits = (v || "").replace(/\D/g, "");
+        return digits.length >= 8 ? digits : null;
+      };
+      const isEmpty = (v: any) => v === null || v === undefined || (typeof v === "string" && v.trim() === "");
+
+      // 1) Dedupe within file
+      const seenEmail = new Set<string>();
+      const seenPhone = new Set<string>();
+      const fileDedup = rows.filter(r => {
+        const e = normEmail(r.email_principal);
+        const p = normPhone(r.telefone) || normPhone(r.whatsapp);
+        if (e && seenEmail.has(e)) return false;
+        if (p && seenPhone.has(p)) return false;
+        if (e) seenEmail.add(e);
+        if (p) seenPhone.add(p);
+        return true;
+      });
+
+      // 2) Fetch existing
+      const emails = Array.from(seenEmail);
+      const existingByEmail = new Map<string, any>();
+      const existingByPhone = new Map<string, any>();
+      const FIELDS = "id, nome_razao, nome_fantasia, cnpj_cpf, email_principal, telefone, whatsapp, cidade, estado, segmento, origem_lead, observacoes, tags, nome_contato";
+
+      if (emails.length) {
+        const { data } = await supabase
+          .from("orbit_prospects")
+          .select(FIELDS)
+          .eq("empresa_id", empresaId)
+          .in("email_principal", emails);
+        (data || []).forEach((r: any) => {
+          const e = normEmail(r.email_principal);
+          if (e) existingByEmail.set(e, r);
+        });
+      }
+      // Fetch by phone (paged-safe: just pull non-null phone/whatsapp)
+      const { data: phoneRows } = await supabase
+        .from("orbit_prospects")
+        .select(FIELDS)
+        .eq("empresa_id", empresaId)
+        .or("telefone.not.is.null,whatsapp.not.is.null");
+      (phoneRows || []).forEach((r: any) => {
+        const p1 = normPhone(r.telefone);
+        const p2 = normPhone(r.whatsapp);
+        if (p1) existingByPhone.set(p1, r);
+        if (p2 && !existingByPhone.has(p2)) existingByPhone.set(p2, r);
+      });
+
+      // 3) Split
+      const toInsert: ParsedProspectRow[] = [];
+      const toMerge: { existing: any; row: ParsedProspectRow }[] = [];
+      let skipped = rows.length - fileDedup.length;
+
+      for (const r of fileDedup) {
+        const e = normEmail(r.email_principal);
+        const p = normPhone(r.telefone) || normPhone(r.whatsapp);
+        const existing = (e && existingByEmail.get(e)) || (p && existingByPhone.get(p)) || null;
+        if (existing) {
+          if (mergeMode) toMerge.push({ existing, row: r });
+          else skipped++;
+        } else {
+          toInsert.push(r);
+        }
+      }
+
+      // 4) Inserts (batches of 500)
+      const errors: string[] = [];
+      let inserted = 0;
+      const insertPayload = toInsert.map(r => ({
+        empresa_id: empresaId,
+        origem_contato: "IMPORTACAO",
+        tipo: "empresa",
+        nome_razao: r.nome_razao || r.nome_fantasia || "(sem nome)",
+        nome_fantasia: r.nome_fantasia || null,
+        cnpj_cpf: r.cnpj_cpf || null,
+        email_principal: normEmail(r.email_principal),
+        telefone: r.telefone || null,
+        whatsapp: r.whatsapp || null,
+        cidade: r.cidade || null,
+        estado: r.estado || null,
+        segmento: r.segmento || null,
+        origem_lead: r.origem_lead || null,
+        observacoes: r.observacoes || null,
+        nome_contato: r.nome_contato || null,
+        tags: r.tags ? r.tags.split(/[;,|]/).map(t => t.trim()).filter(Boolean) : [],
+        status_qualificacao: "novo",
+      }));
+
+      for (let i = 0; i < insertPayload.length; i += 500) {
+        const batch = insertPayload.slice(i, i + 500);
+        const { error, count } = await supabase
+          .from("orbit_prospects")
+          .insert(batch, { count: "exact" });
+        if (error) errors.push(error.message);
+        else inserted += count ?? batch.length;
+      }
+
+      // 5) Merge
+      let updated = 0;
+      let mergedUntouched = 0;
+      const mergeFields: (keyof ParsedProspectRow)[] = [
+        "nome_razao", "nome_fantasia", "cnpj_cpf", "email_principal", "telefone",
+        "whatsapp", "cidade", "estado", "segmento", "origem_lead", "observacoes", "nome_contato",
+      ];
+      for (const { existing, row } of toMerge) {
+        const patch: Record<string, any> = {};
+        for (const f of mergeFields) {
+          const incoming = f === "email_principal" ? normEmail(row.email_principal) : ((row as any)[f] || null);
+          if (!isEmpty(incoming) && isEmpty(existing[f])) {
+            patch[f] = incoming;
+          }
+        }
+        // merge tags
+        if (row.tags) {
+          const incomingTags = row.tags.split(/[;,|]/).map(t => t.trim()).filter(Boolean);
+          const existingTags: string[] = Array.isArray(existing.tags) ? existing.tags : [];
+          const merged = Array.from(new Set([...existingTags, ...incomingTags]));
+          if (merged.length > existingTags.length) patch.tags = merged;
+        }
+        if (Object.keys(patch).length === 0) { mergedUntouched++; continue; }
+        const { error } = await supabase
+          .from("orbit_prospects")
+          .update(patch)
+          .eq("id", existing.id)
+          .eq("empresa_id", empresaId);
+        if (error) errors.push(`Merge ${existing.id}: ${error.message}`);
+        else updated++;
+      }
+
+      // 6) Audit / history
+      try {
+        await supabase.from("orbit_import_history").insert({
+          empresa_id: empresaId,
+          arquivo_nome: fileName,
+          total_registros: rows.length,
+          sucesso: inserted + updated,
+          erros: errors.length,
+          detalhes_erros: errors.slice(0, 50),
+        });
+      } catch {
+        // non-blocking
+      }
+
+      return { inserted, updated, skipped, mergedUntouched, errors };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orbit_prospects"] });
+      queryClient.invalidateQueries({ queryKey: ["orbit_prospects_count"] });
+    },
+  });
+}

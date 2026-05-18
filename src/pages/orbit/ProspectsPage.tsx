@@ -13,8 +13,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   Search, Plus, Loader2, ChevronLeft, ChevronRight, X,
-  GitBranch, Send, Trash2, Tag,
+  GitBranch, Send, Trash2, Tag, Upload,
 } from "lucide-react";
+import { ImportProspectsDialog } from "@/components/orbit/ImportProspectsDialog";
 import { Badge } from "@/components/ui/badge";
 import { useOrbitProspects, useDeleteProspect } from "@/hooks/useOrbitProspects";
 import { useOrbitPeLinks } from "@/hooks/usePromoteProspect";
@@ -65,6 +66,7 @@ export default function ProspectsPage() {
   const [funnelProspects, setFunnelProspects] = useState<any[]>([]);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [importOpen, setImportOpen] = useState(false);
 
   const { user } = useAuth();
   const { data: myProfile } = useQuery({
@@ -164,10 +166,20 @@ export default function ProspectsPage() {
           title="Prospects"
           description="Lead Action Hub — gerencie e interaja com seus prospects"
           action={
-            <Button size="sm" onClick={() => { setSelectedProspect(null); setDialogOpen(true); }}>
-              <Plus className="h-4 w-4 mr-2" />Novo Prospect
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
+                <Upload className="h-4 w-4 mr-2" />Importar CSV
+              </Button>
+              <Button size="sm" onClick={() => { setSelectedProspect(null); setDialogOpen(true); }}>
+                <Plus className="h-4 w-4 mr-2" />Novo Prospect
+              </Button>
+            </div>
           }
+        />
+        <ImportProspectsDialog
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          empresaId={myProfile?.empresa_id}
         />
 
         {/* Search & Filters */}

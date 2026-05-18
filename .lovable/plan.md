@@ -1,144 +1,43 @@
-## Objetivo
+## Diagnóstico
 
-1. **Segmentação por engajamento de email**: criar campanhas mirando contatos que **abriram**, **clicaram**, **abriram + clicaram** (engajados), ou **não abriram** — agregando dados de **todas as campanhas** (não só uma).
-2. **Botão WhatsApp** configurável no template/campanha de email para o lead clicar e cair direto na conversa com o consultor.
+A planilha **foi importada com sucesso**, mas em um lugar diferente do que a campanha enxerga:
 
----
+- Em **Lead Finder → Fontes → CSV**, o importador grava na tabela `orbit_leads` (universo de prospecção fria do Lead Finder, com enrichment, score, etc).
+- O **Wizard de Campanhas** (`CampaignWizardContent.tsx`, passo 1) só oferece três origens fixas: **"Apenas Prospects"**, **"Apenas Prometheus"** e **"Ambos"** — todas lendo da tabela `orbit_prospects`. Não há opção para selecionar uma lista/fonte de `orbit_leads`.
+- O envio (`send-orbit-campaign`) também trabalha em cima de `orbit_campaign_recipients` ligados a `orbit_prospects` (`select("*, prospect:orbit_prospects(*)")`), então mesmo se trocássemos só a UI, o envio não funcionaria.
 
-## Parte 1 — Filtros de Engajamento
+Por isso a lista importada **nunca aparece** no seletor da campanha — não é bug de UI, é uma ponte que ainda não existe entre Lead Finder e Campanhas.
 
-### O que já existe
+## Plano de correção (2 frentes — recomendo a 1)
 
-- `orbit_campaign_recipients` já tem `opened_at`, `clicked_at`, `bounced_at`, `complained_at`, `engagement_status`.
-- `orbit_email_events` registra cada `opened`/`clicked` com timestamp, IP, user-agent.
-- `RecipientSelector` já tem 3 filtros **por campanha específica**: `excluir_campanha_id`, `apenas_abriu_campanha_id`, `nao_abriu_campanha_id`.
+### Opção 1 — Mais rápida e segura: importar o CSV direto em Prospects
 
-### Limitações atuais
+Adicionar, na tela de **Prospects**, um botão **"Importar CSV"** que insere as linhas em `orbit_prospects` (universo já consumido por campanhas, conversas, funil etc).
 
-- Só filtra por **uma** campanha por vez. Não há "abriu qualquer email nos últimos 30 dias", "clicou em qualquer link", "engajou + interessado".
-- Não usa dados do Resend (bounces/complaints já são salvos via `orbit-resend-webhook`, mas não filtráveis na UI de campanha).
+1. Criar `useImportProspectsCSV` em `src/hooks/useOrbitProspects.ts`, reaproveitando parser, normalização de telefone e dedupe já consolidados em `useImportLeadsCSV`:
+   - Mapeamento das colunas do arquivo enviado:
+     `nome da empresa → nome_razao/nome_fantasia`, `cnpj → cnpj`,
+     `e-mail → email_principal`, `telefone/whatsapp → telefone/whatsapp` (normalizados),
+     `cidade/estado/segmento/origem/observações/tags → campos equivalentes`.
+   - Dedupe por email + telefone normalizado dentro do arquivo e contra `orbit_prospects` da mesma `empresa_id`.
+   - Modo merge opcional (preencher só campos vazios), igual ao feito recentemente para leads.
+   - Inserção em lotes de 500 com retorno: novos, atualizados, ignorados, sem alterações.
+2. Botão **"Importar CSV"** no header de `src/pages/orbit/ProspectsPage.tsx`, abrindo um diálogo com upload, preview das primeiras linhas e checkbox "Atualizar duplicados".
+3. Cada importação grava 1 linha em `orbit_import_history` (já existe) com nome do arquivo, totais e erros.
 
-### Mudanças propostas
+Resultado: Tarcísio sobe a planilha **uma vez em Prospects** e a base aparece imediatamente no Wizard de Campanhas como "Apenas Prospects", com os filtros que ele já usa (cidade, segmento, tag, origem).
 
-**A) Nova função SQL `get_prospect_engagement_summary(empresa_id, dias)**`
-Retorna por `prospect_id` um resumo agregado de TODAS as campanhas dentro do período:
+### Opção 2 — Mais ampla: ligar Lead Finder ao Wizard de Campanhas
 
-- `total_emails_recebidos`, `total_aberturas`, `total_cliques`
-- `ultima_abertura_em`, `ultimo_clique_em`
-- `engajamento_score` (0-100, baseado em aberturas + cliques recentes)
-- `bounced` (bool), `complained` (bool)
+Manter o CSV em `orbit_leads` e ensinar a campanha a consumir leads:
 
-Usa `orbit_campaign_recipients` filtrado por `empresa_id` e `enviado_em >= now() - interval`.
+1. **DB**: adicionar coluna `lead_id uuid` em `orbit_campaign_recipients`.
+2. **Wizard**: nova opção "Lista do Lead Finder" + `<Select>` populado por `orbit_lead_sources`/`orbit_lead_searches` da empresa, com contagem e filtro por `enrichment_status`.
+3. **Edge `send-orbit-campaign`**: se o recipient tiver `lead_id` em vez de `prospect_id`, ler de `orbit_leads`; senão, manter o caminho atual.
+4. **Analytics**: garantir compatibilidade em `CampaignAnalyticsSection.tsx`.
 
-**B) Novo bloco "Engajamento de Email" em `RecipientSelector.tsx**`
-Visível só quando `canal === "email"`. Adicionar ao `CampaignFilters`:
+Mais poderoso, mas mexe em DB, edge function de envio e analytics — risco e tempo maiores.
 
-```ts
-engajamento_email?: {
-  comportamento: "abriu" | "clicou" | "engajou" | "nao_abriu" | "nunca_recebeu" | "bounced";
-  janela_dias: 7 | 30 | 90 | 180 | "todos";
-  min_aberturas?: number;   // ex: ≥ 2 aberturas
-  min_cliques?: number;
-}
-```
+## Recomendação
 
-UI:
-
-- **Comportamento** (Select): "Abriu pelo menos um email" / "Clicou em algum link" / "Engajado (abriu + clicou)" / "Não abriu nenhum" / "Bounced ou reclamou (excluir)" / "Nunca recebeu campanha"
-- **Janela** (Select): últimos 7/30/90/180 dias / desde sempre
-- **Mínimo de aberturas** e **mínimo de cliques** (opcionais, sliders)
-
-Ao aplicar, faz query da função SQL e cruza com `filteredProspects`.
-
-**C) Indicadores visuais na lista de prospects**
-Ao lado do nome, badges discretos: 🔥 "Engajado", 👁️ "Abriu 3x", ⚠️ "Bounced". Reaproveita o `engagement_summary` já carregado.
-
-**D) Filtro de exclusão de bounced/complained automático**
-Toggle "Excluir contatos com bounce ou reclamação" (default **ligado**) — protege reputação do domínio.
-
-### Sobre a API do Resend
-
-Os dados que o Resend nos dá (delivered, bounced, complained, opened, clicked) **já chegam** via `orbit-resend-webhook` e são salvos em `orbit_campaign_recipients`. Não precisamos chamar a API do Resend para listar — a fonte de verdade é nosso banco. Webhook precisa estar configurado no painel Resend (verificar).
-
----
-
-## Parte 2 — Botão WhatsApp embed em emails
-
-### Onde configurar
-
-**Nível 1 — Template (`orbit_message_templates`)**
-Adicionar colunas:
-
-- `whatsapp_cta_enabled` boolean default false
-- `whatsapp_cta_numero` text (E.164, ex: `5541999999999`)
-- `whatsapp_cta_texto_botao` text default "Falar no WhatsApp"
-- `whatsapp_cta_mensagem_inicial` text (mensagem pré-preenchida no chat, ex: "Olá! Vi seu email sobre {{produto}}")
-- `whatsapp_cta_posicao` text check ('topo','rodape','ambos') default 'rodape'
-
-**Nível 2 — Override por campanha (`orbit_campaigns`)**
-Mesmas colunas opcionais (se preenchidas, sobrescrevem o template). Útil para A/B testing de número/texto.
-
-### UI
-
-`**EmailTemplateEditor.tsx**`: novo card "Botão WhatsApp" com:
-
-- Switch ativar
-- Input número (validação E.164, máscara BR)
-- Input texto do botão
-- Textarea mensagem inicial (com chips de variáveis: `{{nome}}`, `{{empresa}}`)
-- Select posição (topo / rodapé / ambos)
-- Preview ao vivo do botão renderizado
-
-**Wizard de campanha (`CampaignWizardContent`)**: aba/seção "Personalizar CTA WhatsApp" — mostra config herdada do template com toggle "Sobrescrever para esta campanha".
-
-### Renderização no email enviado
-
-Em `orbit-send-email/index.ts`, ao montar o HTML final:
-
-1. Resolver config (campanha override → template).
-2. Substituir variáveis na `mensagem_inicial`.
-3. Construir URL: `https://wa.me/{numero}?text={encodeURIComponent(mensagem)}`.
-4. Injetar HTML do botão (table-based, inline-styled, compatível com Outlook/Gmail) no topo, rodapé ou ambos.
-
-Modelo do botão (table HTML para compatibilidade):
-
-```html
-<table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:24px auto;">
-  <tr><td align="center" bgcolor="#25D366" style="border-radius:28px;">
-    <a href="https://wa.me/55..." style="display:inline-block;padding:14px 28px;
-       font:600 16px/1 Arial,sans-serif;color:#fff;text-decoration:none;border-radius:28px;">
-      📱 Falar no WhatsApp
-    </a>
-  </td></tr>
-</table>
-```
-
-5. **Tracking de cliques**: envolver a URL `wa.me` com o redirect já existente `orbit-email-track?type=click&rid={recipient_id}&url=...` para contar cliques no WhatsApp como engajamento (e marcar `clicked_at`).
-
-### Bonus — atribuição de origem
-
-No webhook Z-API (`orbit-webhook`), quando chegar mensagem nova de um número que está em `orbit_campaign_recipients` com `clicked_at` recente, registrar evento "respondeu_via_email_cta" no timeline do prospect.
-
----
-
-## Arquivos afetados
-
-
-| Arquivo                                                               | Mudança                                                                                                             |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Migration SQL                                                         | Função `get_prospect_engagement_summary`; colunas `whatsapp_cta_*` em `orbit_message_templates` e `orbit_campaigns` |
-| `src/components/orbit/RecipientSelector.tsx`                          | Bloco "Engajamento de Email" + badges visuais + toggle exclusão bounced                                             |
-| `src/hooks/useOrbitProspects.ts` (ou novo `useProspectEngagement.ts`) | Hook que carrega o resumo de engajamento                                                                            |
-| `src/components/orbit/EmailTemplateEditor.tsx`                        | Card de configuração do botão WhatsApp + preview                                                                    |
-| `src/components/orbit/CampaignWizardContent.tsx`                      | Seção override do CTA por campanha                                                                                  |
-| `supabase/functions/orbit-send-email/index.ts`                        | Resolver config, montar HTML do botão, envolver no tracker                                                          |
-| `supabase/functions/orbit-webhook/index.ts` (opcional)                | Marcar atribuição "veio do email CTA"                                                                               |
-
-
----
-
-## Perguntas antes de implementar
-
-1. **Botão WhatsApp — número padrão**: usar o número da config Z-API da empresa como default, ou sempre exigir input manual no template?  usar padrao
-2. **Atribuição de origem** (bonus): implementar agora ou deixar para depois? agora, com segurançq
-3. **Janela default** do filtro de engajamento: últimos **30** ou **90** dias? de 30 a 90 podendo escolher o periodo. 
+Ir de **Opção 1** agora (resolve hoje o caso do Tarcísio, sem tocar em DB/edge functions). A Opção 2 fica como evolução quando quiserem unificar Lead Finder + Campanhas oficialmente.
