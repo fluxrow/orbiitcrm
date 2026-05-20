@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
+import { getOrbitZapiRuntimeConfig } from "../_shared/orbit-zapi.ts";
 
 type ValidationResult = "valid" | "invalid" | "inconclusive";
 
@@ -60,12 +61,7 @@ const handler = async (req: Request): Promise<Response> => {
       return fail(ErrorCodes.VALIDATION_ERROR, "empresa_id é obrigatório");
     }
 
-    const { data: zapiConfig } = await supabase
-      .from("orbit_zapi_config")
-      .select("*")
-      .eq("empresa_id", empresa_id)
-      .eq("ativo", true)
-      .maybeSingle();
+    const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresa_id);
 
     const hasZapi = !!(zapiConfig?.instance_id && zapiConfig?.token);
 

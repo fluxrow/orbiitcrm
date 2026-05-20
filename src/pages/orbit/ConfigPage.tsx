@@ -84,6 +84,8 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
     ativo: false 
   });
   const [showApiKey, setShowApiKey] = useState(false);
+  const hasStoredZapiToken = !!zapiConfig?.has_token;
+  const hasStoredZapiClientToken = !!zapiConfig?.has_client_token;
   
   // Import states
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -127,8 +129,8 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
     if (zapiConfig) setZapiForm({ 
       nome_instancia: (zapiConfig as any).nome_instancia || "", 
       instance_id: zapiConfig.instance_id || "", 
-      token: zapiConfig.token || "", 
-      client_token: zapiConfig.client_token || "", 
+      token: "",
+      client_token: "",
       numero_origem: (zapiConfig as any).numero_origem || "",
       notificar_enviadas_por_mim: (zapiConfig as any).notificar_enviadas_por_mim ?? false,
       ativo: zapiConfig.ativo ?? false 
@@ -159,7 +161,15 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
   }, [sendingConfig]);
 
   const saveAI = async () => { await updateAI.mutateAsync({ id: aiConfig?.id, ...aiForm, empresa_id: empresaId }); toast.success("Salvo!"); };
-  const saveZAPI = async () => { await updateZAPI.mutateAsync({ id: zapiConfig?.id, ...zapiForm, empresa_id: empresaId, ativo: !!(zapiForm as any).instance_id && !!(zapiForm as any).token }); toast.success("Salvo!"); };
+  const saveZAPI = async () => {
+    await updateZAPI.mutateAsync({
+      id: zapiConfig?.id,
+      ...zapiForm,
+      empresa_id: empresaId,
+      ativo: !!zapiForm.instance_id && (!!zapiForm.token || hasStoredZapiToken),
+    });
+    toast.success("Salvo!");
+  };
   
   const saveResendApiKey = async () => { 
     await updateResend.mutateAsync({ 
@@ -528,6 +538,16 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                 <CardDescription>Configure sua instância Z-API para envio de mensagens WhatsApp</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                <div className="flex items-start gap-3 rounded-lg border border-border/60 bg-muted/40 p-4">
+                  <Lock className="mt-0.5 h-4 w-4 text-primary" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Secrets protegidos no Supabase Vault</p>
+                    <p className="text-xs text-muted-foreground">
+                      Tokens já salvos ficam mascarados e não são mais lidos direto do banco. Deixe os campos vazios para manter os valores atuais.
+                    </p>
+                  </div>
+                </div>
+
                 {/* Status Ativo */}
                 <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
                   <div>
@@ -568,7 +588,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     <div className="relative">
                       <Input 
                         type={showZapiToken ? "text" : "password"}
-                        placeholder="Token da instância" 
+                        placeholder={hasStoredZapiToken ? "Token já salvo no Vault" : "Token da instância"}
                         value={zapiForm.token} 
                         onChange={(e) => setZapiForm({ ...zapiForm, token: e.target.value })}
                         disabled={isDemo}
@@ -584,7 +604,11 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                         {showZapiToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
-                    <p className="text-xs text-muted-foreground">Encontre em "Dados da instância" → "Token da instância" no painel Z-API</p>
+                    <p className="text-xs text-muted-foreground">
+                      {hasStoredZapiToken
+                        ? 'Já existe um token salvo com segurança. Preencha apenas se quiser substituir o valor atual.'
+                        : 'Encontre em "Dados da instância" → "Token da instância" no painel Z-API'}
+                    </p>
                   </div>
                 </div>
 
@@ -595,7 +619,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     <div className="relative">
                       <Input 
                         type={showZapiClientToken ? "text" : "password"}
-                        placeholder="Client Token" 
+                        placeholder={hasStoredZapiClientToken ? "Client Token já salvo no Vault" : "Client Token"}
                         value={zapiForm.client_token} 
                         onChange={(e) => setZapiForm({ ...zapiForm, client_token: e.target.value })}
                         disabled={isDemo}
@@ -611,7 +635,11 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                         {showZapiClientToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
-                    <p className="text-xs text-muted-foreground">Configure em "Segurança" → "Client Token" no painel Z-API</p>
+                    <p className="text-xs text-muted-foreground">
+                      {hasStoredZapiClientToken
+                        ? 'Já existe um Client Token salvo com segurança. Preencha apenas se quiser substituir o valor atual.'
+                        : 'Configure em "Segurança" → "Client Token" no painel Z-API'}
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label>Número de Origem</Label>
@@ -648,6 +676,12 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                       </Button>
                     </div>
                   </div>
+                )}
+
+                {zapiForm.instance_id && !zapiForm.token && hasStoredZapiToken && (
+                  <p className="text-xs text-muted-foreground">
+                    O token da instância já está salvo no Vault. Para copiar a URL completa da API ou testar via navegador, reinsira o token temporariamente neste formulário.
+                  </p>
                 )}
 
                 {/* Webhook URL */}
@@ -690,7 +724,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     variant="outline" 
                     onClick={async () => {
                       if (!zapiForm.instance_id || !zapiForm.token) {
-                        toast.error("Preencha o ID e Token da instância");
+                        toast.error("Preencha o ID e Token da instância para testar localmente");
                         return;
                       }
                       setTestingZapiConnection(true);

@@ -167,6 +167,18 @@ function normalizePhoneFields(prospect: Partial<ParsedProspect>): void {
   }
 }
 
+function getComparablePhones(
+  prospect: Partial<ParsedProspect>,
+): string[] {
+  return Array.from(
+    new Set(
+      [prospect.telefone, prospect.whatsapp]
+        .map((value) => value?.replace(/\D/g, ""))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+}
+
 export function parseCSV(csvText: string): { prospects: ParsedProspect[]; errors: { row: number; field: string; message: string }[] } {
   const lines = csvText.split(/\r?\n/).filter(line => line.trim());
   if (lines.length < 2) {
@@ -295,43 +307,42 @@ export function useImportProspects() {
       const errorDetails: { row: number; field: string; message: string }[] = [];
 
       // Check for duplicates if needed
-      let existingEmails: Set<string> = new Set();
-      let existingPhones: Set<string> = new Set();
-      let existingNames: Set<string> = new Set();
+      const existingEmails: Set<string> = new Set();
+      const existingPhones: Set<string> = new Set();
+      const importedNames: Set<string> = new Set();
 
       if (ignoreDuplicates) {
-        // Paginate to fetch ALL existing prospects (bypass 1000 row default limit)
-        let from = 0;
-        const pageSize = 1000;
-        let hasMore = true;
+        const candidateEmails = Array.from(new Set(
+          prospects
+            .map((prospect) => prospect.email_principal?.toLowerCase())
+            .filter((value): value is string => Boolean(value)),
+        ));
+        const candidatePhones = Array.from(new Set(
+          prospects.flatMap((prospect) => getComparablePhones(prospect)),
+        ));
 
-        while (hasMore) {
-          const { data: page } = await supabase
-            .from('orbit_prospects')
-            .select('nome_razao, email_principal, telefone, whatsapp')
-            .eq('empresa_id', profile.empresa_id)
-            .range(from, from + pageSize - 1);
+        if (candidateEmails.length > 0 || candidatePhones.length > 0) {
+          const { data: duplicates, error: duplicateError } = await supabase.rpc(
+            "find_duplicate_prospects" as any,
+            {
+              p_empresa_id: profile.empresa_id,
+              p_emails: candidateEmails,
+              p_phones: candidatePhones,
+            },
+          );
 
-          if (page && page.length > 0) {
-            page.forEach(p => {
-              if (p.email_principal) existingEmails.add(p.email_principal.toLowerCase());
-              if (p.telefone) {
-                const cleaned = p.telefone.replace(/\D/g, '');
-                if (cleaned) existingPhones.add(cleaned);
-              }
-              if (p.whatsapp) {
-                const cleaned = p.whatsapp.replace(/\D/g, '');
-                if (cleaned) existingPhones.add(cleaned);
-              }
-              if (p.nome_razao) {
-                existingNames.add(normalizeName(p.nome_razao));
-              }
-            });
-            from += pageSize;
-            hasMore = page.length === pageSize;
-          } else {
-            hasMore = false;
-          }
+          if (duplicateError) throw duplicateError;
+
+          (duplicates ?? []).forEach((prospect: any) => {
+            if (prospect.email_principal) {
+              existingEmails.add(prospect.email_principal.toLowerCase());
+            }
+
+            [prospect.telefone, prospect.whatsapp]
+              .map((value: string | null) => value?.replace(/\D/g, ""))
+              .filter((value: string | undefined): value is string => Boolean(value))
+              .forEach((value: string) => existingPhones.add(value));
+          });
         }
       }
 
@@ -343,7 +354,7 @@ export function useImportProspects() {
 
         if (ignoreDuplicates) {
           const email = prospect.email_principal?.toLowerCase();
-          const phone = prospect.telefone?.replace(/\D/g, '') || prospect.whatsapp?.replace(/\D/g, '');
+          const phones = getComparablePhones(prospect);
           const normalizedName = normalizeName(prospect.nome_razao);
 
           if (email && existingEmails.has(email)) {
@@ -351,21 +362,21 @@ export function useImportProspects() {
             errors++;
             continue;
           }
-          if (phone && existingPhones.has(phone)) {
+          if (phones.some((phone) => existingPhones.has(phone))) {
             errorDetails.push({ row: i + 2, field: 'telefone', message: 'Telefone já existe' });
             errors++;
             continue;
           }
-          if (normalizedName && existingNames.has(normalizedName)) {
-            errorDetails.push({ row: i + 2, field: 'nome_razao', message: 'Nome já existe' });
+          if (normalizedName && importedNames.has(normalizedName)) {
+            errorDetails.push({ row: i + 2, field: 'nome_razao', message: 'Nome duplicado no arquivo' });
             errors++;
             continue;
           }
 
           // Add to sets to avoid intra-import duplicates
           if (email) existingEmails.add(email);
-          if (phone) existingPhones.add(phone);
-          if (normalizedName) existingNames.add(normalizedName);
+          phones.forEach((phone) => existingPhones.add(phone));
+          if (normalizedName) importedNames.add(normalizedName);
         }
 
         validProspects.push({

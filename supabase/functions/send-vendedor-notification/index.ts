@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
+import { getOrbitZapiRuntimeConfig } from "../_shared/orbit-zapi.ts";
 
 interface NotificationRequest {
   prospect_id: string;
@@ -29,7 +30,7 @@ const handler = async (req: Request): Promise<Response> => {
     const { data: vendedor } = await supabase.from("profiles").select("*").eq("id", vendedor_id).single();
     if (!vendedor || !vendedor.telefone) return fail(ErrorCodes.NOT_FOUND, "Vendedor não encontrado ou sem telefone", 404);
 
-    const { data: zapiConfig } = await supabase.from("orbit_zapi_config").select("*").eq("empresa_id", empresa_id).eq("ativo", true).maybeSingle();
+    const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresa_id);
     if (!zapiConfig) return fail(ErrorCodes.PROVIDER_NOT_CONFIGURED, "Z-API não configurado");
 
     const emoji = tipo === "transferencia" ? "🔄" : "🆕";

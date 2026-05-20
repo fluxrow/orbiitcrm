@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import orbitLogo from "@/assets/orbit-logo.png";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 const NAV_ITEMS = [
   { label: "Produto", href: "#como-funciona" },
@@ -47,6 +48,7 @@ export default function HotsiteHeader() {
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
+          <ThemeToggle compact />
           <Button variant="ghost" size="sm" onClick={() => navigate("/demo")} className="hover:bg-secondary/60">
             Acessar Demo
           </Button>
@@ -77,6 +79,7 @@ export default function HotsiteHeader() {
             </button>
           ))}
           <div className="flex flex-col gap-2 pt-2">
+            <ThemeToggle className="justify-center" />
             <Button variant="ghost" size="sm" onClick={() => { setMobileMenuOpen(false); navigate("/demo"); }}>Acessar Demo</Button>
             <Button variant="outline" size="sm" onClick={() => { setMobileMenuOpen(false); navigate("/auth"); }}>Entrar</Button>
             <Button size="sm" onClick={() => { setMobileMenuOpen(false); navigate("/trial"); }}>Começar Trial</Button>

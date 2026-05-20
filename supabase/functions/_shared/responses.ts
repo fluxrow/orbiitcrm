@@ -5,11 +5,10 @@
  * Error:   { ok: false, error: { code, message, details?, correlation_id } }
  */
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { getCorsHeaders } from "./cors.ts";
+
+const ALLOW_HEADERS =
+  "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version";
 
 // ── Error codes ──
 
@@ -60,14 +59,17 @@ function makeCorrelationId(): string {
 }
 
 /** Standard CORS preflight response */
-export function optionsResponse(): Response {
-  return new Response(null, { headers: corsHeaders });
+export function optionsResponse(req?: Request): Response {
+  return new Response(null, {
+    headers: getCorsHeaders(req, { allowHeaders: ALLOW_HEADERS }),
+  });
 }
 
 /** Success envelope */
 export function ok(
   data: unknown = {},
   meta?: Record<string, unknown>,
+  req?: Request,
 ): Response {
   const correlationId = makeCorrelationId();
   return new Response(
@@ -78,7 +80,10 @@ export function ok(
     }),
     {
       status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: {
+        ...getCorsHeaders(req, { allowHeaders: ALLOW_HEADERS }),
+        "Content-Type": "application/json",
+      },
     },
   );
 }
@@ -89,6 +94,7 @@ export function fail(
   message: string,
   status = 400,
   details?: Record<string, unknown>,
+  req?: Request,
 ): Response {
   const correlationId = makeCorrelationId();
   return new Response(
@@ -103,7 +109,10 @@ export function fail(
     }),
     {
       status,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: {
+        ...getCorsHeaders(req, { allowHeaders: ALLOW_HEADERS }),
+        "Content-Type": "application/json",
+      },
     },
   );
 }
@@ -118,6 +127,7 @@ export function fail(
 export function fromPlanCheck(
   canUseResult: any,
   sandbox = false,
+  req?: Request,
 ): Response | null {
   if (!canUseResult || canUseResult.allowed !== false) {
     return null; // allowed
@@ -144,7 +154,7 @@ export function fromPlanCheck(
 
   // In sandbox mode, return simulated success instead of hard error
   if (sandbox && (reason === "PLAN_LIMIT" || reason === "FEATURE_DISABLED")) {
-    return ok({}, { simulated: true, reason: "demo_sandbox" });
+    return ok({}, { simulated: true, reason: "demo_sandbox" }, req);
   }
 
   const messageMap: Record<string, string> = {
@@ -157,13 +167,14 @@ export function fromPlanCheck(
     NO_PLAN: "Sua empresa não possui um plano ativo.",
   };
 
-  return fail(code, messageMap[code] || reason, 403, details);
+  return fail(code, messageMap[code] || reason, 403, details, req);
 }
 
 /** Maps third-party provider errors to standard envelope */
 export function mapProviderError(
   err: any,
   provider: string,
+  req?: Request,
 ): Response {
   const message =
     err?.error?.message || err?.message || `Erro ao comunicar com ${provider}`;
@@ -174,6 +185,8 @@ export function mapProviderError(
       ErrorCodes.PROVIDER_RATE_LIMIT,
       `${provider}: limite de taxa excedido. Tente novamente mais tarde.`,
       429,
+      undefined,
+      req,
     );
   }
 
@@ -183,11 +196,13 @@ export function mapProviderError(
       ErrorCodes.PROVIDER_AUTH_FAILED,
       `${provider}: falha de autenticação. Verifique as credenciais.`,
       502,
+      undefined,
+      req,
     );
   }
 
   return fail(ErrorCodes.PROVIDER_SEND_FAILED, message, 502, {
     provider,
     original_status: err?.status || err?.statusCode,
-  });
+  }, req);
 }

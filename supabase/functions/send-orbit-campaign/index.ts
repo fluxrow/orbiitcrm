@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, fromPlanCheck, ErrorCodes } from "../_shared/responses.ts";
 import { resolveCtaConfig, buildCtaButtonHtml, injectCta } from "../_shared/whatsapp-cta.ts";
+import { getOrbitZapiRuntimeConfig } from "../_shared/orbit-zapi.ts";
 
 interface CampaignRequest {
   campaign_id: string;
@@ -293,8 +294,7 @@ const handler = async (req: Request): Promise<Response> => {
         senderUser = userData;
       }
     } else {
-      const { data } = await supabase.from("orbit_zapi_config").select("*").eq("empresa_id", campaign.empresa_id).maybeSingle();
-      zapiConfig = data;
+      zapiConfig = await getOrbitZapiRuntimeConfig(supabase, campaign.empresa_id);
     }
 
     const zapiBaseUrl = zapiConfig ? `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}` : "";

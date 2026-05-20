@@ -157,20 +157,17 @@ Deno.serve(async (req) => {
       } catch (e) { console.error("PE provision error:", e); }
 
       try {
-        await supabase.from("orbit_pipeline_stages").insert([
-          { nome: "Qualificação", ordem: 1, cor: "#3b82f6", empresa_id: invite.empresa_id },
-          { nome: "Proposta", ordem: 2, cor: "#8b5cf6", empresa_id: invite.empresa_id },
-          { nome: "Negociação", ordem: 3, cor: "#f59e0b", empresa_id: invite.empresa_id },
-          { nome: "Fechamento", ordem: 4, cor: "#06b6d4", empresa_id: invite.empresa_id },
-          { nome: "Ganho", ordem: 5, cor: "#22c55e", is_won: true, empresa_id: invite.empresa_id },
-          { nome: "Perdido", ordem: 6, cor: "#ef4444", is_lost: true, empresa_id: invite.empresa_id },
-        ]);
+        await supabase.rpc("create_default_pipeline_stages", {
+          p_empresa_id: invite.empresa_id,
+        });
       } catch (e) { console.error("Pipeline stages error:", e); }
 
       try {
-        await supabase.from("orbit_ai_config").insert({
+        await supabase.from("orbit_ai_config").upsert({
           empresa_id: invite.empresa_id, modo_automatico: true,
           tom_conversa: "profissional e amigável", horario_inicio: "08:00", horario_fim: "18:00",
+        }, {
+          onConflict: "empresa_id",
         });
       } catch (e) { console.error("AI config error:", e); }
     }

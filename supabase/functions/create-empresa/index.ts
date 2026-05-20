@@ -104,18 +104,14 @@ Deno.serve(async (req) => {
     await supabaseAdmin.from("profiles").update({ empresa_id: empresa.id, cargo: "Admin" }).eq("id", authUser.user.id);
     await supabaseAdmin.from("user_roles").insert({ user_id: authUser.user.id, role: "admin" });
 
-    const defaultStages = [
-      { nome: "Qualificação", ordem: 1, cor: "#3b82f6", empresa_id: empresa.id },
-      { nome: "Proposta", ordem: 2, cor: "#8b5cf6", empresa_id: empresa.id },
-      { nome: "Negociação", ordem: 3, cor: "#f59e0b", empresa_id: empresa.id },
-      { nome: "Fechamento", ordem: 4, cor: "#06b6d4", empresa_id: empresa.id },
-      { nome: "Ganho", ordem: 5, cor: "#22c55e", is_won: true, empresa_id: empresa.id },
-      { nome: "Perdido", ordem: 6, cor: "#ef4444", is_lost: true, empresa_id: empresa.id },
-    ];
-    await supabaseAdmin.from("orbit_pipeline_stages").insert(defaultStages);
-    await supabaseAdmin.from("orbit_ai_config").insert({
+    await supabaseAdmin.rpc("create_default_pipeline_stages", {
+      p_empresa_id: empresa.id,
+    });
+    await supabaseAdmin.from("orbit_ai_config").upsert({
       empresa_id: empresa.id, modo_automatico: true, tom_conversa: "profissional e amigável",
       horario_inicio: "08:00", horario_fim: "18:00",
+    }, {
+      onConflict: "empresa_id",
     });
 
     // --- Welcome Email ---

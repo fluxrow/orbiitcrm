@@ -1,14 +1,15 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, fromPlanCheck, ErrorCodes } from "../_shared/responses.ts";
+import { getOrbitZapiRuntimeConfig } from "../_shared/orbit-zapi.ts";
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return optionsResponse();
+  if (req.method === "OPTIONS") return optionsResponse(req);
 
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return fail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401);
+      return fail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401, undefined, req);
     }
 
     const supabase = createClient(
@@ -19,7 +20,7 @@ serve(async (req) => {
     const token = authHeader.replace("Bearer ", "");
     const { data: claims, error: claimsError } = await supabase.auth.getUser(token);
     if (claimsError || !claims?.user) {
-      return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401);
+      return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401, undefined, req);
     }
 
     const body = await req.json();
@@ -28,7 +29,13 @@ serve(async (req) => {
     console.log("[orbit-send-message] Params recebidos:", JSON.stringify({ conversa_id, mensagem: mensagem?.substring(0, 30), telefone, canal, tipo_midia, url_midia: url_midia ? "SET" : "EMPTY" }));
 
     if (!conversa_id || (!mensagem && !url_midia)) {
-      return fail(ErrorCodes.VALIDATION_ERROR, "conversa_id e mensagem/url_midia são obrigatórios");
+      return fail(
+        ErrorCodes.VALIDATION_ERROR,
+        "conversa_id e mensagem/url_midia são obrigatórios",
+        400,
+        undefined,
+        req,
+      );
     }
 
     // Se telefone não veio do frontend, buscar da conversa
@@ -59,7 +66,7 @@ serve(async (req) => {
         p_amount: 1,
       });
 
-      const planResponse = fromPlanCheck(canUseResult);
+      const planResponse = fromPlanCheck(canUseResult, false, req);
       if (planResponse) return planResponse;
     }
 
@@ -90,6 +97,8 @@ serve(async (req) => {
           ErrorCodes.DEMO_RATE_LIMIT,
           "Limite de 30 mensagens por hora atingido no modo demo.",
           429,
+          undefined,
+          req,
         );
       }
     }
@@ -101,9 +110,7 @@ serve(async (req) => {
     if (isDemo) {
       messageStatus = "simulated";
     } else {
-      let zapiQuery = supabase.from("orbit_zapi_config").select("*").eq("ativo", true);
-      if (profile?.empresa_id) zapiQuery = zapiQuery.eq("empresa_id", profile.empresa_id);
-      const { data: zapiConfig } = await zapiQuery.maybeSingle();
+      const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, profile?.empresa_id);
 
       console.log("[orbit-send-message] Z-API config:", JSON.stringify({
         found: !!zapiConfig,
@@ -221,10 +228,11 @@ serve(async (req) => {
     return ok(
       { mensagem: novaMensagem, status: messageStatus },
       { simulated: isDemo },
+      req,
     );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[orbit-send-message] Erro:", message);
-    return fail(ErrorCodes.INTERNAL_ERROR, message, 500);
+    return fail(ErrorCodes.INTERNAL_ERROR, message, 500, undefined, req);
   }
 });

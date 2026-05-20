@@ -7,6 +7,34 @@ type AIConfigUpdate = TablesUpdate<"orbit_ai_config">;
 type ResendConfig = Tables<"orbit_resend_config">;
 type ResendConfigUpdate = TablesUpdate<"orbit_resend_config">;
 
+export interface OrbitZAPIConfigView {
+  id: string;
+  empresa_id: string | null;
+  nome_instancia: string | null;
+  instance_id: string | null;
+  numero_origem: string | null;
+  webhook_url: string | null;
+  notificar_enviadas_por_mim: boolean | null;
+  ativo: boolean | null;
+  has_token: boolean;
+  has_client_token: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+interface OrbitZAPIConfigInput {
+  id?: string | null;
+  empresa_id?: string | null;
+  nome_instancia?: string | null;
+  instance_id?: string | null;
+  token?: string | null;
+  client_token?: string | null;
+  numero_origem?: string | null;
+  webhook_url?: string | null;
+  notificar_enviadas_por_mim?: boolean | null;
+  ativo?: boolean | null;
+}
+
 export function useOrbitAIConfig(empresaId?: string | null) {
   return useQuery({
     queryKey: ["orbit_ai_config", empresaId],
@@ -65,13 +93,11 @@ export function useOrbitZAPIConfig(empresaId?: string | null) {
   return useQuery({
     queryKey: ["orbit_zapi_config", empresaId],
     queryFn: async () => {
-      let query = supabase.from("orbit_zapi_config").select("*");
-      if (empresaId) {
-        query = query.eq("empresa_id", empresaId);
-      }
-      const { data, error } = await query.maybeSingle();
+      const { data, error } = await supabase.rpc("get_orbit_zapi_config_public", {
+        p_empresa_id: empresaId,
+      });
       if (error) throw error;
-      return data;
+      return data as OrbitZAPIConfigView | null;
     },
     enabled: !!empresaId,
   });
@@ -81,32 +107,20 @@ export function useUpdateZAPIConfig() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (updates: any & { empresa_id?: string | null }) => {
-      const empresaId = updates.empresa_id;
-      let existingQuery = supabase.from("orbit_zapi_config").select("id");
-      if (empresaId) {
-        existingQuery = existingQuery.eq("empresa_id", empresaId);
-      }
-      const { data: existing } = await existingQuery.maybeSingle();
-
-      if (existing) {
-        const { data, error } = await supabase
-          .from("orbit_zapi_config")
-          .update(updates)
-          .eq("id", existing.id)
-          .select()
-          .single();
-        if (error) throw error;
-        return data;
-      } else {
-        const { data, error } = await supabase
-          .from("orbit_zapi_config")
-          .insert({ ...updates, empresa_id: empresaId })
-          .select()
-          .single();
-        if (error) throw error;
-        return data;
-      }
+    mutationFn: async (updates: OrbitZAPIConfigInput) => {
+      const { data, error } = await supabase.rpc("upsert_orbit_zapi_config_secure", {
+        p_empresa_id: updates.empresa_id,
+        p_nome_instancia: updates.nome_instancia ?? null,
+        p_instance_id: updates.instance_id ?? null,
+        p_token: updates.token?.trim() ? updates.token.trim() : null,
+        p_client_token: updates.client_token?.trim() ? updates.client_token.trim() : null,
+        p_numero_origem: updates.numero_origem ?? null,
+        p_webhook_url: updates.webhook_url ?? null,
+        p_notificar_enviadas_por_mim: updates.notificar_enviadas_por_mim ?? false,
+        p_ativo: updates.ativo ?? false,
+      });
+      if (error) throw error;
+      return data as OrbitZAPIConfigView | null;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orbit_zapi_config"] });

@@ -5,6 +5,7 @@ import { AlertCircle, Menu } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { PaymentWarningBanner } from "./PaymentWarningBanner";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 interface OrbitLayoutProps {
   children: ReactNode;
@@ -21,8 +22,9 @@ export function OrbitLayout({ children }: OrbitLayoutProps) {
       {!isMobile && <div className="w-[68px] shrink-0" />}
       <main className="flex-1 overflow-auto flex flex-col">
         {isMobile && (
-          <div className="h-12 border-b flex items-center px-4 shrink-0">
+          <div className="h-12 border-b flex items-center justify-between px-4 shrink-0">
             <MobileToggle />
+            <ThemeToggle compact />
           </div>
         )}
         <PaymentWarningBanner />

@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 import { orbitCampaignKeys } from "@/lib/query-keys";
@@ -14,6 +15,33 @@ interface CampaignFilters {
 }
 
 export function useOrbitCampaigns(filters?: CampaignFilters) {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("orbit_campaigns_realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orbit_campaigns" },
+        () => {
+          queryClient.invalidateQueries({ queryKey: orbitCampaignKeys.all });
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orbit_campaign_recipients" },
+        () => {
+          queryClient.invalidateQueries({ queryKey: orbitCampaignKeys.counts() });
+          queryClient.invalidateQueries({ queryKey: orbitCampaignKeys.all });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   return useQuery({
     queryKey: orbitCampaignKeys.list(filters),
     queryFn: async () => {

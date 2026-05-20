@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
+import { getOrbitZapiRuntimeConfig } from "../_shared/orbit-zapi.ts";
 
 interface ValidateRequest {
   prospect_ids: string[];
@@ -80,12 +81,7 @@ const handler = async (req: Request): Promise<Response> => {
       return fail(ErrorCodes.VALIDATION_ERROR, "Prospect sem empresa_id");
     }
 
-    const { data: zapiConfig } = await supabase
-      .from("orbit_zapi_config")
-      .select("*")
-      .eq("empresa_id", empresaId)
-      .eq("ativo", true)
-      .maybeSingle();
+    const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresaId);
 
     if (!zapiConfig?.instance_id || !zapiConfig?.token) {
       return fail(ErrorCodes.PROVIDER_NOT_CONFIGURED, "Z-API não configurado");

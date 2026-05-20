@@ -19,7 +19,8 @@ export function useOrbitProspectsCount() {
     queryFn: async () => {
       const { count, error } = await supabase
         .from("orbit_prospects")
-        .select("*", { count: "exact", head: true });
+        .select("*", { count: "exact", head: true })
+        .is("deleted_at", null);
       if (error) throw error;
       return count ?? 0;
     },
@@ -30,13 +31,18 @@ export function useOrbitProspects(filters?: ProspectFilters) {
   return useQuery({
     queryKey: ["orbit_prospects", filters],
     queryFn: async () => {
+      const trimmedSearch = filters?.search?.trim();
       let query = supabase
         .from("orbit_prospects")
         .select("*, responsavel:profiles!orbit_prospects_responsavel_id_fkey(id, nome, email)")
+        .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
-      if (filters?.search) {
-        query = query.or(`nome_razao.ilike.%${filters.search}%,nome_fantasia.ilike.%${filters.search}%,email_principal.ilike.%${filters.search}%,telefone.ilike.%${filters.search}%,whatsapp.ilike.%${filters.search}%`);
+      if (trimmedSearch) {
+        query = query.textSearch("search_vector", trimmedSearch, {
+          type: "websearch",
+          config: "portuguese",
+        });
       }
 
       if (filters?.status_qualificacao && filters.status_qualificacao !== "all") {
@@ -76,6 +82,7 @@ export function useOrbitProspect(id: string | undefined) {
         .from("orbit_prospects")
         .select("*, responsavel:profiles!orbit_prospects_responsavel_id_fkey(id, nome, email)")
         .eq("id", id)
+        .is("deleted_at", null)
         .single();
       if (error) throw error;
       return data;
@@ -158,7 +165,7 @@ export function useDeleteProspect() {
     mutationFn: async (id: string) => {
       const { error } = await supabase
         .from("orbit_prospects")
-        .delete()
+        .update({ deleted_at: new Date().toISOString() } as any)
         .eq("id", id);
       if (error) throw error;
     },

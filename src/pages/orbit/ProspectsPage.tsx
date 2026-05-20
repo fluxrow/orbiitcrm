@@ -19,6 +19,7 @@ import { ImportProspectsDialog } from "@/components/orbit/ImportProspectsDialog"
 import { ImportHistoryPanel } from "@/components/orbit/ImportHistoryPanel";
 import { Badge } from "@/components/ui/badge";
 import { useOrbitProspects, useDeleteProspect } from "@/hooks/useOrbitProspects";
+import { useDebounce } from "@/hooks/useDebounce";
 import { useOrbitPeLinks } from "@/hooks/usePromoteProspect";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -45,6 +46,7 @@ const PAGE_SIZE = 50;
 export default function ProspectsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
   const [statusFilter, setStatusFilter] = useState("all");
   const [origemFilter, setOrigemFilter] = useState("all");
   const [sortBy, setSortBy] = useState("recent");
@@ -81,7 +83,7 @@ export default function ProspectsPage() {
   });
 
   const { data: prospects, isLoading } = useOrbitProspects({
-    search: search || undefined,
+    search: debouncedSearch || undefined,
     status_qualificacao: statusFilter,
   });
   const { data: peLinks } = useOrbitPeLinks();

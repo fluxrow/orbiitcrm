@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { UserProfileDialog } from "@/components/orbit/UserProfileDialog";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { usePlanGuard } from "@/hooks/usePlanGuard";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import {
   Tooltip,
   TooltipContent,
@@ -186,6 +187,15 @@ export function OrbitSidebar() {
               variant="ghost"
               size="sm"
               className="w-full justify-start gap-2 mt-1 text-muted-foreground hover:text-foreground"
+              onClick={() => setProfileOpen(true)}
+            >
+              Meu perfil
+            </Button>
+            <ThemeToggle className="mt-1" />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start gap-2 mt-1 text-muted-foreground hover:text-foreground"
               onClick={handleSignOut}
             >
               <LogOut className="w-4 h-4" />
@@ -194,21 +204,24 @@ export function OrbitSidebar() {
           </>
         ) : (
           <TooltipProvider delayDuration={0}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => setProfileOpen(true)}
-                  className="w-full flex justify-center py-2 rounded-md hover:bg-sidebar-accent transition-colors"
-                >
-                  <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center">
-                    <span className="text-sm font-medium text-primary">{initials}</span>
-                  </div>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right" sideOffset={8}>
-                <p>{displayName}</p>
-              </TooltipContent>
-            </Tooltip>
+            <div className="space-y-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setProfileOpen(true)}
+                    className="w-full flex justify-center py-2 rounded-md hover:bg-sidebar-accent transition-colors"
+                  >
+                    <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center">
+                      <span className="text-sm font-medium text-primary">{initials}</span>
+                    </div>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8}>
+                  <p>{displayName}</p>
+                </TooltipContent>
+              </Tooltip>
+              <ThemeToggle compact className="mx-auto" />
+            </div>
           </TooltipProvider>
         )}
       </div>

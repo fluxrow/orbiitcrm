@@ -16,9 +16,11 @@ import { useOrbitProspects } from "@/hooks/useOrbitProspects";
 import { useCreateCampaign } from "@/hooks/useOrbitCampaigns";
 import { useOrbitSendGroups } from "@/hooks/useOrbitSendGroups";
 import { RecipientSelector } from "./RecipientSelector";
+import { CampaignRecipientsPreviewDrawer } from "./CampaignRecipientsPreviewDrawer";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { orbitCampaignKeys } from "@/lib/query-keys";
+import { buildCampaignAudienceFilters } from "@/lib/orbit/campaign-audience";
 
 interface CampaignWizardContentProps {
   onComplete: () => void;
@@ -87,6 +89,7 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
   const [testVars, setTestVars] = useState<Record<string, string>>({});
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [showRecipientPreview, setShowRecipientPreview] = useState(false);
 
   const queryClient = useQueryClient();
   const { data: templates } = useOrbitTemplates();
@@ -99,6 +102,21 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
     queryKey: ["company-profiles-for-filter"],
     queryFn: async () => {
       const { data, error } = await supabase.from("profiles").select("id, nome, email").eq("ativo", true);
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: currentProfile } = useQuery({
+    queryKey: ["orbit-current-profile"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("empresa_id")
+        .eq("id", user.id)
+        .single();
       if (error) throw error;
       return data;
     },
@@ -294,7 +312,12 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
       const recipientProspects = prospects?.filter(p => recipientIds.includes(p.id)) || [];
       const campaign = await createCampaign.mutateAsync({
         nome: data.nome, canal: data.canal, publico_origem: data.publico_origem,
-        template_id: data.template_id || null, filtros_json: data.filtros,
+        template_id: data.template_id || null,
+        filtros_json: buildCampaignAudienceFilters(
+          data.filtros,
+          data.selected_prospect_ids,
+          data.selected_group_ids,
+        ),
         agendada_para: data.agendada_para || null,
         status: data.agendada_para ? "agendada" : "rascunho",
         total_destinatarios: recipientIds.length,
@@ -809,6 +832,15 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
                   <span className="font-medium">{data.agendada_para ? new Date(data.agendada_para).toLocaleString("pt-BR") : "Imediato (após aprovação)"}</span>
                 </div>
               </div>
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowRecipientPreview(true)}
+                  disabled={!currentProfile?.empresa_id}
+                >
+                  Ver destinatários ({estimatedRecipients})
+                </Button>
+              </div>
               <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
                 <p className="text-sm text-amber-600">⚠️ A campanha será criada em modo rascunho. Você precisará solicitar aprovação antes de enviar.</p>
               </div>
@@ -831,6 +863,19 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
           )}
         </div>
       </div>
+
+      <CampaignRecipientsPreviewDrawer
+        open={showRecipientPreview}
+        onOpenChange={setShowRecipientPreview}
+        empresaId={currentProfile?.empresa_id}
+        canal={data.canal}
+        filtros={buildCampaignAudienceFilters(
+          data.filtros,
+          data.selected_prospect_ids,
+          data.selected_group_ids,
+        )}
+        recipientCount={estimatedRecipients}
+      />
     </div>
   );
 }

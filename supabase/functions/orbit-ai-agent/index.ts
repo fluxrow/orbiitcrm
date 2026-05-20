@@ -1,10 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { getCorsHeaders } from "../_shared/cors.ts";
+import { getOrbitZapiRuntimeConfig } from "../_shared/orbit-zapi.ts";
 
 // ── Estado da conversa (máquina de estados) ──
 type ConversationState = "novo" | "aguardando_resposta" | "auto_reply_detected" | "human_detected" | "qualificando" | "qualificado" | "handoff" | "encerrado";
@@ -204,9 +201,7 @@ async function notifyCommercialHumanDetected(
     return;
   }
 
-  let zapiQuery = supabase.from("orbit_zapi_config").select("*").eq("ativo", true);
-  if (empresa_id) zapiQuery = zapiQuery.eq("empresa_id", empresa_id);
-  const { data: zapiConfig } = await zapiQuery.maybeSingle();
+  const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresa_id);
 
   if (zapiConfig?.instance_id && zapiConfig?.token) {
     const response = await fetch(
@@ -306,6 +301,8 @@ function buildLeadContext(
 }
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -881,9 +878,7 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
       console.log("[orbit-ai-agent] Demo mode — handoff simulado para vendedor:", vendedorPhone);
       await supabase.from("orbit_handoffs").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", handoff.id);
     } else {
-      let zapiQuery = supabase.from("orbit_zapi_config").select("*").eq("ativo", true);
-      if (empresa_id) zapiQuery = zapiQuery.eq("empresa_id", empresa_id);
-      const { data: zapiConfig } = await zapiQuery.maybeSingle();
+      const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresa_id);
 
       if (zapiConfig?.instance_id && zapiConfig?.token) {
         const response = await fetch(
@@ -943,12 +938,7 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: st
       return;
     }
 
-    let zapiQuery = supabase
-      .from("orbit_zapi_config")
-      .select("*")
-      .eq("ativo", true);
-    if (empresaId) zapiQuery = zapiQuery.eq("empresa_id", empresaId);
-    const { data: zapiConfig } = await zapiQuery.maybeSingle();
+    const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresaId);
 
     if (zapiConfig?.instance_id && zapiConfig?.token) {
       const response = await fetch(

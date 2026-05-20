@@ -4,6 +4,71 @@
 
 @layer base {
   :root {
+    --background: 210 33% 99%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 187 92% 40%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 42%;
+
+    --accent: 187 70% 92%;
+    --accent-foreground: 187 92% 22%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+
+    --success: 142 71% 34%;
+    --success-foreground: 210 40% 98%;
+
+    --warning: 38 92% 46%;
+    --warning-foreground: 210 40% 98%;
+
+    --border: 214 25% 88%;
+    --input: 214 25% 92%;
+    --ring: 187 92% 40%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 210 33% 98%;
+    --sidebar-foreground: 222 25% 28%;
+    --sidebar-primary: 187 92% 40%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 210 40% 94%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 214 25% 88%;
+    --sidebar-ring: 187 92% 40%;
+
+    /* Channel colors */
+    --channel-whatsapp: 142 70% 45%;
+    --channel-instagram: 330 80% 60%;
+    --channel-email: 210 80% 55%;
+    --channel-phone: 38 92% 50%;
+
+    /* Funnel stage colors */
+    --stage-qualification: 210 80% 55%;
+    --stage-proposal: 280 70% 55%;
+    --stage-negotiation: 38 92% 50%;
+    --stage-closing: 187 92% 50%;
+    --stage-won: 142 76% 36%;
+    --stage-lost: 0 72% 51%;
+
+    /* Glass effect */
+    --glass-bg: 0 0% 100% / 0.78;
+    --glass-border: 214 25% 84% / 0.7;
+  }
+
+  .dark {
     --background: 222 47% 6%;
     --foreground: 210 40% 98%;
 
@@ -38,8 +103,6 @@
     --input: 222 30% 14%;
     --ring: 187 92% 50%;
 
-    --radius: 0.75rem;
-
     --sidebar-background: 222 47% 5%;
     --sidebar-foreground: 215 20% 65%;
     --sidebar-primary: 187 92% 50%;
@@ -49,28 +112,8 @@
     --sidebar-border: 222 30% 15%;
     --sidebar-ring: 187 92% 50%;
 
-    /* Channel colors */
-    --channel-whatsapp: 142 70% 45%;
-    --channel-instagram: 330 80% 60%;
-    --channel-email: 210 80% 55%;
-    --channel-phone: 38 92% 50%;
-
-    /* Funnel stage colors */
-    --stage-qualification: 210 80% 55%;
-    --stage-proposal: 280 70% 55%;
-    --stage-negotiation: 38 92% 50%;
-    --stage-closing: 187 92% 50%;
-    --stage-won: 142 76% 36%;
-    --stage-lost: 0 72% 51%;
-
-    /* Glass effect */
     --glass-bg: 222 47% 8% / 0.8;
     --glass-border: 222 30% 20% / 0.5;
-  }
-
-  .dark {
-    --background: 222 47% 6%;
-    --foreground: 210 40% 98%;
   }
 }
 
