@@ -16,3 +16,21 @@ export const orbitCampaignKeys = {
   countsByIds: (ids: string[]) =>
     [...orbitCampaignKeys.counts(), [...ids].sort()] as const,
 };
+
+/**
+ * Mesma lógica para prospects: todas as derivadas compartilham o
+ * prefixo `orbit_prospects`, então invalidar `orbitProspectKeys.all`
+ * atualiza listagens, detalhes e counts (globais e por empresa).
+ */
+export const orbitProspectKeys = {
+  all: ["orbit_prospects"] as const,
+  lists: () => [...orbitProspectKeys.all, "list"] as const,
+  list: (filters?: Record<string, unknown> | object) =>
+    [...orbitProspectKeys.lists(), filters ?? {}] as const,
+  details: () => [...orbitProspectKeys.all, "detail"] as const,
+  detail: (id: string) => [...orbitProspectKeys.details(), id] as const,
+  counts: () => [...orbitProspectKeys.all, "count"] as const,
+  count: () => [...orbitProspectKeys.counts(), "global"] as const,
+  countByEmpresa: (empresaId: string | null) =>
+    [...orbitProspectKeys.counts(), "empresa", empresaId] as const,
+};
