@@ -47,6 +47,7 @@ interface CampaignData {
     excluir_campanha_id?: string;
     apenas_abriu_campanha_id?: string;
     nao_abriu_campanha_id?: string;
+    engaj_comportamento?: "abriu" | "clicou" | "engajou" | "nao_abriu" | "nunca_recebeu" | "qualquer";
   };
   selected_prospect_ids?: string[];
   selected_group_ids?: string[];
