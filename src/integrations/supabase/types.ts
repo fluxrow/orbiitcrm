@@ -1034,7 +1034,6 @@ export type Database = {
           created_at: string | null
           data_conversao: string | null
           data_prevista_fechamento: string | null
-          deleted_at: string | null
           documentos_checklist: Json | null
           empresa_id: string | null
           etapa_id: string | null
@@ -1054,7 +1053,6 @@ export type Database = {
           created_at?: string | null
           data_conversao?: string | null
           data_prevista_fechamento?: string | null
-          deleted_at?: string | null
           documentos_checklist?: Json | null
           empresa_id?: string | null
           etapa_id?: string | null
@@ -1074,7 +1072,6 @@ export type Database = {
           created_at?: string | null
           data_conversao?: string | null
           data_prevista_fechamento?: string | null
-          deleted_at?: string | null
           documentos_checklist?: Json | null
           empresa_id?: string | null
           etapa_id?: string | null
@@ -2135,7 +2132,6 @@ export type Database = {
           consentimento_email: boolean | null
           consentimento_whatsapp: boolean | null
           created_at: string | null
-          deleted_at: string | null
           email_principal: string | null
           empresa_id: string | null
           estado: string | null
@@ -2166,7 +2162,6 @@ export type Database = {
           consentimento_email?: boolean | null
           consentimento_whatsapp?: boolean | null
           created_at?: string | null
-          deleted_at?: string | null
           email_principal?: string | null
           empresa_id?: string | null
           estado?: string | null
@@ -2197,7 +2192,6 @@ export type Database = {
           consentimento_email?: boolean | null
           consentimento_whatsapp?: boolean | null
           created_at?: string | null
-          deleted_at?: string | null
           email_principal?: string | null
           empresa_id?: string | null
           estado?: string | null
@@ -3554,18 +3548,6 @@ export type Database = {
         Args: { p_empresa_id: string }
         Returns: Json
       }
-      get_orbit_zapi_config_public: {
-        Args: { p_empresa_id: string }
-        Returns: Json
-      }
-      get_orbit_zapi_runtime_config: {
-        Args: { p_empresa_id: string }
-        Returns: Json
-      }
-      get_orbit_zapi_runtime_config_by_id: {
-        Args: { p_config_id: string }
-        Returns: Json
-      }
       get_prospect_engagement_summary: {
         Args: { p_dias?: number; p_empresa_id: string }
         Returns: {
@@ -3660,20 +3642,6 @@ export type Database = {
           p_feature_code: string
         }
         Returns: undefined
-      }
-      upsert_orbit_zapi_config_secure: {
-        Args: {
-          p_ativo?: boolean
-          p_client_token?: string
-          p_empresa_id: string
-          p_instance_id?: string
-          p_nome_instancia?: string
-          p_notificar_enviadas_por_mim?: boolean
-          p_numero_origem?: string
-          p_token?: string
-          p_webhook_url?: string
-        }
-        Returns: Json
       }
     }
     Enums: {
