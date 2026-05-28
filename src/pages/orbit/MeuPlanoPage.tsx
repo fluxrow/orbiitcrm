@@ -122,7 +122,7 @@ function useRealCounts(empresaId: string | null) {
   });
 
   const prospectsQuery = useQuery({
-    queryKey: ["real-count-prospects", empresaId],
+    queryKey: orbitProspectKeys.countByEmpresa(empresaId),
     queryFn: async () => {
       const { count, error } = await supabase
         .from("orbit_prospects")

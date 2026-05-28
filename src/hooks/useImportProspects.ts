@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { TablesInsert } from "@/integrations/supabase/types";
+import { orbitProspectKeys } from "@/lib/query-keys";
 
 type ProspectInsert = TablesInsert<"orbit_prospects">;
 
@@ -443,7 +444,7 @@ export function useImportProspects() {
       return { success, errors, errorDetails };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orbit_prospects'] });
+      queryClient.invalidateQueries({ queryKey: orbitProspectKeys.all });
       queryClient.invalidateQueries({ queryKey: ['orbit_import_history'] });
     },
   });
