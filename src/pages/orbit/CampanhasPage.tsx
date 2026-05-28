@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
 import { CampaignReviewDialog } from "@/components/orbit/CampaignReviewDialog";
-import { CampaignAnalyticsDialog } from "@/components/orbit/CampaignAnalyticsDialog";
+import { CampaignAnalyticsDialog, type FollowUpAudience } from "@/components/orbit/CampaignAnalyticsDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -355,6 +355,15 @@ export default function CampanhasPage() {
         onOpenChange={(open) => !open && setAnalyticsCampaign(null)}
         campaignId={analyticsCampaign?.id || null}
         campaignName={analyticsCampaign?.nome}
+        onCreateFollowUp={(sourceId, audience, name) => {
+          navigate("nova", {
+            state: {
+              followUpFrom: sourceId,
+              followUpAudience: audience,
+              sugestaoNome: `Follow-up: ${name}`,
+            } satisfies { followUpFrom: string; followUpAudience: FollowUpAudience; sugestaoNome: string },
+          });
+        }}
       />
 
       <AlertDialog open={deleteDialog.open} onOpenChange={(open) => setDeleteDialog({ open, id: open ? deleteDialog.id : null })}>
