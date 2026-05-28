@@ -23,6 +23,7 @@ import { useEffect } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { orbitProspectKeys } from "@/lib/query-keys";
 
 /* ── Status maps ── */
 
@@ -122,7 +123,7 @@ function useRealCounts(empresaId: string | null) {
   });
 
   const prospectsQuery = useQuery({
-    queryKey: ["real-count-prospects", empresaId],
+    queryKey: orbitProspectKeys.countByEmpresa(empresaId),
     queryFn: async () => {
       const { count, error } = await supabase
         .from("orbit_prospects")

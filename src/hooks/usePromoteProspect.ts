@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { orbitProspectKeys } from "@/lib/query-keys";
 
 interface PromoteParams {
   empresa_id: string;
@@ -33,7 +34,7 @@ export function usePromoteProspect() {
       return data as unknown as PromoteResult;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["orbit_prospects"] });
+      queryClient.invalidateQueries({ queryKey: orbitProspectKeys.all });
       queryClient.invalidateQueries({ queryKey: ["orbit_pe_links"] });
       queryClient.invalidateQueries({ queryKey: ["clientes"] });
       queryClient.invalidateQueries({ queryKey: ["oportunidades"] });

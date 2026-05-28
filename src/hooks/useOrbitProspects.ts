@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
+import { orbitProspectKeys } from "@/lib/query-keys";
 
 type Prospect = Tables<"orbit_prospects">;
 type ProspectInsert = TablesInsert<"orbit_prospects">;
@@ -15,7 +16,7 @@ interface ProspectFilters {
 
 export function useOrbitProspectsCount() {
   return useQuery({
-    queryKey: ["orbit_prospects_count"],
+    queryKey: orbitProspectKeys.count(),
     queryFn: async () => {
       const { count, error } = await supabase
         .from("orbit_prospects")
@@ -29,7 +30,7 @@ export function useOrbitProspectsCount() {
 
 export function useOrbitProspects(filters?: ProspectFilters) {
   return useQuery({
-    queryKey: ["orbit_prospects", filters],
+    queryKey: orbitProspectKeys.list(filters),
     queryFn: async () => {
       const trimmedSearch = filters?.search?.trim();
       let query = supabase
@@ -75,7 +76,7 @@ export function useOrbitProspects(filters?: ProspectFilters) {
 
 export function useOrbitProspect(id: string | undefined) {
   return useQuery({
-    queryKey: ["orbit_prospect", id],
+    queryKey: id ? orbitProspectKeys.detail(id) : orbitProspectKeys.details(),
     queryFn: async () => {
       if (!id) return null;
       const { data, error } = await supabase
@@ -131,8 +132,7 @@ export function useCreateProspect() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["orbit_prospects"] });
-      queryClient.invalidateQueries({ queryKey: ["orbit_prospects_count"] });
+      queryClient.invalidateQueries({ queryKey: orbitProspectKeys.all });
     },
   });
 }
@@ -152,8 +152,8 @@ export function useUpdateProspect() {
       return data;
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["orbit_prospects"] });
-      queryClient.invalidateQueries({ queryKey: ["orbit_prospect", variables.id] });
+      queryClient.invalidateQueries({ queryKey: orbitProspectKeys.all });
+      queryClient.invalidateQueries({ queryKey: orbitProspectKeys.detail(variables.id) });
     },
   });
 }
@@ -170,7 +170,7 @@ export function useDeleteProspect() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["orbit_prospects"] });
+      queryClient.invalidateQueries({ queryKey: orbitProspectKeys.all });
     },
   });
 }
@@ -448,8 +448,7 @@ export function useImportProspectsCSV() {
       return { inserted, updated, skipped, mergedUntouched, errors, listaTag };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["orbit_prospects"] });
-      queryClient.invalidateQueries({ queryKey: ["orbit_prospects_count"] });
+      queryClient.invalidateQueries({ queryKey: orbitProspectKeys.all });
     },
   });
 }
@@ -524,8 +523,7 @@ export function useBackfillImportAsList() {
       };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["orbit_prospects"] });
-      queryClient.invalidateQueries({ queryKey: ["orbit_prospects_count"] });
+      queryClient.invalidateQueries({ queryKey: orbitProspectKeys.all });
     },
   });
 }
