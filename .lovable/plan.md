@@ -1,73 +1,58 @@
-## Diagnóstico
+## Objetivo
 
-A campanha **"Inicial Clientes PR"** (id `966bdd93…`) foi criada com `total_destinatarios = 2324`, mas a tabela `orbit_campaign_recipients` está **com 0 linhas para essa campanha**. Por isso o dialog mostra:
+No dialog de Analytics da campanha (`CampaignAnalyticsDialog`), adicionar dois caminhos para reaproveitar quem engajou — sem precisar baixar / re-importar lista:
 
-- Total: 2324 (vem de `campaigns.total_destinatarios`)
-- Pendentes: 0 (vem da contagem real em `orbit_campaign_recipients`)
-- Já enviados / Inválidos: 2324 (calculado como `total - pendentes`)
+1. **"Criar campanha de follow-up"** (workflow otimizado, recomendado).
+2. **"Baixar CSV"** (saída de dados, caso queira usar fora do sistema).
 
-E o botão "Aprovar para Envio" fica desabilitado porque `pendingRecipients === 0`.
+A boa notícia: o `RecipientSelector` do wizard **já suporta** os filtros `apenas_abriu_campanha_id`, `nao_abriu_campanha_id`, e `engaj_comportamento` (abriu / clicou / engajou / não abriu). Então o follow-up vira só "abrir o wizard com o filtro certo pré-selecionado".
 
-Confirmei no banco que existem **2350 prospects elegíveis** (com `email_principal`, sem `optout_email`) com a tag `lista:contatos-parana-2026-…`. Ou seja, os destinatários existem — a inserção que deveria ter rodado no `handleCreate` do wizard falhou silenciosamente.
+## Mudanças
 
-### Causa raiz
+### 1. `CampaignAnalyticsDialog.tsx`
 
-Em `src/components/orbit/CampaignWizardContent.tsx` (linha 313):
+No header do dialog, adicionar barra de ações com:
 
-```ts
-if (recipients.length > 0) await supabase.from("orbit_campaign_recipients").insert(recipients);
-```
+- **Select** "Público alvo do follow-up":
+  - Abriu (`apenas_abriu_campanha_id`)
+  - Clicou (`engaj_comportamento = clicou`, escopo nesta campanha)
+  - Engajou — abriu E clicou (`engaj_comportamento = engajou`)
+  - Não abriu (`nao_abriu_campanha_id`)
+- **Botão primário** "Criar campanha de follow-up" → fecha o dialog e chama um callback `onCreateFollowUp(campaignId, audienceType)`.
+- **Botão secundário** "Baixar CSV" → exporta a lista filtrada atual da tabela (respeita o filtro `engagementFilter` já existente). Colunas: nome, email, telefone, status engajamento, entregue_em, aberto_em, clicado_em. Gera CSV no client, faz download via `Blob` + `<a download>`.
 
-- Insert único de ~2300 linhas pelo navegador → estoura limite de payload / timeout / RLS, e o erro **não é checado** (sem `.throwOnError()` nem verificação de `error`). O toast diz "Campanha criada com sucesso" mesmo quando o insert falha.
-- Mesmo quando funciona, é lento e arriscado para listas grandes.
+### 2. `CampanhasPage.tsx`
 
-## Plano de correção
+- Adicionar handler `handleCreateFollowUp(sourceCampaignId, audience)` que navega para `/{slug}/orbit/campanhas/nova` (ou abre o `CampaignWizard`) passando via state:
+  ```ts
+  { 
+    followUpFrom: sourceCampaignId, 
+    followUpAudience: audience,  // "abriu" | "clicou" | "engajou" | "nao_abriu"
+    sugestaoNome: `Follow-up: <nome da campanha original>`
+  }
+  ```
+- Passar `onCreateFollowUp` para `CampaignAnalyticsDialog`.
 
-### 1. RPC server-side para popular destinatários
+### 3. `CampaignWizardContent.tsx` (ou onde o wizard inicializa filtros)
 
-Criar `pe_populate_campaign_recipients(p_campaign_id uuid)` que:
-- Lê a campanha (valida `empresa_id`, canal, `filtros_json`).
-- Calcula os prospects elegíveis em uma única query, aplicando os mesmos filtros do wizard server-side:
-  - `empresa_id` da campanha,
-  - filtros de `filtros_json` (tags, segmento, estado, status_qualificacao, origem_contato, origem_lead, score_min, responsavel_id, cidade, apenas_consentimento, etc.),
-  - canal email → `email_principal IS NOT NULL AND optout_email IS NOT TRUE`,
-  - canal whatsapp → `(whatsapp OR telefone) IS NOT NULL AND optout_whatsapp IS NOT TRUE`.
-- Faz `INSERT ... ON CONFLICT (campaign_id, prospect_id) DO NOTHING` em `orbit_campaign_recipients` com `status='pendente'`.
-- Atualiza `orbit_campaigns.total_destinatarios` = count real.
-- Retorna `{ inserted, already_present, total }`.
+- Ler `location.state.followUpFrom` / `followUpAudience` no mount.
+- Pré-preencher:
+  - `nome` com a sugestão;
+  - `filtros.apenas_abriu_campanha_id` quando `abriu`/`engajou`/`clicou`;
+  - `filtros.engaj_comportamento = "clicou" | "engajou"` quando aplicável;
+  - `filtros.nao_abriu_campanha_id` quando `nao_abriu`.
+- Avançar visualmente para o step de destinatários, mostrando contagem pré-filtrada (lógica já existente).
 
-Garantir índice/uniqueness `(campaign_id, prospect_id)` (provavelmente já existe — verificar antes de criar).
+### 4. CSV export — helper
 
-### 2. Usar a RPC na criação (wizard)
+Pequeno utilitário `src/lib/csv.ts` com `downloadCsv(filename, rows, columns)` (escape de aspas, separador `,`, BOM UTF-8 para Excel). Usado pelo botão "Baixar CSV".
 
-Em `handleCreate`:
-- Após criar a campanha, chamar `supabase.rpc("pe_populate_campaign_recipients", { p_campaign_id })` em vez do `insert` do navegador.
-- Tratar erro corretamente (toast vermelho + abortar fluxo).
+## Não muda
 
-### 3. Botão "Repopular destinatários" no dialog de revisão
+- Sem migrations: tudo se apoia nas colunas `opened_at` / `clicked_at` / `engagement_status` em `orbit_campaign_recipients` e nos filtros já existentes.
+- Sem mudança no `send-orbit-campaign`; só no fluxo de criação.
+- Sem alteração no Supabase / RLS.
 
-Em `src/components/orbit/CampaignReviewDialog.tsx`, quando `pendingRecipients === 0 && totalRecipients > 0` (ou sempre, como ação secundária para o status `em_revisao`/`rascunho`):
-- Mostrar botão "Recarregar destinatários".
-- Chama a mesma RPC; após sucesso invalida `campaign_recipient_counts` e mostra toast com `inserted`.
-- Isso resolve **a campanha atual** sem precisar recriar.
+## Resultado
 
-### 4. Backfill imediato da campanha já criada
-
-Após a RPC estar pronta, executar uma vez no banco:
-```sql
-SELECT pe_populate_campaign_recipients('966bdd93-2dee-4e74-bbe0-c409ddaea304');
-```
-para destravar o envio da "Inicial Clientes PR" sem clique adicional do usuário.
-
-## Arquivos afetados
-
-- **Nova migration SQL**: função `pe_populate_campaign_recipients` + (se faltar) índice único `(campaign_id, prospect_id)`.
-- `src/components/orbit/CampaignWizardContent.tsx` — substituir insert manual pela RPC, com checagem de erro.
-- `src/components/orbit/CampaignReviewDialog.tsx` — adicionar botão "Recarregar destinatários" + hook para chamar a RPC.
-- `src/pages/orbit/CampanhasPage.tsx` — invalidar `campaign_recipient_counts` após recarregar.
-
-## Resultado esperado
-
-- "Inicial Clientes PR" passa a mostrar ~2350 pendentes e o botão "Aprovar para Envio" libera.
-- Próximas campanhas grandes (>1k destinatários) são criadas de forma confiável em <2s, sem inserts perdidos.
-- Qualquer campanha futura que entre nesse estado (0 pendentes / total > 0) é recuperável com 1 clique.
+Em 2 cliques a partir do Analytics da campanha "Inicial Clientes PR" o usuário cria outra campanha já direcionada a quem abriu/clicou, sem export + re-import. Quem ainda preferir CSV tem o botão de download.
