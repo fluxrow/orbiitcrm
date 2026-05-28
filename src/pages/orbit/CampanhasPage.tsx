@@ -355,6 +355,15 @@ export default function CampanhasPage() {
         onOpenChange={(open) => !open && setAnalyticsCampaign(null)}
         campaignId={analyticsCampaign?.id || null}
         campaignName={analyticsCampaign?.nome}
+        onCreateFollowUp={(sourceId, audience, name) => {
+          navigate("nova", {
+            state: {
+              followUpFrom: sourceId,
+              followUpAudience: audience,
+              sugestaoNome: `Follow-up: ${name}`,
+            } satisfies { followUpFrom: string; followUpAudience: FollowUpAudience; sugestaoNome: string },
+          });
+        }}
       />
 
       <AlertDialog open={deleteDialog.open} onOpenChange={(open) => setDeleteDialog({ open, id: open ? deleteDialog.id : null })}>
