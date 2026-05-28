@@ -100,6 +100,43 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
   const createTemplate = useCreateTemplate();
   const { data: sendGroups } = useOrbitSendGroups();
 
+  // Pre-populate from follow-up flow (navigated from CampaignAnalyticsDialog)
+  const location = useLocation();
+  useEffect(() => {
+    const s = (location.state || {}) as {
+      followUpFrom?: string;
+      followUpAudience?: "abriu" | "clicou" | "engajou" | "nao_abriu";
+      sugestaoNome?: string;
+    };
+    if (!s.followUpFrom || !s.followUpAudience) return;
+    setData(prev => {
+      const filtros = { ...prev.filtros };
+      // Reset mutually exclusive campaign-based filters
+      filtros.excluir_campanha_id = undefined;
+      filtros.apenas_abriu_campanha_id = undefined;
+      filtros.nao_abriu_campanha_id = undefined;
+      if (s.followUpAudience === "nao_abriu") {
+        filtros.nao_abriu_campanha_id = s.followUpFrom;
+      } else {
+        // abriu / clicou / engajou all require "abriu" first; engagement filter narrows further
+        filtros.apenas_abriu_campanha_id = s.followUpFrom;
+        if (s.followUpAudience === "clicou" || s.followUpAudience === "engajou") {
+          filtros.engaj_comportamento = s.followUpAudience;
+        }
+      }
+      return {
+        ...prev,
+        canal: "email",
+        nome: s.sugestaoNome || prev.nome,
+        filtros,
+      };
+    });
+    // Jump to recipients step so user immediately sees the targeted audience
+    setCurrentStep(3);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+
   const { data: companyProfiles } = useQuery({
     queryKey: ["company-profiles-for-filter"],
     queryFn: async () => {
