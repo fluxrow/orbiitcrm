@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import {
   Loader2, Mail, MailOpen, MousePointerClick, AlertTriangle, Info,
   ChevronLeft, ChevronRight, Send, Users, ShieldAlert, TrendingUp, TrendingDown, Filter,
+  Download, Rocket,
 } from "lucide-react";
 import {
   useOrbitCampaignSummary,
@@ -14,14 +15,20 @@ import {
   type EngagementFilter,
 } from "@/hooks/useOrbitEmailAnalytics";
 import { format } from "date-fns";
+import { supabase } from "@/integrations/supabase/client";
+import { downloadCsv } from "@/lib/csv";
+import { toast } from "sonner";
 
 const PAGE_SIZE = 50;
+
+export type FollowUpAudience = "abriu" | "clicou" | "engajou" | "nao_abriu";
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   campaignId: string | null;
   campaignName?: string;
+  onCreateFollowUp?: (campaignId: string, audience: FollowUpAudience, campaignName: string) => void;
 }
 
 const engagementBadge: Record<string, { label: string; className: string }> = {
@@ -39,6 +46,13 @@ const filterOptions: { value: EngagementFilter; label: string }[] = [
   { value: "nao_abriu", label: "Não Abriu" },
   { value: "clicou", label: "Clicou" },
   { value: "falhou", label: "Falhou" },
+];
+
+const followUpOptions: { value: FollowUpAudience; label: string; desc: string }[] = [
+  { value: "abriu", label: "📩 Quem abriu", desc: "Já demonstraram interesse" },
+  { value: "clicou", label: "🖱️ Quem clicou", desc: "Engajamento mais forte" },
+  { value: "engajou", label: "🔥 Quem abriu E clicou", desc: "Leads mais quentes" },
+  { value: "nao_abriu", label: "🙈 Quem NÃO abriu", desc: "Reimpactar com nova abordagem" },
 ];
 
 function MetricCard({
@@ -65,9 +79,11 @@ function MetricCard({
   );
 }
 
-export function CampaignAnalyticsDialog({ open, onOpenChange, campaignId, campaignName }: Props) {
+export function CampaignAnalyticsDialog({ open, onOpenChange, campaignId, campaignName, onCreateFollowUp }: Props) {
   const [page, setPage] = useState(0);
   const [engagementFilter, setEngagementFilter] = useState<EngagementFilter>("todos");
+  const [followUpAudience, setFollowUpAudience] = useState<FollowUpAudience>("abriu");
+  const [exporting, setExporting] = useState(false);
   const activeId = open ? campaignId : null;
   const { data: summary, isLoading: loadingSummary } = useOrbitCampaignSummary(activeId);
   const { data: recipientsData, isLoading: loadingRecipients } = useOrbitCampaignRecipients(
@@ -80,13 +96,92 @@ export function CampaignAnalyticsDialog({ open, onOpenChange, campaignId, campai
   const to = Math.min((page + 1) * PAGE_SIZE, totalCount);
 
   const handleOpenChange = (v: boolean) => {
-    if (!v) { setPage(0); setEngagementFilter("todos"); }
+    if (!v) { setPage(0); setEngagementFilter("todos"); setFollowUpAudience("abriu"); }
     onOpenChange(v);
   };
 
   const handleFilterChange = (v: string) => {
     setEngagementFilter(v as EngagementFilter);
     setPage(0);
+  };
+
+  const handleCreateFollowUp = () => {
+    if (!campaignId) return;
+    onCreateFollowUp?.(campaignId, followUpAudience, campaignName || "Campanha");
+    onOpenChange(false);
+  };
+
+  /**
+   * Fetch ALL recipients for the current campaign respecting the engagement filter,
+   * then download as CSV. Caps at 10k rows to protect the browser.
+   */
+  const handleDownloadCsv = async () => {
+    if (!campaignId) return;
+    try {
+      setExporting(true);
+      let query = supabase
+        .from("orbit_campaign_recipients")
+        .select(
+          "id, email, telefone, status, engagement_status, enviado_em, delivered_at, opened_at, clicked_at, bounced_at, complained_at, prospect:orbit_prospects(nome_razao, nome_fantasia)"
+        )
+        .eq("campaign_id", campaignId)
+        .order("enviado_em", { ascending: false, nullsFirst: false })
+        .limit(10000);
+
+      switch (engagementFilter) {
+        case "abriu":
+          query = query.not("opened_at", "is", null);
+          break;
+        case "nao_abriu":
+          query = query.is("opened_at", null).neq("status", "pendente");
+          break;
+        case "clicou":
+          query = query.not("clicked_at", "is", null);
+          break;
+        case "nao_clicou":
+          query = query.is("clicked_at", null).not("opened_at", "is", null);
+          break;
+        case "falhou":
+          query = query.in("engagement_status", ["bounced", "complained"]);
+          break;
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      const rows = (data || []) as any[];
+      if (!rows.length) {
+        toast.info("Nenhum destinatário para exportar com este filtro.");
+        return;
+      }
+
+      const safeName = (campaignName || "campanha").replace(/[^a-z0-9-_]+/gi, "_").toLowerCase();
+      const filterTag = engagementFilter === "todos" ? "todos" : engagementFilter;
+      const dateTag = format(new Date(), "yyyy-MM-dd");
+
+      downloadCsv(
+        `${safeName}_${filterTag}_${dateTag}.csv`,
+        rows,
+        [
+          { header: "Nome", value: r => r.prospect?.nome_razao || "" },
+          { header: "Empresa", value: r => r.prospect?.nome_fantasia || "" },
+          { header: "Email", value: r => r.email || "" },
+          { header: "Telefone", value: r => r.telefone || "" },
+          { header: "Status", value: r => r.status || "" },
+          { header: "Engajamento", value: r => r.engagement_status || "" },
+          { header: "Enviado em", value: r => r.enviado_em ? format(new Date(r.enviado_em), "yyyy-MM-dd HH:mm") : "" },
+          { header: "Entregue em", value: r => r.delivered_at ? format(new Date(r.delivered_at), "yyyy-MM-dd HH:mm") : "" },
+          { header: "Aberto em", value: r => r.opened_at ? format(new Date(r.opened_at), "yyyy-MM-dd HH:mm") : "" },
+          { header: "Clicado em", value: r => r.clicked_at ? format(new Date(r.clicked_at), "yyyy-MM-dd HH:mm") : "" },
+          { header: "Bounce em", value: r => r.bounced_at ? format(new Date(r.bounced_at), "yyyy-MM-dd HH:mm") : "" },
+          { header: "Spam em", value: r => r.complained_at ? format(new Date(r.complained_at), "yyyy-MM-dd HH:mm") : "" },
+        ]
+      );
+      toast.success(`CSV gerado com ${rows.length} destinatário(s).`);
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao gerar CSV");
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -134,6 +229,42 @@ export function CampaignAnalyticsDialog({ open, onOpenChange, campaignId, campai
                   <p className="text-lg font-semibold">{s.value}</p>
                 </div>
               ))}
+            </div>
+
+            {/* Follow-up action bar */}
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Rocket className="h-4 w-4 text-primary" />
+                <h4 className="text-sm font-semibold">Reaproveitar audiência</h4>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Crie uma nova campanha direcionada a quem interagiu — sem precisar baixar e re-importar listas.
+              </p>
+              <div className="flex flex-col md:flex-row gap-2 md:items-center">
+                <Select value={followUpAudience} onValueChange={(v) => setFollowUpAudience(v as FollowUpAudience)}>
+                  <SelectTrigger className="md:w-[280px] h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {followUpOptions.map(o => (
+                      <SelectItem key={o.value} value={o.value}>
+                        <div className="flex flex-col">
+                          <span>{o.label}</span>
+                          <span className="text-[10px] text-muted-foreground">{o.desc}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button size="sm" onClick={handleCreateFollowUp} disabled={!onCreateFollowUp} className="md:ml-auto">
+                  <Rocket className="h-4 w-4 mr-2" />
+                  Criar campanha de follow-up
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleDownloadCsv} disabled={exporting}>
+                  {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+                  Baixar CSV
+                </Button>
+              </div>
             </div>
 
             <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
