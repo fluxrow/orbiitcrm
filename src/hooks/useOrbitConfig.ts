@@ -93,7 +93,7 @@ export function useOrbitZAPIConfig(empresaId?: string | null) {
   return useQuery({
     queryKey: ["orbit_zapi_config", empresaId],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_orbit_zapi_config_public", {
+      const { data, error } = await (supabase.rpc as any)("get_orbit_zapi_config_public", {
         p_empresa_id: empresaId,
       });
       if (error) throw error;
@@ -108,7 +108,7 @@ export function useUpdateZAPIConfig() {
 
   return useMutation({
     mutationFn: async (updates: OrbitZAPIConfigInput) => {
-      const { data, error } = await supabase.rpc("upsert_orbit_zapi_config_secure", {
+      const { data, error } = await (supabase.rpc as any)("upsert_orbit_zapi_config_secure", {
         p_empresa_id: updates.empresa_id,
         p_nome_instancia: updates.nome_instancia ?? null,
         p_instance_id: updates.instance_id ?? null,
