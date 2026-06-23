@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { usePeAuth } from "@/hooks/usePeAuth";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useTenant } from "@/contexts/TenantContext";
 import { useOrgUsers, useInviteUser, useAddOrgUser } from "@/hooks/useOrgUsers";
 import { useOrgInvitations, useCancelInvitation, useResendInvitation } from "@/hooks/usePeInvitations";
 import { usePeRoles } from "@/hooks/usePeRoles";
@@ -15,7 +17,26 @@ import { UserPlus, Plus, Mail, Clock, RefreshCw, Pencil } from "lucide-react";
 import { format } from "date-fns";
 
 export default function ConfigUsersTab() {
-  const { orgId } = usePeAuth();
+  // Multi-tenant fix: derive orgId from the ACTIVE tenant (URL-based), not from
+  // the user's home pe_users.organization_id. Otherwise an admin navigating to
+  // /fluxrow/config sees users of their original org (e.g. Promotrip).
+  const { empresaId } = useTenant();
+
+  const { data: orgId, isLoading: orgIdLoading } = useQuery({
+    queryKey: ["tenant-org-id", empresaId],
+    queryFn: async () => {
+      if (!empresaId) return null;
+      const { data, error } = await supabase
+        .from("pe_tenant_map" as any)
+        .select("organization_id")
+        .eq("empresa_id", empresaId)
+        .maybeSingle();
+      if (error) throw error;
+      return (data as any)?.organization_id ?? null;
+    },
+    enabled: !!empresaId,
+  });
+
   const { data: users, isLoading } = useOrgUsers(orgId);
   const { data: invitations } = useOrgInvitations(orgId);
   const { data: roles } = usePeRoles();
@@ -83,8 +104,10 @@ export default function ConfigUsersTab() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? (
+            {orgIdLoading || isLoading ? (
               <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+            ) : !orgId ? (
+              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Esta empresa ainda não está provisionada. Contate o administrador.</TableCell></TableRow>
             ) : !users?.length ? (
               <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhum usuário</TableCell></TableRow>
             ) : (
