@@ -1,58 +1,45 @@
-## Objetivo
+## Validação dos fixes aplicados pelo Claude
 
-No dialog de Analytics da campanha (`CampaignAnalyticsDialog`), adicionar dois caminhos para reaproveitar quem engajou — sem precisar baixar / re-importar lista:
+Plano para verificar se os 12 arquivos ficaram consistentes com `useTenant().empresaId` e isolamento por tenant.
 
-1. **"Criar campanha de follow-up"** (workflow otimizado, recomendado).
-2. **"Baixar CSV"** (saída de dados, caso queira usar fora do sistema).
+### 1. Releitura dos 12 arquivos alterados
+Ler em paralelo:
+- `src/components/orbit/CampaignWizard.tsx`
+- `src/components/orbit/CampaignWizardContent.tsx`
+- `src/components/orbit/ProspectDialog.tsx`
+- `src/components/orbit/RecipientSelector.tsx`
+- `src/pages/orbit/TemplatesPage.tsx`
+- `src/pages/orbit/EmailTemplateEditorPage.tsx`
+- `src/pages/orbit/ProspectsPage.tsx`
+- `src/hooks/useEmpresaVendedores.ts`
+- `src/hooks/useUserRole.ts`
+- `src/hooks/useIsDemo.ts`
+- `src/hooks/useImportProspects.ts`
+- `src/hooks/useLeadFinder.ts`
 
-A boa notícia: o `RecipientSelector` do wizard **já suporta** os filtros `apenas_abriu_campanha_id`, `nao_abriu_campanha_id`, e `engaj_comportamento` (abriu / clicou / engajou / não abriu). Então o follow-up vira só "abrir o wizard com o filtro certo pré-selecionado".
+### 2. Checklist por arquivo
+Para cada um confirmar:
+- `useTenant()` importado e usado no topo do componente/hook
+- Nenhum `supabase.from("profiles").select("empresa_id")` remanescente para descobrir tenant ativo (lookups legítimos — ex: contar usuários — ficam)
+- `queryKey` inclui `empresaId` quando a query depende dele
+- `enabled: !!empresaId` em queries dependentes (evita race condition antes do tenant carregar)
+- Mutations passam `empresa_id: tenantEmpresaId` explicitamente
+- Hooks não chamam outros hooks condicionalmente
 
-## Mudanças
+### 3. Grep global de regressão
+- `rg "from\\(.profiles.\\)\\.select\\(.empresa_id" src/` — deve sobrar só `TenantContext.tsx`, `useUserRole.ts` (lookup legítimo de empresa do user), e telas pe-admin/super-admin não-orbit
+- `rg "myProfile\\?\\.empresa_id|profile\\?\\.empresa_id" src/` no escopo orbit — deve estar zerado
 
-### 1. `CampaignAnalyticsDialog.tsx`
+### 4. Typecheck
+- `bunx tsgo --noEmit` (ou o que o projeto usar) para garantir que as assinaturas continuam batendo após as edições do Claude
 
-No header do dialog, adicionar barra de ações com:
+### 5. Smoke tests existentes
+- Rodar `bunx vitest run src/test/orbit-smoke.test.ts src/test/orbit-ux-smoke.test.ts` se passarem sem mudar nada — só pra ver que nada quebrou estruturalmente
 
-- **Select** "Público alvo do follow-up":
-  - Abriu (`apenas_abriu_campanha_id`)
-  - Clicou (`engaj_comportamento = clicou`, escopo nesta campanha)
-  - Engajou — abriu E clicou (`engaj_comportamento = engajou`)
-  - Não abriu (`nao_abriu_campanha_id`)
-- **Botão primário** "Criar campanha de follow-up" → fecha o dialog e chama um callback `onCreateFollowUp(campaignId, audienceType)`.
-- **Botão secundário** "Baixar CSV" → exporta a lista filtrada atual da tabela (respeita o filtro `engagementFilter` já existente). Colunas: nome, email, telefone, status engajamento, entregue_em, aberto_em, clicado_em. Gera CSV no client, faz download via `Blob` + `<a download>`.
+### 6. Relatório
+Devolver:
+- ✅ arquivos consistentes
+- ⚠️ qualquer arquivo onde falte `enabled`/`queryKey`/grant de tenant
+- 🔴 erros de typecheck ou imports quebrados
 
-### 2. `CampanhasPage.tsx`
-
-- Adicionar handler `handleCreateFollowUp(sourceCampaignId, audience)` que navega para `/{slug}/orbit/campanhas/nova` (ou abre o `CampaignWizard`) passando via state:
-  ```ts
-  { 
-    followUpFrom: sourceCampaignId, 
-    followUpAudience: audience,  // "abriu" | "clicou" | "engajou" | "nao_abriu"
-    sugestaoNome: `Follow-up: <nome da campanha original>`
-  }
-  ```
-- Passar `onCreateFollowUp` para `CampaignAnalyticsDialog`.
-
-### 3. `CampaignWizardContent.tsx` (ou onde o wizard inicializa filtros)
-
-- Ler `location.state.followUpFrom` / `followUpAudience` no mount.
-- Pré-preencher:
-  - `nome` com a sugestão;
-  - `filtros.apenas_abriu_campanha_id` quando `abriu`/`engajou`/`clicou`;
-  - `filtros.engaj_comportamento = "clicou" | "engajou"` quando aplicável;
-  - `filtros.nao_abriu_campanha_id` quando `nao_abriu`.
-- Avançar visualmente para o step de destinatários, mostrando contagem pré-filtrada (lógica já existente).
-
-### 4. CSV export — helper
-
-Pequeno utilitário `src/lib/csv.ts` com `downloadCsv(filename, rows, columns)` (escape de aspas, separador `,`, BOM UTF-8 para Excel). Usado pelo botão "Baixar CSV".
-
-## Não muda
-
-- Sem migrations: tudo se apoia nas colunas `opened_at` / `clicked_at` / `engagement_status` em `orbit_campaign_recipients` e nos filtros já existentes.
-- Sem mudança no `send-orbit-campaign`; só no fluxo de criação.
-- Sem alteração no Supabase / RLS.
-
-## Resultado
-
-Em 2 cliques a partir do Analytics da campanha "Inicial Clientes PR" o usuário cria outra campanha já direcionada a quem abriu/clicou, sem export + re-import. Quem ainda preferir CSV tem o botão de download.
+**Não vou editar nada** nesta etapa — só validar e reportar. Se achar inconsistência, te mostro o diff sugerido antes de aplicar.
