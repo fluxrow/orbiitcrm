@@ -535,6 +535,9 @@ export default function LandingPage() {
           <span>© {new Date().getFullYear()} Fluxrow. Todos os direitos reservados.</span>
         </div>
       </footer>
+
+      {/* ══════════ WHATSAPP FAB ══════════ */}
+      <WhatsAppFab />
     </div>
   );
 }
