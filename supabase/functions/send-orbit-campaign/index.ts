@@ -616,12 +616,24 @@ const handler = async (req: Request): Promise<Response> => {
 
           // 6. Send WhatsApp message
           if (templateImageUrl) {
-            await fetch(`${zapiBaseUrl}/send-image`, {
-              method: "POST",
-              headers: zapiHeaders,
-              body: JSON.stringify({ phone: validatedPhone, image: templateImageUrl, caption: "" }),
-            });
+            try {
+              const imgRes = await fetch(`${zapiBaseUrl}/send-image`, {
+                method: "POST",
+                headers: zapiHeaders,
+                body: JSON.stringify({ phone: validatedPhone, image: templateImageUrl, caption: "" }),
+              });
+              if (!imgRes.ok) {
+                const errBody = await imgRes.text();
+                console.error(`[send-campaign] Falha ao enviar imagem (${imgRes.status}) para ${validatedPhone}: ${errBody}`);
+              } else {
+                // pequeno delay entre imagem e texto para Z-API processar
+                await delayMs(800);
+              }
+            } catch (imgErr: any) {
+              console.error(`[send-campaign] Exceção ao enviar imagem para ${validatedPhone}:`, imgErr?.message);
+            }
           }
+
 
           const zapiRes = await fetch(`${zapiBaseUrl}/send-text`, {
             method: "POST",

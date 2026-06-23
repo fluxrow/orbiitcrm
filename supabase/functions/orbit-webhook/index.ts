@@ -390,16 +390,42 @@ serve(async (req) => {
       }
     }
 
-    // 2. Find or create conversation
+    // 2. Find or create conversation — match by prospect + phone variants
+    // para evitar duplicar quando entrada/saída usam formatos diferentes (com/sem 9)
     let conversaQuery = supabase
       .from("orbit_conversas")
       .select("*")
-      .eq("telefone_whatsapp", normalizedPhone)
+      .eq("prospect_id", prospect.id)
       .eq("canal", "whatsapp")
-      .eq("status", "aberta");
+      .eq("status", "aberta")
+      .order("ultima_mensagem_at", { ascending: false, nullsFirst: false })
+      .limit(1);
     if (empresaId) conversaQuery = conversaQuery.eq("empresa_id", empresaId);
 
-    let { data: conversa } = await conversaQuery.maybeSingle();
+    let { data: conversaRows } = await conversaQuery;
+    let conversa = conversaRows?.[0] || null;
+
+    if (!conversa) {
+      let altQuery = supabase
+        .from("orbit_conversas")
+        .select("*")
+        .in("telefone_whatsapp", phoneVariants)
+        .eq("canal", "whatsapp")
+        .eq("status", "aberta")
+        .order("ultima_mensagem_at", { ascending: false, nullsFirst: false })
+        .limit(1);
+      if (empresaId) altQuery = altQuery.eq("empresa_id", empresaId);
+      const { data: altRows } = await altQuery;
+      conversa = altRows?.[0] || null;
+    }
+
+    if (conversa && conversa.telefone_whatsapp !== normalizedPhone) {
+      await supabase
+        .from("orbit_conversas")
+        .update({ telefone_whatsapp: normalizedPhone })
+        .eq("id", conversa.id);
+      conversa.telefone_whatsapp = normalizedPhone;
+    }
 
     if (!conversa) {
       const insertConversa: any = {
