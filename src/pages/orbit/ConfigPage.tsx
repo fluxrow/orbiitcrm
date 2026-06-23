@@ -49,6 +49,7 @@ interface ParsedProspect {
 export default function ConfigPage() {
   const { roleCode } = usePeAuth();
   const { empresaId } = useTenant();
+  const [searchParams] = useSearchParams();
   const isOrgAdmin = roleCode === "ORG_ADMIN";
   const { isDemo } = useIsDemo();
   const { data: aiConfig, isLoading: aiLoading } = useOrbitAIConfig(empresaId);
