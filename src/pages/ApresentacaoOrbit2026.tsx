@@ -37,7 +37,6 @@ const SECTIONS = [
   "whatsapp",
   "email",
   "funil",
-  "roi",
   "fechamento",
   "investimento",
 ];
