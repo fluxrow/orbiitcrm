@@ -48,7 +48,7 @@ export default function ConfigPage() {
   const { isDemo } = useIsDemo();
   const { data: aiConfig, isLoading: aiLoading } = useOrbitAIConfig(empresaId);
   const { data: zapiConfig, isLoading: zapiLoading } = useOrbitZAPIConfig(empresaId);
-  const { data: resendConfig, isLoading: resendLoading } = useOrbitResendConfig();
+  const { data: resendConfig, isLoading: resendLoading } = useOrbitResendConfig(empresaId);
   const { data: importHistory, isLoading: historyLoading } = useImportHistory();
   const updateAI = useUpdateAIConfig();
   const updateZAPI = useUpdateZAPIConfig();
