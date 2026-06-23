@@ -17,6 +17,7 @@ interface CampaignFilters {
 
 export function useOrbitCampaigns(filters?: CampaignFilters) {
   const queryClient = useQueryClient();
+  const { empresaId } = useTenant();
 
   useEffect(() => {
     const channel = supabase
