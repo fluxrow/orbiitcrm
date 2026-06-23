@@ -104,18 +104,26 @@ export default function SelectEmpresaPage() {
           {empresas.map((e) => (
             <Card
               key={e.empresa_id}
-              className="p-4 flex items-center gap-4 cursor-pointer hover:border-primary transition-colors"
+              className={cn(
+                "p-4 flex items-center gap-4 cursor-pointer transition-colors",
+                e.is_active
+                  ? "border-2 border-primary bg-primary/5 ring-2 ring-primary/20"
+                  : "hover:border-primary"
+              )}
               onClick={() => !selectMutation.isPending && handleSelect(e)}
             >
-              <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                <Building2 className="h-6 w-6 text-primary" />
+              <div className={cn(
+                "h-12 w-12 rounded-lg flex items-center justify-center shrink-0",
+                e.is_active ? "bg-primary text-primary-foreground" : "bg-primary/10"
+              )}>
+                <Building2 className={cn("h-6 w-6", e.is_active ? "" : "text-primary")} />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="font-semibold truncate">{e.nome}</h3>
                   {e.is_active && (
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-500/20 text-green-500 flex items-center gap-1">
-                      <Check className="h-3 w-3" /> Atual
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary text-primary-foreground flex items-center gap-1">
+                      <Check className="h-3 w-3" /> Empresa atual
                     </span>
                   )}
                 </div>
@@ -123,8 +131,8 @@ export default function SelectEmpresaPage() {
                   {e.slug ? `/${e.slug}` : "sem slug"} · {e.role}
                 </p>
               </div>
-              <Button size="sm" variant={e.is_active ? "outline" : "default"} disabled={selectMutation.isPending}>
-                {selectMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Entrar"}
+              <Button size="sm" variant={e.is_active ? "secondary" : "default"} disabled={selectMutation.isPending}>
+                {selectMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : e.is_active ? "Continuar" : "Entrar"}
               </Button>
             </Card>
           ))}
