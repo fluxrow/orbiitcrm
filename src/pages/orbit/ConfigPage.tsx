@@ -207,7 +207,6 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
       toast.success("Configuração Z-API salva e confirmada.");
     } catch (error: any) {
       toast.error(error.message || "Erro ao salvar configuração Z-API");
-      throw error;
     }
   };
   
