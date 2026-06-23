@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Sparkles, Copy, Trash2, Pencil, MessageSquare, Mail, Loader2, ImagePlus, X, Link } from "lucide-react";
 import { useOrbitTemplates, useCreateTemplate, useDeleteTemplate } from "@/hooks/useOrbitTemplates";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
 
 const ALLOWED_VARS = ["{{nome}}", "{{empresa}}", "{{nome_fantasia}}", "{{email}}", "{{telefone}}", "{{cidade}}", "{{segmento}}"];
