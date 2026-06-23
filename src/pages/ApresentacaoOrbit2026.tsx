@@ -859,15 +859,6 @@ function Roi() {
           </motion.div>
         </div>
 
-        <motion.div variants={fadeUp} className="mt-12">
-          <div className="text-sm uppercase tracking-[0.2em] text-white/40 mb-3">
-            Você economiza
-          </div>
-          <div className="text-7xl md:text-8xl font-bold bg-gradient-to-r from-emerald-400 via-cyan-300 to-violet-400 bg-clip-text text-transparent tabular-nums">
-            R$ <CountUp to={84636} separator="." duration={2.4} />
-          </div>
-          <div className="mt-3 text-white/60 text-lg">no primeiro ano. Todo ano.</div>
-        </motion.div>
       </motion.div>
     </Section>
   );
