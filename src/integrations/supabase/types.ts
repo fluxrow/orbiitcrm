@@ -643,6 +643,59 @@ export type Database = {
           },
         ]
       }
+      orbit_audio_library: {
+        Row: {
+          ativo: boolean | null
+          contexto: string
+          created_at: string | null
+          descricao: string | null
+          duracao_ms: number | null
+          empresa_id: string
+          id: string
+          nome: string
+          tags: string[] | null
+          updated_at: string | null
+          url: string
+          uso_count: number | null
+        }
+        Insert: {
+          ativo?: boolean | null
+          contexto: string
+          created_at?: string | null
+          descricao?: string | null
+          duracao_ms?: number | null
+          empresa_id: string
+          id?: string
+          nome: string
+          tags?: string[] | null
+          updated_at?: string | null
+          url: string
+          uso_count?: number | null
+        }
+        Update: {
+          ativo?: boolean | null
+          contexto?: string
+          created_at?: string | null
+          descricao?: string | null
+          duracao_ms?: number | null
+          empresa_id?: string
+          id?: string
+          nome?: string
+          tags?: string[] | null
+          updated_at?: string | null
+          url?: string
+          uso_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_audio_library_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_audit_log: {
         Row: {
           acao: string
