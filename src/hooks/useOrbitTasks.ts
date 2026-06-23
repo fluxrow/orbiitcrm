@@ -13,8 +13,10 @@ export interface OrbitTaskFilters {
 }
 
 export function useOrbitTasks(filters?: OrbitTaskFilters) {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: ["orbit_tasks", filters],
+    queryKey: ["orbit_tasks", empresaId, filters],
+    enabled: !!empresaId,
     queryFn: async () => {
       let query = supabase
         .from("orbit_tasks" as any)
