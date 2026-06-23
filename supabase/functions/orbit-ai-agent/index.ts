@@ -144,16 +144,52 @@ async function notifyCommercialHumanDetected(
   }
 ) {
   const { prospect, telefone_lead, mensagem, classification, empresa_id, isDemo } = params;
-  const FALLBACK_VENDEDOR_ID = "bf42e203-328e-445b-a72d-93529aaedd4d";
-  
-  // Determinar vendedor a notificar
-  const vendedorId = prospect?.responsavel_id || FALLBACK_VENDEDOR_ID;
-  
+
+  // Determinar vendedor a notificar — DEVE ser da mesma empresa que o prospect.
+  // Nada de fallback hardcoded entre tenants (vazamento de dados).
+  let vendedorId: string | null = prospect?.responsavel_id || null;
+
+  // Se o responsável existe mas é de outra empresa, ignorar.
+  if (vendedorId && empresa_id) {
+    const { data: resp } = await supabase
+      .from("profiles")
+      .select("empresa_id")
+      .eq("id", vendedorId)
+      .maybeSingle();
+    if (resp?.empresa_id && resp.empresa_id !== empresa_id) {
+      console.warn("[orbit-ai-agent] Responsável de empresa diferente — ignorando", { vendedorId, empresa_id });
+      vendedorId = null;
+    }
+  }
+
+  // Fallback: primeiro admin/owner da MESMA empresa com telefone preenchido
+  if (!vendedorId && empresa_id) {
+    const { data: candidato } = await supabase
+      .from("profiles")
+      .select("id, telefone")
+      .eq("empresa_id", empresa_id)
+      .not("telefone", "is", null)
+      .limit(1)
+      .maybeSingle();
+    vendedorId = candidato?.id || null;
+  }
+
+  if (!vendedorId) {
+    console.log("[orbit-ai-agent] Sem vendedor da empresa para notificar — pulando notificação", { empresa_id });
+    return;
+  }
+
   const { data: vendedorProfile } = await supabase
     .from("profiles")
-    .select("id, nome, telefone")
+    .select("id, nome, telefone, empresa_id")
     .eq("id", vendedorId)
     .single();
+
+  // Última checagem: nunca notificar alguém de outra empresa
+  if (empresa_id && vendedorProfile?.empresa_id && vendedorProfile.empresa_id !== empresa_id) {
+    console.warn("[orbit-ai-agent] Vendedor resolvido pertence a outra empresa — abortando notificação");
+    return;
+  }
 
   const { data: vendedorPe } = await supabase
     .from("pe_users")
@@ -166,6 +202,7 @@ async function notifyCommercialHumanDetected(
     console.log("[orbit-ai-agent] Vendedor sem WhatsApp para notificação comercial");
     return;
   }
+
 
   const leadPhone = telefone_lead?.replace(/\D/g, "") || "";
   const waLink = `https://wa.me/${leadPhone}`;
