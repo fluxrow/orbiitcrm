@@ -73,7 +73,11 @@ export default function ConfigPage() {
     max_tokens: 500,
     tempo_espera: 10,
     prompt_orcamentos: "",
-    campos_cadastro: ["nome_razao", "nome_fantasia", "email_principal", "cidade", "segmento"] as string[]
+    campos_cadastro: ["nome_razao", "nome_fantasia", "email_principal", "cidade", "segmento"] as string[],
+    tts_ativo: false,
+    tts_api_key: "",
+    tts_voice_id: "EXAVITQu4vr4xnSDxMaL",
+    tts_modo: "texto" as "texto" | "audio" | "ambos",
   });
 const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", token: "", client_token: "", numero_origem: "", notificar_enviadas_por_mim: false, ativo: false });
   const [showZapiToken, setShowZapiToken] = useState(false);
