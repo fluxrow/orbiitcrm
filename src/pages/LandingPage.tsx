@@ -201,6 +201,9 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ══════════ HUMANO vs ORBIT ══════════ */}
+      <HumanoVsOrbitSection />
+
       {/* ══════════ COMO FUNCIONA (Timeline) ══════════ */}
       <section id="como-funciona" className="py-20 px-4 relative">
         <div className="absolute inset-0 bg-secondary/20" />
@@ -312,6 +315,9 @@ export default function LandingPage() {
           </motion.div>
         </div>
       </section>
+
+      {/* ══════════ MOCK WHATSAPP ══════════ */}
+      <WhatsAppMockSection />
 
       {/* ══════════ DIFERENCIAIS ══════════ */}
       <section className="py-20 px-4 relative">
