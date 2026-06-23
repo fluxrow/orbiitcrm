@@ -1079,7 +1079,6 @@ export default function ApresentacaoOrbit2026() {
       <WhatsApp />
       <Email />
       <Funil />
-      <Roi />
       <Fechamento />
       <Investimento />
     </div>
