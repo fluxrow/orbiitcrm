@@ -304,7 +304,7 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
       setIsSendingTest(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
-      const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
+      const profile = tenantEmpresaId ? { empresa_id: tenantEmpresaId } : null;
       const bodyText = substituteVars(selectedTemplate.corpo_texto || "", testVars);
       const subject = substituteVars(selectedTemplate.assunto_email || "Teste", testVars);
       const templateImg = (selectedTemplate as any).imagem_url || "";
