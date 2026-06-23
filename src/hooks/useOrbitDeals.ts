@@ -89,6 +89,8 @@ export function useOrbitDeals(etapa_id?: string) {
 
 export function useOrbitDealsGrouped() {
   const queryClient = useQueryClient();
+  const { empresaId } = useTenant();
+
 
   useEffect(() => {
     const channel = supabase
