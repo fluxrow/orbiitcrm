@@ -109,7 +109,6 @@ export default function LandingPage() {
     document.title = "Orbit CRM — CRM com IA para WhatsApp, Email e Vendas";
   }, []);
   const [slugError, setSlugError] = useState("");
-  const [isAnnual, setIsAnnual] = useState(false);
 
   const handleSlugAccess = () => {
     const trimmed = slug.trim().toLowerCase();
@@ -118,17 +117,14 @@ export default function LandingPage() {
     navigate(`/${trimmed}/dashboard`);
   };
 
-  const formatPrice = (monthly: number) => {
-    if (monthly === 0) return "Grátis";
-    const val = isAnnual ? Math.round(monthly * 0.8) : monthly;
-    return `R$ ${val}/mês`;
-  };
-
   return (
     <div className="min-h-screen bg-background text-foreground noise-bg">
 
       {/* ══════════ HERO ══════════ */}
       <HeroSection />
+
+      {/* ══════════ STATS — dor real do mercado ══════════ */}
+      <StatsImpactoSection />
 
       {/* ══════════ PROBLEMA ══════════ */}
       <section className="py-20 px-4 relative">
