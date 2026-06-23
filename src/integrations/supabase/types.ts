@@ -3593,6 +3593,10 @@ export type Database = {
         Args: { p_empresa_id: string }
         Returns: Json
       }
+      get_orbit_zapi_config_public: {
+        Args: { p_empresa_id: string }
+        Returns: Json
+      }
       get_orbit_zapi_runtime_config: {
         Args: { p_empresa_id: string }
         Returns: Json
@@ -3705,6 +3709,20 @@ export type Database = {
       }
       set_active_empresa: { Args: { p_empresa_id: string }; Returns: Json }
       super_admin_exists: { Args: never; Returns: boolean }
+      upsert_orbit_zapi_config_secure: {
+        Args: {
+          p_ativo?: boolean
+          p_client_token?: string
+          p_empresa_id: string
+          p_instance_id?: string
+          p_nome_instancia?: string
+          p_notificar_enviadas_por_mim?: boolean
+          p_numero_origem?: string
+          p_token?: string
+          p_webhook_url?: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "super_admin" | "admin" | "vendedor" | "visualizador"
