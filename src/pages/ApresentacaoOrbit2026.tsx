@@ -1041,8 +1041,8 @@ export default function ApresentacaoOrbit2026() {
       <Email />
       <Funil />
       <Roi />
-      <Investimento />
       <Fechamento />
+      <Investimento />
     </div>
   );
 }
