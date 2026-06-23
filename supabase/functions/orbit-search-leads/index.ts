@@ -51,6 +51,15 @@ function calculateScore(person: any): number {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
 
+  // Verify caller is authenticated
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) return fail(ErrorCodes.UNAUTHORIZED, "Token obrigatório", 401);
+  const { data: { user: callerUser }, error: authError } = await createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_ANON_KEY")!
+  ).auth.getUser(authHeader.replace("Bearer ", ""));
+  if (authError || !callerUser) return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401);
+
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;

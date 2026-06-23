@@ -51,6 +51,15 @@ async function checkInstanceConnected(
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return optionsResponse();
 
+  // Verify caller is authenticated
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) return fail(ErrorCodes.UNAUTHORIZED, "Token obrigatório", 401);
+  const { data: { user: callerUser }, error: authError } = await createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_ANON_KEY")!
+  ).auth.getUser(authHeader.replace("Bearer ", ""));
+  if (authError || !callerUser) return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401);
+
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -59,6 +68,16 @@ const handler = async (req: Request): Promise<Response> => {
     const { empresa_id } = await req.json();
     if (!empresa_id) {
       return fail(ErrorCodes.VALIDATION_ERROR, "empresa_id é obrigatório");
+    }
+
+    // Verify caller has access to this empresa
+    const { data: callerProfile } = await supabase
+      .from("profiles")
+      .select("empresa_id")
+      .eq("id", callerUser.id)
+      .single();
+    if (!callerProfile || callerProfile.empresa_id !== empresa_id) {
+      return fail(ErrorCodes.FORBIDDEN, "Sem acesso a esta empresa", 403);
     }
 
     const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresa_id);
