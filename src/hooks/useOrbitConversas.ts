@@ -9,6 +9,7 @@ type ConversaUpdate = TablesUpdate<"orbit_conversas">;
 
 export function useOrbitConversas(canal?: string) {
   const queryClient = useQueryClient();
+  const { empresaId } = useTenant();
 
   // Real-time subscription
   useEffect(() => {
