@@ -70,22 +70,15 @@ const AUDIENCES = [
   { icon: Star, name: "Clínicas e serviços", desc: "Que precisam agendar, qualificar e acompanhar pacientes/clientes." },
 ];
 
-const PLANS_DATA = [
-  { name: "Demo", priceMonthly: 0, ideal: "Explore a plataforma sem compromisso", features: ["Ambiente completo de demonstração", "Dados fictícios para teste", "IA funcionando via número de teste", "Acesso imediato, sem cadastro"], cta: "Acessar Demo", ctaVariant: "outline" as const, href: "/demo", highlight: false },
-  { name: "Basic", priceMonthly: 197, ideal: "Para equipes que vendem por email", features: ["CRM completo com funil Kanban", "Tarefas e interações por oportunidade", "Email marketing com templates", "Distribuição de leads round-robin", "Importação de contatos", "Relatórios de performance"], cta: "Começar Trial 7 dias", ctaVariant: "default" as const, href: "/trial?plan=basic", highlight: false },
-  { name: "Professional", priceMonthly: 397, ideal: "Para quem vende pelo WhatsApp", features: ["Tudo do Basic", "WhatsApp bidirecional (envio + recebimento)", "IA para atendimento automático", "Campanhas de WhatsApp", "Handoff inteligente ao vendedor", "Aprovação de campanhas"], cta: "Começar Trial 7 dias", ctaVariant: "default" as const, href: "/trial?plan=professional", highlight: true, badge: "Mais popular" },
-  { name: "Plus", priceMonthly: 597, ideal: "Operação omnichannel completa", features: ["Tudo do Professional", "Instagram Direct integrado", "Facebook Messenger integrado", "Busca de leads ativa (Apollo)", "Enriquecimento automático de dados", "Suporte prioritário"], cta: "Começar Trial 7 dias", ctaVariant: "default" as const, href: "/trial?plan=plus", highlight: false },
-];
-
 const FAQ_ITEMS = [
   { q: "O que exatamente o Orbit faz?", a: "O Orbit é um CRM com IA que centraliza todo o processo comercial: captação de leads, atendimento automático por WhatsApp, qualificação inteligente, funil de vendas, campanhas por email e WhatsApp, e distribuição automática entre vendedores." },
   { q: "Preciso instalar algo?", a: "Não. O Orbit é 100% web. Basta acessar pelo navegador em qualquer dispositivo — computador, tablet ou celular." },
   { q: "A IA realmente responde sozinha?", a: "Sim. A IA atende leads pelo WhatsApp 24h, faz perguntas de qualificação, extrai dados como nome, empresa e interesse, e encaminha o lead ao vendedor com um resumo completo. Você define o tom, horário e regras." },
-  { q: "Posso usar meu próprio número de WhatsApp?", a: "Sim! Nos planos Professional e Plus você conecta seu número via API oficial (Z-API). No modo Demo, a IA funciona por um número de teste." },
-  { q: "O trial é realmente gratuito?", a: "Sim. São 7 dias com acesso completo a todas as funcionalidades do plano escolhido. Sem cartão de crédito e sem compromisso." },
+  { q: "Posso usar meu próprio número de WhatsApp?", a: "Sim! Você conecta seu número via API oficial (Z-API). Durante a demonstração, a IA funciona em um número de teste." },
   { q: "Consigo importar meus contatos?", a: "Sim. Importe via planilha CSV ou Excel diretamente pelo painel. O sistema faz deduplicação automática para evitar contatos duplicados." },
   { q: "Meus dados ficam seguros?", a: "Cada empresa tem um ambiente totalmente isolado com dados separados. Usamos criptografia e controle de acesso por função (admin, gerente, vendedor, visualizador)." },
-  { q: "Quais canais de comunicação são suportados?", a: "WhatsApp (via API oficial), email (SMTP), Instagram Direct e Facebook Messenger. Os dois últimos estão disponíveis no plano Plus." },
+  { q: "Quais canais de comunicação são suportados?", a: "WhatsApp (via API oficial), email (SMTP), Instagram Direct e Facebook Messenger." },
+  { q: "Como falo com vocês?", a: "É só clicar no botão verde do WhatsApp em qualquer parte do site. A gente responde em minutos e te explica tudo direto por lá." },
 ];
 
 /* ─── Animation variants ─── */
