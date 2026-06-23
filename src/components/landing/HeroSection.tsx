@@ -1,11 +1,12 @@
 import { useRef } from "react";
 import { motion, useMotionValue, useTransform, useSpring } from "framer-motion";
-import { ArrowRight, Play } from "lucide-react";
+import { MessageCircle, Play } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
 import StarfieldCanvas from "./StarfieldCanvas";
 import HeroDashboardMockup from "./HeroDashboardMockup";
+import { WHATSAPP_LP_HREF } from "@/lib/whatsapp";
 
 const STATS = [
   { value: "2.400+", label: "Leads qualificados" },
@@ -103,12 +104,14 @@ export default function HeroSection() {
             transition={{ duration: 0.6, delay: 0.6 }}
           >
             <Button
+              asChild
               size="lg"
-              onClick={() => navigate("/trial")}
-              className="gap-2 text-base px-8 animate-glow-pulse hover:scale-105 transition-transform group"
+              className="gap-2 text-base px-8 animate-glow-pulse hover:scale-105 transition-transform group bg-emerald-600 hover:bg-emerald-500 text-white"
             >
-              Testar grátis por 7 dias
-              <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+              <a href={WHATSAPP_LP_HREF} target="_blank" rel="noopener noreferrer">
+                <MessageCircle className="w-4 h-4" />
+                Falar no WhatsApp
+              </a>
             </Button>
             <Button
               size="lg"
