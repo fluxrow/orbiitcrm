@@ -1,95 +1,137 @@
 
-# Apresentação comercial — Orbit CRM
+# Landing Page reimaginada — mistura do que já existe + DNA da Apresentação Orbit 2026
 
-Rota oculta `/apresentacao/orbit-2026` (sem link em nav/footer, sem auth, fora do TenantLayout). Visual Glass Aurora — fundo `#0a0a14` com gradiente aurora `#4ade80 → #a78bfa`, glassmorphism (já existe `glass-card` no projeto), tipografia Outfit + Inter, Framer Motion (`framer-motion` já instalado) para animações on-scroll, contadores e parallax sutil.
+A LP atual já tem ótimo conteúdo (problemas, solução, steps, features, diferenciais, prova de valor, audiências, FAQ). A apresentação trouxe **movimento, impacto e narrativa** (stats animados, comparativo humano vs IA, mock de chat, parallax). O plano é **reusar 100% do conteúdo bom da LP** e **enxertar os movimentos da apresentação por cima**, removendo qualquer menção a preço e trocando o CTA principal por WhatsApp.
 
-## Formato híbrido
+## Regras firmes
 
-- **Scroll vertical** por padrão — cada seção é uma "tela" (100vh) com snap suave, ideal para enviar link.
-- **Botão "Modo Apresentação"** flutuante (canto inf. direito) → entra em fullscreen, oculta scrollbar, ativa navegação por ←/→/Space/Esc entre seções (scrollIntoView). Atalho `P` também ativa.
-- Indicador de progresso lateral (dots) com a seção atual destacada.
+- **Sem nenhum valor monetário do sistema** (R$, "12x", "/mês", "trial 7 dias grátis" como destaque). Linguagem qualitativa só: "uma fração de um SDR", "menos que um café por dia".
+- **Remover** a seção de Planos inteira, toggle mensal/anual, `PLANS_DATA`, `formatPrice`, estado `isAnnual`.
+- **Atualizar `HotsiteHeader`**: tirar item "Planos" do menu; tirar botão "Começar Trial"; manter "Acessar Demo" e "Entrar"; adicionar botão verde "Falar no WhatsApp" no lugar do trial.
+- **CTA principal em toda a página = WhatsApp** com mensagem específica da LP.
+- Tom visual mantém o que já existe (dark, glass, aurora, `GlowCard`, `AnimatedSection`), com camada extra de animação tipo apresentação.
 
-## Estrutura das seções
+## Mensagem do WhatsApp (link específico da LP)
 
-1. **Hero** — Logo Orbit, headline "Seu time de vendas nunca dorme. O nosso também não.", sub "Atendimento, qualificação e vendas no piloto automático — 24/7." CTA scroll-down animado. Partículas/aurora em canvas leve atrás.
+Número: `5541992361868`.
+Texto:
 
-2. **A dor real do mercado** — Grid de 4 stats animados (CountUp on-scroll):
-   - **73%** dos leads de anúncio nunca são respondidos (fonte: Harvard Business Review)
-   - **5 min** = janela de ouro. Depois disso, conversão cai **80%**
-   - **R$ 8.500** custo médio mensal de 1 SDR júnior + encargos
-   - **42h/semana** o tempo que um SDR gasta em tarefas repetitivas
+> Cauã, vim pelo site do Orbit CRM e quero saber mais sobre a plataforma. Pode me explicar como funciona?
 
-3. **Humano vs. Orbit** — Comparativo lado a lado animado (slide-in das duas colunas):
-   | | SDR Humano | Orbit |
-   |--|--|--|
-   | Tempo de resposta | 4h em média | **8 segundos** |
-   | Disponibilidade | 8h/dia, seg-sex | **24/7/365** |
-   | Leads simultâneos | 1 por vez | **Ilimitado** |
-   | Custo mensal | R$ 8.500+ | R$ 1.197 |
-   | Esquece follow-up | Sempre | Nunca |
-   | Mau humor na sexta 18h | Acontece | Não existe |
+Helper no topo de `LandingPage.tsx`:
 
-4. **Qualificação de leads de anúncio** — Mockup de conversa WhatsApp animada (mensagens aparecem digitando): lead vindo de Meta Ads → IA pergunta orçamento, prazo, decisor → marca como Quente/Morno/Frio → notifica vendedor humano só nos quentes. "Pare de queimar verba de anúncio com lead que nunca foi atendido."
+```ts
+const WHATSAPP_HREF =
+  "https://wa.me/5541992361868?text=" +
+  encodeURIComponent(
+    "Cauã, vim pelo site do Orbit CRM e quero saber mais sobre a plataforma. Pode me explicar como funciona?"
+  );
+```
 
-5. **Personalização total** — Cards com tilt 3D no hover mostrando: tom de voz da marca, base de conhecimento própria, fluxos condicionais por palavra-chave, biblioteca de áudios da sua voz, handoff humano quando quiser. "Não é um chatbot genérico. É a sua empresa falando."
+Exportar também do `HotsiteHeader` (constante compartilhada via novo `src/lib/whatsapp.ts` pra não duplicar string).
 
-6. **WhatsApp em escala** — Mockup de 3 telas de celular em parallax mostrando conversas reais simultâneas. Contador "1.847 mensagens enviadas nos últimos 30 dias por clientes Orbit" subindo em tempo real.
+## Estrutura final da LP (mistura)
 
-7. **Campanhas de e-mail** — Preview de editor + métricas animadas (taxa abertura 38%, cliques 12%, respostas 4%). "Dispara, segmenta, mede. Tudo num lugar só."
+Ordem pensada pra contar a história: **dor real → o que custa hoje → como o Orbit resolve → como funciona → o que tem dentro → por que é diferente → resultados → pra quem é → fala comigo**.
 
-8. **Funil + IA juntos** — Kanban mockup com cards se movendo sozinhos entre etapas conforme a IA qualifica. "Seu pipeline se organiza enquanto você dorme."
+1. **Hero** (`HeroSection` existente)
+   - Mantém o layout/parallax atual.
+   - **Troca** CTA primário: "Falar no WhatsApp" (verde, ícone Lucide `MessageCircle`) → `WHATSAPP_HREF`, `target=_blank`.
+   - CTA secundário continua "Ver demonstração" → `/demo`.
+   - **Remove** "Testar grátis por 7 dias".
+   - Stats mini do hero (2.400+, 24/7, 3x) ficam como estão.
 
-9. **ROI** — Comparativo de custo anual:
-   - SDR humano: R$ 102.000/ano
-   - Orbit: R$ 17.364/ano
-   - **Economia: R$ 84.636/ano** (animação grande)
+2. **NOVO — Stats da dor real do mercado** (inspirado na seção 2 da apresentação)
+   - 4 cards com `CountUp` (reaproveitar `@/components/apresentacao/CountUp`):
+     - **73%** dos leads de anúncio nunca são respondidos
+     - **5 min** = janela de ouro; depois disso conversão cai 80%
+     - **4h** tempo médio da 1ª resposta humana
+     - **42h/sem** gastas em tarefas repetitivas
+   - Fundo aurora sutil + stagger no scroll.
 
-10. **Investimento** — Card central glass destacado:
-    - **Implementação (única):** 12x R$ 397 **ou** R$ 3.000 à vista
-    - **Mensalidade:** R$ 1.197/mês
-    - Bullet curto explicando a implementação: setup do número WhatsApp, treinamento da IA com a base de conhecimento da empresa, configuração dos fluxos, integração com anúncios, criação dos templates iniciais, biblioteca de áudios e handoff — "2 semanas de trabalho dedicado pra entregar a operação rodando sozinha no dia 15."
-    - CTA "Quero implementar"
+3. **Problema** (`PROBLEMS` atual — mantém intacto)
 
-11. **Fechamento** — "Cada dia sem Orbit = leads de anúncio perdidos." Logo + assinatura.
+4. **Solução** (`SOLUTION_POINTS` atual — mantém intacto)
 
-## Animações (Framer Motion)
+5. **NOVO — Humano vs Orbit** (inspirado na seção 3 da apresentação)
+   - Tabela comparativa lado a lado animada (slide-in).
+   - Linhas:
+     | | SDR Humano | Orbit |
+     |--|--|--|
+     | Tempo de resposta | 4h em média | **8 segundos** |
+     | Disponibilidade | 8h/dia, seg-sex | **24/7/365** |
+     | Leads simultâneos | 1 por vez | **Ilimitado** |
+     | Custo | Alto, fixo, com encargos | **Uma fração de um SDR** |
+     | Esquece follow-up | Sempre | **Nunca** |
+   - **Sem valor em R$** na coluna de custo.
 
-- `whileInView` com `once: true` em todas as seções
-- Stagger nos grids de stats
-- CountUp customizado simples (sem lib extra) para números
-- Parallax leve nos mockups de celular (translateY baseado em scroll)
-- Gradiente aurora animado no fundo do hero (CSS keyframes)
-- Mensagens WhatsApp aparecendo com delay sequencial simulando digitação
+6. **Como funciona** (`STEPS` atual — mantém timeline desktop/mobile)
+   - Polir: adicionar leve parallax/`whileInView` mais marcado nos cards (continuar usando `framer-motion` já presente).
+
+7. **Funcionalidades** (`FEATURE_GROUPS` atual — mantém intacto)
+
+8. **NOVO — Mock de qualificação no WhatsApp** (inspirado na seção 4 da apresentação)
+   - Mockup de tela de celular com bolhas de chat aparecendo em sequência (delays escalonados via `framer-motion`):
+     - Lead: "Oi, vi o anúncio, quanto custa?"
+     - Orbit IA: "Oi! Posso te ajudar 👋 Pra te dar o melhor preço, qual é o porte da sua empresa?"
+     - Lead: "Uns 30 funcionários"
+     - Orbit IA: "Perfeito. Já estou chamando um especialista pra você. Em 2 min ele te responde."
+   - Headline: "Pare de queimar verba de anúncio com lead que nunca foi atendido."
+   - Estático em SSR/print, animado on-scroll.
+
+9. **Diferenciais** (`DIFFERENTIALS` atual — mantém intacto)
+
+10. **Prova de valor** (`VALUE_PROOFS` atual — mantém intacto)
+
+11. **Para quem é** (`AUDIENCES` atual — mantém intacto)
+
+12. **CTA final reformulado**
+    - Headline: "Pronto pra parar de perder lead de anúncio?"
+    - Botão único grande verde: **"Falar agora no WhatsApp"** → `WHATSAPP_HREF`.
+    - Microcopy: "Resposta em minutos, sem formulário."
+    - **Remove** "7 dias grátis / sem cartão".
+
+13. **FAQ** (`FAQ_ITEMS` atual)
+    - **Remover** a pergunta "O trial é realmente gratuito?" (menciona cartão de crédito).
+    - **Editar** "O que exatamente o Orbit faz?" pra tirar qualquer ranço de preço (não tem hoje, ok).
+    - Adicionar 1 nova: "Como falo com vocês?" → "É só clicar no botão verde do WhatsApp em qualquer parte do site. A gente responde em minutos."
+
+14. **Acesso rápido (slug)** (mantém)
+
+15. **Footer** (mantém)
+
+## Botão flutuante de WhatsApp (FAB)
+
+- Componente novo `src/components/landing/WhatsAppFab.tsx`.
+- Círculo verde 56px, ícone WhatsApp (SVG inline da marca pra ficar fiel; fallback Lucide `MessageCircle`).
+- `position: fixed; bottom: 24px; right: 24px; z-50;` sombra + `animate-glow-pulse` discreto.
+- `href = WHATSAPP_HREF`, `target=_blank`, `rel="noopener noreferrer"`, `aria-label="Falar no WhatsApp"`.
+- Renderizado dentro do `LandingPage.tsx` (não no layout, pra não vazar em outras rotas públicas).
+- Mobile: tap target ≥ 48px, esconder se o usuário rolar até o footer? Não — sempre visível, mais simples.
 
 ## Arquivos
 
 **Criar:**
-- `src/pages/ApresentacaoOrbit2026.tsx` — página principal (orquestra seções + modo apresentação)
-- `src/components/apresentacao/SectionWrapper.tsx` — wrapper 100vh + snap + observer
-- `src/components/apresentacao/HeroSection.tsx`
-- `src/components/apresentacao/DoresSection.tsx`
-- `src/components/apresentacao/ComparativoSection.tsx`
-- `src/components/apresentacao/QualificacaoSection.tsx` (mock chat WhatsApp)
-- `src/components/apresentacao/PersonalizacaoSection.tsx`
-- `src/components/apresentacao/WhatsAppSection.tsx`
-- `src/components/apresentacao/EmailSection.tsx`
-- `src/components/apresentacao/FunilSection.tsx`
-- `src/components/apresentacao/RoiSection.tsx`
-- `src/components/apresentacao/InvestimentoSection.tsx`
-- `src/components/apresentacao/FechamentoSection.tsx`
-- `src/components/apresentacao/PresentationControls.tsx` (botão modo apresentar + dots + atalhos)
-- `src/components/apresentacao/CountUp.tsx`
-- `src/components/apresentacao/AuroraBackground.tsx`
+- `src/lib/whatsapp.ts` — exporta `WHATSAPP_NUMBER`, `WHATSAPP_LP_MESSAGE`, `WHATSAPP_LP_HREF`.
+- `src/components/landing/WhatsAppFab.tsx` — botão flutuante.
+- `src/components/landing/StatsImpactoSection.tsx` — bloco 2 (stats CountUp).
+- `src/components/landing/HumanoVsOrbitSection.tsx` — bloco 5 (comparativo).
+- `src/components/landing/WhatsAppMockSection.tsx` — bloco 8 (chat animado).
 
 **Editar:**
-- `src/App.tsx` — adicionar `<Route path="/apresentacao/orbit-2026" element={<ApresentacaoOrbit2026 />} />` ANTES da rota catch-all `/:slug` (senão o slug pega). Sem PublicLayout (sem header do hotsite).
+- `src/pages/LandingPage.tsx` — remover Planos/preços/`isAnnual`/`formatPrice`/`PLANS_DATA`, inserir os 3 novos blocos nas posições 2/5/8, trocar CTAs do hero e do CTA final por WhatsApp, atualizar FAQ, renderizar `<WhatsAppFab />` ao final do JSX.
+- `src/components/HotsiteHeader.tsx` — remover item "Planos" e botão "Começar Trial"; adicionar botão verde "Falar no WhatsApp" usando `WHATSAPP_LP_HREF`. Idem no menu mobile.
+- `src/components/landing/HeroSection.tsx` — trocar botão primário "Testar grátis" por "Falar no WhatsApp" (link `<a>` estilizado como `Button asChild`), manter "Ver demonstração" como secundário.
 
-**NÃO editar:** nenhum arquivo de menu/nav/footer — rota fica realmente oculta.
+**Não tocar:**
+- `src/pages/ApresentacaoOrbit2026.tsx` (continua com preço — uso comercial).
+- `src/components/apresentacao/CountUp.tsx` (só consumir).
+- Demais layouts/rotas.
 
 ## Garantias
 
-- Zero backend, zero migration, zero edge function
-- Zero impacto nas rotas multi-tenant existentes (rota literal vem antes do `/:slug`)
-- Dark mode forçado na página (independe do toggle global)
-- Mobile-responsive (você pode mostrar no celular numa reunião)
-- Sem tracking, sem analytics, sem indexação (`<meta name="robots" content="noindex" />`)
+- Zero backend, zero migration, zero edge function.
+- Zero menção a preço do Orbit em qualquer parte da LP, header ou FAB.
+- WhatsApp da LP usa **mensagem própria** ("vim pelo site, quero saber mais"), diferente da apresentação ("bora implementar").
+- Conteúdo bom da LP atual permanece — apenas reordenado e enriquecido com 3 blocos novos + FAB.
+- Build TS limpo: remover imports órfãos (`Star` se não usado fora dos planos, `Input` se removermos Planos mas mantermos slug, etc.) — auditar ao final.
