@@ -425,10 +425,70 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     {updateAI.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
                     Salvar Configurações de IA
                   </Button>
-                </CardContent>
-              </Card>
+              </CardContent>
+            </Card>
 
-              {/* Card 2: Automação de Conversas */}
+            {/* Card 2: Horário de Atendimento */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-primary" />
+                  <CardTitle>Horário de Atendimento</CardTitle>
+                </div>
+                <CardDescription>Defina quando a IA pode responder automaticamente e a mensagem fora do horário</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Início do atendimento</Label>
+                    <Input 
+                      type="time"
+                      value={aiForm.horario_inicio} 
+                      onChange={(e) => setAiForm({ ...aiForm, horario_inicio: e.target.value })} 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Fim do atendimento</Label>
+                    <Input 
+                      type="time"
+                      value={aiForm.horario_fim} 
+                      onChange={(e) => setAiForm({ ...aiForm, horario_fim: e.target.value })} 
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+                  <div>
+                    <Label className="text-base font-medium">Responder fora do horário</Label>
+                    <p className="text-sm text-muted-foreground">Quando ativo, a IA envia uma mensagem automática fora do horário de atendimento</p>
+                  </div>
+                  <Switch 
+                    checked={aiForm.responder_fora_horario} 
+                    onCheckedChange={(v) => setAiForm({ ...aiForm, responder_fora_horario: v })} 
+                  />
+                </div>
+
+                {aiForm.responder_fora_horario && (
+                  <div className="space-y-2">
+                    <Label>Mensagem fora do horário</Label>
+                    <Textarea 
+                      className="min-h-[80px]"
+                      placeholder="Olá! Nosso horário de atendimento é das 08h às 18h..."
+                      value={aiForm.mensagem_fora_horario} 
+                      onChange={(e) => setAiForm({ ...aiForm, mensagem_fora_horario: e.target.value })} 
+                    />
+                    <p className="text-xs text-muted-foreground">Mensagem enviada automaticamente quando o prospect envia mensagem fora do horário</p>
+                  </div>
+                )}
+
+                <Button onClick={saveAI} disabled={updateAI.isPending}>
+                  {updateAI.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                  Salvar Horário de Atendimento
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Card 3: Automação de Conversas */}
               <Card>
                 <CardHeader>
                   <div className="flex items-center gap-2">
