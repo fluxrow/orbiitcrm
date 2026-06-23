@@ -3727,6 +3727,7 @@ export type Database = {
       }
       set_active_empresa: { Args: { p_empresa_id: string }; Returns: Json }
       super_admin_exists: { Args: never; Returns: boolean }
+      switch_active_empresa: { Args: { p_empresa_id: string }; Returns: Json }
       upsert_orbit_zapi_config_secure: {
         Args: {
           p_ativo?: boolean
