@@ -22,11 +22,7 @@ export default function SetupPage() {
 
   const checkIfSetupNeeded = async () => {
     try {
-      const { data, error } = await supabase
-        .from("user_roles")
-        .select("id")
-        .eq("role", "super_admin")
-        .limit(1);
+      const { data, error } = await supabase.rpc("super_admin_exists" as any);
 
       if (error) {
         console.error("Error checking super admin:", error);
@@ -34,8 +30,7 @@ export default function SetupPage() {
         return;
       }
 
-      if (data && data.length > 0) {
-        // Super admin exists, redirect to auth
+      if (data === true) {
         navigate("/auth", { replace: true });
         return;
       }
