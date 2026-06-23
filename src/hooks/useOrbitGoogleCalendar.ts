@@ -16,24 +16,18 @@ export function useGoogleCalendarStatus(empresaId: string | null | undefined) {
     queryKey: ["google-calendar-status", empresaId],
     enabled: !!empresaId,
     queryFn: async (): Promise<GoogleStatus> => {
-      const { data, error } = await supabase.functions.invoke("orbit-google-status", {
-        method: "GET" as any,
-        body: undefined,
-        // @ts-expect-error: supabase-js permite query via URL prop interna
-        headers: undefined,
-      } as any).catch(async () => {
-        // Fallback manual via fetch para GET com query
-        const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/orbit-google-status?empresa_id=${empresaId}`;
-        const { data: session } = await supabase.auth.getSession();
-        const r = await fetch(url, {
-          headers: { Authorization: `Bearer ${session.session?.access_token}` },
-        });
-        const j = await r.json();
-        return { data: j, error: null } as any;
+      // GET com query string via fetch direto (functions.invoke não suporta GET nativo)
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/orbit-google-status?empresa_id=${empresaId}`;
+      const { data: sess } = await supabase.auth.getSession();
+      const r = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${sess.session?.access_token ?? ""}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "",
+        },
       });
-      if (error) throw error;
-      if (!data?.ok) throw new Error(data?.error?.message ?? "Falha ao consultar status");
-      return data.data as GoogleStatus;
+      const j = await r.json();
+      if (!j?.ok) throw new Error(j?.error?.message ?? "Falha ao consultar status");
+      return j.data as GoogleStatus;
     },
   });
 }
