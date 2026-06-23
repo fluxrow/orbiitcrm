@@ -132,7 +132,11 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
       max_tokens: (aiConfig as any).max_tokens || 500,
       tempo_espera: (aiConfig as any).tempo_espera || 10,
       prompt_orcamentos: (aiConfig as any).prompt_orcamentos || "",
-      campos_cadastro: aiConfig.campos_cadastro || ["nome_razao", "nome_fantasia", "email_principal", "cidade", "segmento"]
+      campos_cadastro: aiConfig.campos_cadastro || ["nome_razao", "nome_fantasia", "email_principal", "cidade", "segmento"],
+      tts_ativo: (aiConfig as any).tts_ativo ?? false,
+      tts_api_key: (aiConfig as any).tts_api_key || "",
+      tts_voice_id: (aiConfig as any).tts_voice_id || "EXAVITQu4vr4xnSDxMaL",
+      tts_modo: (aiConfig as any).tts_modo || "texto",
     }); 
   }, [aiConfig]);
   useEffect(() => { 
