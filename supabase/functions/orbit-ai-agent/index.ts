@@ -883,7 +883,7 @@ Mapeamento de campos para dados_extraidos:
     }
 
     // Enviar resposta via WhatsApp (fallback: texto)
-    await sendWhatsAppMessage(supabase, telefone, resposta, conversa_id, isDemo, empresaId);
+    await sendAIResponse(supabase, telefone, resposta, conversa_id, isDemo, empresaId, aiConfig);
 
     return new Response(JSON.stringify({ ok: true, resposta, parsed, state: novoContexto.estado, simulated: isDemo }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
