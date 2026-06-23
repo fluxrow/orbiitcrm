@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
+import { useTenant } from "@/contexts/TenantContext";
 
 type Activity = Tables<"orbit_activities">;
 type ActivityInsert = TablesInsert<"orbit_activities">;
@@ -14,8 +15,10 @@ interface ActivityFilters {
 }
 
 export function useOrbitActivities(filters?: ActivityFilters) {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: ["orbit_activities", filters],
+    queryKey: ["orbit_activities", empresaId, filters],
+    enabled: !!empresaId,
     queryFn: async () => {
       let query = supabase
         .from("orbit_activities")

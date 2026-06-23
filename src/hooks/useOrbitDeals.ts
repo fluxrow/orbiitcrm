@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
+import { useTenant } from "@/contexts/TenantContext";
 import { orbitProspectKeys } from "@/lib/query-keys";
 
 type Deal = Tables<"orbit_deals">;
@@ -43,8 +44,10 @@ function replaceDealInGroupedStages(stages: any[] | undefined, updatedDeal: any)
 }
 
 export function useOrbitPipelineStages() {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: ["orbit_pipeline_stages"],
+    queryKey: ["orbit_pipeline_stages", empresaId],
+    enabled: !!empresaId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orbit_pipeline_stages")
@@ -57,8 +60,10 @@ export function useOrbitPipelineStages() {
 }
 
 export function useOrbitDeals(etapa_id?: string) {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: ["orbit_deals", etapa_id],
+    queryKey: ["orbit_deals", empresaId, etapa_id],
+    enabled: !!empresaId,
     queryFn: async () => {
       let query = supabase
         .from("orbit_deals")
@@ -84,6 +89,8 @@ export function useOrbitDeals(etapa_id?: string) {
 
 export function useOrbitDealsGrouped() {
   const queryClient = useQueryClient();
+  const { empresaId } = useTenant();
+
 
   useEffect(() => {
     const channel = supabase
@@ -104,7 +111,8 @@ export function useOrbitDealsGrouped() {
   }, [queryClient]);
 
   return useQuery({
-    queryKey: ["orbit_deals_grouped"],
+    queryKey: ["orbit_deals_grouped", empresaId],
+    enabled: !!empresaId,
     queryFn: async () => {
       const [stagesResult, dealsResult] = await Promise.all([
         supabase

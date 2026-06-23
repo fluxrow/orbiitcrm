@@ -2,12 +2,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesUpdate } from "@/integrations/supabase/types";
+import { useTenant } from "@/contexts/TenantContext";
 
 type Conversa = Tables<"orbit_conversas">;
 type ConversaUpdate = TablesUpdate<"orbit_conversas">;
 
 export function useOrbitConversas(canal?: string) {
   const queryClient = useQueryClient();
+  const { empresaId } = useTenant();
 
   // Real-time subscription
   useEffect(() => {
@@ -32,7 +34,8 @@ export function useOrbitConversas(canal?: string) {
   }, [queryClient]);
 
   return useQuery({
-    queryKey: ["orbit_conversas", canal],
+    queryKey: ["orbit_conversas", empresaId, canal],
+    enabled: !!empresaId,
     queryFn: async () => {
       let query = supabase
         .from("orbit_conversas")
@@ -56,8 +59,9 @@ export function useOrbitConversas(canal?: string) {
 }
 
 export function useOrbitConversa(id: string | undefined) {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: ["orbit_conversa", id],
+    queryKey: ["orbit_conversa", empresaId, id],
     queryFn: async () => {
       if (!id) return null;
       const { data, error } = await supabase
@@ -72,7 +76,7 @@ export function useOrbitConversa(id: string | undefined) {
       if (error) throw error;
       return data;
     },
-    enabled: !!id,
+    enabled: !!empresaId && !!id,
   });
 }
 

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
+import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
 
 export interface OrbitTaskFilters {
@@ -12,8 +13,10 @@ export interface OrbitTaskFilters {
 }
 
 export function useOrbitTasks(filters?: OrbitTaskFilters) {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: ["orbit_tasks", filters],
+    queryKey: ["orbit_tasks", empresaId, filters],
+    enabled: !!empresaId,
     queryFn: async () => {
       let query = supabase
         .from("orbit_tasks" as any)

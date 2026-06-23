@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
+import { useTenant } from "@/contexts/TenantContext";
 
 type Template = Tables<"orbit_message_templates">;
 type TemplateInsert = TablesInsert<"orbit_message_templates">;
@@ -13,8 +14,10 @@ interface TemplateFilters {
 }
 
 export function useOrbitTemplates(filters?: TemplateFilters) {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: ["orbit_templates", filters],
+    queryKey: ["orbit_templates", empresaId, filters],
+    enabled: !!empresaId,
     queryFn: async () => {
       let query = supabase
         .from("orbit_message_templates")
