@@ -524,9 +524,10 @@ serve(async (req) => {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[orbit-webhook] Erro:", message);
     if (logId) await supabase.from("orbit_webhook_logs").update({ status: "failed", error_message: message }).eq("id", logId).catch(() => {});
-    return new Response(JSON.stringify({ error: message }), {
+    return new Response(JSON.stringify({ error: "internal_error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+
 });
