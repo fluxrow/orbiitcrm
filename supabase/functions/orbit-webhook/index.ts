@@ -42,6 +42,27 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Optional shared-secret authentication. When ORBIT_WEBHOOK_SECRET is
+  // configured, callers (Z-API) must include header `x-webhook-secret` with
+  // the matching value. Constant-time comparison to avoid timing attacks.
+  const webhookSecret = Deno.env.get("ORBIT_WEBHOOK_SECRET");
+  if (webhookSecret) {
+    const provided = req.headers.get("x-webhook-secret") || "";
+    const a = new TextEncoder().encode(provided);
+    const b = new TextEncoder().encode(webhookSecret);
+    let ok = a.length === b.length;
+    for (let i = 0; i < Math.min(a.length, b.length); i++) {
+      if (a[i] !== b[i]) ok = false;
+    }
+    if (!ok) {
+      console.warn("[orbit-webhook] Invalid webhook secret");
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
+
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -54,7 +75,23 @@ serve(async (req) => {
     const eventType = url.searchParams.get("event") || "on-receive";
 
     const payload = await req.json();
-    console.log(`[orbit-webhook] Evento: ${eventType}, Payload:`, JSON.stringify(payload));
+    // Basic input validation
+    if (!payload || typeof payload !== "object") {
+      return new Response(JSON.stringify({ error: "invalid_payload" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const _rawText = JSON.stringify(payload);
+    if (_rawText.length > 200_000) {
+      return new Response(JSON.stringify({ error: "payload_too_large" }), {
+        status: 413,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    console.log(`[orbit-webhook] Evento: ${eventType}, Payload:`, _rawText);
+
+
 
     const payloadInstanceId = payload.instanceId || null;
     const payloadPhone = payload.phone?.replace(/\D/g, "") || payload.from?.replace(/\D/g, "") || null;
@@ -524,9 +561,10 @@ serve(async (req) => {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[orbit-webhook] Erro:", message);
     if (logId) await supabase.from("orbit_webhook_logs").update({ status: "failed", error_message: message }).eq("id", logId).catch(() => {});
-    return new Response(JSON.stringify({ error: message }), {
+    return new Response(JSON.stringify({ error: "internal_error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+
 });

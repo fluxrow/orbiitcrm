@@ -3612,6 +3612,13 @@ export type Database = {
         }
         Returns: boolean
       }
+      list_public_plans: {
+        Args: never
+        Returns: {
+          code: string
+          name: string
+        }[]
+      }
       normalize_email: { Args: { p: string }; Returns: string }
       normalize_name: { Args: { p: string }; Returns: string }
       normalize_phone: { Args: { p: string }; Returns: string }
@@ -3686,6 +3693,7 @@ export type Database = {
         Returns: undefined
       }
       set_active_empresa: { Args: { p_empresa_id: string }; Returns: Json }
+      super_admin_exists: { Args: never; Returns: boolean }
     }
     Enums: {
       app_role: "super_admin" | "admin" | "vendedor" | "visualizador"

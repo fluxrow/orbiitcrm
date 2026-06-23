@@ -767,10 +767,11 @@ Mapeamento de campos para dados_extraidos:
         await supabaseCleanup.from("orbit_conversas").update({ ai_processing: false }).eq("id", body.conversa_id);
       }
     } catch (_) { /* best effort */ }
-    return new Response(JSON.stringify({ error: message }), {
+    return new Response(JSON.stringify({ error: "internal_error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+
   }
 });
 
