@@ -2,22 +2,24 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import {
   Users, Target, BarChart3, CheckCircle, Mail, MessageSquare,
-  Kanban, Clock, ListChecks, Zap, Search, ArrowRight, Rocket,
-  Shield, ChevronRight, Star, Instagram, Facebook,
+  Kanban, Zap, MessageCircle, Star,
   BotMessageSquare, ShieldCheck, Timer, TrendingUp, Building2,
   HeartHandshake, AlertTriangle, UserX, PhoneOff, Brain,
-  ClipboardList, Shuffle, Send, FileText, Globe
+  ClipboardList, Shuffle, Send, FileText, Globe, Shield
 } from "lucide-react";
 import orbitLogo from "@/assets/orbit-logo.png";
 import AnimatedSection from "@/components/landing/AnimatedSection";
 import GlowCard from "@/components/landing/GlowCard";
-import AnimatedBackground from "@/components/landing/AnimatedBackground";
 import HeroSection from "@/components/landing/HeroSection";
+import StatsImpactoSection from "@/components/landing/StatsImpactoSection";
+import HumanoVsOrbitSection from "@/components/landing/HumanoVsOrbitSection";
+import WhatsAppMockSection from "@/components/landing/WhatsAppMockSection";
+import WhatsAppFab from "@/components/landing/WhatsAppFab";
+import { WHATSAPP_LP_HREF } from "@/lib/whatsapp";
 
 /* ─── Data (unchanged) ─── */
 const PROBLEMS = [
@@ -68,22 +70,15 @@ const AUDIENCES = [
   { icon: Star, name: "Clínicas e serviços", desc: "Que precisam agendar, qualificar e acompanhar pacientes/clientes." },
 ];
 
-const PLANS_DATA = [
-  { name: "Demo", priceMonthly: 0, ideal: "Explore a plataforma sem compromisso", features: ["Ambiente completo de demonstração", "Dados fictícios para teste", "IA funcionando via número de teste", "Acesso imediato, sem cadastro"], cta: "Acessar Demo", ctaVariant: "outline" as const, href: "/demo", highlight: false },
-  { name: "Basic", priceMonthly: 197, ideal: "Para equipes que vendem por email", features: ["CRM completo com funil Kanban", "Tarefas e interações por oportunidade", "Email marketing com templates", "Distribuição de leads round-robin", "Importação de contatos", "Relatórios de performance"], cta: "Começar Trial 7 dias", ctaVariant: "default" as const, href: "/trial?plan=basic", highlight: false },
-  { name: "Professional", priceMonthly: 397, ideal: "Para quem vende pelo WhatsApp", features: ["Tudo do Basic", "WhatsApp bidirecional (envio + recebimento)", "IA para atendimento automático", "Campanhas de WhatsApp", "Handoff inteligente ao vendedor", "Aprovação de campanhas"], cta: "Começar Trial 7 dias", ctaVariant: "default" as const, href: "/trial?plan=professional", highlight: true, badge: "Mais popular" },
-  { name: "Plus", priceMonthly: 597, ideal: "Operação omnichannel completa", features: ["Tudo do Professional", "Instagram Direct integrado", "Facebook Messenger integrado", "Busca de leads ativa (Apollo)", "Enriquecimento automático de dados", "Suporte prioritário"], cta: "Começar Trial 7 dias", ctaVariant: "default" as const, href: "/trial?plan=plus", highlight: false },
-];
-
 const FAQ_ITEMS = [
   { q: "O que exatamente o Orbit faz?", a: "O Orbit é um CRM com IA que centraliza todo o processo comercial: captação de leads, atendimento automático por WhatsApp, qualificação inteligente, funil de vendas, campanhas por email e WhatsApp, e distribuição automática entre vendedores." },
   { q: "Preciso instalar algo?", a: "Não. O Orbit é 100% web. Basta acessar pelo navegador em qualquer dispositivo — computador, tablet ou celular." },
   { q: "A IA realmente responde sozinha?", a: "Sim. A IA atende leads pelo WhatsApp 24h, faz perguntas de qualificação, extrai dados como nome, empresa e interesse, e encaminha o lead ao vendedor com um resumo completo. Você define o tom, horário e regras." },
-  { q: "Posso usar meu próprio número de WhatsApp?", a: "Sim! Nos planos Professional e Plus você conecta seu número via API oficial (Z-API). No modo Demo, a IA funciona por um número de teste." },
-  { q: "O trial é realmente gratuito?", a: "Sim. São 7 dias com acesso completo a todas as funcionalidades do plano escolhido. Sem cartão de crédito e sem compromisso." },
+  { q: "Posso usar meu próprio número de WhatsApp?", a: "Sim! Você conecta seu número via API oficial (Z-API). Durante a demonstração, a IA funciona em um número de teste." },
   { q: "Consigo importar meus contatos?", a: "Sim. Importe via planilha CSV ou Excel diretamente pelo painel. O sistema faz deduplicação automática para evitar contatos duplicados." },
   { q: "Meus dados ficam seguros?", a: "Cada empresa tem um ambiente totalmente isolado com dados separados. Usamos criptografia e controle de acesso por função (admin, gerente, vendedor, visualizador)." },
-  { q: "Quais canais de comunicação são suportados?", a: "WhatsApp (via API oficial), email (SMTP), Instagram Direct e Facebook Messenger. Os dois últimos estão disponíveis no plano Plus." },
+  { q: "Quais canais de comunicação são suportados?", a: "WhatsApp (via API oficial), email (SMTP), Instagram Direct e Facebook Messenger." },
+  { q: "Como falo com vocês?", a: "É só clicar no botão verde do WhatsApp em qualquer parte do site. A gente responde em minutos e te explica tudo direto por lá." },
 ];
 
 /* ─── Animation variants ─── */
@@ -114,7 +109,6 @@ export default function LandingPage() {
     document.title = "Orbit CRM — CRM com IA para WhatsApp, Email e Vendas";
   }, []);
   const [slugError, setSlugError] = useState("");
-  const [isAnnual, setIsAnnual] = useState(false);
 
   const handleSlugAccess = () => {
     const trimmed = slug.trim().toLowerCase();
@@ -123,17 +117,14 @@ export default function LandingPage() {
     navigate(`/${trimmed}/dashboard`);
   };
 
-  const formatPrice = (monthly: number) => {
-    if (monthly === 0) return "Grátis";
-    const val = isAnnual ? Math.round(monthly * 0.8) : monthly;
-    return `R$ ${val}/mês`;
-  };
-
   return (
     <div className="min-h-screen bg-background text-foreground noise-bg">
 
       {/* ══════════ HERO ══════════ */}
       <HeroSection />
+
+      {/* ══════════ STATS — dor real do mercado ══════════ */}
+      <StatsImpactoSection />
 
       {/* ══════════ PROBLEMA ══════════ */}
       <section className="py-20 px-4 relative">
@@ -209,6 +200,9 @@ export default function LandingPage() {
           </motion.div>
         </div>
       </section>
+
+      {/* ══════════ HUMANO vs ORBIT ══════════ */}
+      <HumanoVsOrbitSection />
 
       {/* ══════════ COMO FUNCIONA (Timeline) ══════════ */}
       <section id="como-funciona" className="py-20 px-4 relative">
@@ -321,6 +315,9 @@ export default function LandingPage() {
           </motion.div>
         </div>
       </section>
+
+      {/* ══════════ MOCK WHATSAPP ══════════ */}
+      <WhatsAppMockSection />
 
       {/* ══════════ DIFERENCIAIS ══════════ */}
       <section className="py-20 px-4 relative">
@@ -436,109 +433,34 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ══════════ PLANOS ══════════ */}
-      <section id="planos" className="py-20 px-4">
-        <div className="max-w-6xl mx-auto">
-          <AnimatedSection>
-            <SectionLabel>Planos</SectionLabel>
-            <h2 className="text-3xl font-bold text-center mb-4">
-              Escolha o plano ideal para <span className="gradient-text">sua operação</span>
-            </h2>
-            <p className="text-center text-muted-foreground mb-6 text-sm">
-              Todos os planos incluem trial gratuito de 7 dias. Sem cartão de crédito.
-            </p>
-
-            {/* Toggle mensal / anual */}
-            <div className="flex items-center justify-center gap-3 mb-12">
-              <span className={`text-sm ${!isAnnual ? "text-foreground font-medium" : "text-muted-foreground"}`}>Mensal</span>
-              <button
-                onClick={() => setIsAnnual(!isAnnual)}
-                className={`relative w-12 h-6 rounded-full transition-colors ${isAnnual ? "bg-primary" : "bg-muted"}`}
-              >
-                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-background shadow transition-transform ${isAnnual ? "translate-x-6" : "translate-x-0.5"}`} />
-              </button>
-              <span className={`text-sm ${isAnnual ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                Anual <Badge variant="secondary" className="ml-1 text-[10px] bg-primary/10 text-primary border-primary/20">-20%</Badge>
-              </span>
-            </div>
-          </AnimatedSection>
-
-          <motion.div
-            className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6"
-            variants={stagger}
-            initial="hidden"
-            whileInView="show"
-            viewport={{ once: true }}
-          >
-            {PLANS_DATA.map((plan) => (
-              <motion.div
-                key={plan.name}
-                variants={fadeUp}
-                className={plan.highlight ? "lg:-mt-3 lg:mb-3 z-10" : ""}
-              >
-                <GlowCard
-                  className={`flex flex-col h-full ${plan.highlight ? "ring-1 ring-primary/40 animate-glow-pulse" : ""}`}
-                  glowColor={plan.highlight ? "187 92% 50%" : "var(--primary)"}
-                >
-                  <div className="p-6 flex flex-col h-full">
-                    {plan.highlight && plan.badge && (
-                      <Badge className="self-center -mt-9 mb-4 bg-primary text-primary-foreground text-[10px] shadow-lg shadow-primary/20">
-                        <Star className="w-3 h-3 mr-1" /> {plan.badge}
-                      </Badge>
-                    )}
-                    <div className="text-center mb-6">
-                      <h3 className="text-xl font-bold">{plan.name}</h3>
-                      <div className="text-3xl font-extrabold mt-2">{formatPrice(plan.priceMonthly)}</div>
-                      <p className="text-sm text-muted-foreground mt-1">{plan.ideal}</p>
-                    </div>
-                    <ul className="space-y-2 flex-1">
-                      {plan.features.map((f) => (
-                        <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
-                          <CheckCircle className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-                          {f}
-                        </li>
-                      ))}
-                    </ul>
-                    <Button
-                      className={`w-full mt-6 ${plan.highlight ? "animate-glow hover:scale-105 transition-transform" : "hover:scale-[1.02] transition-transform"}`}
-                      variant={plan.ctaVariant}
-                      onClick={() => navigate(plan.href)}
-                    >
-                      {plan.cta} <ChevronRight className="w-4 h-4 ml-1" />
-                    </Button>
-                  </div>
-                </GlowCard>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ══════════ CTA FINAL ══════════ */}
+      {/* ══════════ CTA FINAL — WhatsApp ══════════ */}
       <section className="py-24 px-4 relative overflow-hidden">
         <div className="absolute inset-0 bg-secondary/20" />
-        {/* Glow blob */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-primary/8 blur-[120px] rounded-full" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-emerald-500/10 blur-[120px] rounded-full" />
 
         <AnimatedSection className="relative z-10">
           <div className="max-w-2xl mx-auto text-center space-y-6">
             <h2 className="text-3xl sm:text-4xl font-extrabold">
-              Pronto para vender mais <span className="gradient-text">com menos esforço?</span>
+              Pronto pra parar de <span className="gradient-text">perder lead de anúncio?</span>
             </h2>
             <p className="text-muted-foreground text-lg">
-              Comece agora e veja sua equipe vender mais em menos tempo — com IA de verdade.
+              Bora conversar. Em poucos minutos a gente te mostra como o Orbit funciona na sua operação.
             </p>
             <Button
+              asChild
               size="lg"
-              onClick={() => navigate("/trial")}
-              className="gap-2 text-base px-10 h-12 animate-glow-pulse hover:scale-105 transition-transform"
+              className="gap-2 text-base px-10 h-12 animate-glow-pulse hover:scale-105 transition-transform bg-emerald-600 hover:bg-emerald-500 text-white"
             >
-              Começar agora — 7 dias grátis <ArrowRight className="w-5 h-5" />
+              <a href={WHATSAPP_LP_HREF} target="_blank" rel="noopener noreferrer">
+                <MessageCircle className="w-5 h-5" />
+                Falar agora no WhatsApp
+              </a>
             </Button>
-            <p className="text-xs text-muted-foreground">Sem cartão de crédito. Cancele quando quiser.</p>
+            <p className="text-xs text-muted-foreground">Resposta em minutos. Sem formulário, sem ligação fria.</p>
           </div>
         </AnimatedSection>
       </section>
+
 
       {/* ══════════ FAQ ══════════ */}
       <section id="faq" className="py-20 px-4">
@@ -613,6 +535,9 @@ export default function LandingPage() {
           <span>© {new Date().getFullYear()} Fluxrow. Todos os direitos reservados.</span>
         </div>
       </footer>
+
+      {/* ══════════ WHATSAPP FAB ══════════ */}
+      <WhatsAppFab />
     </div>
   );
 }

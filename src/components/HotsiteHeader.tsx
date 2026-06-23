@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Menu, X } from "lucide-react";
+import { Menu, X, MessageCircle } from "lucide-react";
 import orbitLogo from "@/assets/orbit-logo.png";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { WHATSAPP_LP_HREF } from "@/lib/whatsapp";
 
 const NAV_ITEMS = [
   { label: "Produto", href: "#como-funciona" },
   { label: "Recursos", href: "#recursos" },
-  { label: "Planos", href: "#planos" },
   { label: "FAQ", href: "#faq" },
 ];
 
@@ -55,8 +55,15 @@ export default function HotsiteHeader() {
           <Button variant="outline" size="sm" onClick={() => navigate("/auth")} className="border-border/50 backdrop-blur-sm">
             Entrar
           </Button>
-          <Button size="sm" onClick={() => navigate("/trial")} className="animate-glow hover:scale-105 transition-transform">
-            Começar Trial
+          <Button
+            asChild
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-500 text-white hover:scale-105 transition-transform gap-2"
+          >
+            <a href={WHATSAPP_LP_HREF} target="_blank" rel="noopener noreferrer">
+              <MessageCircle className="w-4 h-4" />
+              Falar no WhatsApp
+            </a>
           </Button>
         </div>
 
@@ -82,7 +89,16 @@ export default function HotsiteHeader() {
             <ThemeToggle className="justify-center" />
             <Button variant="ghost" size="sm" onClick={() => { setMobileMenuOpen(false); navigate("/demo"); }}>Acessar Demo</Button>
             <Button variant="outline" size="sm" onClick={() => { setMobileMenuOpen(false); navigate("/auth"); }}>Entrar</Button>
-            <Button size="sm" onClick={() => { setMobileMenuOpen(false); navigate("/trial"); }}>Começar Trial</Button>
+            <Button
+              asChild
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-500 text-white gap-2"
+            >
+              <a href={WHATSAPP_LP_HREF} target="_blank" rel="noopener noreferrer" onClick={() => setMobileMenuOpen(false)}>
+                <MessageCircle className="w-4 h-4" />
+                Falar no WhatsApp
+              </a>
+            </Button>
           </div>
         </div>
       )}
