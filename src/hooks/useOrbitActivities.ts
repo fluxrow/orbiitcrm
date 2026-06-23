@@ -15,8 +15,10 @@ interface ActivityFilters {
 }
 
 export function useOrbitActivities(filters?: ActivityFilters) {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: ["orbit_activities", filters],
+    queryKey: ["orbit_activities", empresaId, filters],
+    enabled: !!empresaId,
     queryFn: async () => {
       let query = supabase
         .from("orbit_activities")
