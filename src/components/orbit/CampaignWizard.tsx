@@ -20,6 +20,7 @@ import { useCreateCampaign } from "@/hooks/useOrbitCampaigns";
 import { useOrbitSendGroups, useCreateSendGroup, useDeleteSendGroup } from "@/hooks/useOrbitSendGroups";
 import { RecipientSelector } from "./RecipientSelector";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
 
 interface CampaignWizardProps {
