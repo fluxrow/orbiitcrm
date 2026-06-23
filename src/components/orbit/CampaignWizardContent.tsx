@@ -19,6 +19,7 @@ import { useOrbitSendGroups } from "@/hooks/useOrbitSendGroups";
 import { RecipientSelector } from "./RecipientSelector";
 import { CampaignRecipientsPreviewDrawer } from "./CampaignRecipientsPreviewDrawer";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
 import { orbitCampaignKeys } from "@/lib/query-keys";
 import { buildCampaignAudienceFilters } from "@/lib/orbit/campaign-audience";
@@ -70,6 +71,7 @@ const steps = [
 ];
 
 export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardContentProps) {
+  const { empresaId: tenantEmpresaId } = useTenant();
   const [currentStep, setCurrentStep] = useState(1);
   const [data, setData] = useState<CampaignData>({
     nome: "",
@@ -230,8 +232,8 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
       setIsSavingTemplate(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
-      const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
-      if (!profile?.empresa_id) throw new Error("Empresa não encontrada");
+      if (!tenantEmpresaId) throw new Error("Empresa não encontrada");
+      const profile = { empresa_id: tenantEmpresaId };
       const created = await createTemplate.mutateAsync({
         nome: newTemplate.nome, canal: data.canal, categoria: newTemplate.categoria,
         assunto_email: data.canal === "email" ? newTemplate.assunto_email : null,
@@ -302,7 +304,7 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
       setIsSendingTest(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
-      const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
+      const profile = tenantEmpresaId ? { empresa_id: tenantEmpresaId } : null;
       const bodyText = substituteVars(selectedTemplate.corpo_texto || "", testVars);
       const subject = substituteVars(selectedTemplate.assunto_email || "Teste", testVars);
       const templateImg = (selectedTemplate as any).imagem_url || "";
@@ -345,8 +347,8 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
       setIsCreating(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
-      const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
-      if (!profile?.empresa_id) throw new Error("Empresa não encontrada");
+      if (!tenantEmpresaId) throw new Error("Empresa não encontrada");
+      const profile = { empresa_id: tenantEmpresaId };
       const recipientIds = calculateAllRecipientIds();
       const recipientProspects = prospects?.filter(p => recipientIds.includes(p.id)) || [];
       const campaign = await createCampaign.mutateAsync({

@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useOrbitTemplates, useCreateTemplate, useUpdateTemplate } from "@/hooks/useOrbitTemplates";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
 
 const CATEGORIAS = [
@@ -50,6 +51,7 @@ export default function EmailTemplateEditorPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const isEditing = !!id;
+  const { empresaId: tenantEmpresaId } = useTenant();
 
   const { data: templates } = useOrbitTemplates({ canal: "email" });
   const createTemplate = useCreateTemplate();
@@ -153,8 +155,9 @@ export default function EmailTemplateEditorPage() {
       setIsSaving(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
-      const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
-      if (!profile?.empresa_id) throw new Error("Empresa não encontrada");
+      // CRITICAL: empresa from URL tenant context, not from profile.empresa_id.
+      if (!tenantEmpresaId) throw new Error("Empresa não encontrada");
+      const profile = { empresa_id: tenantEmpresaId };
 
       const ctaPayload = {
         whatsapp_cta_enabled: form.whatsapp_cta_enabled,

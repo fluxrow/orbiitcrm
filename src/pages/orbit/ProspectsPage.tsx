@@ -22,6 +22,7 @@ import { useOrbitProspects, useDeleteProspect } from "@/hooks/useOrbitProspects"
 import { useDebounce } from "@/hooks/useDebounce";
 import { useOrbitPeLinks } from "@/hooks/usePromoteProspect";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -72,15 +73,10 @@ export default function ProspectsPage() {
   const [importOpen, setImportOpen] = useState(false);
 
   const { user } = useAuth();
-  const { data: myProfile } = useQuery({
-    queryKey: ["my-profile-empresa"],
-    queryFn: async () => {
-      const { data: { user: u } } = await supabase.auth.getUser();
-      if (!u) return null;
-      const { data } = await supabase.from("profiles").select("empresa_id").eq("id", u.id).single();
-      return data;
-    },
-  });
+  // CRITICAL: empresa from URL tenant — not from profiles.empresa_id.
+  // Prevents cross-tenant data leak for users with access to multiple empresas.
+  const { empresaId: tenantEmpresaId } = useTenant();
+  const myProfile = tenantEmpresaId ? { empresa_id: tenantEmpresaId } : null;
 
   const { data: prospects, isLoading } = useOrbitProspects({
     search: debouncedSearch || undefined,

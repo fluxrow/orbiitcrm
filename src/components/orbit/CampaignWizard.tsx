@@ -20,6 +20,7 @@ import { useCreateCampaign } from "@/hooks/useOrbitCampaigns";
 import { useOrbitSendGroups, useCreateSendGroup, useDeleteSendGroup } from "@/hooks/useOrbitSendGroups";
 import { RecipientSelector } from "./RecipientSelector";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
 
 interface CampaignWizardProps {
@@ -61,6 +62,7 @@ const steps = [
 ];
 
 export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
+  const { empresaId: tenantEmpresaId } = useTenant();
   const [currentStep, setCurrentStep] = useState(1);
   const [data, setData] = useState<CampaignData>({
     nome: "",
@@ -234,8 +236,9 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
       setIsSavingTemplate(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
-      const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
-      if (!profile?.empresa_id) throw new Error("Empresa não encontrada");
+      // CRITICAL: empresa from URL tenant context.
+      if (!tenantEmpresaId) throw new Error("Empresa não encontrada");
+      const profile = { empresa_id: tenantEmpresaId };
 
       const created = await createTemplate.mutateAsync({
         nome: newTemplate.nome,
@@ -318,7 +321,7 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
       setIsSendingTest(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
-      const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
+      const profile = tenantEmpresaId ? { empresa_id: tenantEmpresaId } : null;
       
       const bodyText = substituteVars(selectedTemplate.corpo_texto || "", testVars);
       const subject = substituteVars(selectedTemplate.assunto_email || "Teste", testVars);
@@ -368,17 +371,11 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
     try {
       setIsCreating(true);
 
-      // Buscar empresa_id
+      // CRITICAL: empresa from URL tenant context.
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("empresa_id")
-        .eq("id", user.id)
-        .single();
-
-      if (!profile?.empresa_id) throw new Error("Empresa não encontrada");
+      if (!tenantEmpresaId) throw new Error("Empresa não encontrada");
+      const profile = { empresa_id: tenantEmpresaId };
 
       // Calculate recipients BEFORE creating campaign to get accurate count
       const recipientIds = calculateAllRecipientIds();

@@ -18,6 +18,7 @@ import { useOrbitSendGroups, useCreateSendGroup, useDeleteSendGroup } from "@/ho
 import { useProspectEngagement } from "@/hooks/useProspectEngagement";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenant } from "@/contexts/TenantContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Loader2, Flame, Eye, MousePointerClick, AlertOctagon } from "lucide-react";
 import { toast } from "sonner";
@@ -75,6 +76,7 @@ export function RecipientSelector({
   onSelectedGroupIdsChange,
   totalRecipients,
 }: RecipientSelectorProps) {
+  const { empresaId: tenantEmpresaId } = useTenant();
   const [search, setSearch] = useState("");
   const [showFilters, setShowFilters] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("nome");
@@ -1002,9 +1004,9 @@ export function RecipientSelector({
                 try {
                   const { data: { user } } = await supabase.auth.getUser();
                   if (!user) return;
-                  const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
-                  if (!profile?.empresa_id) return;
-                  await createSendGroup.mutateAsync({ empresa_id: profile.empresa_id, nome: newGroupName, descricao: newGroupDesc || undefined, prospect_ids: newGroupProspectIds, created_by: user.id });
+                  // CRITICAL: empresa from URL tenant context.
+                  if (!tenantEmpresaId) return;
+                  await createSendGroup.mutateAsync({ empresa_id: tenantEmpresaId, nome: newGroupName, descricao: newGroupDesc || undefined, prospect_ids: newGroupProspectIds, created_by: user.id });
                   toast.success("Grupo criado!");
                   setShowCreateGroup(false);
                   setNewGroupName("");

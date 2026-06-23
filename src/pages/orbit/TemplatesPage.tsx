@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Sparkles, Copy, Trash2, Pencil, MessageSquare, Mail, Loader2, ImagePlus, X, Link } from "lucide-react";
 import { useOrbitTemplates, useCreateTemplate, useDeleteTemplate } from "@/hooks/useOrbitTemplates";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
 
 const ALLOWED_VARS = ["{{nome}}", "{{empresa}}", "{{nome_fantasia}}", "{{email}}", "{{telefone}}", "{{cidade}}", "{{segmento}}"];
@@ -36,6 +37,7 @@ const emptyForm: TemplateForm = { nome: "", categoria: "geral", assunto_email: "
 
 export default function TemplatesPage() {
   const navigate = useNavigate();
+  const { empresaId: tenantEmpresaId } = useTenant();
   const [tab, setTab] = useState("whatsapp");
   const { data: templates, isLoading } = useOrbitTemplates({ canal: tab });
   const createTemplate = useCreateTemplate();
@@ -125,8 +127,9 @@ export default function TemplatesPage() {
       setIsSaving(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
-      const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
-      if (!profile?.empresa_id) throw new Error("Empresa não encontrada");
+      // CRITICAL: empresa from URL tenant context, not from profile.empresa_id.
+      if (!tenantEmpresaId) throw new Error("Empresa não encontrada");
+      const profile = { empresa_id: tenantEmpresaId };
 
       await createTemplate.mutateAsync({
         nome: form.nome,
