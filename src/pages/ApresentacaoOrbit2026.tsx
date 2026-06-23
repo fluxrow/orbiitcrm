@@ -922,7 +922,7 @@ function Investimento() {
 
         <motion.div variants={fadeUp} className="mt-10 text-center">
           <a
-            href="https://wa.me/5541992361868?text=Cau%C3%A3%2C%20ja%20vi%20a%20propostas%2C%20bora%20implementar.%20Quais%20os%20proximos%20passos%3F%20aproveite%20e%20veja%20se%20o%20link%20esta%20copartilhavel%20mesmo%20e%20pronto%20pra%20compartilhar"
+            href="https://wa.me/5541992361868?text=Cau%C3%A3%2C%20ja%20vi%20a%20propostas%2C%20bora%20implementar.%20Quais%20os%20proximos%20passos%3F%20aproveite%20e%20veja%20se%20o%20link%20esta%20copartilhavel%20mesmo%20e%20pronto%20pra%20compartilhar%20https%3A//orbit.fluxrow.pro/apresentacao/orbit-2026"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-8 py-4 rounded-full bg-gradient-to-r from-emerald-500 to-violet-500 text-white font-semibold text-lg shadow-2xl shadow-emerald-500/30 hover:scale-105 transition-transform"
