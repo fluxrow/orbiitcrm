@@ -100,6 +100,7 @@ export function useOrbitZAPIConfig(empresaId?: string | null) {
       return data as OrbitZAPIConfigView | null;
     },
     enabled: !!empresaId,
+    staleTime: 60000,
   });
 }
 
