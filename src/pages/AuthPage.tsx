@@ -120,11 +120,7 @@ export default function AuthPage() {
 
   const checkIfSetupNeeded = async () => {
     try {
-      const { data, error } = await supabase
-        .from("user_roles")
-        .select("id")
-        .eq("role", "super_admin")
-        .limit(1);
+      const { data, error } = await supabase.rpc("super_admin_exists");
 
       if (error) {
         console.error("Error checking super admin:", error);
@@ -132,7 +128,7 @@ export default function AuthPage() {
         return;
       }
 
-      if (!data || data.length === 0) {
+      if (data !== true) {
         navigate("/setup", { replace: true });
         return;
       }
@@ -143,6 +139,7 @@ export default function AuthPage() {
       setCheckingSetup(false);
     }
   };
+
 
   if (loading || checkingSetup || redirecting) {
     return (
