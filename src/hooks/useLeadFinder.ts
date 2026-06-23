@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { toast } from "sonner";
 import { handleApiResponse } from "@/lib/api-envelope";
+import { useTenant } from "@/contexts/TenantContext";
 
 // Types
 export interface LeadSource {
@@ -129,21 +130,11 @@ export function useLeadSources() {
 
 export function useCreateLeadSource() {
   const queryClient = useQueryClient();
+  const { empresaId: tenantEmpresaId } = useTenant();
   return useMutation({
     mutationFn: async (source: { nome: string; tipo: string; config?: Record<string, any>; ativo?: boolean; empresa_id?: string | null }) => {
-      // Resolve empresa_id from caller or from the user's profile (super-admin fallback handled by RLS)
-      let empresaId = source.empresa_id ?? null;
-      if (!empresaId) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("empresa_id")
-            .eq("id", user.id)
-            .maybeSingle();
-          empresaId = profile?.empresa_id ?? null;
-        }
-      }
+      // Caller may pass empresa_id explicitly (super-admin use case); otherwise use active tenant
+      const empresaId = source.empresa_id ?? tenantEmpresaId ?? null;
       if (!empresaId) {
         throw new Error("Empresa não identificada. Acesse pela URL da sua empresa antes de criar uma fonte.");
       }

@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { TablesInsert } from "@/integrations/supabase/types";
 import { orbitProspectKeys } from "@/lib/query-keys";
+import { useTenant } from "@/contexts/TenantContext";
 
 type ProspectInsert = TablesInsert<"orbit_prospects">;
 
@@ -280,34 +281,27 @@ export function generateCSVTemplate(): string {
 
 export function useImportProspects() {
   const queryClient = useQueryClient();
+  const { empresaId } = useTenant();
 
   return useMutation({
-    mutationFn: async ({ 
-      prospects, 
+    mutationFn: async ({
+      prospects,
       fileName,
-      ignoreDuplicates = true 
-    }: { 
-      prospects: ParsedProspect[]; 
+      ignoreDuplicates = true
+    }: {
+      prospects: ParsedProspect[];
       fileName: string;
       ignoreDuplicates?: boolean;
     }): Promise<ImportResult> => {
-      // Get user info for empresa_id
+      if (!empresaId) throw new Error('Empresa não encontrada');
+
+      // Get current user for import history attribution
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Usuário não autenticado');
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('empresa_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!profile?.empresa_id) throw new Error('Empresa não encontrada');
 
       let success = 0;
       let errors = 0;
       const errorDetails: { row: number; field: string; message: string }[] = [];
 
-      // Check for duplicates if needed
       const existingEmails: Set<string> = new Set();
       const existingPhones: Set<string> = new Set();
       const importedNames: Set<string> = new Set();
@@ -326,7 +320,7 @@ export function useImportProspects() {
           const { data: duplicates, error: duplicateError } = await supabase.rpc(
             "find_duplicate_prospects" as any,
             {
-              p_empresa_id: profile.empresa_id,
+              p_empresa_id: empresaId,
               p_emails: candidateEmails,
               p_phones: candidatePhones,
             },
@@ -338,7 +332,6 @@ export function useImportProspects() {
             if (prospect.email_principal) {
               existingEmails.add(prospect.email_principal.toLowerCase());
             }
-
             [prospect.telefone, prospect.whatsapp]
               .map((value: string | null) => value?.replace(/\D/g, ""))
               .filter((value: string | undefined): value is string => Boolean(value))
@@ -347,7 +340,6 @@ export function useImportProspects() {
         }
       }
 
-      // Filter out duplicates and build valid prospects list
       const validProspects: { index: number; data: ProspectInsert }[] = [];
 
       for (let i = 0; i < prospects.length; i++) {
@@ -374,7 +366,6 @@ export function useImportProspects() {
             continue;
           }
 
-          // Add to sets to avoid intra-import duplicates
           if (email) existingEmails.add(email);
           phones.forEach((phone) => existingPhones.add(phone));
           if (normalizedName) importedNames.add(normalizedName);
@@ -383,7 +374,7 @@ export function useImportProspects() {
         validProspects.push({
           index: i,
           data: {
-            empresa_id: profile.empresa_id,
+            empresa_id: empresaId,
             nome_razao: prospect.nome_razao,
             nome_fantasia: prospect.nome_fantasia || null,
             tipo: prospect.tipo || 'pessoa',
@@ -404,16 +395,14 @@ export function useImportProspects() {
         });
       }
 
-      // Batch insert in chunks of 100
       const BATCH_SIZE = 100;
       for (let b = 0; b < validProspects.length; b += BATCH_SIZE) {
         const batch = validProspects.slice(b, b + BATCH_SIZE);
-        const { error, data } = await supabase
+        const { error } = await supabase
           .from('orbit_prospects')
           .insert(batch.map(item => item.data));
 
         if (error) {
-          // If batch fails, try individual inserts as fallback
           for (const item of batch) {
             const { error: singleError } = await supabase
               .from('orbit_prospects')
@@ -430,15 +419,14 @@ export function useImportProspects() {
         }
       }
 
-      // Save import history
       await supabase.from('orbit_import_history').insert({
-        empresa_id: profile.empresa_id,
+        empresa_id: empresaId,
         arquivo_nome: fileName,
         total_registros: prospects.length,
         sucesso: success,
         erros: errors,
         detalhes_erros: errorDetails,
-        importado_por: user.id,
+        importado_por: user?.id ?? null,
       });
 
       return { success, errors, errorDetails };
