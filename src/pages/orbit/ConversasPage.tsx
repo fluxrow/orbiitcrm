@@ -16,6 +16,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ConversaProspectDrawer } from "@/components/orbit/ConversaProspectDrawer";
+import { AudioLibraryPicker } from "@/components/orbit/AudioLibraryPicker";
+import type { AudioClip } from "@/hooks/useOrbitAudioLibrary";
 
 function stripHtml(html: string): string {
   return html
@@ -370,6 +372,26 @@ export default function ConversasPage() {
                     <Button variant="ghost" size="icon" onClick={startRecording} disabled={isUploading} title="Gravar áudio">
                       <Mic className="h-4 w-4" />
                     </Button>
+                    <AudioLibraryPicker
+                      disabled={isUploading}
+                      onSelect={async (clip: AudioClip) => {
+                        if (!activeId) return;
+                        setIsUploading(true);
+                        try {
+                          await sendMessage.mutateAsync({
+                            conversa_id: activeId,
+                            mensagem: "🎙️ Áudio (biblioteca)",
+                            telefone: active?.telefone_whatsapp,
+                            tipo_midia: "audio",
+                            url_midia: clip.url,
+                          });
+                        } catch {
+                          toast.error("Erro ao enviar áudio da biblioteca");
+                        } finally {
+                          setIsUploading(false);
+                        }
+                      }}
+                    />
                     <Input
                       placeholder="Mensagem..."
                       value={msg}

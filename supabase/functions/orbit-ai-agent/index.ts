@@ -9,6 +9,13 @@ type ConversationState = "novo" | "aguardando_resposta" | "auto_reply_detected" 
 // ── Classificação de mensagem ──
 type MessageClassification = "human_probable" | "auto_reply" | "uncertain";
 
+// Mapeamento: intenção detectada → contexto da biblioteca de áudios
+const INTENCAO_TO_AUDIO_CONTEXTO: Record<string, string> = {
+  "saudacao": "apresentacao",
+  "orcamento": "preco",
+  "agradecimento": "encerramento",
+};
+
 interface LeadContext {
   lead: {
     id: string;
@@ -335,6 +342,61 @@ function buildLeadContext(
     },
     missingFields,
   };
+}
+
+async function getAudioClip(supabase: any, empresaId: string | null | undefined, contexto: string) {
+  if (!empresaId) return null;
+  try {
+    const { data } = await supabase
+      .from("orbit_audio_library")
+      .select("id, url, uso_count")
+      .eq("empresa_id", empresaId)
+      .eq("contexto", contexto)
+      .eq("ativo", true)
+      .order("uso_count", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    return data || null;
+  } catch {
+    return null;
+  }
+}
+
+async function sendWhatsAppAudio(supabase: any, telefone: string, audioUrl: string, conversa_id: string, empresaId?: string | null) {
+  try {
+    const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresaId);
+    if (!zapiConfig?.instance_id || !zapiConfig?.token) {
+      console.log("[orbit-ai-agent] Z-API não configurado para envio de áudio de biblioteca");
+      return;
+    }
+    const response = await fetch(
+      `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-audio`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Client-Token": zapiConfig.client_token || "" },
+        body: JSON.stringify({ phone: telefone, audio: audioUrl }),
+      }
+    );
+    const result = await response.json();
+    console.log("[orbit-ai-agent] Áudio da biblioteca enviado:", result);
+    await supabase.from("orbit_mensagens").insert({
+      conversa_id,
+      direcao: "OUT",
+      mensagem: "🎙️ Áudio",
+      tipo_midia: "audio",
+      url_midia: audioUrl,
+      canal: "whatsapp",
+      status: response.ok ? "enviada" : "falhou",
+      provider_message_id: result.messageId || null,
+      empresa_id: empresaId,
+    });
+    await supabase
+      .from("orbit_conversas")
+      .update({ ultima_mensagem_at: new Date().toISOString(), ultima_mensagem_preview: "🎙️ Áudio" })
+      .eq("id", conversa_id);
+  } catch (error) {
+    console.error("[orbit-ai-agent] Erro ao enviar áudio de biblioteca:", error);
+  }
 }
 
 serve(async (req) => {
@@ -798,7 +860,29 @@ Mapeamento de campos para dados_extraidos:
       });
     }
 
-    // Enviar resposta via WhatsApp
+    // ── Audio library: enviar clip pré-gravado se disponível ──
+    if (!isDemo && empresaId) {
+      const audioContexto = primeiraInteracao
+        ? "apresentacao"
+        : INTENCAO_TO_AUDIO_CONTEXTO[parsed.intencao || ""] || null;
+
+      if (audioContexto) {
+        const audioClip = await getAudioClip(supabase, empresaId, audioContexto);
+        if (audioClip) {
+          console.log("[orbit-ai-agent] Clip de biblioteca encontrado:", audioClip.id, "contexto:", audioContexto);
+          await sendWhatsAppAudio(supabase, telefone, audioClip.url, conversa_id, empresaId);
+          await supabase
+            .from("orbit_audio_library")
+            .update({ uso_count: audioClip.uso_count + 1 })
+            .eq("id", audioClip.id);
+          return new Response(JSON.stringify({ ok: true, parsed, state: novoContexto.estado, audio_sent: true, simulated: false }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+    }
+
+    // Enviar resposta via WhatsApp (fallback: texto)
     await sendWhatsAppMessage(supabase, telefone, resposta, conversa_id, isDemo, empresaId);
 
     return new Response(JSON.stringify({ ok: true, resposta, parsed, state: novoContexto.estado, simulated: isDemo }), {

@@ -15,7 +15,8 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Bot, MessageSquare, Mail, Save, Loader2, Copy, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Send, Upload, Download, FileText, X, Settings2, Info, Link2, ClipboardList, Clock } from "lucide-react";
+import { Bot, MessageSquare, Mail, Save, Loader2, Copy, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Send, Upload, Download, FileText, X, Settings2, Info, Link2, ClipboardList, Clock, Music2 } from "lucide-react";
+import { AudioLibraryManager } from "@/components/orbit/AudioLibraryManager";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useOrbitAIConfig, useUpdateAIConfig, useOrbitZAPIConfig, useUpdateZAPIConfig, useOrbitResendConfig, useUpdateResendConfig, useTestResendConnection, useWhatsAppSendingConfig, useUpdateWhatsAppSendingConfig, useWhatsAppDailyUsage } from "@/hooks/useOrbitConfig";
 import { parseCSV, generateCSVTemplate, useImportProspects, useImportHistory } from "@/hooks/useImportProspects";
@@ -360,6 +361,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
           <TabsTrigger value="zapi"><MessageSquare className="h-4 w-4 mr-2" />Z-API</TabsTrigger>
           <TabsTrigger value="email"><Mail className="h-4 w-4 mr-2" />Email</TabsTrigger>
           <TabsTrigger value="import"><Upload className="h-4 w-4 mr-2" />Importar</TabsTrigger>
+          <TabsTrigger value="audios"><Music2 className="h-4 w-4 mr-2" />Áudios</TabsTrigger>
           {isOrgAdmin && <TabsTrigger value="users"><Users className="h-4 w-4 mr-2" />Usuários</TabsTrigger>}
         </TabsList>
         <TabsContent value="ai">
@@ -1657,6 +1659,13 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+        <TabsContent value="audios">
+          <Card>
+            <CardContent className="pt-6">
+              <AudioLibraryManager />
+            </CardContent>
+          </Card>
         </TabsContent>
         {isOrgAdmin && (
           <TabsContent value="users">
