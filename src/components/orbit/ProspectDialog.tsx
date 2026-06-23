@@ -87,15 +87,9 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
   const { data: vendedores } = useEmpresaVendedores();
   const isEditing = !!prospect;
 
-  const { data: myProfile } = useQuery({
-    queryKey: ["my-profile-empresa"],
-    queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
-      const { data } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
-      return data;
-    },
-  });
+  // CRITICAL: empresa from URL tenant — not from profiles.empresa_id.
+  const { empresaId: tenantEmpresaId } = useTenant();
+  const myProfile = tenantEmpresaId ? { empresa_id: tenantEmpresaId } : null;
 
   const form = useForm<ProspectFormData>({
     resolver: zodResolver(prospectSchema),
