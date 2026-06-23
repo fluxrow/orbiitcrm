@@ -96,6 +96,10 @@ Deno.serve(async (req) => {
       await supabaseAdmin.from("profiles")
         .update({ empresa_id: tenantMap.empresa_id })
         .eq("id", userId);
+      await supabaseAdmin.from("user_empresa_memberships").upsert(
+        { user_id: userId, empresa_id: tenantMap.empresa_id, role: "member" },
+        { onConflict: "user_id,empresa_id" },
+      );
     }
 
     await supabaseAdmin.from("pe_audit_log").insert({

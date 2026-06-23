@@ -53,6 +53,16 @@ export default function AuthPage() {
         return;
       }
 
+      // 1b. If user belongs to multiple empresas, show picker
+      const { data: memberships } = await supabase.rpc("get_my_empresas" as any);
+      const membershipList = (memberships as any[]) || [];
+      if (membershipList.length > 1) {
+        navigate("/select-empresa", { replace: true });
+        return;
+      }
+
+
+
       // 2. Check empresa_id → redirect to /{slug}/dashboard
       const { data: profile } = await supabase
         .from("profiles")

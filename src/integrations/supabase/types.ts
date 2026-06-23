@@ -3479,6 +3479,38 @@ export type Database = {
         }
         Relationships: []
       }
+      user_empresa_memberships: {
+        Row: {
+          created_at: string
+          empresa_id: string
+          id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          empresa_id: string
+          id?: string
+          role?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_empresa_memberships_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -3544,6 +3576,16 @@ export type Database = {
         }[]
       }
       get_empresa_by_slug: { Args: { p_slug: string }; Returns: Json }
+      get_my_empresas: {
+        Args: never
+        Returns: {
+          empresa_id: string
+          is_active: boolean
+          nome: string
+          role: string
+          slug: string
+        }[]
+      }
       get_orbit_analytics_summary: {
         Args: { p_empresa_id: string }
         Returns: Json
@@ -3643,6 +3685,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      set_active_empresa: { Args: { p_empresa_id: string }; Returns: Json }
     }
     Enums: {
       app_role: "super_admin" | "admin" | "vendedor" | "visualizador"

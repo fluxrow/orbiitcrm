@@ -12,6 +12,7 @@ import {
   LogOut,
   CreditCard,
   CheckSquare,
+  Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import orbitLogo from "@/assets/orbit-logo.png";
@@ -190,6 +191,15 @@ export function OrbitSidebar() {
               onClick={() => setProfileOpen(true)}
             >
               Meu perfil
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start gap-2 mt-1 text-muted-foreground hover:text-foreground"
+              onClick={() => navigate("/select-empresa")}
+            >
+              <Building2 className="w-4 h-4" />
+              Trocar empresa
             </Button>
             <ThemeToggle className="mt-1" />
             <Button

@@ -124,6 +124,10 @@ Deno.serve(async (req) => {
 
     await supabase.from("profiles").update({ empresa_id: invite.empresa_id, nome: body.full_name.trim(), cargo: "Admin" }).eq("id", userId);
     await supabase.from("user_roles").insert({ user_id: userId, role: "admin" });
+    await supabase.from("user_empresa_memberships").upsert(
+      { user_id: userId, empresa_id: invite.empresa_id, role: "admin" },
+      { onConflict: "user_id,empresa_id" },
+    );
 
     const empresaUpdate: Record<string, unknown> = { ativo: true };
     if (cnpjNormalized) empresaUpdate.cnpj = body.cnpj;

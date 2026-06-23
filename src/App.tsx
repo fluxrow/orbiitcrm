@@ -16,6 +16,7 @@ import AcceptInvitePage from "./pages/AcceptInvitePage";
 import AcceptInviteSaasPage from "./pages/AcceptInviteSaasPage";
 import DocumentacaoPage from "./pages/DocumentacaoPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
+import SelectEmpresaPage from "./pages/SelectEmpresaPage";
 import PublicLayout from "./layouts/PublicLayout";
 
 // Tenant Layout
@@ -145,6 +146,11 @@ const AppRoutes = () => (
       <Route path="/accept-invite" element={<AcceptInviteSaasPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
     </Route>
+
+    {/* Empresa selector (post-login, when user belongs to >1 empresa) */}
+    <Route path="/select-empresa" element={<ProtectedRoute><SelectEmpresaPage /></ProtectedRoute>} />
+
+
     
     {/* Compatibility redirect: /orbit/* → /demo/* */}
     <Route path="/orbit/*" element={<OrbitRedirect />} />
