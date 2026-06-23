@@ -803,65 +803,6 @@ function Funil() {
   );
 }
 
-/* ============================================================
-   ROI
-   ============================================================ */
-function Roi() {
-  return (
-    <Section id="roi">
-      <motion.div
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true, margin: "-100px" }}
-        variants={stagger}
-        className="text-center"
-      >
-        <motion.div variants={fadeUp}>
-          <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            08 · A matemática
-          </span>
-          <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
-            Custo anual,
-            <br />
-            <span className="text-white/50">lado a lado.</span>
-          </h2>
-        </motion.div>
-
-        <div className="mt-14 grid grid-cols-1 md:grid-cols-2 gap-5 max-w-4xl mx-auto">
-          <motion.div variants={fadeUp} className={`${glass} p-8 border-red-500/20`}>
-            <Users className="w-7 h-7 text-red-400 mx-auto mb-4" />
-            <div className="text-sm uppercase tracking-wider text-white/40 mb-3">SDR Humano</div>
-            <div className="text-5xl font-bold text-white/70 tabular-nums">
-              R$ <CountUp to={102000} separator="." />
-            </div>
-            <div className="text-sm text-white/40 mt-2">por ano</div>
-            <div className="mt-5 text-xs text-white/40 space-y-1">
-              <div>R$ 8.500/mês × 12 meses</div>
-              <div>+ férias, 13º, INSS, FGTS</div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            variants={fadeUp}
-            className={`${glass} p-8 border-emerald-500/30 bg-gradient-to-b from-emerald-500/[0.08] to-transparent`}
-          >
-            <Zap className="w-7 h-7 text-emerald-400 mx-auto mb-4" />
-            <div className="text-sm uppercase tracking-wider text-emerald-400 mb-3">Orbit</div>
-            <div className="text-5xl font-bold text-white tabular-nums">
-              R$ <CountUp to={17364} separator="." />
-            </div>
-            <div className="text-sm text-white/40 mt-2">por ano</div>
-            <div className="mt-5 text-xs text-white/40 space-y-1">
-              <div>R$ 1.197/mês × 12 meses</div>
-              <div>+ implementação única R$ 3.000</div>
-            </div>
-          </motion.div>
-        </div>
-
-      </motion.div>
-    </Section>
-  );
-}
 
 /* ============================================================
    INVESTIMENTO
