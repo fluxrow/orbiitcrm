@@ -14,8 +14,10 @@ interface SendGroup {
 }
 
 export function useOrbitSendGroups() {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: ["orbit_send_groups"],
+    queryKey: ["orbit_send_groups", empresaId],
+    enabled: !!empresaId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orbit_send_groups")
