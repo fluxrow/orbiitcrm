@@ -3593,6 +3593,14 @@ export type Database = {
         Args: { p_empresa_id: string }
         Returns: Json
       }
+      get_orbit_zapi_runtime_config: {
+        Args: { p_empresa_id: string }
+        Returns: Json
+      }
+      get_orbit_zapi_runtime_config_by_id: {
+        Args: { p_config_id: string }
+        Returns: Json
+      }
       get_prospect_engagement_summary: {
         Args: { p_dias?: number; p_empresa_id: string }
         Returns: {
