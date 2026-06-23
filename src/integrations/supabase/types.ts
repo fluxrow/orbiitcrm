@@ -1671,6 +1671,86 @@ export type Database = {
           },
         ]
       }
+      orbit_google_oauth_states: {
+        Row: {
+          created_at: string
+          empresa_id: string
+          expires_at: string
+          redirect_after: string | null
+          state: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          empresa_id: string
+          expires_at?: string
+          redirect_after?: string | null
+          state: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          empresa_id?: string
+          expires_at?: string
+          redirect_after?: string | null
+          state?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      orbit_google_tokens: {
+        Row: {
+          access_token: string
+          calendar_id: string
+          created_at: string
+          empresa_id: string
+          expires_at: string
+          google_email: string | null
+          id: string
+          refresh_token: string
+          scope: string | null
+          timezone: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          calendar_id?: string
+          created_at?: string
+          empresa_id: string
+          expires_at: string
+          google_email?: string | null
+          id?: string
+          refresh_token: string
+          scope?: string | null
+          timezone?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          calendar_id?: string
+          created_at?: string
+          empresa_id?: string
+          expires_at?: string
+          google_email?: string | null
+          id?: string
+          refresh_token?: string
+          scope?: string | null
+          timezone?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_google_tokens_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_handoffs: {
         Row: {
           conversa_id: string
