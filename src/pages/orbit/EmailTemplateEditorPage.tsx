@@ -155,8 +155,9 @@ export default function EmailTemplateEditorPage() {
       setIsSaving(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
-      const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
-      if (!profile?.empresa_id) throw new Error("Empresa não encontrada");
+      // CRITICAL: empresa from URL tenant context, not from profile.empresa_id.
+      if (!tenantEmpresaId) throw new Error("Empresa não encontrada");
+      const profile = { empresa_id: tenantEmpresaId };
 
       const ctaPayload = {
         whatsapp_cta_enabled: form.whatsapp_cta_enabled,
