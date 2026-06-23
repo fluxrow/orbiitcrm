@@ -34,7 +34,8 @@ export function useOrbitConversas(canal?: string) {
   }, [queryClient]);
 
   return useQuery({
-    queryKey: ["orbit_conversas", canal],
+    queryKey: ["orbit_conversas", empresaId, canal],
+    enabled: !!empresaId,
     queryFn: async () => {
       let query = supabase
         .from("orbit_conversas")
