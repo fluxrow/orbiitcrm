@@ -871,7 +871,7 @@ function Investimento() {
                 <div className="text-6xl font-bold tabular-nums mt-1 bg-gradient-to-r from-emerald-300 to-violet-300 bg-clip-text text-transparent">
                   R$ 1.197
                 </div>
-                <div className="text-white/50 text-sm mt-2">por mês · sem fidelidade</div>
+                <div className="text-white/50 text-sm mt-2">por mês{"\u00a0"}</div>
               </div>
               <div className="mt-6 pt-6 border-t border-white/10 text-sm text-white/60">
                 Inclui: IA ilimitada, WhatsApp, e-mail, funil, suporte e atualizações.
