@@ -193,15 +193,8 @@ export function OrbitSidebar() {
             >
               Meu perfil
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full justify-start gap-2 mt-1 text-muted-foreground hover:text-foreground"
-              onClick={() => navigate("/select-empresa")}
-            >
-              <Building2 className="w-4 h-4" />
-              Trocar empresa
-            </Button>
+            <EmpresaSwitcher />
+
             <ThemeToggle className="mt-1" />
             <Button
               variant="ghost"
