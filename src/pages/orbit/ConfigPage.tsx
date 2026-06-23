@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
 import { usePeAuth } from "@/hooks/usePeAuth";
 import { useTenant } from "@/contexts/TenantContext";
 import ConfigUsersTab from "@/components/orbit/ConfigUsersTab";
-import { Users, Phone } from "lucide-react";
+import AgendaConfigTab from "@/components/orbit/AgendaConfigTab";
+import { Users, Phone, Calendar } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -47,6 +49,7 @@ interface ParsedProspect {
 export default function ConfigPage() {
   const { roleCode } = usePeAuth();
   const { empresaId } = useTenant();
+  const [searchParams] = useSearchParams();
   const isOrgAdmin = roleCode === "ORG_ADMIN";
   const { isDemo } = useIsDemo();
   const { data: aiConfig, isLoading: aiLoading } = useOrbitAIConfig(empresaId);
@@ -365,11 +368,12 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
   return (
     <OrbitLayout>
       <PageHeader title="Configurações" description="Configure IA e integrações" />
-      <Tabs defaultValue="ai" className="space-y-6">
+      <Tabs defaultValue={searchParams.get("tab") || "ai"} className="space-y-6">
         <TabsList>
           <TabsTrigger value="ai"><Bot className="h-4 w-4 mr-2" />IA</TabsTrigger>
           <TabsTrigger value="zapi"><MessageSquare className="h-4 w-4 mr-2" />Z-API</TabsTrigger>
           <TabsTrigger value="email"><Mail className="h-4 w-4 mr-2" />Email</TabsTrigger>
+          <TabsTrigger value="agenda"><Calendar className="h-4 w-4 mr-2" />Agenda</TabsTrigger>
           <TabsTrigger value="import"><Upload className="h-4 w-4 mr-2" />Importar</TabsTrigger>
           <TabsTrigger value="audios"><Music2 className="h-4 w-4 mr-2" />Áudios</TabsTrigger>
           <TabsTrigger value="fluxos"><GitBranch className="h-4 w-4 mr-2" />Fluxos</TabsTrigger>
@@ -1787,6 +1791,9 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
               <AudioLibraryManager />
             </CardContent>
           </Card>
+        </TabsContent>
+        <TabsContent value="agenda">
+          {empresaId ? <AgendaConfigTab empresaId={empresaId} /> : <div className="text-sm text-muted-foreground">Selecione uma empresa para configurar a agenda.</div>}
         </TabsContent>
         {isOrgAdmin && (
           <TabsContent value="users">

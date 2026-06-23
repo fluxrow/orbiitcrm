@@ -89,3 +89,6 @@ verify_jwt = false
 
 [functions.orbit-send-recovery-email]
 verify_jwt = false
+
+[functions.orbit-google-callback]
+verify_jwt = false
