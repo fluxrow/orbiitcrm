@@ -203,17 +203,17 @@ export function useRemoveVendedorFromDistribuicao() {
 }
 
 // Resend Config Hooks
-export function useOrbitResendConfig() {
+export function useOrbitResendConfig(empresaId?: string | null) {
   return useQuery({
-    queryKey: ["orbit_resend_config"],
+    queryKey: ["orbit_resend_config", empresaId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("orbit_resend_config")
-        .select("*")
-        .maybeSingle();
+      let q = supabase.from("orbit_resend_config").select("*");
+      if (empresaId) q = q.eq("empresa_id", empresaId);
+      const { data, error } = await q.maybeSingle();
       if (error) throw error;
       return data as ResendConfig & { api_key?: string; dominio_verificado?: string; email_teste?: string } | null;
     },
+    enabled: !!empresaId,
   });
 }
 
@@ -221,11 +221,11 @@ export function useUpdateResendConfig() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (updates: ResendConfigUpdate & { api_key?: string; dominio_verificado?: string; email_teste?: string }) => {
-      const { data: existing } = await supabase
-        .from("orbit_resend_config")
-        .select("id")
-        .maybeSingle();
+    mutationFn: async (updates: ResendConfigUpdate & { api_key?: string; dominio_verificado?: string; email_teste?: string; empresa_id?: string | null }) => {
+      const empresaId = updates.empresa_id;
+      let existingQ = supabase.from("orbit_resend_config").select("id");
+      if (empresaId) existingQ = existingQ.eq("empresa_id", empresaId);
+      const { data: existing } = await existingQ.maybeSingle();
 
       if (existing) {
         const { data, error } = await supabase
@@ -239,7 +239,7 @@ export function useUpdateResendConfig() {
       } else {
         const { data, error } = await supabase
           .from("orbit_resend_config")
-          .insert(updates as any)
+          .insert({ ...updates, empresa_id: empresaId } as any)
           .select()
           .single();
         if (error) throw error;

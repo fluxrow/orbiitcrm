@@ -48,7 +48,7 @@ export default function ConfigPage() {
   const { isDemo } = useIsDemo();
   const { data: aiConfig, isLoading: aiLoading } = useOrbitAIConfig(empresaId);
   const { data: zapiConfig, isLoading: zapiLoading } = useOrbitZAPIConfig(empresaId);
-  const { data: resendConfig, isLoading: resendLoading } = useOrbitResendConfig();
+  const { data: resendConfig, isLoading: resendLoading } = useOrbitResendConfig(empresaId);
   const { data: importHistory, isLoading: historyLoading } = useImportHistory();
   const updateAI = useUpdateAIConfig();
   const updateZAPI = useUpdateZAPIConfig();
@@ -178,6 +178,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
   const saveResendApiKey = async () => { 
     await updateResend.mutateAsync({ 
       id: resendConfig?.id, 
+      empresa_id: empresaId,
       api_key: resendForm.api_key,
       email_teste: resendForm.email_teste 
     }); 
@@ -187,6 +188,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
   const saveResendCampaigns = async () => { 
     await updateResend.mutateAsync({ 
       id: resendConfig?.id, 
+      empresa_id: empresaId,
       from_email: resendForm.from_email,
       from_name: resendForm.from_name,
       dominio_verificado: resendForm.dominio_verificado,
