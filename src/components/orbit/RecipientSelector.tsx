@@ -1004,9 +1004,9 @@ export function RecipientSelector({
                 try {
                   const { data: { user } } = await supabase.auth.getUser();
                   if (!user) return;
-                  const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
-                  if (!profile?.empresa_id) return;
-                  await createSendGroup.mutateAsync({ empresa_id: profile.empresa_id, nome: newGroupName, descricao: newGroupDesc || undefined, prospect_ids: newGroupProspectIds, created_by: user.id });
+                  // CRITICAL: empresa from URL tenant context.
+                  if (!tenantEmpresaId) return;
+                  await createSendGroup.mutateAsync({ empresa_id: tenantEmpresaId, nome: newGroupName, descricao: newGroupDesc || undefined, prospect_ids: newGroupProspectIds, created_by: user.id });
                   toast.success("Grupo criado!");
                   setShowCreateGroup(false);
                   setNewGroupName("");
