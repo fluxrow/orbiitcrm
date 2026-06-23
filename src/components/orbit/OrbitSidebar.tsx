@@ -26,6 +26,7 @@ import { UserProfileDialog } from "@/components/orbit/UserProfileDialog";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { usePlanGuard } from "@/hooks/usePlanGuard";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { EmpresaSwitcher } from "@/components/orbit/EmpresaSwitcher";
 import {
   Tooltip,
   TooltipContent,
