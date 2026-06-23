@@ -106,20 +106,22 @@ export function TenantProvider({ children, isDemo = false }: TenantProviderProps
       const result = data as Record<string, unknown>;
       const empresaId = result.empresa_id as string;
 
-      // Validate user belongs to this empresa (or is super_admin)
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("empresa_id")
-        .eq("id", user!.id)
-        .maybeSingle();
+      // Validate user belongs to this empresa: owner via profile, membership, or super admin
+      const [{ data: profile }, { data: isSuperAdmin }, { data: membership }] = await Promise.all([
+        supabase.from("profiles").select("empresa_id").eq("id", user!.id).maybeSingle(),
+        supabase.rpc("pe_is_super_admin", { p_user_id: user!.id }),
+        supabase
+          .from("user_empresa_memberships")
+          .select("empresa_id")
+          .eq("user_id", user!.id)
+          .eq("empresa_id", empresaId)
+          .maybeSingle(),
+      ]);
 
-      const { data: isSuperAdmin } = await supabase.rpc("pe_is_super_admin", {
-        p_user_id: user!.id,
-      });
+      const belongsToEmpresa =
+        profile?.empresa_id === empresaId || !!membership || !!isSuperAdmin;
 
-      const belongsToEmpresa = profile?.empresa_id === empresaId;
-
-      if (!belongsToEmpresa && !isSuperAdmin) {
+      if (!belongsToEmpresa) {
         setState(s => ({
           ...s,
           isLoading: false,
@@ -128,6 +130,14 @@ export function TenantProvider({ children, isDemo = false }: TenantProviderProps
           empresaNome: result.nome as string,
         }));
         return;
+      }
+
+      // CRITICAL: sync the user's active empresa to match the URL tenant.
+      // RLS is driven by profiles.empresa_id via get_user_empresa_id(); without this,
+      // a user with access to multiple empresas (e.g. Promotrip + Fluxrow) would see
+      // data from their "home" tenant on every other tenant's screens.
+      if (profile?.empresa_id !== empresaId) {
+        await supabase.rpc("switch_active_empresa", { p_empresa_id: empresaId });
       }
 
       setState({

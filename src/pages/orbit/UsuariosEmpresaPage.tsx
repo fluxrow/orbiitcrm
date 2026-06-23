@@ -6,7 +6,7 @@ import {
   useToggleUserAtivo,
   useChangeUserRole,
 } from "@/hooks/useSuperAdmin";
-import { useUserEmpresa } from "@/hooks/useUserRole";
+import { useTenant } from "@/contexts/TenantContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -30,8 +30,11 @@ import { toast } from "sonner";
 import AddUserDialog from "@/components/super-admin/AddUserDialog";
 
 export default function UsuariosEmpresaPage() {
-  const { data: empresa } = useUserEmpresa();
-  const empresaId = empresa?.id || "";
+  // CRITICAL: use empresa from URL (tenant context), NOT from profile.empresa_id
+  // Profile.empresa_id is the user's "home" tenant — when an owner switches between
+  // tenants via URL, listings must filter by the URL tenant to prevent cross-tenant leaks.
+  const { empresaId: tenantEmpresaId } = useTenant();
+  const empresaId = tenantEmpresaId || "";
   const { data: users, isLoading } = useEmpresaUsers(empresaId);
   const toggleAtivo = useToggleUserAtivo();
   const changeRole = useChangeUserRole();
