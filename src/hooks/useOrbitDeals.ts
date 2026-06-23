@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
+import { useTenant } from "@/contexts/TenantContext";
 import { orbitProspectKeys } from "@/lib/query-keys";
 
 type Deal = Tables<"orbit_deals">;
