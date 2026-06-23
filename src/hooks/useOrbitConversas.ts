@@ -59,8 +59,9 @@ export function useOrbitConversas(canal?: string) {
 }
 
 export function useOrbitConversa(id: string | undefined) {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: ["orbit_conversa", id],
+    queryKey: ["orbit_conversa", empresaId, id],
     queryFn: async () => {
       if (!id) return null;
       const { data, error } = await supabase
