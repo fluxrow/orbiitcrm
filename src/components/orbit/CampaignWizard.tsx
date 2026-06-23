@@ -371,17 +371,11 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
     try {
       setIsCreating(true);
 
-      // Buscar empresa_id
+      // CRITICAL: empresa from URL tenant context.
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("empresa_id")
-        .eq("id", user.id)
-        .single();
-
-      if (!profile?.empresa_id) throw new Error("Empresa não encontrada");
+      if (!tenantEmpresaId) throw new Error("Empresa não encontrada");
+      const profile = { empresa_id: tenantEmpresaId };
 
       // Calculate recipients BEFORE creating campaign to get accurate count
       const recipientIds = calculateAllRecipientIds();
