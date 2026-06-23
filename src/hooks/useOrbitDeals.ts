@@ -44,8 +44,10 @@ function replaceDealInGroupedStages(stages: any[] | undefined, updatedDeal: any)
 }
 
 export function useOrbitPipelineStages() {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: ["orbit_pipeline_stages"],
+    queryKey: ["orbit_pipeline_stages", empresaId],
+    enabled: !!empresaId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orbit_pipeline_stages")
