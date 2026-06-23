@@ -112,7 +112,7 @@ function Hero() {
           className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm text-white/70 backdrop-blur-xl"
         >
           <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-          Orbit CRM · Apresentação 2026
+          Orbit CRM{"\u00a0"}
         </motion.div>
 
         <motion.h1
