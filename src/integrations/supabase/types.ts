@@ -593,6 +593,11 @@ export type Database = {
           responder_fora_horario: boolean | null
           tempo_espera: number | null
           tom_conversa: string | null
+          tts_api_key: string | null
+          tts_ativo: boolean | null
+          tts_modo: string | null
+          tts_provider: string | null
+          tts_voice_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -612,6 +617,11 @@ export type Database = {
           responder_fora_horario?: boolean | null
           tempo_espera?: number | null
           tom_conversa?: string | null
+          tts_api_key?: string | null
+          tts_ativo?: boolean | null
+          tts_modo?: string | null
+          tts_provider?: string | null
+          tts_voice_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -631,6 +641,11 @@ export type Database = {
           responder_fora_horario?: boolean | null
           tempo_espera?: number | null
           tom_conversa?: string | null
+          tts_api_key?: string | null
+          tts_ativo?: boolean | null
+          tts_modo?: string | null
+          tts_provider?: string | null
+          tts_voice_id?: string | null
           updated_at?: string | null
         }
         Relationships: [

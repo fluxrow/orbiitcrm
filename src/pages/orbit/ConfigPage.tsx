@@ -15,9 +15,10 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Bot, MessageSquare, Mail, Save, Loader2, Copy, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Send, Upload, Download, FileText, X, Settings2, Info, Link2, ClipboardList, Clock, Music2 } from "lucide-react";
+import { Bot, MessageSquare, Mail, Save, Loader2, Copy, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Send, Upload, Download, FileText, X, Settings2, Info, Link2, ClipboardList, Clock, Music2, Volume2, Mic } from "lucide-react";
 import { AudioLibraryManager } from "@/components/orbit/AudioLibraryManager";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useOrbitAIConfig, useUpdateAIConfig, useOrbitZAPIConfig, useUpdateZAPIConfig, useOrbitResendConfig, useUpdateResendConfig, useTestResendConnection, useWhatsAppSendingConfig, useUpdateWhatsAppSendingConfig, useWhatsAppDailyUsage } from "@/hooks/useOrbitConfig";
 import { parseCSV, generateCSVTemplate, useImportProspects, useImportHistory } from "@/hooks/useImportProspects";
 import { toast } from "sonner";
@@ -72,7 +73,11 @@ export default function ConfigPage() {
     max_tokens: 500,
     tempo_espera: 10,
     prompt_orcamentos: "",
-    campos_cadastro: ["nome_razao", "nome_fantasia", "email_principal", "cidade", "segmento"] as string[]
+    campos_cadastro: ["nome_razao", "nome_fantasia", "email_principal", "cidade", "segmento"] as string[],
+    tts_ativo: false,
+    tts_api_key: "",
+    tts_voice_id: "EXAVITQu4vr4xnSDxMaL",
+    tts_modo: "texto" as "texto" | "audio" | "ambos",
   });
 const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", token: "", client_token: "", numero_origem: "", notificar_enviadas_por_mim: false, ativo: false });
   const [showZapiToken, setShowZapiToken] = useState(false);
@@ -127,7 +132,11 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
       max_tokens: (aiConfig as any).max_tokens || 500,
       tempo_espera: (aiConfig as any).tempo_espera || 10,
       prompt_orcamentos: (aiConfig as any).prompt_orcamentos || "",
-      campos_cadastro: aiConfig.campos_cadastro || ["nome_razao", "nome_fantasia", "email_principal", "cidade", "segmento"]
+      campos_cadastro: aiConfig.campos_cadastro || ["nome_razao", "nome_fantasia", "email_principal", "cidade", "segmento"],
+      tts_ativo: (aiConfig as any).tts_ativo ?? false,
+      tts_api_key: (aiConfig as any).tts_api_key || "",
+      tts_voice_id: (aiConfig as any).tts_voice_id || "EXAVITQu4vr4xnSDxMaL",
+      tts_modo: (aiConfig as any).tts_modo || "texto",
     }); 
   }, [aiConfig]);
   useEffect(() => { 
@@ -617,6 +626,116 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                   <Button onClick={saveAI} disabled={updateAI.isPending}>
                     {updateAI.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
                     Salvar Configurações de Automação
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Card 3: Voz (TTS) */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Volume2 className="h-5 w-5 text-primary" />
+                      <CardTitle>Respostas por Voz (TTS)</CardTitle>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="tts-ativo" className="text-sm">TTS Ativo</Label>
+                      <Switch
+                        id="tts-ativo"
+                        checked={aiForm.tts_ativo}
+                        onCheckedChange={(v) => setAiForm({ ...aiForm, tts_ativo: v })}
+                      />
+                    </div>
+                  </div>
+                  <CardDescription>
+                    Quando ativo, o agente converte as respostas em áudio via ElevenLabs e envia como mensagem de voz no WhatsApp.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-2">
+                    <Label>API Key ElevenLabs</Label>
+                    <Input
+                      type="password"
+                      placeholder="sk_••••••••••••••••••••••••••••••••••••••••"
+                      value={aiForm.tts_api_key}
+                      onChange={(e) => setAiForm({ ...aiForm, tts_api_key: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Obtenha em <span className="font-mono">elevenlabs.io → Profile → API Keys</span>. Plano gratuito: 10.000 chars/mês.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Voice ID</Label>
+                    <Select
+                      value={aiForm.tts_voice_id}
+                      onValueChange={(v) => setAiForm({ ...aiForm, tts_voice_id: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a voz" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="EXAVITQu4vr4xnSDxMaL">Rachel (pt-BR recomendada)</SelectItem>
+                        <SelectItem value="pNInz6obpgDQGcFmaJgB">Adam (masculino)</SelectItem>
+                        <SelectItem value="jsCqWAovK2LkecY7zXl4">Freya (feminino)</SelectItem>
+                        <SelectItem value="custom">Voz personalizada (colar ID abaixo)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {aiForm.tts_voice_id === "custom" && (
+                      <Input
+                        placeholder="Cole o Voice ID da ElevenLabs aqui"
+                        onChange={(e) => setAiForm({ ...aiForm, tts_voice_id: e.target.value })}
+                      />
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Vozes disponíveis em <span className="font-mono">elevenlabs.io → Voice Library</span>
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label>Modo de Envio</Label>
+                    <RadioGroup
+                      value={aiForm.tts_modo}
+                      onValueChange={(v) => setAiForm({ ...aiForm, tts_modo: v as "texto" | "audio" | "ambos" })}
+                      className="space-y-2"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="texto" id="tts-texto" />
+                        <label htmlFor="tts-texto" className="text-sm cursor-pointer">
+                          <span className="font-medium">Só texto</span>
+                          <span className="text-muted-foreground ml-2">— comportamento padrão, TTS desativado</span>
+                        </label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="audio" id="tts-audio" />
+                        <label htmlFor="tts-audio" className="text-sm cursor-pointer">
+                          <span className="font-medium">Só áudio</span>
+                          <span className="text-muted-foreground ml-2">— envia apenas a mensagem de voz</span>
+                        </label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="ambos" id="tts-ambos" />
+                        <label htmlFor="tts-ambos" className="text-sm cursor-pointer">
+                          <span className="font-medium">Texto + áudio</span>
+                          <span className="text-muted-foreground ml-2">— envia os dois formatos</span>
+                        </label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+
+                  {aiForm.tts_ativo && (
+                    <div className="p-4 bg-muted rounded-lg space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Info className="h-4 w-4 text-primary" />
+                        <p className="text-sm font-medium">Estimativa de custo ElevenLabs</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Plano Starter ($5/mês): ~30.000 chars (~100 mensagens/dia). As respostas são truncadas em 300 chars antes do TTS para controlar custo e latência.</p>
+                    </div>
+                  )}
+
+                  <Button onClick={saveAI} disabled={updateAI.isPending}>
+                    {updateAI.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                    Salvar Configurações de Voz
                   </Button>
                 </CardContent>
               </Card>
