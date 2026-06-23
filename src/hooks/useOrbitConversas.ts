@@ -76,7 +76,7 @@ export function useOrbitConversa(id: string | undefined) {
       if (error) throw error;
       return data;
     },
-    enabled: !!id,
+    enabled: !!empresaId && !!id,
   });
 }
 
