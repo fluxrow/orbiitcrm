@@ -51,6 +51,7 @@ export default function EmailTemplateEditorPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const isEditing = !!id;
+  const { empresaId: tenantEmpresaId } = useTenant();
 
   const { data: templates } = useOrbitTemplates({ canal: "email" });
   const createTemplate = useCreateTemplate();
