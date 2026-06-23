@@ -97,7 +97,7 @@ export function useUpdateChatbotFlow() {
       id,
       branches,
       ...data
-    }: Partial<ChatbotFlow> & { id: string; branches?: Array<Partial<ChatbotFlowBranch>> }) => {
+    }: { id: string; branches?: Array<Partial<ChatbotFlowBranch>> } & Record<string, any>) => {
       const { error } = await (supabase as any)
         .from("orbit_chatbot_flows")
         .update({ ...data, updated_at: new Date().toISOString() })
