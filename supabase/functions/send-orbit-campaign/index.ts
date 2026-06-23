@@ -210,7 +210,18 @@ const handler = async (req: Request): Promise<Response> => {
       .limit(500);
 
     if (!recipients || recipients.length === 0) {
-      await supabase.from("orbit_campaigns").update({ status: "concluida" }).eq("id", campaign_id);
+      const { count: failedCount } = await supabase
+        .from("orbit_campaign_recipients")
+        .select("*", { count: "exact", head: true })
+        .eq("campaign_id", campaign_id)
+        .eq("status", "falhou");
+      const { count: sentCount } = await supabase
+        .from("orbit_campaign_recipients")
+        .select("*", { count: "exact", head: true })
+        .eq("campaign_id", campaign_id)
+        .in("status", ["enviado", "simulated"]);
+      const emptyFinalStatus = (failedCount || 0) > 0 && (sentCount || 0) === 0 ? "falha" : "concluida";
+      await supabase.from("orbit_campaigns").update({ status: emptyFinalStatus }).eq("id", campaign_id);
       return ok({ enviados: 0, validados_enviados: 0, ignorados_sem_numero: 0, ignorados_sem_whatsapp: 0, ignorados_whatsapp_invalido: 0, falhas: 0, pausada_por_limite: false, message: "Campanha concluída" }, undefined, req);
     }
 
@@ -757,7 +768,9 @@ const handler = async (req: Request): Promise<Response> => {
       ? "pausada_por_limite"
       : (remainingPending && remainingPending > 0)
         ? "enviando"
-        : "concluida";
+        : (totalEnviados === 0 && falhas > 0)
+          ? "falha"
+          : "concluida";
 
     await supabase.from("orbit_campaigns").update({
       enviados: (campaign.enviados || 0) + totalEnviados,
