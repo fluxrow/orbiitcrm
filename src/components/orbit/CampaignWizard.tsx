@@ -62,6 +62,7 @@ const steps = [
 ];
 
 export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
+  const { empresaId: tenantEmpresaId } = useTenant();
   const [currentStep, setCurrentStep] = useState(1);
   const [data, setData] = useState<CampaignData>({
     nome: "",
