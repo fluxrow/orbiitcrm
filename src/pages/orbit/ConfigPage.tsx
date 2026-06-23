@@ -1216,7 +1216,6 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
               </CardContent>
             </Card>
             </div>
-          )}
         </TabsContent>
         <TabsContent value="email">
           {resendLoading ? <Loader2 className="animate-spin" /> : (
