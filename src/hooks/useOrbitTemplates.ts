@@ -14,8 +14,10 @@ interface TemplateFilters {
 }
 
 export function useOrbitTemplates(filters?: TemplateFilters) {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: ["orbit_templates", filters],
+    queryKey: ["orbit_templates", empresaId, filters],
+    enabled: !!empresaId,
     queryFn: async () => {
       let query = supabase
         .from("orbit_message_templates")
