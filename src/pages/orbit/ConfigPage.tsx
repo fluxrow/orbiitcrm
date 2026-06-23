@@ -65,6 +65,8 @@ export default function ConfigPage() {
     prompt_treinamento: "", 
     horario_inicio: "08:00", 
     horario_fim: "18:00",
+    responder_fora_horario: false,
+    mensagem_fora_horario: "Olá! Nosso horário de atendimento é das 08h às 18h. Deixe sua mensagem que retornaremos assim que possível!",
     idioma: "pt-BR",
     max_tokens: 500,
     tempo_espera: 10,
