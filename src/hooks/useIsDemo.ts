@@ -1,29 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
+import { useTenant } from "@/contexts/TenantContext";
 
 export function useIsDemo() {
-  const { user } = useAuth();
+  const { empresaId } = useTenant();
 
   const query = useQuery({
-    queryKey: ["is-demo", user?.id],
+    queryKey: ["is-demo", empresaId],
     queryFn: async () => {
-      // 1. Get empresa_id from profiles
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("empresa_id")
-        .eq("id", user!.id)
-        .maybeSingle();
-
-      if (!profile?.empresa_id) {
+      if (!empresaId) {
         return { isDemo: false, planCode: null, planName: null };
       }
 
-      // 2. Query saas_empresa joined with saas_plans
       const { data: saasEmpresa } = await supabase
         .from("saas_empresa")
         .select("plan_id, plan:saas_plans(code, name)")
-        .eq("empresa_id", profile.empresa_id)
+        .eq("empresa_id", empresaId)
         .maybeSingle();
 
       if (!saasEmpresa?.plan) {
@@ -38,8 +30,8 @@ export function useIsDemo() {
         planName: plan.name,
       };
     },
-    enabled: !!user?.id,
-    staleTime: 5 * 60 * 1000, // cache 5 min
+    enabled: !!empresaId,
+    staleTime: 5 * 60 * 1000,
   });
 
   return {
