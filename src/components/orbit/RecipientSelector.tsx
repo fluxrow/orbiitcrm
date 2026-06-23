@@ -76,6 +76,7 @@ export function RecipientSelector({
   onSelectedGroupIdsChange,
   totalRecipients,
 }: RecipientSelectorProps) {
+  const { empresaId: tenantEmpresaId } = useTenant();
   const [search, setSearch] = useState("");
   const [showFilters, setShowFilters] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("nome");
