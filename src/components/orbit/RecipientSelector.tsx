@@ -18,6 +18,7 @@ import { useOrbitSendGroups, useCreateSendGroup, useDeleteSendGroup } from "@/ho
 import { useProspectEngagement } from "@/hooks/useProspectEngagement";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenant } from "@/contexts/TenantContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Loader2, Flame, Eye, MousePointerClick, AlertOctagon } from "lucide-react";
 import { toast } from "sonner";
