@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 import { orbitCampaignKeys } from "@/lib/query-keys";
+import { useTenant } from "@/contexts/TenantContext";
 
 
 type Campaign = Tables<"orbit_campaigns">;
