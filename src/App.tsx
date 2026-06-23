@@ -17,6 +17,7 @@ import AcceptInviteSaasPage from "./pages/AcceptInviteSaasPage";
 import DocumentacaoPage from "./pages/DocumentacaoPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import SelectEmpresaPage from "./pages/SelectEmpresaPage";
+import ApresentacaoOrbit2026 from "./pages/ApresentacaoOrbit2026";
 import PublicLayout from "./layouts/PublicLayout";
 
 // Tenant Layout
@@ -184,6 +185,11 @@ const AppRoutes = () => (
 
     {/* Org Routes */}
     <Route path="/org/users" element={<ProtectedRoute><OrgUsersPage /></ProtectedRoute>} />
+
+    {/* Hidden sales presentation (no nav link, noindex) */}
+    <Route path="/apresentacao/orbit-2026" element={<ApresentacaoOrbit2026 />} />
+
+
 
     {/* Slug tenant routes (catch-all, must be last) */}
     <Route path="/:slug" element={<TenantLayout />}>
