@@ -2,22 +2,24 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import {
   Users, Target, BarChart3, CheckCircle, Mail, MessageSquare,
-  Kanban, Clock, ListChecks, Zap, Search, ArrowRight, Rocket,
-  Shield, ChevronRight, Star, Instagram, Facebook,
+  Kanban, Zap, MessageCircle, Star,
   BotMessageSquare, ShieldCheck, Timer, TrendingUp, Building2,
   HeartHandshake, AlertTriangle, UserX, PhoneOff, Brain,
-  ClipboardList, Shuffle, Send, FileText, Globe
+  ClipboardList, Shuffle, Send, FileText, Globe, Shield
 } from "lucide-react";
 import orbitLogo from "@/assets/orbit-logo.png";
 import AnimatedSection from "@/components/landing/AnimatedSection";
 import GlowCard from "@/components/landing/GlowCard";
-import AnimatedBackground from "@/components/landing/AnimatedBackground";
 import HeroSection from "@/components/landing/HeroSection";
+import StatsImpactoSection from "@/components/landing/StatsImpactoSection";
+import HumanoVsOrbitSection from "@/components/landing/HumanoVsOrbitSection";
+import WhatsAppMockSection from "@/components/landing/WhatsAppMockSection";
+import WhatsAppFab from "@/components/landing/WhatsAppFab";
+import { WHATSAPP_LP_HREF } from "@/lib/whatsapp";
 
 /* ─── Data (unchanged) ─── */
 const PROBLEMS = [
