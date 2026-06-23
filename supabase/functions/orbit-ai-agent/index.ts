@@ -492,6 +492,21 @@ serve(async (req) => {
       .eq("id", conversa_id)
       .single();
 
+    // ── CHATBOT FLOWS: verificar fluxo ativo ou novo trigger (prioridade sobre IA) ──
+    const flowHandled = await processChatbotFlow(supabase, {
+      conversa,
+      conversa_id,
+      mensagem,
+      telefone,
+      empresaId,
+      isDemo,
+    });
+    if (flowHandled) {
+      return new Response(JSON.stringify({ ok: true, flow_handled: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ── AGREGAR: buscar todas as mensagens IN pendentes desde o último OUT ──
     const { data: lastOutMsg } = await supabase
       .from("orbit_mensagens")
