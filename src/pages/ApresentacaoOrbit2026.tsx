@@ -252,7 +252,7 @@ function Comparativo() {
     { label: "Tempo de resposta", human: "4 horas em média", orbit: "8 segundos" },
     { label: "Disponibilidade", human: "8h/dia, seg–sex", orbit: "24/7/365" },
     { label: "Leads simultâneos", human: "1 por vez", orbit: "Ilimitado" },
-    { label: "Custo mensal", human: "R$ 8.500+", orbit: "R$ 1.197" },
+    
     { label: "Esquece follow-up?", human: "Sempre", orbit: "Nunca" },
     { label: "Tira férias / fica doente", human: "Acontece", orbit: "Não existe" },
     { label: "Mau humor na sexta às 18h", human: "Inevitável", orbit: "Impossível" },
@@ -526,48 +526,86 @@ function WhatsApp() {
         variants={stagger}
         className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center"
       >
-        <motion.div variants={fadeUp} className="order-2 lg:order-1 relative h-[500px]">
-          {/* 3 phone screens parallax */}
+        <motion.div variants={fadeUp} className="order-2 lg:order-1 relative h-[520px]">
+          {/* Phone 1 - esquerda */}
           <motion.div
             style={{ y: yLeft }}
             className="absolute left-0 top-0 w-44 md:w-52 aspect-[9/19] rounded-[2rem] bg-zinc-900 border-4 border-zinc-800 shadow-2xl overflow-hidden rotate-[-8deg]"
           >
-            <div className="bg-emerald-700 h-12" />
+            <div className="bg-emerald-700 px-3 py-2 flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-emerald-900 flex items-center justify-center text-[10px] text-white font-bold">M</div>
+              <div className="text-[10px] text-white font-medium leading-tight">
+                Marina S.
+                <div className="text-[8px] text-emerald-200 font-normal">online</div>
+              </div>
+            </div>
             <div className="p-2 space-y-1.5">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="bg-white/10 rounded-lg p-2">
-                  <div className="h-2 w-3/4 bg-white/30 rounded mb-1" />
-                  <div className="h-1.5 w-1/2 bg-white/20 rounded" />
+              {[
+                { t: "Oi, vi o anúncio", me: false },
+                { t: "Olá Marina! 👋", me: true },
+                { t: "Posso te ajudar?", me: true },
+                { t: "Quanto custa?", me: false },
+                { t: "Te conto em 2 perguntas rápidas", me: true },
+              ].map((b, i) => (
+                <div key={i} className={`rounded-lg px-2 py-1.5 max-w-[85%] ${b.me ? "ml-auto bg-emerald-500/25" : "bg-white/10"}`}>
+                  <div className="text-[8px] text-white/90 leading-snug">{b.t}</div>
                 </div>
               ))}
             </div>
           </motion.div>
+
+          {/* Phone 2 - centro */}
           <div className="absolute left-1/2 -translate-x-1/2 top-8 w-44 md:w-52 aspect-[9/19] rounded-[2rem] bg-zinc-900 border-4 border-zinc-800 shadow-2xl overflow-hidden z-10">
-            <div className="bg-emerald-700 h-12" />
+            <div className="bg-emerald-700 px-3 py-2 flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-emerald-900 flex items-center justify-center text-[10px] text-white font-bold">R</div>
+              <div className="text-[10px] text-white font-medium leading-tight">
+                Rafael T.
+                <div className="text-[8px] text-emerald-200 font-normal">digitando…</div>
+              </div>
+            </div>
             <div className="p-2 space-y-1.5">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <div key={i} className="bg-emerald-500/10 rounded-lg p-2 border border-emerald-500/20">
-                  <div className="h-2 w-3/4 bg-emerald-300/50 rounded mb-1" />
-                  <div className="h-1.5 w-2/3 bg-white/20 rounded" />
+              {[
+                { t: "Vim pelo Instagram", me: false },
+                { t: "Boa! Qual seu segmento?", me: true },
+                { t: "Clínica de estética", me: false },
+                { t: "Quantos atendimentos/mês?", me: true },
+                { t: "Uns 120", me: false },
+                { t: "Perfeito pra você ✨", me: true },
+              ].map((b, i) => (
+                <div key={i} className={`rounded-lg px-2 py-1.5 max-w-[85%] ${b.me ? "ml-auto bg-emerald-500/25" : "bg-white/10"}`}>
+                  <div className="text-[8px] text-white/90 leading-snug">{b.t}</div>
                 </div>
               ))}
             </div>
           </div>
+
+          {/* Phone 3 - direita */}
           <motion.div
             style={{ y: yRight }}
             className="absolute right-0 top-4 w-44 md:w-52 aspect-[9/19] rounded-[2rem] bg-zinc-900 border-4 border-zinc-800 shadow-2xl overflow-hidden rotate-[8deg]"
           >
-            <div className="bg-emerald-700 h-12" />
+            <div className="bg-emerald-700 px-3 py-2 flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-violet-900 flex items-center justify-center text-[10px] text-white font-bold">J</div>
+              <div className="text-[10px] text-white font-medium leading-tight">
+                Juliana P.
+                <div className="text-[8px] text-emerald-200 font-normal">online</div>
+              </div>
+            </div>
             <div className="p-2 space-y-1.5">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="bg-violet-500/10 rounded-lg p-2 border border-violet-500/20">
-                  <div className="h-2 w-3/4 bg-violet-300/50 rounded mb-1" />
-                  <div className="h-1.5 w-1/2 bg-white/20 rounded" />
+              {[
+                { t: "Tenho interesse", me: false },
+                { t: "Que ótimo! 🎯", me: true },
+                { t: "Pode falar agora?", me: true },
+                { t: "Sim, pode ligar", me: false },
+              ].map((b, i) => (
+                <div key={i} className={`rounded-lg px-2 py-1.5 max-w-[85%] ${b.me ? "ml-auto bg-violet-500/25" : "bg-white/10"}`}>
+                  <div className="text-[8px] text-white/90 leading-snug">{b.t}</div>
                 </div>
               ))}
             </div>
           </motion.div>
         </motion.div>
+
 
         <motion.div variants={fadeUp} className="order-1 lg:order-2">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
@@ -821,15 +859,6 @@ function Roi() {
           </motion.div>
         </div>
 
-        <motion.div variants={fadeUp} className="mt-12">
-          <div className="text-sm uppercase tracking-[0.2em] text-white/40 mb-3">
-            Você economiza
-          </div>
-          <div className="text-7xl md:text-8xl font-bold bg-gradient-to-r from-emerald-400 via-cyan-300 to-violet-400 bg-clip-text text-transparent tabular-nums">
-            R$ <CountUp to={84636} separator="." duration={2.4} />
-          </div>
-          <div className="mt-3 text-white/60 text-lg">no primeiro ano. Todo ano.</div>
-        </motion.div>
       </motion.div>
     </Section>
   );
@@ -941,12 +970,23 @@ function Investimento() {
           </div>
         </motion.div>
 
+        <motion.div variants={fadeUp} className="mt-14 text-center max-w-4xl mx-auto">
+          <div className="text-sm uppercase tracking-[0.2em] text-white/40 mb-3">
+            Comparado a um SDR humano, você economiza
+          </div>
+          <div className="text-7xl md:text-8xl font-bold bg-gradient-to-r from-emerald-400 via-cyan-300 to-violet-400 bg-clip-text text-transparent tabular-nums leading-none">
+            R$ <CountUp to={84636} separator="." duration={2.4} />
+          </div>
+          <div className="mt-3 text-white/60 text-lg">no primeiro ano. Todo ano.</div>
+        </motion.div>
+
         <motion.div variants={fadeUp} className="mt-10 text-center">
           <button className="inline-flex items-center gap-2 px-8 py-4 rounded-full bg-gradient-to-r from-emerald-500 to-violet-500 text-white font-semibold text-lg shadow-2xl shadow-emerald-500/30 hover:scale-105 transition-transform">
             Quero implementar
             <ArrowDown className="w-5 h-5 -rotate-90" />
           </button>
         </motion.div>
+
       </motion.div>
     </Section>
   );
