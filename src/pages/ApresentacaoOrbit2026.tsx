@@ -38,8 +38,8 @@ const SECTIONS = [
   "email",
   "funil",
   "roi",
-  "investimento",
   "fechamento",
+  "investimento",
 ];
 
 const fadeUp: Variants = {
@@ -1041,8 +1041,8 @@ export default function ApresentacaoOrbit2026() {
       <Email />
       <Funil />
       <Roi />
-      <Investimento />
       <Fechamento />
+      <Investimento />
     </div>
   );
 }
