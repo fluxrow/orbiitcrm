@@ -47,18 +47,18 @@ export default function HotsiteHeader() {
           ))}
         </nav>
 
-        <div className="hidden md:flex items-center gap-3">
+        <div className="hidden md:flex items-center gap-2">
           <ThemeToggle compact />
-          <Button variant="ghost" size="sm" onClick={() => navigate("/demo")} className="hover:bg-secondary/60">
-            Acessar Demo
+          <Button variant="ghost" size="sm" onClick={() => navigate("/demo")} className="text-muted-foreground hover:text-foreground hover:bg-secondary/60">
+            Ver demo
           </Button>
-          <Button variant="outline" size="sm" onClick={() => navigate("/auth")} className="border-border/50 backdrop-blur-sm">
+          <Button variant="ghost" size="sm" onClick={() => navigate("/auth")} className="text-muted-foreground hover:text-foreground hover:bg-secondary/60">
             Entrar
           </Button>
           <Button
             asChild
             size="sm"
-            className="bg-emerald-600 hover:bg-emerald-500 text-white hover:scale-105 transition-transform gap-2"
+            className="bg-emerald-600 hover:bg-emerald-500 text-white hover:scale-105 transition-transform gap-2 ml-1"
           >
             <a href={WHATSAPP_LP_HREF} target="_blank" rel="noopener noreferrer">
               <MessageCircle className="w-4 h-4" />
