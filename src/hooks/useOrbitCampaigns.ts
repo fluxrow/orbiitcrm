@@ -45,7 +45,8 @@ export function useOrbitCampaigns(filters?: CampaignFilters) {
   }, [queryClient]);
 
   return useQuery({
-    queryKey: orbitCampaignKeys.list(filters),
+    queryKey: orbitCampaignKeys.list(filters, empresaId),
+    enabled: !!empresaId,
     queryFn: async () => {
       let query = supabase
         .from("orbit_campaigns")
