@@ -427,109 +427,34 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ══════════ PLANOS ══════════ */}
-      <section id="planos" className="py-20 px-4">
-        <div className="max-w-6xl mx-auto">
-          <AnimatedSection>
-            <SectionLabel>Planos</SectionLabel>
-            <h2 className="text-3xl font-bold text-center mb-4">
-              Escolha o plano ideal para <span className="gradient-text">sua operação</span>
-            </h2>
-            <p className="text-center text-muted-foreground mb-6 text-sm">
-              Todos os planos incluem trial gratuito de 7 dias. Sem cartão de crédito.
-            </p>
-
-            {/* Toggle mensal / anual */}
-            <div className="flex items-center justify-center gap-3 mb-12">
-              <span className={`text-sm ${!isAnnual ? "text-foreground font-medium" : "text-muted-foreground"}`}>Mensal</span>
-              <button
-                onClick={() => setIsAnnual(!isAnnual)}
-                className={`relative w-12 h-6 rounded-full transition-colors ${isAnnual ? "bg-primary" : "bg-muted"}`}
-              >
-                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-background shadow transition-transform ${isAnnual ? "translate-x-6" : "translate-x-0.5"}`} />
-              </button>
-              <span className={`text-sm ${isAnnual ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                Anual <Badge variant="secondary" className="ml-1 text-[10px] bg-primary/10 text-primary border-primary/20">-20%</Badge>
-              </span>
-            </div>
-          </AnimatedSection>
-
-          <motion.div
-            className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6"
-            variants={stagger}
-            initial="hidden"
-            whileInView="show"
-            viewport={{ once: true }}
-          >
-            {PLANS_DATA.map((plan) => (
-              <motion.div
-                key={plan.name}
-                variants={fadeUp}
-                className={plan.highlight ? "lg:-mt-3 lg:mb-3 z-10" : ""}
-              >
-                <GlowCard
-                  className={`flex flex-col h-full ${plan.highlight ? "ring-1 ring-primary/40 animate-glow-pulse" : ""}`}
-                  glowColor={plan.highlight ? "187 92% 50%" : "var(--primary)"}
-                >
-                  <div className="p-6 flex flex-col h-full">
-                    {plan.highlight && plan.badge && (
-                      <Badge className="self-center -mt-9 mb-4 bg-primary text-primary-foreground text-[10px] shadow-lg shadow-primary/20">
-                        <Star className="w-3 h-3 mr-1" /> {plan.badge}
-                      </Badge>
-                    )}
-                    <div className="text-center mb-6">
-                      <h3 className="text-xl font-bold">{plan.name}</h3>
-                      <div className="text-3xl font-extrabold mt-2">{formatPrice(plan.priceMonthly)}</div>
-                      <p className="text-sm text-muted-foreground mt-1">{plan.ideal}</p>
-                    </div>
-                    <ul className="space-y-2 flex-1">
-                      {plan.features.map((f) => (
-                        <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
-                          <CheckCircle className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-                          {f}
-                        </li>
-                      ))}
-                    </ul>
-                    <Button
-                      className={`w-full mt-6 ${plan.highlight ? "animate-glow hover:scale-105 transition-transform" : "hover:scale-[1.02] transition-transform"}`}
-                      variant={plan.ctaVariant}
-                      onClick={() => navigate(plan.href)}
-                    >
-                      {plan.cta} <ChevronRight className="w-4 h-4 ml-1" />
-                    </Button>
-                  </div>
-                </GlowCard>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ══════════ CTA FINAL ══════════ */}
+      {/* ══════════ CTA FINAL — WhatsApp ══════════ */}
       <section className="py-24 px-4 relative overflow-hidden">
         <div className="absolute inset-0 bg-secondary/20" />
-        {/* Glow blob */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-primary/8 blur-[120px] rounded-full" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-emerald-500/10 blur-[120px] rounded-full" />
 
         <AnimatedSection className="relative z-10">
           <div className="max-w-2xl mx-auto text-center space-y-6">
             <h2 className="text-3xl sm:text-4xl font-extrabold">
-              Pronto para vender mais <span className="gradient-text">com menos esforço?</span>
+              Pronto pra parar de <span className="gradient-text">perder lead de anúncio?</span>
             </h2>
             <p className="text-muted-foreground text-lg">
-              Comece agora e veja sua equipe vender mais em menos tempo — com IA de verdade.
+              Bora conversar. Em poucos minutos a gente te mostra como o Orbit funciona na sua operação.
             </p>
             <Button
+              asChild
               size="lg"
-              onClick={() => navigate("/trial")}
-              className="gap-2 text-base px-10 h-12 animate-glow-pulse hover:scale-105 transition-transform"
+              className="gap-2 text-base px-10 h-12 animate-glow-pulse hover:scale-105 transition-transform bg-emerald-600 hover:bg-emerald-500 text-white"
             >
-              Começar agora — 7 dias grátis <ArrowRight className="w-5 h-5" />
+              <a href={WHATSAPP_LP_HREF} target="_blank" rel="noopener noreferrer">
+                <MessageCircle className="w-5 h-5" />
+                Falar agora no WhatsApp
+              </a>
             </Button>
-            <p className="text-xs text-muted-foreground">Sem cartão de crédito. Cancele quando quiser.</p>
+            <p className="text-xs text-muted-foreground">Resposta em minutos. Sem formulário, sem ligação fria.</p>
           </div>
         </AnimatedSection>
       </section>
+
 
       {/* ══════════ FAQ ══════════ */}
       <section id="faq" className="py-20 px-4">
