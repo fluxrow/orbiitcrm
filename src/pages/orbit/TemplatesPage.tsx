@@ -37,6 +37,7 @@ const emptyForm: TemplateForm = { nome: "", categoria: "geral", assunto_email: "
 
 export default function TemplatesPage() {
   const navigate = useNavigate();
+  const { empresaId: tenantEmpresaId } = useTenant();
   const [tab, setTab] = useState("whatsapp");
   const { data: templates, isLoading } = useOrbitTemplates({ canal: tab });
   const createTemplate = useCreateTemplate();
