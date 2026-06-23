@@ -71,6 +71,7 @@ const steps = [
 ];
 
 export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardContentProps) {
+  const { empresaId: tenantEmpresaId } = useTenant();
   const [currentStep, setCurrentStep] = useState(1);
   const [data, setData] = useState<CampaignData>({
     nome: "",
