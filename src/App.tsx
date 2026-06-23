@@ -16,6 +16,7 @@ import AcceptInvitePage from "./pages/AcceptInvitePage";
 import AcceptInviteSaasPage from "./pages/AcceptInviteSaasPage";
 import DocumentacaoPage from "./pages/DocumentacaoPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
+import SelectEmpresaPage from "./pages/SelectEmpresaPage";
 import PublicLayout from "./layouts/PublicLayout";
 
 // Tenant Layout
