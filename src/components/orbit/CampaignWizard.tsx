@@ -236,8 +236,9 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
       setIsSavingTemplate(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
-      const { data: profile } = await supabase.from("profiles").select("empresa_id").eq("id", user.id).single();
-      if (!profile?.empresa_id) throw new Error("Empresa não encontrada");
+      // CRITICAL: empresa from URL tenant context.
+      if (!tenantEmpresaId) throw new Error("Empresa não encontrada");
+      const profile = { empresa_id: tenantEmpresaId };
 
       const created = await createTemplate.mutateAsync({
         nome: newTemplate.nome,
