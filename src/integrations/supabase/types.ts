@@ -2616,6 +2616,7 @@ export type Database = {
         Row: {
           ativo: boolean | null
           client_token: string | null
+          client_token_secret_id: string | null
           created_at: string | null
           empresa_id: string | null
           id: string
@@ -2624,12 +2625,14 @@ export type Database = {
           notificar_enviadas_por_mim: boolean | null
           numero_origem: string | null
           token: string | null
+          token_secret_id: string | null
           updated_at: string | null
           webhook_url: string | null
         }
         Insert: {
           ativo?: boolean | null
           client_token?: string | null
+          client_token_secret_id?: string | null
           created_at?: string | null
           empresa_id?: string | null
           id?: string
@@ -2638,12 +2641,14 @@ export type Database = {
           notificar_enviadas_por_mim?: boolean | null
           numero_origem?: string | null
           token?: string | null
+          token_secret_id?: string | null
           updated_at?: string | null
           webhook_url?: string | null
         }
         Update: {
           ativo?: boolean | null
           client_token?: string | null
+          client_token_secret_id?: string | null
           created_at?: string | null
           empresa_id?: string | null
           id?: string
@@ -2652,6 +2657,7 @@ export type Database = {
           notificar_enviadas_por_mim?: boolean | null
           numero_origem?: string | null
           token?: string | null
+          token_secret_id?: string | null
           updated_at?: string | null
           webhook_url?: string | null
         }
@@ -3540,6 +3546,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _build_orbit_zapi_public_response: {
+        Args: { p_config_id: string }
+        Returns: Json
+      }
+      _build_orbit_zapi_runtime_response: {
+        Args: { p_config_id: string }
+        Returns: Json
+      }
       extract_domain: { Args: { p: string }; Returns: string }
       generate_unique_slug: { Args: { p_nome: string }; Returns: string }
       get_campaign_analytics_summary: {
@@ -3593,6 +3607,10 @@ export type Database = {
         Args: { p_empresa_id: string }
         Returns: Json
       }
+      get_orbit_zapi_config_public: {
+        Args: { p_empresa_id: string }
+        Returns: Json
+      }
       get_orbit_zapi_runtime_config: {
         Args: { p_empresa_id: string }
         Returns: Json
@@ -3600,6 +3618,10 @@ export type Database = {
       get_orbit_zapi_runtime_config_by_id: {
         Args: { p_config_id: string }
         Returns: Json
+      }
+      get_orbit_zapi_secret_name: {
+        Args: { p_config_id: string; p_empresa_id?: string; p_kind: string }
+        Returns: string
       }
       get_prospect_engagement_summary: {
         Args: { p_dias?: number; p_empresa_id: string }
@@ -3705,6 +3727,20 @@ export type Database = {
       }
       set_active_empresa: { Args: { p_empresa_id: string }; Returns: Json }
       super_admin_exists: { Args: never; Returns: boolean }
+      upsert_orbit_zapi_config_secure: {
+        Args: {
+          p_ativo?: boolean
+          p_client_token?: string
+          p_empresa_id: string
+          p_instance_id?: string
+          p_nome_instancia?: string
+          p_notificar_enviadas_por_mim?: boolean
+          p_numero_origem?: string
+          p_token?: string
+          p_webhook_url?: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "super_admin" | "admin" | "vendedor" | "visualizador"

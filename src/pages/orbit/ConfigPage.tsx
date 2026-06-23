@@ -166,13 +166,48 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
 
   const saveAI = async () => { await updateAI.mutateAsync({ id: aiConfig?.id, ...aiForm, empresa_id: empresaId }); toast.success("Salvo!"); };
   const saveZAPI = async () => {
-    await updateZAPI.mutateAsync({
-      id: zapiConfig?.id,
-      ...zapiForm,
-      empresa_id: empresaId,
-      ativo: !!zapiForm.instance_id && (!!zapiForm.token || hasStoredZapiToken),
-    });
-    toast.success("Salvo!");
+    if (!empresaId) {
+      toast.error("Empresa não identificada. Recarregue a página e tente novamente.");
+      return;
+    }
+
+    if (!zapiForm.instance_id.trim()) {
+      toast.error("Informe o ID da instância antes de salvar.");
+      return;
+    }
+
+    if (!zapiForm.token.trim() && !hasStoredZapiToken) {
+      toast.error("Informe o Token da instância antes de salvar.");
+      return;
+    }
+
+    if (!zapiForm.client_token.trim() && !hasStoredZapiClientToken) {
+      toast.error("Informe o Client Token antes de salvar.");
+      return;
+    }
+
+    try {
+      const saved = await updateZAPI.mutateAsync({
+        id: zapiConfig?.id,
+        ...zapiForm,
+        empresa_id: empresaId,
+        instance_id: zapiForm.instance_id.trim(),
+        token: zapiForm.token.trim(),
+        client_token: zapiForm.client_token.trim(),
+        numero_origem: zapiForm.numero_origem.trim(),
+        webhook_url: webhookUrl,
+        ativo: true,
+      });
+
+      if (!saved?.id || !saved?.has_token || !saved?.has_client_token) {
+        throw new Error("A configuração não foi confirmada pelo banco. Tente salvar novamente.");
+      }
+
+      setZapiForm((current) => ({ ...current, token: "", client_token: "", ativo: saved.ativo ?? true }));
+      toast.success("Configuração Z-API salva e confirmada.");
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao salvar configuração Z-API");
+    }
   };
   
   const saveResendApiKey = async () => { 

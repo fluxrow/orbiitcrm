@@ -24,6 +24,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   agendada: { label: "Agendada", className: "bg-blue-500/20 text-blue-400" },
   enviando: { label: "Enviando", className: "bg-purple-500/20 text-purple-400" },
   concluida: { label: "Concluída", className: "bg-green-500/20 text-green-400" },
+  falha: { label: "Falhou", className: "bg-red-500/20 text-red-400" },
   pausada: { label: "Pausada", className: "bg-orange-500/20 text-orange-400" },
   pausada_por_limite: { label: "Limite Diário Atingido", className: "bg-amber-600/20 text-amber-500" },
   cancelada: { label: "Cancelada", className: "bg-red-500/20 text-red-400" },
@@ -156,7 +157,11 @@ export default function CampanhasPage() {
         result.falhas ? `🔴 Erros: ${result.falhas}` : null,
         result.pausada_por_limite ? `⏸️ Limite diário atingido (${result.remaining_pending} pendentes)` : null,
       ].filter(Boolean);
-      toast.success(parts.join(" | "));
+      if (result.falhas && result.enviados === 0 && result.validados_enviados === 0) {
+        toast.error(parts.join(" | "));
+      } else {
+        toast.success(parts.join(" | "));
+      }
       refetch();
     } catch (error: any) {
       toast.error(error.message || "Erro ao enviar campanha");
@@ -412,9 +417,9 @@ function CampaignActions({
   const canSend = status === "aprovada_para_envio" && pendingRecipients > 0;
   const canResume = (status === "enviando" || status === "pausada" || status === "pausada_por_limite") && pendingRecipients > 0;
   const canPause = status === "enviando";
-  const canCancel = !["concluida", "cancelada"].includes(status);
+  const canCancel = !["concluida", "falha", "cancelada"].includes(status);
   const canDelete = status === "rascunho";
-  const canAnalytics = ["enviando", "concluida", "pausada", "pausada_por_limite"].includes(status);
+  const canAnalytics = ["enviando", "concluida", "falha", "pausada", "pausada_por_limite"].includes(status);
 
   return (
     <div className="border-t pt-4">
