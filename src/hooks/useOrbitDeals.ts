@@ -111,7 +111,8 @@ export function useOrbitDealsGrouped() {
   }, [queryClient]);
 
   return useQuery({
-    queryKey: ["orbit_deals_grouped"],
+    queryKey: ["orbit_deals_grouped", empresaId],
+    enabled: !!empresaId,
     queryFn: async () => {
       const [stagesResult, dealsResult] = await Promise.all([
         supabase
