@@ -140,7 +140,7 @@ function toTitleCase(str: string): string {
 }
 
 const handler = async (req: Request): Promise<Response> => {
-  if (req.method === "OPTIONS") return optionsResponse();
+    if (req.method === "OPTIONS") return optionsResponse(req);
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -150,7 +150,7 @@ const handler = async (req: Request): Promise<Response> => {
     const { campaign_id }: CampaignRequest = await req.json();
 
     if (!campaign_id) {
-      return fail(ErrorCodes.VALIDATION_ERROR, "campaign_id é obrigatório");
+      return fail(ErrorCodes.VALIDATION_ERROR, "campaign_id é obrigatório", 400, undefined, req);
     }
 
     const { data: campaign, error: campaignError } = await supabase
@@ -160,11 +160,11 @@ const handler = async (req: Request): Promise<Response> => {
       .single();
 
     if (campaignError || !campaign) {
-      return fail(ErrorCodes.NOT_FOUND, "Campanha não encontrada", 404);
+      return fail(ErrorCodes.NOT_FOUND, "Campanha não encontrada", 404, undefined, req);
     }
 
     if (campaign.aprovacao_status !== "aprovada") {
-      return fail(ErrorCodes.VALIDATION_ERROR, "Campanha não aprovada");
+      return fail(ErrorCodes.VALIDATION_ERROR, "Campanha não aprovada", 400, undefined, req);
     }
 
     // ── Plan enforcement ──
@@ -186,7 +186,7 @@ const handler = async (req: Request): Promise<Response> => {
       });
 
       const planResponse = fromPlanCheck(canUseResult);
-      if (planResponse) return planResponse;
+      if (planResponse) return fromPlanCheck(canUseResult, false, req)!;
     }
 
     // Check if demo
@@ -211,7 +211,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (!recipients || recipients.length === 0) {
       await supabase.from("orbit_campaigns").update({ status: "concluida" }).eq("id", campaign_id);
-      return ok({ enviados: 0, validados_enviados: 0, ignorados_sem_numero: 0, ignorados_sem_whatsapp: 0, ignorados_whatsapp_invalido: 0, falhas: 0, pausada_por_limite: false, message: "Campanha concluída" });
+      return ok({ enviados: 0, validados_enviados: 0, ignorados_sem_numero: 0, ignorados_sem_whatsapp: 0, ignorados_whatsapp_invalido: 0, falhas: 0, pausada_por_limite: false, message: "Campanha concluída" }, undefined, req);
     }
 
     let enviados = 0;
