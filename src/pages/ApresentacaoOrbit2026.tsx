@@ -38,8 +38,8 @@ const SECTIONS = [
   "email",
   "funil",
   "roi",
-  "investimento",
   "fechamento",
+  "investimento",
 ];
 
 const fadeUp: Variants = {
