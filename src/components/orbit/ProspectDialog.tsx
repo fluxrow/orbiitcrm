@@ -171,9 +171,10 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
         toast.success("Prospect criado com sucesso!");
       }
       onOpenChange(false);
-    } catch (error) {
-      toast.error("Erro ao salvar prospect");
-      console.error(error);
+    } catch (error: any) {
+      const msg = error?.message || error?.error_description || error?.hint || "Erro ao salvar prospect";
+      toast.error(`Erro ao salvar prospect: ${msg}`);
+      console.error("[ProspectDialog] save error", error);
     }
   };
 
