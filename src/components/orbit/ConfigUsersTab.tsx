@@ -104,8 +104,10 @@ export default function ConfigUsersTab() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? (
+            {orgIdLoading || isLoading ? (
               <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+            ) : !orgId ? (
+              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Esta empresa ainda não está provisionada. Contate o administrador.</TableCell></TableRow>
             ) : !users?.length ? (
               <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhum usuário</TableCell></TableRow>
             ) : (
