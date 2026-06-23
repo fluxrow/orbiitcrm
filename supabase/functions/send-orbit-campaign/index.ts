@@ -317,7 +317,9 @@ const handler = async (req: Request): Promise<Response> => {
         return fail(
           ErrorCodes.PROVIDER_NOT_CONFIGURED,
           "A instância do WhatsApp (Z-API) está desconectada. Reconecte e tente novamente. Nenhum prospect foi marcado como inválido.",
-          400
+          400,
+          undefined,
+          req
         );
       }
     }
@@ -774,11 +776,12 @@ const handler = async (req: Request): Promise<Response> => {
         pausada_por_limite,
         remaining_pending: remainingPending || 0,
       },
-      { simulated: isDemo }
+      { simulated: isDemo },
+      req
     );
   } catch (error: any) {
     console.error("Erro ao processar campanha:", error);
-    return fail(ErrorCodes.INTERNAL_ERROR, error.message, 500);
+    return fail(ErrorCodes.INTERNAL_ERROR, error.message, 500, undefined, req);
   }
 };
 
