@@ -106,25 +106,30 @@ export default function SelectEmpresaPage() {
             <Card
               key={e.empresa_id}
               className={cn(
-                "p-4 flex items-center gap-4 cursor-pointer transition-colors",
+                "relative p-4 flex items-center gap-4 cursor-pointer transition-all overflow-hidden",
                 e.is_active
-                  ? "border-2 border-primary bg-primary/5 ring-2 ring-primary/20"
-                  : "hover:border-primary"
+                  ? "border-[3px] border-primary bg-primary/[0.08] ring-2 ring-primary/40 shadow-lg shadow-primary/10"
+                  : "border border-border hover:border-primary/60 hover:shadow-md"
               )}
               onClick={() => !selectMutation.isPending && handleSelect(e)}
             >
+              {e.is_active && (
+                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-primary rounded-l" />
+              )}
               <div className={cn(
-                "h-12 w-12 rounded-lg flex items-center justify-center shrink-0",
-                e.is_active ? "bg-primary text-primary-foreground" : "bg-primary/10"
+                "h-12 w-12 rounded-xl flex items-center justify-center shrink-0 transition-colors",
+                e.is_active ? "bg-primary text-primary-foreground shadow-inner" : "bg-primary/10"
               )}>
                 <Building2 className={cn("h-6 w-6", e.is_active ? "" : "text-primary")} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="font-semibold truncate">{e.nome}</h3>
+                  <h3 className={cn("font-semibold truncate", e.is_active && "text-primary")}>
+                    {e.nome}
+                  </h3>
                   {e.is_active && (
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary text-primary-foreground flex items-center gap-1">
-                      <Check className="h-3 w-3" /> Empresa atual
+                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-primary text-primary-foreground flex items-center gap-1 shadow-sm">
+                      <Check className="h-3.5 w-3.5" /> VOCÊ ESTÁ AQUI
                     </span>
                   )}
                 </div>
