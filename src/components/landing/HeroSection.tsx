@@ -44,7 +44,7 @@ export default function HeroSection() {
       ref={containerRef}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      className="relative pt-20 pb-28 px-4 overflow-hidden min-h-[90vh] flex items-center"
+      className="relative pt-28 pb-20 px-4 overflow-hidden"
     >
       <StarfieldCanvas />
 

@@ -5,9 +5,12 @@ type Bubble = { from: "lead" | "ia"; text: string; delay: number };
 
 const BUBBLES: Bubble[] = [
   { from: "lead", text: "Oi, vi o anúncio. Quanto custa?", delay: 0.1 },
-  { from: "ia", text: "Oi! Posso te ajudar 👋 Pra te passar a melhor proposta, qual o porte da sua empresa?", delay: 0.6 },
-  { from: "lead", text: "Uns 30 funcionários", delay: 1.4 },
-  { from: "ia", text: "Perfeito. Já estou chamando um especialista pra você — em 2 min ele te responde por aqui.", delay: 2.0 },
+  { from: "ia", text: "Oi! Posso te ajudar 👋 Antes de te passar valores, qual o porte da sua empresa?", delay: 0.5 },
+  { from: "lead", text: "Uns 30 funcionários, agência de marketing", delay: 1.1 },
+  { from: "ia", text: "Perfeito. Vocês já usam algum CRM hoje ou tá tudo no WhatsApp pessoal mesmo?", delay: 1.7 },
+  { from: "lead", text: "Tá tudo no WhatsApp 😅", delay: 2.3 },
+  { from: "ia", text: "Faz total sentido. Já estou chamando um especialista — em 2 min ele te responde por aqui com a melhor solução pro seu caso.", delay: 2.9 },
+  { from: "ia", text: "✅ Lead qualificado e encaminhado pro Cauã.", delay: 3.6 },
 ];
 
 export default function WhatsAppMockSection() {
