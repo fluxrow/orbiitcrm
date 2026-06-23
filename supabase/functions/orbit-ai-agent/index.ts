@@ -144,16 +144,52 @@ async function notifyCommercialHumanDetected(
   }
 ) {
   const { prospect, telefone_lead, mensagem, classification, empresa_id, isDemo } = params;
-  const FALLBACK_VENDEDOR_ID = "bf42e203-328e-445b-a72d-93529aaedd4d";
-  
-  // Determinar vendedor a notificar
-  const vendedorId = prospect?.responsavel_id || FALLBACK_VENDEDOR_ID;
-  
+
+  // Determinar vendedor a notificar — DEVE ser da mesma empresa que o prospect.
+  // Nada de fallback hardcoded entre tenants (vazamento de dados).
+  let vendedorId: string | null = prospect?.responsavel_id || null;
+
+  // Se o responsável existe mas é de outra empresa, ignorar.
+  if (vendedorId && empresa_id) {
+    const { data: resp } = await supabase
+      .from("profiles")
+      .select("empresa_id")
+      .eq("id", vendedorId)
+      .maybeSingle();
+    if (resp?.empresa_id && resp.empresa_id !== empresa_id) {
+      console.warn("[orbit-ai-agent] Responsável de empresa diferente — ignorando", { vendedorId, empresa_id });
+      vendedorId = null;
+    }
+  }
+
+  // Fallback: primeiro admin/owner da MESMA empresa com telefone preenchido
+  if (!vendedorId && empresa_id) {
+    const { data: candidato } = await supabase
+      .from("profiles")
+      .select("id, telefone")
+      .eq("empresa_id", empresa_id)
+      .not("telefone", "is", null)
+      .limit(1)
+      .maybeSingle();
+    vendedorId = candidato?.id || null;
+  }
+
+  if (!vendedorId) {
+    console.log("[orbit-ai-agent] Sem vendedor da empresa para notificar — pulando notificação", { empresa_id });
+    return;
+  }
+
   const { data: vendedorProfile } = await supabase
     .from("profiles")
-    .select("id, nome, telefone")
+    .select("id, nome, telefone, empresa_id")
     .eq("id", vendedorId)
     .single();
+
+  // Última checagem: nunca notificar alguém de outra empresa
+  if (empresa_id && vendedorProfile?.empresa_id && vendedorProfile.empresa_id !== empresa_id) {
+    console.warn("[orbit-ai-agent] Vendedor resolvido pertence a outra empresa — abortando notificação");
+    return;
+  }
 
   const { data: vendedorPe } = await supabase
     .from("pe_users")
@@ -166,6 +202,7 @@ async function notifyCommercialHumanDetected(
     console.log("[orbit-ai-agent] Vendedor sem WhatsApp para notificação comercial");
     return;
   }
+
 
   const leadPhone = telefone_lead?.replace(/\D/g, "") || "";
   const waLink = `https://wa.me/${leadPhone}`;
@@ -681,23 +718,35 @@ Mapeamento de campos para dados_extraidos:
       }
     }
 
-    // Distribuir para vendedor com 3 níveis de prioridade
-    const FALLBACK_VENDEDOR_ID = "bf42e203-328e-445b-a72d-93529aaedd4d"; // Alexandre Eifler Bock
+    // Distribuir para vendedor — SEMPRE escopado à empresa do prospect.
     let vendedorAtribuido: string | null = null;
 
     if (isHandoff) {
       if (prospect?.responsavel_id) {
-        vendedorAtribuido = prospect.responsavel_id;
-        console.log("[orbit-ai-agent] Usando responsável existente:", vendedorAtribuido);
-      } else {
-        const { data: proximoVendedor } = await supabase
+        // Só usa o responsável atual se for da mesma empresa
+        const { data: respProfile } = await supabase
+          .from("profiles")
+          .select("empresa_id")
+          .eq("id", prospect.responsavel_id)
+          .maybeSingle();
+        if (!empresaId || !respProfile?.empresa_id || respProfile.empresa_id === empresaId) {
+          vendedorAtribuido = prospect.responsavel_id;
+          console.log("[orbit-ai-agent] Usando responsável existente:", vendedorAtribuido);
+        } else {
+          console.warn("[orbit-ai-agent] Responsável atual é de outra empresa — ignorando", { responsavel: prospect.responsavel_id, empresaId });
+        }
+      }
+
+      if (!vendedorAtribuido) {
+        let distQuery = supabase
           .from("orbit_distribuicao_config")
           .select("vendedor_id")
           .eq("ativo", true)
           .order("ultima_atribuicao", { ascending: true, nullsFirst: true })
           .order("ordem_fila", { ascending: true })
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
+        if (empresaId) distQuery = distQuery.eq("empresa_id", empresaId);
+        const { data: proximoVendedor } = await distQuery.maybeSingle();
 
         if (proximoVendedor) {
           vendedorAtribuido = proximoVendedor.vendedor_id;
@@ -709,9 +758,17 @@ Mapeamento de campos para dados_extraidos:
             })
             .eq("vendedor_id", proximoVendedor.vendedor_id);
           console.log("[orbit-ai-agent] Lead distribuído via round-robin:", proximoVendedor.vendedor_id);
-        } else {
-          vendedorAtribuido = FALLBACK_VENDEDOR_ID;
-          console.log("[orbit-ai-agent] Fallback: lead atribuído ao Alexandre:", FALLBACK_VENDEDOR_ID);
+        } else if (empresaId) {
+          // Fallback: primeiro admin/usuário da MESMA empresa
+          const { data: candidato } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("empresa_id", empresaId)
+            .limit(1)
+            .maybeSingle();
+          vendedorAtribuido = candidato?.id || null;
+          if (vendedorAtribuido) console.log("[orbit-ai-agent] Fallback dentro da empresa:", vendedorAtribuido);
+          else console.warn("[orbit-ai-agent] Nenhum vendedor disponível na empresa para handoff", { empresaId });
         }
       }
 
@@ -725,6 +782,7 @@ Mapeamento de campos para dados_extraidos:
           .eq("id", prospect_id);
       }
     }
+
 
     // ── Handoff: notificar vendedor via WhatsApp ──
     if (isHandoff && vendedorAtribuido) {
