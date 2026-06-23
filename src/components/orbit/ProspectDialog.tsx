@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useEmpresaVendedores } from "@/hooks/useEmpresaVendedores";
+import { useTenant } from "@/contexts/TenantContext";
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
