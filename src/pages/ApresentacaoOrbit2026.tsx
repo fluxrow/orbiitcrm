@@ -970,12 +970,23 @@ function Investimento() {
           </div>
         </motion.div>
 
+        <motion.div variants={fadeUp} className="mt-14 text-center max-w-4xl mx-auto">
+          <div className="text-sm uppercase tracking-[0.2em] text-white/40 mb-3">
+            Comparado a um SDR humano, você economiza
+          </div>
+          <div className="text-7xl md:text-8xl font-bold bg-gradient-to-r from-emerald-400 via-cyan-300 to-violet-400 bg-clip-text text-transparent tabular-nums leading-none">
+            R$ <CountUp to={84636} separator="." duration={2.4} />
+          </div>
+          <div className="mt-3 text-white/60 text-lg">no primeiro ano. Todo ano.</div>
+        </motion.div>
+
         <motion.div variants={fadeUp} className="mt-10 text-center">
           <button className="inline-flex items-center gap-2 px-8 py-4 rounded-full bg-gradient-to-r from-emerald-500 to-violet-500 text-white font-semibold text-lg shadow-2xl shadow-emerald-500/30 hover:scale-105 transition-transform">
             Quero implementar
             <ArrowDown className="w-5 h-5 -rotate-90" />
           </button>
         </motion.div>
+
       </motion.div>
     </Section>
   );
