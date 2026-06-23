@@ -22,6 +22,7 @@ import { useOrbitProspects, useDeleteProspect } from "@/hooks/useOrbitProspects"
 import { useDebounce } from "@/hooks/useDebounce";
 import { useOrbitPeLinks } from "@/hooks/usePromoteProspect";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
