@@ -1135,3 +1135,90 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: st
     console.error("[orbit-ai-agent] Erro ao enviar WhatsApp:", error);
   }
 }
+
+// ── TTS: gerar áudio via ElevenLabs ──
+async function generateTTS(texto: string, ttsVoiceId: string, ttsApiKey: string): Promise<ArrayBuffer> {
+  const textoTruncado = texto.length > 300 ? texto.substring(0, 297) + "..." : texto;
+
+  const res = await fetch(
+    `https://api.elevenlabs.io/v1/text-to-speech/${ttsVoiceId}`,
+    {
+      method: "POST",
+      headers: {
+        "xi-api-key": ttsApiKey,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg",
+      },
+      body: JSON.stringify({
+        text: textoTruncado,
+        model_id: "eleven_multilingual_v2",
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.75,
+        },
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => res.status.toString());
+    throw new Error(`ElevenLabs TTS error ${res.status}: ${errText}`);
+  }
+
+  return res.arrayBuffer();
+}
+
+// ── sendAIResponse: envia resposta como texto e/ou áudio TTS ──
+async function sendAIResponse(
+  supabase: any,
+  telefone: string,
+  texto: string,
+  conversa_id: string,
+  isDemo: boolean,
+  empresaId: string | null | undefined,
+  aiConfig: any
+) {
+  const ttsAtivo = aiConfig?.tts_ativo === true;
+  const ttsApiKey = aiConfig?.tts_api_key;
+  const ttsVoiceId = aiConfig?.tts_voice_id || "EXAVITQu4vr4xnSDxMaL";
+  const ttsModo = aiConfig?.tts_modo || "texto";
+
+  if (ttsAtivo && ttsApiKey && ttsModo !== "texto") {
+    try {
+      console.log("[orbit-ai-agent] TTS ativo, gerando áudio via ElevenLabs...");
+
+      const audioBuffer = await generateTTS(texto, ttsVoiceId, ttsApiKey);
+
+      const path = `tts/${empresaId}/${conversa_id}/${Date.now()}.mp3`;
+      const { error: uploadError } = await supabase.storage
+        .from("orbit-media")
+        .upload(path, audioBuffer, {
+          contentType: "audio/mpeg",
+          upsert: false,
+        });
+
+      if (uploadError) {
+        console.error("[orbit-ai-agent] Erro upload TTS:", uploadError.message);
+        await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId);
+        return;
+      }
+
+      const audioUrl = supabase.storage.from("orbit-media").getPublicUrl(path).data.publicUrl;
+      console.log("[orbit-ai-agent] Áudio TTS gerado:", audioUrl);
+
+      await sendWhatsAppAudio(supabase, telefone, audioUrl, conversa_id, empresaId);
+
+      if (ttsModo === "ambos") {
+        await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId);
+      }
+
+      return;
+    } catch (ttsError) {
+      console.error("[orbit-ai-agent] Erro TTS, fallback para texto:", ttsError);
+      await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId);
+      return;
+    }
+  }
+
+  await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId);
+}
