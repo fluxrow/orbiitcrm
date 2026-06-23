@@ -252,7 +252,7 @@ function Comparativo() {
     { label: "Tempo de resposta", human: "4 horas em média", orbit: "8 segundos" },
     { label: "Disponibilidade", human: "8h/dia, seg–sex", orbit: "24/7/365" },
     { label: "Leads simultâneos", human: "1 por vez", orbit: "Ilimitado" },
-    { label: "Custo mensal", human: "R$ 8.500+", orbit: "R$ 1.197" },
+    
     { label: "Esquece follow-up?", human: "Sempre", orbit: "Nunca" },
     { label: "Tira férias / fica doente", human: "Acontece", orbit: "Não existe" },
     { label: "Mau humor na sexta às 18h", human: "Inevitável", orbit: "Impossível" },
