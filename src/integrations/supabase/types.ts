@@ -1018,11 +1018,130 @@ export type Database = {
           },
         ]
       }
+      orbit_chatbot_flow_branches: {
+        Row: {
+          created_at: string | null
+          encerrar_fluxo: boolean | null
+          flow_id: string
+          id: string
+          keywords: string[] | null
+          nome: string | null
+          ordem: number | null
+          resposta_audio_id: string | null
+          resposta_texto: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          encerrar_fluxo?: boolean | null
+          flow_id: string
+          id?: string
+          keywords?: string[] | null
+          nome?: string | null
+          ordem?: number | null
+          resposta_audio_id?: string | null
+          resposta_texto?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          encerrar_fluxo?: boolean | null
+          flow_id?: string
+          id?: string
+          keywords?: string[] | null
+          nome?: string | null
+          ordem?: number | null
+          resposta_audio_id?: string | null
+          resposta_texto?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_chatbot_flow_branches_flow_id_fkey"
+            columns: ["flow_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_chatbot_flows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_chatbot_flow_branches_resposta_audio_id_fkey"
+            columns: ["resposta_audio_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_audio_library"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_chatbot_flows: {
+        Row: {
+          ativo: boolean | null
+          created_at: string | null
+          descricao: string | null
+          empresa_id: string
+          id: string
+          nome: string
+          passo1_aguardar_resposta: boolean | null
+          passo1_audio_id: string | null
+          passo1_texto: string | null
+          prioridade: number | null
+          trigger_keywords: string[]
+          trigger_modo: string | null
+          updated_at: string | null
+          uso_count: number | null
+        }
+        Insert: {
+          ativo?: boolean | null
+          created_at?: string | null
+          descricao?: string | null
+          empresa_id: string
+          id?: string
+          nome: string
+          passo1_aguardar_resposta?: boolean | null
+          passo1_audio_id?: string | null
+          passo1_texto?: string | null
+          prioridade?: number | null
+          trigger_keywords?: string[]
+          trigger_modo?: string | null
+          updated_at?: string | null
+          uso_count?: number | null
+        }
+        Update: {
+          ativo?: boolean | null
+          created_at?: string | null
+          descricao?: string | null
+          empresa_id?: string
+          id?: string
+          nome?: string
+          passo1_aguardar_resposta?: boolean | null
+          passo1_audio_id?: string | null
+          passo1_texto?: string | null
+          prioridade?: number | null
+          trigger_keywords?: string[]
+          trigger_modo?: string | null
+          updated_at?: string | null
+          uso_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_chatbot_flows_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_chatbot_flows_passo1_audio_id_fkey"
+            columns: ["passo1_audio_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_audio_library"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_conversas: {
         Row: {
           ai_contexto: Json | null
           ai_processing: boolean | null
           canal: string | null
+          chatbot_aguardando: boolean | null
+          chatbot_flow_id: string | null
           created_at: string | null
           empresa_id: string | null
           handoff_sent_at: string | null
@@ -1041,6 +1160,8 @@ export type Database = {
           ai_contexto?: Json | null
           ai_processing?: boolean | null
           canal?: string | null
+          chatbot_aguardando?: boolean | null
+          chatbot_flow_id?: string | null
           created_at?: string | null
           empresa_id?: string | null
           handoff_sent_at?: string | null
@@ -1059,6 +1180,8 @@ export type Database = {
           ai_contexto?: Json | null
           ai_processing?: boolean | null
           canal?: string | null
+          chatbot_aguardando?: boolean | null
+          chatbot_flow_id?: string | null
           created_at?: string | null
           empresa_id?: string | null
           handoff_sent_at?: string | null
@@ -1074,6 +1197,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "orbit_conversas_chatbot_flow_id_fkey"
+            columns: ["chatbot_flow_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_chatbot_flows"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "orbit_conversas_empresa_id_fkey"
             columns: ["empresa_id"]

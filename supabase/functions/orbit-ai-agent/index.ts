@@ -492,6 +492,21 @@ serve(async (req) => {
       .eq("id", conversa_id)
       .single();
 
+    // ── CHATBOT FLOWS: verificar fluxo ativo ou novo trigger (prioridade sobre IA) ──
+    const flowHandled = await processChatbotFlow(supabase, {
+      conversa,
+      conversa_id,
+      mensagem,
+      telefone,
+      empresaId,
+      isDemo,
+    });
+    if (flowHandled) {
+      return new Response(JSON.stringify({ ok: true, flow_handled: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ── AGREGAR: buscar todas as mensagens IN pendentes desde o último OUT ──
     const { data: lastOutMsg } = await supabase
       .from("orbit_mensagens")
@@ -1221,4 +1236,124 @@ async function sendAIResponse(
   }
 
   await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId);
+}
+
+// ── CHATBOT FLOWS: processar fluxo condicional ──
+async function processChatbotFlow(
+  supabase: any,
+  ctx: {
+    conversa: any;
+    conversa_id: string;
+    mensagem: string;
+    telefone: string;
+    empresaId: string | null | undefined;
+    isDemo: boolean;
+  }
+): Promise<boolean> {
+  const { conversa, conversa_id, mensagem, telefone, empresaId, isDemo } = ctx;
+  const msgNorm = mensagem.toLowerCase().trim();
+
+  // ── Caso 1: há fluxo ativo aguardando resposta ──
+  if (conversa?.chatbot_flow_id && conversa?.chatbot_aguardando) {
+    const { data: branches } = await supabase
+      .from("orbit_chatbot_flow_branches")
+      .select("*")
+      .eq("flow_id", conversa.chatbot_flow_id)
+      .order("ordem", { ascending: true });
+
+    if (branches && branches.length > 0) {
+      let matched: any = null;
+      for (const branch of branches) {
+        if (!branch.keywords || branch.keywords.length === 0) continue;
+        const hit = branch.keywords.some((kw: string) => msgNorm.includes(kw.toLowerCase()));
+        if (hit) { matched = branch; break; }
+      }
+      if (!matched) {
+        matched = branches.find((b: any) => !b.keywords || b.keywords.length === 0) ?? null;
+      }
+
+      if (matched) {
+        console.log("[orbit-ai-agent] Chatbot flow branch matched:", matched.nome);
+
+        if (matched.resposta_texto) {
+          await sendAIResponse(supabase, telefone, matched.resposta_texto, conversa_id, isDemo, empresaId, null);
+        }
+        if (matched.resposta_audio_id) {
+          const { data: clip } = await supabase
+            .from("orbit_audio_library")
+            .select("url")
+            .eq("id", matched.resposta_audio_id)
+            .single();
+          if (clip?.url) {
+            await sendWhatsAppAudio(supabase, telefone, clip.url, conversa_id, empresaId);
+          }
+        }
+
+        const updates: any = {};
+        if (matched.encerrar_fluxo) {
+          updates.chatbot_flow_id = null;
+          updates.chatbot_aguardando = false;
+        }
+        if (Object.keys(updates).length > 0) {
+          await supabase.from("orbit_conversas").update(updates).eq("id", conversa_id);
+        }
+
+        return true;
+      }
+    }
+  }
+
+  // ── Caso 2: verificar se a mensagem dispara um novo fluxo ──
+  if (!empresaId) return false;
+  const { data: flows } = await supabase
+    .from("orbit_chatbot_flows")
+    .select("*")
+    .eq("empresa_id", empresaId)
+    .eq("ativo", true)
+    .order("prioridade", { ascending: false });
+
+  if (!flows || flows.length === 0) return false;
+
+  for (const flow of flows) {
+    if (!flow.trigger_keywords || flow.trigger_keywords.length === 0) continue;
+    const hit = flow.trigger_keywords.some((kw: string) => {
+      const kwNorm = kw.toLowerCase();
+      return flow.trigger_modo === "exact"
+        ? msgNorm === kwNorm
+        : msgNorm.includes(kwNorm);
+    });
+    if (!hit) continue;
+
+    console.log("[orbit-ai-agent] Chatbot flow triggered:", flow.nome);
+
+    if (flow.passo1_texto) {
+      await sendAIResponse(supabase, telefone, flow.passo1_texto, conversa_id, isDemo, empresaId, null);
+    }
+    if (flow.passo1_audio_id) {
+      const { data: clip } = await supabase
+        .from("orbit_audio_library")
+        .select("url")
+        .eq("id", flow.passo1_audio_id)
+        .single();
+      if (clip?.url) {
+        await sendWhatsAppAudio(supabase, telefone, clip.url, conversa_id, empresaId);
+      }
+    }
+
+    if (flow.passo1_aguardar_resposta) {
+      await supabase
+        .from("orbit_conversas")
+        .update({ chatbot_flow_id: flow.id, chatbot_aguardando: true })
+        .eq("id", conversa_id);
+    }
+
+    await supabase
+      .from("orbit_chatbot_flows")
+      .update({ uso_count: flow.uso_count + 1 })
+      .eq("id", flow.id);
+
+    return true;
+  }
+
+  return false;
 }
