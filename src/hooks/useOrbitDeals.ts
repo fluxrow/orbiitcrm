@@ -60,8 +60,10 @@ export function useOrbitPipelineStages() {
 }
 
 export function useOrbitDeals(etapa_id?: string) {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: ["orbit_deals", etapa_id],
+    queryKey: ["orbit_deals", empresaId, etapa_id],
+    enabled: !!empresaId,
     queryFn: async () => {
       let query = supabase
         .from("orbit_deals")
