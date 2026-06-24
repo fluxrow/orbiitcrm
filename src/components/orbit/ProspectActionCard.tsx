@@ -20,6 +20,7 @@ interface ProspectActionCardProps {
   onAddNote: (prospect: any) => void;
   onCreateTask: (prospect: any) => void;
   onAddToFunnel: (prospect: any) => void;
+  onSchedule: (prospect: any) => void;
   onViewHistory: (prospect: any) => void;
 }
 
