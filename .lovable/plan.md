@@ -1,86 +1,93 @@
-## Problema
+# Onboarding de Cliente — Implantação Orbit CRM
 
-Hoje a aba **Configurações → Agenda** mistura duas coisas que não combinam:
+Recriar no Lovable o fluxo de onboarding que o Claude tinha feito local, **profissionalizando** para o padrão visual do Orbit (dark, glassmorphism) e adicionando **fluxo completo de implementação** até a call de kick-off.
 
-1. **Configuração técnica** (conectar conta Google, escolher calendário/fuso, desconectar) — pertence a Config.
-2. **Visualização da agenda** (próximos eventos, agendamentos feitos pela IA) — não pertence a Config. O usuário precisa ver isso no dia a dia, junto com tarefas.
+---
 
-E na aba **Tarefas** o calendário mostra só `due_date` das tarefas internas, sem nenhum evento do Google. Ou seja, o vendedor abre o CRM e não vê a agenda dele.
+## O que vai existir
 
-## Solução — reorganizar em duas frentes
+### 1. Tela interna `/{slug}/onboarding`
+Item novo na sidebar do Orbit ("Onboarding"). Lista todos os onboardings criados pelo usuário/empresa, com:
+- Status: `rascunho` | `enviado` | `em_andamento` | `concluido` | `revisado`
+- Cliente (nome fantasia), data de envio, % de preenchimento
+- Botão **"Novo onboarding"** → gera token único + link público + dispara email (Resend) para o cliente + para `fbcfarias@icloud.com` com o link
+- Botão **"Copiar link"**, **"Reenviar email"**, **"Ver respostas"**, **"Arquivar"**
 
-### 1. Aba Tarefas vira o "centro de agenda"
+### 2. Tela pública `/onboarding-cliente/:token` (sem login)
+Wizard de 8 seções, com:
+- Sidebar esquerda: progresso visual + navegação entre steps (igual ao do Claude, mas no tema Orbit dark)
+- Centro: formulário da seção atual
+- Direita: **brief ao vivo** (preview do que está sendo respondido)
+- Auto-save no banco a cada blur (não só localStorage)
+- Botões: **Salvar e continuar depois**, **Enviar respostas finais**, **Baixar PDF/JSON**
 
-Renomear a sub-aba **"Calendário"** para **"Agenda"** e transformá-la num calendário unificado que mostra:
+**Seções** (baseadas no HTML do Claude, profissionalizadas):
+1. **Empresa** — razão social, CNPJ, nome fantasia, site, segmento, porte, responsável
+2. **ICP & Posicionamento** — cliente ideal, ticket médio, ciclo de venda, dores, diferenciais
+3. **Funil & Processo Comercial** — etapas atuais, gatilhos, critérios de qualificação, motivos de perda
+4. **Equipe & Distribuição** — vendedores, regras de roteamento de leads, metas
+5. **Integrações** — WhatsApp (Z-API), Email (Resend/Google), Calendário (Google), Meta Ads, fontes de lead
+6. **IA & Automação** — tom de voz, scripts proibidos, regras de handoff humano, horário de atendimento
+7. **Templates & Campanhas** — modelos de mensagem iniciais, sequências, CTAs padrão
+8. **Aprovação & Go-Live** — responsável final, data desejada de virada, pendências, observações
 
-- 🟦 **Tarefas internas do Orbit** (o que já existe hoje)
-- 🟩 **Eventos do Google Calendar** do usuário (incluindo os que a IA cria automaticamente)
-- 🟪 **Reuniões marcadas pela IA** destacadas com badge "IA"
+### 3. Fluxo de implementação (NOVO — não tinha no Claude)
+Após o cliente clicar em "Enviar respostas finais":
+- Status muda para `enviado` → notificação automática por email para o time interno
+- Tela interna mostra **checklist de implementação** (gerado a partir das respostas):
+  - [ ] Conectar Z-API e validar número
+  - [ ] Configurar Resend e domínio
+  - [ ] Importar base inicial de leads
+  - [ ] Configurar funil e etapas
+  - [ ] Treinar IA com tom de voz
+  - [ ] Cadastrar templates aprovados
+  - [ ] **Agendar call de kick-off** (botão integra com o calendário Google já existente)
+- Cada item tem checkbox + responsável + status
 
-Layout do mês:
+### 4. Emails (via Resend / Lovable Emails)
+Três templates app-mail:
+- **convite-onboarding** → para o cliente com o link + prazo sugerido
+- **onboarding-recebido** → para `fbcfarias@icloud.com` quando cliente envia, com resumo + link interno
+- **convite-kickoff** → para o cliente com link do Google Meet/Calendar da call
 
-```text
-┌─────────────────────────────────────────────┐
-│  ← Junho 2026 →    [ Mês | Semana | Dia ]   │
-├──┬──┬──┬──┬──┬──┬──┤
-│Se│Te│Qu│Qu│Se│Sá│Do│
-├──┼──┼──┼──┼──┼──┼──┤
-│  │  │  │  │  │  │  │
-│ 8│ 9│10│11│12│13│14│
-│  │🟦│🟩│🟦│  │  │  │
-│  │tarefa│reunião│  │
-└──┴──┴──┴──┴──┴──┴──┘
-```
+---
 
-- Clicar num evento Google → abre painel lateral com detalhes (título, horário, participantes, link do Meet, botão "Abrir no Google")
-- Clicar numa tarefa → abre o `OrbitTaskDialog` (igual hoje)
-- Botão "Nova Tarefa" + botão "Novo Evento" (usa o `ScheduleMeetingDialog` que já existe)
-- Banner sutil no topo quando o Google **não** está conectado: "Conecte sua agenda do Google para ver seus compromissos aqui → [Conectar]" (link direto para Config → Agenda)
+## Estrutura técnica (resumo para o dev)
 
-Visões adicionais:
+### Banco
+- `orbit_client_onboardings` (id, empresa_id, token público, status, dados JSONB, responses JSONB, sent_at, completed_at, created_by)
+- RLS por `empresa_id` (interno) + função `get_onboarding_by_token` (pública, sem auth)
+- GRANTs para `authenticated` + `service_role`
 
-- **Semana** — grade horária 7×24h com blocos (estilo Google Calendar simplificado)
-- **Dia** — lista vertical do dia selecionado, agrupada por hora
-- **Mês** — o que já existe, enriquecido com cores
+### Edge Functions
+- `orbit-onboarding-create` — gera token + envia email convite
+- `orbit-onboarding-public-get` — lê dados pelo token (sem JWT)
+- `orbit-onboarding-public-save` — autosave parcial pelo token
+- `orbit-onboarding-public-submit` — finaliza + dispara email para o time
+- `orbit-onboarding-send-kickoff` — agenda call e envia convite
 
-### 2. Aba Configurações → Agenda só cuida de conexão
+Todas seguem envelope `{ ok, data, error }` e CORS padrão.
 
-Remover dali o card "Próximos eventos" (vai pra Tarefas). Mantém só:
+### Frontend
+- `src/pages/orbit/OnboardingPage.tsx` (interna, listagem + checklist)
+- `src/pages/public/ClientOnboardingPage.tsx` (wizard público)
+- `src/hooks/useOrbitOnboarding.ts`
+- Rota pública `/onboarding-cliente/:token` em `App.tsx` (fora do `TenantLayout`)
+- Rota interna em `OrbitRoutes` + item na sidebar
 
-- Status da conexão (Conectado / Não conectado + e-mail Google)
-- Botão Conectar / Desconectar
-- Campo "ID do calendário" + Fuso horário + Salvar
+### Visual
+Tema dark Orbit existente (`glass-card`, `gradient-primary`). Sem reaproveitar o CSS claro do Claude — só a **estrutura/perguntas**. Tipografia e tokens já definidos no projeto.
 
-Fica uma aba enxuta, focada em **setup técnico** — que é o papel dela.
+---
 
-## Arquivos afetados
+## Fora deste plano (você confirmou)
+- Limpeza de rotas `/demo`, `/orbit/*`, `SetupPage` → plano separado depois
+- Remover valores da LP e padronizar CTAs → plano separado depois
 
-**Edge function** (`supabase/functions/orbit-google-calendar/index.ts`)
-- Estender `list_events` aceitando `time_min` + `time_max` (já aceita `time_min`; falta `time_max` para filtrar por mês/semana). Pequena alteração no `_shared/google-calendar.ts`.
+---
 
-**Hook** (`src/hooks/useOrbitGoogleCalendar.ts`)
-- Novo `useCalendarEventsRange(empresaId, start, end)` para buscar eventos num intervalo arbitrário.
-- Manter `useUpcomingCalendarEvents` se ainda houver outro consumidor; senão remover.
+## Pré-requisitos que vou verificar antes de codar
+1. Lovable Emails / Resend já configurado? (vou checar domínio)
+2. Calendário Google já tem `create_event` funcionando (já confirmamos que sim no contexto anterior) ✅
 
-**Componentes novos**
-- `src/components/orbit/UnifiedCalendar.tsx` — calendário mês/semana/dia que recebe `tasks` + `googleEvents` e renderiza unificado.
-- `src/components/orbit/CalendarEventDetailSheet.tsx` — painel lateral de detalhe de evento Google.
-
-**Componentes editados**
-- `src/pages/orbit/TarefasPage.tsx` — substituir a `TabsContent value="calendar"` pelo `<UnifiedCalendar>`; renomear label para "Agenda"; buscar eventos Google via novo hook quando empresa estiver conectada; adicionar botão "Novo Evento" que abre o `ScheduleMeetingDialog`.
-- `src/components/orbit/AgendaConfigTab.tsx` — remover o `<Card>` "Próximos eventos" (linhas 170-205) e o hook `useUpcomingCalendarEvents`. Adicionar link "Ver agenda em Tarefas →".
-
-## Lógica e consistência
-
-- **Eventos criados pela IA** já vão pro Google Calendar via `createCalendarEvent` (o agente usa o mesmo fluxo). Para distingui-los visualmente, marcar com a tag `extendedProperties.private.source = "orbit-ai"` na criação e ler isso na UI para mostrar o badge "IA".
-- **Performance**: o hook de range cacheia por `[empresaId, startISO, endISO]` no React Query (`staleTime: 60s`) — trocar de mês não refaz a query desnecessariamente.
-- **Sem Google conectado**: a aba Agenda continua funcionando, só mostra tarefas + banner de conexão. Nenhum erro.
-- **Multi-tenant**: as queries já filtram por `empresa_id` (RLS + edge function checa membership). Nada muda nesse aspecto.
-
-## O que NÃO faz parte desta entrega
-
-- Arrastar evento Google pra reagendar (Google API exige update; deixar pra v2).
-- Sincronização bidirecional automática de tarefas Orbit ↔ eventos Google.
-- Notificações push de lembrete.
-
-Posso seguir com a implementação?
+Se Lovable Emails não estiver pronto, vou rodar o setup antes de seguir com os edge functions de email.
