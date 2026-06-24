@@ -916,7 +916,7 @@ Mapeamento de campos para dados_extraidos:
           event_type: "prospect_qualified",
           entity_type: "prospect",
           entity_id: prospect_id,
-          event_dedupe_key: dedupeKey,
+          dedupe_key: dedupeKey,
           payload: {
             prospect_id,
             conversa_id,
