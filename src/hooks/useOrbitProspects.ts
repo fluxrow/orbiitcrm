@@ -35,15 +35,19 @@ export function useOrbitProspectsCount() {
 
 
 export function useOrbitProspects(filters?: ProspectFilters) {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: orbitProspectKeys.list(filters),
+    queryKey: [...orbitProspectKeys.list(filters), empresaId],
+    enabled: !!empresaId,
     queryFn: async () => {
       const trimmedSearch = filters?.search?.trim();
       let query = supabase
         .from("orbit_prospects")
         .select("*, responsavel:profiles!orbit_prospects_responsavel_id_fkey(id, nome, email)")
+        .eq("empresa_id", empresaId!)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
+
 
       if (trimmedSearch) {
         query = query.textSearch("search_vector", trimmedSearch, {
