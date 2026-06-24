@@ -1,17 +1,18 @@
 // Callback público do OAuth Google: troca code → tokens, persiste, redireciona
 import { svcClient, exchangeCode, fetchGoogleEmail } from "../_shared/google-calendar.ts";
 
-const APP_URL = Deno.env.get("APP_URL") ?? "https://app.orbiitcrm.com.br";
+function normalizeAppUrl(u: string): string {
+  let url = (u || "").trim();
+  if (!url) return "https://orbit.fluxrow.pro";
+  if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+  return url.replace(/\/+$/, "");
+}
 
-function htmlRedirect(target: string, message?: string): Response {
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Google Calendar</title>
-<meta http-equiv="refresh" content="2;url=${target}">
-<style>body{font-family:system-ui;background:#0a0a1a;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-.box{max-width:480px;text-align:center;padding:32px;border:1px solid rgba(255,255,255,.1);border-radius:16px}
-a{color:#818cf8}</style></head>
-<body><div class="box"><h2>${message ?? "Conectado!"}</h2>
-<p>Redirecionando para o Orbit…</p><p><a href="${target}">Voltar agora</a></p></div></body></html>`;
-  return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } });
+const APP_URL = normalizeAppUrl(Deno.env.get("APP_URL") ?? "https://orbit.fluxrow.pro");
+
+function htmlRedirect(target: string, _message?: string): Response {
+  // 302 redirect direto — evita problemas de renderização de HTML pelo runtime
+  return new Response(null, { status: 302, headers: { Location: target } });
 }
 
 Deno.serve(async (req) => {
