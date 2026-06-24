@@ -7,7 +7,12 @@ const APP_BASE_URL = Deno.env.get("APP_URL") || "https://orbit.fluxrow.pro";
 const INTERNAL_NOTIFY_EMAIL = "fbcfarias@icloud.com";
 
 interface Body {
-  empresa_id: string;
+  // Either provide an existing empresa_id, OR provide empresa_nome (+ optional slug) to create a new tenant
+  empresa_id?: string;
+  empresa_nome?: string;
+  slug?: string;
+  monthly_price_cents?: number;
+  setup_fee_cents?: number;
   cliente_nome: string;
   cliente_email: string;
   cliente_empresa?: string;
@@ -39,8 +44,11 @@ serve(async (req) => {
     const userId = claimsRes.claims.sub as string;
 
     const body: Body = await req.json();
-    if (!body.empresa_id || !body.cliente_nome || !body.cliente_email) {
-      return fail(ErrorCodes.VALIDATION_ERROR, "empresa_id, cliente_nome e cliente_email são obrigatórios", 400, undefined, req);
+    if (!body.cliente_nome || !body.cliente_email) {
+      return fail(ErrorCodes.VALIDATION_ERROR, "cliente_nome e cliente_email são obrigatórios", 400, undefined, req);
+    }
+    if (!body.empresa_id && !body.empresa_nome) {
+      return fail(ErrorCodes.VALIDATION_ERROR, "Informe empresa_id (existente) ou empresa_nome (novo tenant)", 400, undefined, req);
     }
 
     // Only Fluxrow super admin can create onboardings
@@ -51,19 +59,67 @@ serve(async (req) => {
       return fail(ErrorCodes.FORBIDDEN, "Apenas o administrador Fluxrow pode criar onboardings", 403, undefined, req);
     }
 
+    let empresaId = body.empresa_id ?? "";
+    let empresaNome = "";
+    let empresaSlug = "";
 
-    // Tenant slug for URL
-    const { data: empresa } = await supabase
-      .from("orbit_empresas").select("slug, nome").eq("id", body.empresa_id).maybeSingle();
+    if (empresaId) {
+      const { data: existing } = await supabase
+        .from("orbit_empresas").select("slug, nome").eq("id", empresaId).maybeSingle();
+      empresaNome = existing?.nome ?? "";
+      empresaSlug = existing?.slug ?? "";
+    } else {
+      // Create new tenant: orbit_empresas + saas_empresa (status=invited)
+      const nome = body.empresa_nome!.trim();
 
-    // Create row
+      // Generate unique slug
+      const { data: slugData, error: slugErr } = await supabase
+        .rpc("generate_unique_slug", { p_nome: body.slug?.trim() || nome });
+      if (slugErr) {
+        return fail(ErrorCodes.INTERNAL_ERROR, `Falha ao gerar slug: ${slugErr.message}`, 500, undefined, req);
+      }
+      empresaSlug = slugData as string;
+      empresaNome = nome;
+
+      const { data: newEmpresa, error: empErr } = await supabase
+        .from("orbit_empresas")
+        .insert({ nome, slug: empresaSlug, ativo: true, plano: "orbit" })
+        .select("id")
+        .single();
+      if (empErr || !newEmpresa) {
+        return fail(ErrorCodes.INTERNAL_ERROR, empErr?.message || "Falha ao criar empresa", 500, undefined, req);
+      }
+      empresaId = newEmpresa.id;
+
+      // Get the single Orbit plan
+      const { data: orbitPlan } = await supabase
+        .from("saas_plans").select("id").eq("code", "orbit").maybeSingle();
+
+      const { error: saasErr } = await supabase
+        .from("saas_empresa")
+        .insert({
+          empresa_id: empresaId,
+          plan_id: orbitPlan?.id ?? null,
+          status: "invited",
+          responsible_name: body.cliente_nome,
+          responsible_email: body.cliente_email,
+          monthly_price_cents_override: body.monthly_price_cents ?? null,
+          setup_fee_cents_override: body.setup_fee_cents ?? null,
+          invited_at: new Date().toISOString(),
+        });
+      if (saasErr) {
+        return fail(ErrorCodes.INTERNAL_ERROR, `Empresa criada, mas falhou plano: ${saasErr.message}`, 500, undefined, req);
+      }
+    }
+
+    // Create onboarding row
     const { data: inserted, error: insErr } = await supabase
       .from("orbit_client_onboardings")
       .insert({
-        empresa_id: body.empresa_id,
+        empresa_id: empresaId,
         cliente_nome: body.cliente_nome,
         cliente_email: body.cliente_email,
-        cliente_empresa: body.cliente_empresa ?? null,
+        cliente_empresa: body.cliente_empresa ?? empresaNome ?? null,
         notes: body.notes ?? null,
         status: "enviado",
         sent_at: new Date().toISOString(),
@@ -75,6 +131,8 @@ serve(async (req) => {
     if (insErr || !inserted) {
       return fail(ErrorCodes.INTERNAL_ERROR, insErr?.message || "Falha ao criar onboarding", 500, undefined, req);
     }
+
+    const empresa = { nome: empresaNome, slug: empresaSlug };
 
     const publicLink = `${APP_BASE_URL}/onboarding-cliente/${inserted.public_token}`;
 
