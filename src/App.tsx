@@ -18,6 +18,8 @@ import DocumentacaoPage from "./pages/DocumentacaoPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import SelectEmpresaPage from "./pages/SelectEmpresaPage";
 import ApresentacaoOrbit2026 from "./pages/ApresentacaoOrbit2026";
+import PrivacyPage from "./pages/PrivacyPage";
+import TermsPage from "./pages/TermsPage";
 import PublicLayout from "./layouts/PublicLayout";
 
 // Tenant Layout
@@ -146,6 +148,8 @@ const AppRoutes = () => (
       <Route path="/accept-invite-pe/:token" element={<AcceptInvitePage />} />
       <Route path="/accept-invite" element={<AcceptInviteSaasPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/terms" element={<TermsPage />} />
     </Route>
 
     {/* Empresa selector (post-login, when user belongs to >1 empresa) */}
