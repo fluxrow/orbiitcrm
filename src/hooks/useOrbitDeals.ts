@@ -122,6 +122,7 @@ export function useOrbitDealsGrouped() {
         supabase
           .from("orbit_pipeline_stages")
           .select("*")
+          .eq("empresa_id", empresaId!)
           .order("ordem", { ascending: true }),
         supabase
           .from("orbit_deals")
@@ -130,9 +131,11 @@ export function useOrbitDealsGrouped() {
             prospect:orbit_prospects!orbit_deals_prospect_id_fkey(id, nome_razao, nome_fantasia, telefone, whatsapp, email_principal, status_qualificacao),
             responsavel:profiles!orbit_deals_responsavel_id_fkey(id, nome)
           `)
+          .eq("empresa_id", empresaId!)
           .is("deleted_at", null)
           .order("created_at", { ascending: false }),
       ]);
+
 
       const { data: stages, error: stagesError } = stagesResult;
       const { data: deals, error: dealsError } = dealsResult;
