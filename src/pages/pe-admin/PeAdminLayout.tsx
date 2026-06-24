@@ -75,10 +75,14 @@ export default function PeAdminLayout() {
             ))}
           </nav>
 
-          <div className="p-3 border-t border-border">
+          <div className="p-3 border-t border-border space-y-1">
             <div className="px-3 py-2 text-xs text-muted-foreground truncate">
               {peUser?.full_name || user.email}
             </div>
+            <Button variant="ghost" size="sm" className="w-full justify-start gap-2" onClick={() => navigate("/fluxrow/dashboard")}>
+              <Building2 className="w-4 h-4" />
+              Ir para Fluxrow
+            </Button>
             <Button variant="ghost" size="sm" className="w-full justify-start gap-2" onClick={handleSignOut}>
               <LogOut className="w-4 h-4" />
               Sair
