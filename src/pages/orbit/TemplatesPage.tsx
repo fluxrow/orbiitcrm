@@ -236,7 +236,7 @@ export default function TemplatesPage() {
                   )}
                   <div className="bg-muted/50 rounded p-3 mb-3">
                     {isEmail ? (
-                      <div className="text-sm text-muted-foreground line-clamp-4" dangerouslySetInnerHTML={{ __html: t.corpo_texto || "Sem conteúdo" }} />
+                      <div className="text-sm text-muted-foreground line-clamp-4" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(t.corpo_texto || "Sem conteúdo") }} />
                     ) : (
                       <p className="text-sm text-muted-foreground line-clamp-4 whitespace-pre-wrap">{t.corpo_texto || "Sem conteúdo"}</p>
                     )}
