@@ -15,15 +15,15 @@ serve(async (req) => {
     );
 
     const { token, responses } = await req.json();
-    if (!token) return fail(ErrorCodes.VALIDATION_ERROR, "token obrigatório");
+    if (!token) return fail(ErrorCodes.VALIDATION_ERROR, "token obrigatório", 400, undefined, req);
 
     const { data, error } = await supabase.rpc("submit_onboarding", {
       p_token: token,
       p_responses: responses ?? {},
     });
-    if (error) return fail(ErrorCodes.INTERNAL_ERROR, error.message, 500);
+    if (error) return fail(ErrorCodes.INTERNAL_ERROR, error.message, 500, undefined, req);
     const result = data as any;
-    if (!result?.ok) return fail(ErrorCodes.NOT_FOUND, result?.error ?? "not_found", 404);
+    if (!result?.ok) return fail(ErrorCodes.NOT_FOUND, result?.error ?? "not_found", 404, undefined, req);
 
     // Send internal notification
     const { apiKey, fromEmail } = await getSystemEmailConfig(supabase);
@@ -58,8 +58,8 @@ serve(async (req) => {
       }).catch(() => null);
     }
 
-    return ok(result.data);
+    return ok(result.data, undefined, req);
   } catch (e) {
-    return fail(ErrorCodes.INTERNAL_ERROR, (e as Error).message, 500);
+    return fail(ErrorCodes.INTERNAL_ERROR, (e as Error).message, 500, undefined, req);
   }
 });
