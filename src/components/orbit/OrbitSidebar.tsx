@@ -73,6 +73,7 @@ export function OrbitSidebar() {
     { name: "Conversas", href: `${basePath}/conversas`, icon: MessageSquare },
     { name: "Funil", href: `${basePath}/funil`, icon: Kanban },
     { name: "Tarefas", href: `${basePath}/tarefas`, icon: CheckSquare, badge: pendingCount > 0 ? pendingCount : undefined },
+    { name: "Onboarding", href: `${basePath}/onboarding`, icon: ClipboardList },
     ...(canUseFeature("whatsapp") || canUseFeature("email") ? [{ name: "Campanhas", href: `${basePath}/campanhas`, icon: Mail }] : []),
     { name: "Templates", href: `${basePath}/templates`, icon: FileText },
     ...(canUseFeature("lead_finder") ? [{ name: "Lead Finder", href: `${basePath}/lead-finder`, icon: Search }] : []),
