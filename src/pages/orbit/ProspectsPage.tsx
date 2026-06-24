@@ -342,6 +342,7 @@ export default function ProspectsPage() {
                   onAddNote={(pr) => { setNoteProspect(pr); setNoteOpen(true); }}
                   onCreateTask={(pr) => { toast.info("Funcionalidade de tarefas em breve"); }}
                   onAddToFunnel={(pr) => { setFunnelProspects([pr]); setFunnelOpen(true); }}
+                  onSchedule={(pr) => { setScheduleProspect(pr); setScheduleOpen(true); }}
                   onViewHistory={(pr) => { setTimelineProspect(pr); setTimelineOpen(true); }}
                 />
               ))}
