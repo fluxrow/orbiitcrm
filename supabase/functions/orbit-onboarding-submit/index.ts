@@ -7,7 +7,7 @@ const INTERNAL_NOTIFY_EMAIL = "fbcfarias@icloud.com";
 const APP_BASE_URL = Deno.env.get("APP_URL") || "https://orbit.fluxrow.pro";
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return optionsResponse();
+  if (req.method === "OPTIONS") return optionsResponse(req);
   try {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
