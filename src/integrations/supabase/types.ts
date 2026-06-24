@@ -4107,6 +4107,16 @@ export type Database = {
         Args: { _empresa_id: string }
         Returns: undefined
       }
+      orbit_zapi_connection_status: {
+        Args: { _empresa_id: string }
+        Returns: {
+          disconnect_reason: string
+          instance_id: string
+          last_disconnect_at: string
+          last_receive_at: string
+          status: string
+        }[]
+      }
       pe_backfill_import_as_lista: {
         Args: {
           p_empresa_id: string

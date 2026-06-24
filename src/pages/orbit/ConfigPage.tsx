@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import { useIsDemo } from "@/hooks/useIsDemo";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { ZapiConnectionAlert } from "@/components/orbit/ZapiConnectionAlert";
 
 interface ParsedProspect {
   nome_razao: string;
@@ -752,6 +753,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
         </TabsContent>
         <TabsContent value="zapi">
             <div className="space-y-6">
+            <ZapiConnectionAlert />
             {isDemo && (
               <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
                 <AlertCircle className="h-4 w-4 shrink-0" />

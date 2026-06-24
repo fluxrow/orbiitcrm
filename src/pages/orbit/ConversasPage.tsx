@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ConversaProspectDrawer } from "@/components/orbit/ConversaProspectDrawer";
 import { AudioLibraryPicker } from "@/components/orbit/AudioLibraryPicker";
+import { ZapiConnectionAlert } from "@/components/orbit/ZapiConnectionAlert";
 import type { AudioClip } from "@/hooks/useOrbitAudioLibrary";
 
 function stripHtml(html: string): string {
@@ -273,6 +274,7 @@ export default function ConversasPage() {
 
   return (
     <OrbitLayout>
+      <ZapiConnectionAlert />
       <div className="flex h-[calc(100vh-120px)] border rounded-lg overflow-hidden">
         {/* Sidebar */}
         <div className="w-80 border-r flex flex-col">
