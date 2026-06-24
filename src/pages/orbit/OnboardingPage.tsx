@@ -89,9 +89,15 @@ function OnboardingRow({ onboarding, onOpen }: { onboarding: ClientOnboarding; o
   return (
     <Card className="glass-card p-4 flex items-center gap-4">
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
           <h4 className="font-semibold truncate">{onboarding.cliente_nome || "Sem nome"}</h4>
           <Badge variant={st.variant}>{st.label}</Badge>
+          {onboarding.empresa?.nome && (
+            <Badge variant="outline" className="text-[10px]">
+              {onboarding.empresa.nome}
+              {onboarding.empresa.slug ? ` · /${onboarding.empresa.slug}` : ""}
+            </Badge>
+          )}
         </div>
         <p className="text-sm text-muted-foreground truncate">
           {onboarding.cliente_email} · {onboarding.cliente_empresa || "—"}
