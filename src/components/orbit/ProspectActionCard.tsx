@@ -39,7 +39,7 @@ const whatsappStatusConfig: Record<string, { label: string; className: string }>
 
 export function ProspectActionCard({
   prospect, isConverted, isSelected, onToggleSelect, onEdit,
-  onWhatsApp, onEmail, onAddNote, onCreateTask, onAddToFunnel, onViewHistory,
+  onWhatsApp, onEmail, onAddNote, onCreateTask, onAddToFunnel, onSchedule, onViewHistory,
 }: ProspectActionCardProps) {
   const status = statusConfig[prospect.status_qualificacao || ""] || statusConfig.novo;
   const isHot = (prospect.score || 0) > 70;
