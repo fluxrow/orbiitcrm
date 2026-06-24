@@ -137,7 +137,7 @@ serve(async (req: Request) => {
 
     return new Response(null, {
       status: 302,
-      headers: { Location: targetUrl },
+      headers: { Location: parsed.toString() },
     });
   }
 
