@@ -1,93 +1,98 @@
-# Onboarding de Cliente — Implantação Orbit CRM
+## Auditoria das rotas atuais
 
-Recriar no Lovable o fluxo de onboarding que o Claude tinha feito local, **profissionalizando** para o padrão visual do Orbit (dark, glassmorphism) e adicionando **fluxo completo de implementação** até a call de kick-off.
+Levantei tudo que está registrado no `src/App.tsx` e classifiquei por necessidade.
 
----
+### ✅ Manter (essenciais)
 
-## O que vai existir
+**Públicas (sem login)**
+- `/` — Landing page
+- `/auth` — Login/cadastro
+- `/documentacao` — Documentação interna pública
+- `/setup` — Setup inicial (usado pelo fluxo de signup em `AuthPage`)
+- `/invite/:token`, `/accept-invite-pe/:token`, `/accept-invite` — Aceitar convite (3 formatos usados por edge functions diferentes)
+- `/reset-password` — Reset de senha
+- `/privacy`, `/terms` — Políticas
+- `/apresentacao/orbit-2026` — Apresentação comercial (oculta, sem link)
+- `/onboarding-cliente/:token` — Wizard público de onboarding do cliente
 
-### 1. Tela interna `/{slug}/onboarding`
-Item novo na sidebar do Orbit ("Onboarding"). Lista todos os onboardings criados pelo usuário/empresa, com:
-- Status: `rascunho` | `enviado` | `em_andamento` | `concluido` | `revisado`
-- Cliente (nome fantasia), data de envio, % de preenchimento
-- Botão **"Novo onboarding"** → gera token único + link público + dispara email (Resend) para o cliente + para `fbcfarias@icloud.com` com o link
-- Botão **"Copiar link"**, **"Reenviar email"**, **"Ver respostas"**, **"Arquivar"**
+**Logadas**
+- `/select-empresa` — Quando o usuário pertence a mais de uma empresa
+- `/:slug/*` (tenant real do cliente) com todas as subrotas: `dashboard`, `prospects`, `conversas`, `funil`, `campanhas`, `campanhas/nova`, `campanhas/:id/editar`, `templates`, `templates/email/new`, `templates/email/:id/edit`, `lead-finder`, `config`, `analytics`, `tarefas`, `onboarding` (já restrito a super_admin), `meu-plano`, `usuarios`
 
-### 2. Tela pública `/onboarding-cliente/:token` (sem login)
-Wizard de 8 seções, com:
-- Sidebar esquerda: progresso visual + navegação entre steps (igual ao do Claude, mas no tema Orbit dark)
-- Centro: formulário da seção atual
-- Direita: **brief ao vivo** (preview do que está sendo respondido)
-- Auto-save no banco a cada blur (não só localStorage)
-- Botões: **Salvar e continuar depois**, **Enviar respostas finais**, **Baixar PDF/JSON**
+**Admin Fluxrow (PE Admin — novo)**
+- `/pe-admin`, `/pe-admin/cadastros`, `/pe-admin/organizations`, `/pe-admin/organizations/:id/users`, `/pe-admin/users`, `/pe-admin/planos`, `/pe-admin/tenants`, `/pe-admin/audit`, `/pe-admin/documentacao`
 
-**Seções** (baseadas no HTML do Claude, profissionalizadas):
-1. **Empresa** — razão social, CNPJ, nome fantasia, site, segmento, porte, responsável
-2. **ICP & Posicionamento** — cliente ideal, ticket médio, ciclo de venda, dores, diferenciais
-3. **Funil & Processo Comercial** — etapas atuais, gatilhos, critérios de qualificação, motivos de perda
-4. **Equipe & Distribuição** — vendedores, regras de roteamento de leads, metas
-5. **Integrações** — WhatsApp (Z-API), Email (Resend/Google), Calendário (Google), Meta Ads, fontes de lead
-6. **IA & Automação** — tom de voz, scripts proibidos, regras de handoff humano, horário de atendimento
-7. **Templates & Campanhas** — modelos de mensagem iniciais, sequências, CTAs padrão
-8. **Aprovação & Go-Live** — responsável final, data desejada de virada, pendências, observações
+### ❌ Remover
 
-### 3. Fluxo de implementação (NOVO — não tinha no Claude)
-Após o cliente clicar em "Enviar respostas finais":
-- Status muda para `enviado` → notificação automática por email para o time interno
-- Tela interna mostra **checklist de implementação** (gerado a partir das respostas):
-  - [ ] Conectar Z-API e validar número
-  - [ ] Configurar Resend e domínio
-  - [ ] Importar base inicial de leads
-  - [ ] Configurar funil e etapas
-  - [ ] Treinar IA com tom de voz
-  - [ ] Cadastrar templates aprovados
-  - [ ] **Agendar call de kick-off** (botão integra com o calendário Google já existente)
-- Cada item tem checkbox + responsável + status
+**Demo (tudo)** — você não usa para vender
+- Rotas: `/demo`, `/demo/*`, `/orbit`, `/orbit/*` (redirect legado que aponta para `/demo`)
+- CTAs que apontam para `/demo`: botão "Ver demo" no `HotsiteHeader` (desktop e mobile) e botão "Ver demonstração" no `HeroSection`
+- Badge "DEMO" no `OrbitSidebar` e barra "DEMO" no `OrbitLayout`
+- Ramo `isDemo` do `TenantContext`, hook `useIsDemo`, e fallbacks que mandam pra `/demo` (`SuperAdminRoute`, `EmpresaSwitcher`, `OrbitRedirect`) — passam a redirecionar para `/auth` ou `/`
 
-### 4. Emails (via Resend / Lovable Emails)
-Três templates app-mail:
-- **convite-onboarding** → para o cliente com o link + prazo sugerido
-- **onboarding-recebido** → para `fbcfarias@icloud.com` quando cliente envia, com resumo + link interno
-- **convite-kickoff** → para o cliente com link do Google Meet/Calendar da call
+**Trial (tudo)** — não deve aparecer em lugar nenhum
+- Rota `/trial` e página `TrialPage`
+- Hook `useTrialRequests` e referências
+- Aba "Trials" e listagem em `CadastrosPage` (PE Admin)
+- Botão "Solicitar trial" e bloco "Trial expira em…" no `MeuPlanoPage`
+- Labels "Trial" nos badges de status (`MeuPlanoPage`) — viram apenas "Ativo"/"Pendente"
+- Bloqueio `trial_expired` em `TenantBlocked` — substituído por mensagem genérica "Acesso suspenso, entre em contato"
+- `plan code "trial"` no `usePlanGuard` mantém grant total (sem mudar acesso a quem já está marcado), mas a interface não menciona mais trial
 
----
+**Super Admin legado (substituído pelo PE Admin)**
+- Rotas `/super-admin`, `/super-admin/empresas`, `/super-admin/empresas/:id/usuarios`, `/super-admin/usuarios`
+- Páginas em `src/pages/super-admin/` (Dashboard, EmpresasPage, EmpresaUsersPage, UsuariosGlobaisPage, SuperAdminLayout)
+- Componente `super-admin/EmpresaDialog`
+- Os componentes ainda usados (`super-admin/AddUserDialog`) ficam — apenas a pasta de páginas e o layout são removidos
 
-## Estrutura técnica (resumo para o dev)
+**Rota órfã**
+- `/org/users` (`OrgUsersPage`) — não tem nenhum link interno apontando, função coberta por `/pe-admin/users` e `/:slug/usuarios`
 
-### Banco
-- `orbit_client_onboardings` (id, empresa_id, token público, status, dados JSONB, responses JSONB, sent_at, completed_at, created_by)
-- RLS por `empresa_id` (interno) + função `get_onboarding_by_token` (pública, sem auth)
-- GRANTs para `authenticated` + `service_role`
+### 🧹 Limpeza adicional
+- Atualizar `DocumentacaoPage` para remover linhas que citam `/trial`, `/demo`, `/super-admin/*`
+- Atualizar `PeAdminDocPage` se citar trial
+- Remover imports e dead code dos arquivos acima em `App.tsx`
 
-### Edge Functions
-- `orbit-onboarding-create` — gera token + envia email convite
-- `orbit-onboarding-public-get` — lê dados pelo token (sem JWT)
-- `orbit-onboarding-public-save` — autosave parcial pelo token
-- `orbit-onboarding-public-submit` — finaliza + dispara email para o time
-- `orbit-onboarding-send-kickoff` — agenda call e envia convite
-
-Todas seguem envelope `{ ok, data, error }` e CORS padrão.
-
-### Frontend
-- `src/pages/orbit/OnboardingPage.tsx` (interna, listagem + checklist)
-- `src/pages/public/ClientOnboardingPage.tsx` (wizard público)
-- `src/hooks/useOrbitOnboarding.ts`
-- Rota pública `/onboarding-cliente/:token` em `App.tsx` (fora do `TenantLayout`)
-- Rota interna em `OrbitRoutes` + item na sidebar
-
-### Visual
-Tema dark Orbit existente (`glass-card`, `gradient-primary`). Sem reaproveitar o CSS claro do Claude — só a **estrutura/perguntas**. Tipografia e tokens já definidos no projeto.
+### 🛡️ Banco de dados (NÃO mexer)
+- Tabela `trial_requests`, colunas `trial_ends_at`/`status='trial'` em `saas_empresa`, plan code `demo` no `saas_plans` — ficam intactos para não quebrar empresas já cadastradas. Só a UI e as rotas somem.
 
 ---
 
-## Fora deste plano (você confirmou)
-- Limpeza de rotas `/demo`, `/orbit/*`, `SetupPage` → plano separado depois
-- Remover valores da LP e padronizar CTAs → plano separado depois
+## Mudanças técnicas
+
+Arquivos editados:
+- `src/App.tsx` — remover rotas `/trial`, `/demo`, `/orbit`, `/orbit/*`, `/super-admin/*`, `/org/users`; remover imports correspondentes; `SuperAdminRoute` passa a redirecionar para `/auth` em vez de `/demo`
+- `src/components/HotsiteHeader.tsx` — remover botões "Ver demo" e "Acessar Demo"
+- `src/components/landing/HeroSection.tsx` — remover botão "Ver demonstração"
+- `src/components/orbit/OrbitSidebar.tsx` — remover badge "DEMO" e prop `isDemo`
+- `src/components/orbit/OrbitLayout.tsx` — remover barra de aviso "DEMO"
+- `src/components/orbit/EmpresaSwitcher.tsx` — fallback para `/` em vez de `/demo/dashboard`
+- `src/contexts/TenantContext.tsx` — remover ramo `isDemo`; o contexto sempre exige slug
+- `src/pages/tenant/TenantLayout.tsx` — remover prop `isDemo` e bloco que redireciona super admin saindo de `/demo`
+- `src/pages/orbit/MeuPlanoPage.tsx` — remover CTA `navigate("/trial")` e bloco "Trial expira em…"; mapear status `trial`/`trialing` para "Ativo"
+- `src/pages/tenant/TenantBlocked.tsx` — remover branch `trial_expired`, usar mensagem genérica
+- `src/pages/pe-admin/CadastrosPage.tsx` — remover aba/lista de trials e import de `useTrialRequests`
+- `src/pages/DocumentacaoPage.tsx` — limpar linhas obsoletas
+
+Arquivos deletados:
+- `src/pages/TrialPage.tsx`
+- `src/hooks/useTrialRequests.ts`
+- `src/hooks/useIsDemo.ts`
+- `src/pages/org/OrgUsersPage.tsx`
+- `src/pages/super-admin/SuperAdminDashboard.tsx`
+- `src/pages/super-admin/EmpresasPage.tsx`
+- `src/pages/super-admin/EmpresaUsersPage.tsx`
+- `src/pages/super-admin/UsuariosGlobaisPage.tsx`
+- `src/pages/super-admin/SuperAdminLayout.tsx`
+- `src/components/super-admin/EmpresaDialog.tsx`
+
+Sem migrations. Sem mudanças em edge functions.
 
 ---
 
-## Pré-requisitos que vou verificar antes de codar
-1. Lovable Emails / Resend já configurado? (vou checar domínio)
-2. Calendário Google já tem `create_event` funcionando (já confirmamos que sim no contexto anterior) ✅
+## O que pode quebrar
 
-Se Lovable Emails não estiver pronto, vou rodar o setup antes de seguir com os edge functions de email.
+- Links externos antigos para `/demo/...`, `/trial`, `/orbit/...` ou `/super-admin/...` cairão no `NotFound`. Nenhum desses está em material seu de venda atual.
+- Empresas cujo `saas_status = 'trial'` continuam funcionando normalmente — o app simplesmente não mostra mais a palavra "Trial". Se quiser, posso depois migrar todas para `active`.
+
+Confirma esse pente fino?
