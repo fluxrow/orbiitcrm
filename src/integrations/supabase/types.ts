@@ -1295,12 +1295,14 @@ export type Database = {
           created_at: string | null
           data_conversao: string | null
           data_prevista_fechamento: string | null
+          deleted_at: string | null
           documentos_checklist: Json | null
           empresa_id: string | null
           etapa_id: string | null
           id: string
           motivo_perda: string | null
           moved_at: string | null
+          origem: string
           probabilidade: number | null
           prospect_id: string | null
           responsavel_id: string | null
@@ -1314,12 +1316,14 @@ export type Database = {
           created_at?: string | null
           data_conversao?: string | null
           data_prevista_fechamento?: string | null
+          deleted_at?: string | null
           documentos_checklist?: Json | null
           empresa_id?: string | null
           etapa_id?: string | null
           id?: string
           motivo_perda?: string | null
           moved_at?: string | null
+          origem?: string
           probabilidade?: number | null
           prospect_id?: string | null
           responsavel_id?: string | null
@@ -1333,12 +1337,14 @@ export type Database = {
           created_at?: string | null
           data_conversao?: string | null
           data_prevista_fechamento?: string | null
+          deleted_at?: string | null
           documentos_checklist?: Json | null
           empresa_id?: string | null
           etapa_id?: string | null
           id?: string
           motivo_perda?: string | null
           moved_at?: string | null
+          origem?: string
           probabilidade?: number | null
           prospect_id?: string | null
           responsavel_id?: string | null
