@@ -38,6 +38,9 @@ check "Toda empresa tem >=6 etapas" "0" \
   "SELECT count(*) FROM orbit_empresas e WHERE (SELECT count(*) FROM orbit_pipeline_stages s WHERE s.empresa_id=e.id) < 6;"
 check "Toda empresa tem etapa won" "0" \
   "SELECT count(*) FROM orbit_empresas e WHERE NOT EXISTS (SELECT 1 FROM orbit_pipeline_stages s WHERE s.empresa_id=e.id AND s.is_won);"
+# Aviso (não falha): empresas com pipeline customizado podem não ter is_lost — apenas reporta.
+MISSING_LOST=$(psql -tAX -c "SELECT count(*) FROM orbit_empresas e WHERE NOT EXISTS (SELECT 1 FROM orbit_pipeline_stages s WHERE s.empresa_id=e.id AND s.is_lost);" | tr -d '[:space:]')
+[ "$MISSING_LOST" = "0" ] && echo "  ✓ Toda empresa tem etapa lost" || echo "  ⚠ $MISSING_LOST empresa(s) sem etapa is_lost (pipeline customizado — não bloqueia)"
 check "Toda empresa tem etapa lost" "0" \
   "SELECT count(*) FROM orbit_empresas e WHERE NOT EXISTS (SELECT 1 FROM orbit_pipeline_stages s WHERE s.empresa_id=e.id AND s.is_lost);"
 
