@@ -7,6 +7,7 @@ import { ProspectActionCard } from "@/components/orbit/ProspectActionCard";
 import { ProspectTimeline } from "@/components/orbit/ProspectTimeline";
 import { AddToFunnelDialog } from "@/components/orbit/AddToFunnelDialog";
 import { AddNoteDialog } from "@/components/orbit/AddNoteDialog";
+import { ScheduleMeetingDialog } from "@/components/orbit/ScheduleMeetingDialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -65,6 +66,8 @@ export default function ProspectsPage() {
 
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteProspect, setNoteProspect] = useState<any>(null);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleProspect, setScheduleProspect] = useState<any>(null);
 
   const [funnelOpen, setFunnelOpen] = useState(false);
   const [funnelProspects, setFunnelProspects] = useState<any[]>([]);
@@ -342,6 +345,7 @@ export default function ProspectsPage() {
                   onAddNote={(pr) => { setNoteProspect(pr); setNoteOpen(true); }}
                   onCreateTask={(pr) => { toast.info("Funcionalidade de tarefas em breve"); }}
                   onAddToFunnel={(pr) => { setFunnelProspects([pr]); setFunnelOpen(true); }}
+                  onSchedule={(pr) => { setScheduleProspect(pr); setScheduleOpen(true); }}
                   onViewHistory={(pr) => { setTimelineProspect(pr); setTimelineOpen(true); }}
                 />
               ))}
@@ -397,6 +401,7 @@ export default function ProspectsPage() {
         <ProspectTimeline open={timelineOpen} onOpenChange={setTimelineOpen} prospect={timelineProspect} />
         <AddNoteDialog open={noteOpen} onOpenChange={setNoteOpen} prospect={noteProspect} empresaId={empresaId} userId={user?.id} />
         <AddToFunnelDialog open={funnelOpen} onOpenChange={setFunnelOpen} prospects={funnelProspects} empresaId={empresaId} />
+        <ScheduleMeetingDialog open={scheduleOpen} onOpenChange={setScheduleOpen} prospect={scheduleProspect} empresaId={empresaId} />
       </TooltipProvider>
     </OrbitLayout>
   );

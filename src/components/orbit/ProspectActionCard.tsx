@@ -2,7 +2,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   MessageCircle, Mail, StickyNote, CalendarPlus, GitBranch,
-  Phone, PhoneOff, MailX, Flame, History, CheckSquare,
+  Phone, PhoneOff, MailX, Flame, History, CheckSquare, CalendarClock,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ interface ProspectActionCardProps {
   onAddNote: (prospect: any) => void;
   onCreateTask: (prospect: any) => void;
   onAddToFunnel: (prospect: any) => void;
+  onSchedule: (prospect: any) => void;
   onViewHistory: (prospect: any) => void;
 }
 
@@ -38,7 +39,7 @@ const whatsappStatusConfig: Record<string, { label: string; className: string }>
 
 export function ProspectActionCard({
   prospect, isConverted, isSelected, onToggleSelect, onEdit,
-  onWhatsApp, onEmail, onAddNote, onCreateTask, onAddToFunnel, onViewHistory,
+  onWhatsApp, onEmail, onAddNote, onCreateTask, onAddToFunnel, onSchedule, onViewHistory,
 }: ProspectActionCardProps) {
   const status = statusConfig[prospect.status_qualificacao || ""] || statusConfig.novo;
   const isHot = (prospect.score || 0) > 70;
@@ -170,6 +171,15 @@ export function ProspectActionCard({
             </Button>
           </TooltipTrigger>
           <TooltipContent>Enviar para funil</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={(e) => { e.stopPropagation(); onSchedule(prospect); }}>
+              <CalendarClock className="w-3.5 h-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Agendar reunião</TooltipContent>
         </Tooltip>
 
         <div className="ml-auto">
