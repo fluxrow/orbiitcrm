@@ -1,0 +1,281 @@
+import { useState } from "react";
+import { OrbitLayout } from "@/components/orbit/OrbitLayout";
+import { PageHeader } from "@/components/orbit/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Progress } from "@/components/ui/progress";
+import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList } from "lucide-react";
+import { toast } from "sonner";
+import {
+  useClientOnboardings,
+  useCreateOnboarding,
+  useArchiveOnboarding,
+  useUpdateChecklist,
+  ClientOnboarding,
+} from "@/hooks/useOrbitOnboarding";
+import { ONBOARDING_SECTIONS, calculateProgress, DEFAULT_CHECKLIST } from "@/lib/onboarding-sections";
+
+const STATUS_LABEL: Record<string, { label: string; variant: any }> = {
+  rascunho: { label: "Rascunho", variant: "secondary" },
+  enviado: { label: "Enviado", variant: "default" },
+  em_andamento: { label: "Em andamento", variant: "default" },
+  concluido: { label: "Concluído", variant: "default" },
+  revisado: { label: "Revisado", variant: "default" },
+  arquivado: { label: "Arquivado", variant: "outline" },
+};
+
+export default function OnboardingPage() {
+  const { data: list, isLoading } = useClientOnboardings();
+  const [newOpen, setNewOpen] = useState(false);
+  const [detailOf, setDetailOf] = useState<ClientOnboarding | null>(null);
+
+  const active = (list ?? []).filter((o) => !o.archived);
+
+  return (
+    <OrbitLayout>
+      <PageHeader
+        title="Onboarding de clientes"
+        description="Envie um link para o cliente preencher antes da call de kick-off."
+        action={
+          <Button onClick={() => setNewOpen(true)} className="gap-2">
+            <Plus className="w-4 h-4" /> Novo onboarding
+          </Button>
+        }
+      />
+
+      {isLoading ? (
+        <p className="text-muted-foreground">Carregando…</p>
+      ) : active.length === 0 ? (
+        <Card className="glass-card p-12 text-center">
+          <ClipboardList className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+          <h3 className="font-semibold text-lg mb-1">Nenhum onboarding ainda</h3>
+          <p className="text-muted-foreground mb-4">
+            Crie um onboarding para enviar ao cliente antes da implantação.
+          </p>
+          <Button onClick={() => setNewOpen(true)} className="gap-2">
+            <Plus className="w-4 h-4" /> Criar primeiro onboarding
+          </Button>
+        </Card>
+      ) : (
+        <div className="grid gap-3">
+          {active.map((o) => (
+            <OnboardingRow key={o.id} onboarding={o} onOpen={() => setDetailOf(o)} />
+          ))}
+        </div>
+      )}
+
+      <NewOnboardingDialog open={newOpen} onOpenChange={setNewOpen} />
+      <OnboardingDetailSheet
+        onboarding={detailOf}
+        onClose={() => setDetailOf(null)}
+      />
+    </OrbitLayout>
+  );
+}
+
+function OnboardingRow({ onboarding, onOpen }: { onboarding: ClientOnboarding; onOpen: () => void }) {
+  const archive = useArchiveOnboarding();
+  const progress = calculateProgress(onboarding.responses);
+  const link = `${window.location.origin}/onboarding-cliente/${onboarding.public_token}`;
+  const st = STATUS_LABEL[onboarding.status] || STATUS_LABEL.rascunho;
+
+  return (
+    <Card className="glass-card p-4 flex items-center gap-4">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <h4 className="font-semibold truncate">{onboarding.cliente_nome || "Sem nome"}</h4>
+          <Badge variant={st.variant}>{st.label}</Badge>
+        </div>
+        <p className="text-sm text-muted-foreground truncate">
+          {onboarding.cliente_email} · {onboarding.cliente_empresa || "—"}
+        </p>
+        <div className="flex items-center gap-3 mt-2">
+          <Progress value={progress} className="h-1.5 flex-1 max-w-[200px]" />
+          <span className="text-xs text-muted-foreground">{progress}% preenchido</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <Button
+          variant="outline" size="sm" className="gap-1.5"
+          onClick={() => {
+            navigator.clipboard.writeText(link);
+            toast.success("Link copiado");
+          }}
+        >
+          <Copy className="w-3.5 h-3.5" /> Copiar link
+        </Button>
+        <Button variant="outline" size="sm" className="gap-1.5" onClick={onOpen}>
+          <Eye className="w-3.5 h-3.5" /> Ver
+        </Button>
+        <Button
+          variant="ghost" size="icon"
+          onClick={() => archive.mutate(onboarding.id, { onSuccess: () => toast.success("Arquivado") })}
+        >
+          <Archive className="w-4 h-4" />
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function NewOnboardingDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const [nome, setNome] = useState("");
+  const [email, setEmail] = useState("");
+  const [empresa, setEmpresa] = useState("");
+  const [notes, setNotes] = useState("");
+  const create = useCreateOnboarding();
+
+  const submit = () => {
+    if (!nome || !email) {
+      toast.error("Nome e email são obrigatórios");
+      return;
+    }
+    create.mutate(
+      { cliente_nome: nome, cliente_email: email, cliente_empresa: empresa, notes },
+      {
+        onSuccess: (res) => {
+          toast.success(res.email_sent ? "Onboarding criado e email enviado" : "Onboarding criado (email falhou — copie o link)");
+          navigator.clipboard.writeText(res.public_link).catch(() => null);
+          setNome(""); setEmail(""); setEmpresa(""); setNotes("");
+          onOpenChange(false);
+        },
+        onError: (e: any) => toast.error(e?.message || "Erro ao criar"),
+      }
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Novo onboarding</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label>Nome do contato *</Label>
+            <Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Maria Souza" />
+          </div>
+          <div>
+            <Label>Email *</Label>
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="cliente@empresa.com" />
+          </div>
+          <div>
+            <Label>Empresa do cliente</Label>
+            <Input value={empresa} onChange={(e) => setEmpresa(e.target.value)} placeholder="Nome fantasia" />
+          </div>
+          <div>
+            <Label>Observações internas</Label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button onClick={submit} disabled={create.isPending} className="gap-2">
+            <Mail className="w-4 h-4" />
+            {create.isPending ? "Enviando…" : "Criar e enviar email"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function OnboardingDetailSheet({
+  onboarding, onClose,
+}: { onboarding: ClientOnboarding | null; onClose: () => void }) {
+  const updateChecklist = useUpdateChecklist();
+
+  if (!onboarding) return null;
+  const checklist =
+    onboarding.implementation_checklist?.length > 0
+      ? onboarding.implementation_checklist
+      : DEFAULT_CHECKLIST;
+
+  const toggle = (idx: number) => {
+    const next = checklist.map((c: any, i: number) => (i === idx ? { ...c, done: !c.done } : c));
+    updateChecklist.mutate({ id: onboarding.id, checklist: next });
+  };
+
+  const link = `${window.location.origin}/onboarding-cliente/${onboarding.public_token}`;
+
+  return (
+    <Sheet open onOpenChange={(o) => !o && onClose()}>
+      <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>{onboarding.cliente_nome}</SheetTitle>
+          <p className="text-sm text-muted-foreground">{onboarding.cliente_email}</p>
+        </SheetHeader>
+
+        <div className="mt-6 space-y-6">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" asChild>
+              <a href={link} target="_blank" rel="noreferrer">
+                <ExternalLink className="w-3.5 h-3.5" /> Abrir wizard do cliente
+              </a>
+            </Button>
+            <Button
+              variant="outline" size="sm" className="gap-1.5"
+              onClick={() => { navigator.clipboard.writeText(link); toast.success("Link copiado"); }}
+            >
+              <Copy className="w-3.5 h-3.5" /> Copiar link
+            </Button>
+          </div>
+
+          <section>
+            <h3 className="font-semibold mb-3 flex items-center gap-2">
+              <ClipboardList className="w-4 h-4" /> Checklist de implementação
+            </h3>
+            <div className="space-y-2">
+              {checklist.map((item: any, idx: number) => (
+                <label key={item.key} className="flex items-center gap-3 p-2 rounded hover:bg-muted/40 cursor-pointer">
+                  <Checkbox checked={!!item.done} onCheckedChange={() => toggle(idx)} />
+                  <span className={item.done ? "line-through text-muted-foreground" : ""}>{item.label}</span>
+                </label>
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <h3 className="font-semibold mb-3">Respostas do cliente</h3>
+            {Object.keys(onboarding.responses ?? {}).length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Ainda sem respostas. {onboarding.status === "enviado" ? "Aguardando o cliente preencher." : ""}
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {ONBOARDING_SECTIONS.map((sec) => {
+                  const vals = onboarding.responses?.[sec.key];
+                  if (!vals || Object.keys(vals).length === 0) return null;
+                  return (
+                    <div key={sec.key} className="border rounded-lg p-3">
+                      <h4 className="font-medium text-sm mb-2">{sec.title}</h4>
+                      <dl className="space-y-1.5 text-sm">
+                        {sec.fields.map((f) => {
+                          const v = vals[f.key];
+                          if (!v) return null;
+                          return (
+                            <div key={f.key} className="grid grid-cols-[140px_1fr] gap-2">
+                              <dt className="text-muted-foreground">{f.label}</dt>
+                              <dd className="whitespace-pre-wrap">{String(v)}</dd>
+                            </div>
+                          );
+                        })}
+                      </dl>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
