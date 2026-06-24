@@ -5,7 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
+import { Mail } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { useUpdateSaasEmpresa, useSaasPlans, type SaasEmpresa } from "@/hooks/useSaasPlans";
 
 interface SaasManageDialogProps {
@@ -30,6 +33,11 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
   const [planId, setPlanId] = useState(empresa?.plan_id || "");
   const [trialEndsAt, setTrialEndsAt] = useState(empresa?.trial_ends_at?.slice(0, 10) || "");
 
+  // Invite form
+  const [inviteName, setInviteName] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviting, setInviting] = useState(false);
+
   // Reset state when empresa changes
   const currentEmpresaId = empresa?.empresa_id;
   const [lastId, setLastId] = useState(currentEmpresaId);
@@ -38,6 +46,8 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
     setStatus(empresa?.status || "invited");
     setPlanId(empresa?.plan_id || "");
     setTrialEndsAt(empresa?.trial_ends_at?.slice(0, 10) || "");
+    setInviteName(empresa?.responsible_name || "");
+    setInviteEmail(empresa?.responsible_email || "");
   }
 
   if (!empresa) return null;
@@ -58,11 +68,37 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
     }
   };
 
+  const handleInvite = async () => {
+    if (!inviteName.trim() || !inviteEmail.trim()) {
+      toast.error("Preencha nome e email");
+      return;
+    }
+    setInviting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("create-empresa-invite", {
+        body: {
+          empresa_id: empresa.empresa_id,
+          responsible_name: inviteName.trim(),
+          responsible_email: inviteEmail.trim().toLowerCase(),
+        },
+      });
+      if (error) throw error;
+      if (data && data.ok === false) throw new Error(data.error?.message || "Falha ao convidar");
+      toast.success(`Convite enviado para ${inviteEmail.trim()}`);
+      setInviteName("");
+      setInviteEmail("");
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao enviar convite");
+    } finally {
+      setInviting(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Gerenciar Assinatura</DialogTitle>
+          <DialogTitle>Gerenciar {empresa.empresa_nome || "Empresa"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -98,13 +134,31 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
             </Select>
           </div>
 
-
-
-
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
             <Button onClick={handleSave} disabled={updateSaas.isPending}>
               {updateSaas.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-3">
+            <div>
+              <div className="text-sm font-medium">Convidar usuário</div>
+              <div className="text-xs text-muted-foreground">Envia email com link para criar conta nesta empresa.</div>
+            </div>
+            <div className="space-y-2">
+              <Label>Nome</Label>
+              <Input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Nome completo" />
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="email@empresa.com" />
+            </div>
+            <Button onClick={handleInvite} disabled={inviting} className="w-full" variant="secondary">
+              <Mail className="w-4 h-4 mr-2" />
+              {inviting ? "Enviando..." : "Enviar convite"}
             </Button>
           </div>
         </div>
