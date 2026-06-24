@@ -401,6 +401,7 @@ export default function ProspectsPage() {
         <ProspectTimeline open={timelineOpen} onOpenChange={setTimelineOpen} prospect={timelineProspect} />
         <AddNoteDialog open={noteOpen} onOpenChange={setNoteOpen} prospect={noteProspect} empresaId={empresaId} userId={user?.id} />
         <AddToFunnelDialog open={funnelOpen} onOpenChange={setFunnelOpen} prospects={funnelProspects} empresaId={empresaId} />
+        <ScheduleMeetingDialog open={scheduleOpen} onOpenChange={setScheduleOpen} prospect={scheduleProspect} empresaId={empresaId} />
       </TooltipProvider>
     </OrbitLayout>
   );
