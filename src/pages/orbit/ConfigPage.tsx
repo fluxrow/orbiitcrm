@@ -1424,7 +1424,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     {isApiKeyConfigured && (
                       <div className="flex items-center gap-2 text-sm text-green-600">
                         <CheckCircle2 className="h-4 w-4" />
-                        <span>API Key configurada: {getMaskedApiKey(resendConfig?.api_key || "")}</span>
+                        <span>API Key configurada (oculta por segurança)</span>
                       </div>
                     )}
                     {!isApiKeyConfigured && (
