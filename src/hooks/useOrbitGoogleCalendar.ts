@@ -109,11 +109,14 @@ export function useCalendarEventsRange(
   startISO: string,
   endISO: string,
   enabled: boolean,
+  refetchIntervalMs?: number | false,
 ) {
   return useQuery({
     queryKey: ["google-calendar-range", empresaId, startISO, endISO],
     enabled: !!empresaId && enabled && !!startISO && !!endISO,
     staleTime: 60_000,
+    refetchInterval: refetchIntervalMs && refetchIntervalMs > 0 ? refetchIntervalMs : false,
+    refetchIntervalInBackground: true,
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("orbit-google-calendar", {
         body: {
@@ -130,3 +133,4 @@ export function useCalendarEventsRange(
     },
   });
 }
+

@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Kanban, List, Calendar as CalendarIcon, CalendarClock, Link2 } from "lucide-react";
+import { Plus, Search, Kanban, List, Calendar as CalendarIcon, CalendarClock, Link2, RefreshCw } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+
 import { useOrbitTasks, useCompleteOrbitTask, useUpdateOrbitTask } from "@/hooks/useOrbitTasks";
 import { OrbitTaskKanban } from "@/components/orbit/OrbitTaskKanban";
 import { OrbitTaskCard } from "@/components/orbit/OrbitTaskCard";
@@ -20,6 +22,7 @@ import { useGoogleCalendarStatus, useCalendarEventsRange } from "@/hooks/useOrbi
 export default function TarefasPage() {
   const { basePath, empresaId } = useTenant();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [prioridadeFilter, setPrioridadeFilter] = useState("all");
@@ -27,6 +30,16 @@ export default function TarefasPage() {
   const [editingTask, setEditingTask] = useState<any>(null);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [eventDialogOpen, setEventDialogOpen] = useState(false);
+  const [syncIntervalMin, setSyncIntervalMin] = useState<number>(() => {
+    const v = Number(localStorage.getItem("orbit:calendar:syncIntervalMin"));
+    return Number.isFinite(v) && v >= 0 ? v : 15;
+  });
+  const handleSyncIntervalChange = (v: string) => {
+    const n = Number(v);
+    setSyncIntervalMin(n);
+    localStorage.setItem("orbit:calendar:syncIntervalMin", String(n));
+  };
+
 
   const { data: tasks, isLoading } = useOrbitTasks({
     search: search || undefined,
@@ -41,12 +54,19 @@ export default function TarefasPage() {
   const googleConnected = !!gStatus?.connected;
   const rangeStart = startOfMonth(calendarMonth).toISOString();
   const rangeEnd = endOfMonth(calendarMonth).toISOString();
-  const { data: gEvents, isFetching: gFetching } = useCalendarEventsRange(
+  const { data: gEvents, isFetching: gFetching, dataUpdatedAt: gUpdatedAt } = useCalendarEventsRange(
     empresaId,
     rangeStart,
     rangeEnd,
     googleConnected,
+    syncIntervalMin > 0 ? syncIntervalMin * 60_000 : false,
   );
+
+  const handleManualSync = () => {
+    queryClient.invalidateQueries({ queryKey: ["google-calendar-range"] });
+    queryClient.invalidateQueries({ queryKey: ["google-calendar-upcoming"] });
+  };
+
 
   const handleComplete = (task: any) => {
     completeTask.mutate({ id: task.id, prospect_id: task.prospect_id, empresa_id: task.empresa_id });
@@ -183,6 +203,29 @@ export default function TarefasPage() {
               </Button>
             </div>
           )}
+          {googleConnected && (
+            <div className="mb-3 flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
+              <span>Sincronização automática:</span>
+              <Select value={String(syncIntervalMin)} onValueChange={handleSyncIntervalChange}>
+                <SelectTrigger className="h-8 w-[150px] text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Desativada</SelectItem>
+                  <SelectItem value="5">A cada 5 min</SelectItem>
+                  <SelectItem value="15">A cada 15 min</SelectItem>
+                  <SelectItem value="30">A cada 30 min</SelectItem>
+                  <SelectItem value="60">A cada 1 hora</SelectItem>
+                </SelectContent>
+              </Select>
+              {gUpdatedAt > 0 && (
+                <span className="hidden sm:inline">
+                  Atualizado {format(new Date(gUpdatedAt), "HH:mm:ss")}
+                </span>
+              )}
+              <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={handleManualSync} disabled={gFetching}>
+                <RefreshCw className={`w-3.5 h-3.5 ${gFetching ? "animate-spin" : ""}`} /> Sincronizar
+              </Button>
+            </div>
+          )}
           <UnifiedCalendar
             tasks={(tasks || []) as any}
             googleEvents={gEvents || []}
@@ -192,6 +235,7 @@ export default function TarefasPage() {
             onMonthChange={setCalendarMonth}
             onTaskClick={handleEdit}
           />
+
         </TabsContent>
       </Tabs>
 
