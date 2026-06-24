@@ -245,7 +245,7 @@ export function useUpdateResendConfig() {
           .from("orbit_resend_config")
           .update(updates as any)
           .eq("id", existing.id)
-          .select()
+          .select(RESEND_SAFE_COLS)
           .single();
         if (error) throw error;
         return data;
@@ -253,7 +253,7 @@ export function useUpdateResendConfig() {
         const { data, error } = await supabase
           .from("orbit_resend_config")
           .insert({ ...updates, empresa_id: empresaId } as any)
-          .select()
+          .select(RESEND_SAFE_COLS)
           .single();
         if (error) throw error;
         return data;
