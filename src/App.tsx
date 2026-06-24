@@ -18,6 +18,8 @@ import DocumentacaoPage from "./pages/DocumentacaoPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import SelectEmpresaPage from "./pages/SelectEmpresaPage";
 import ApresentacaoOrbit2026 from "./pages/ApresentacaoOrbit2026";
+import PrivacyPage from "./pages/PrivacyPage";
+import TermsPage from "./pages/TermsPage";
 import PublicLayout from "./layouts/PublicLayout";
 
 // Tenant Layout
