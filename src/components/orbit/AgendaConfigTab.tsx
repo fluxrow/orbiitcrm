@@ -12,7 +12,6 @@ import {
   useConnectGoogleCalendar,
   useDisconnectGoogleCalendar,
   useUpdateGoogleCalendarConfig,
-  useUpcomingCalendarEvents,
 } from "@/hooks/useOrbitGoogleCalendar";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
