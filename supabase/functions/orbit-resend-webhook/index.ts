@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Webhook } from "https://esm.sh/svix@1.24.0";
 import { getCorsHeaders } from "../_shared/cors.ts";
 
 const ALLOW_HEADERS =
@@ -17,8 +18,36 @@ serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const body = await req.json();
-    const eventType = body.type; // e.g. "email.delivered", "email.bounced"
+    // ── Verify Svix signature ──
+    const signingSecret = Deno.env.get("RESEND_WEBHOOK_SECRET");
+    if (!signingSecret) {
+      console.error("[orbit-resend-webhook] RESEND_WEBHOOK_SECRET not configured");
+      return new Response(JSON.stringify({ ok: false, error: "Server not configured" }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const rawBody = await req.text();
+    const headers: Record<string, string> = {
+      "svix-id": req.headers.get("svix-id") || "",
+      "svix-timestamp": req.headers.get("svix-timestamp") || "",
+      "svix-signature": req.headers.get("svix-signature") || "",
+    };
+
+    let body: any;
+    try {
+      const wh = new Webhook(signingSecret);
+      body = wh.verify(rawBody, headers);
+    } catch (verifyErr) {
+      console.error("[orbit-resend-webhook] Signature verification failed:", verifyErr);
+      return new Response(JSON.stringify({ ok: false, error: "Invalid signature" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const eventType = body.type;
     const data = body.data;
 
     if (!eventType || !data) {
