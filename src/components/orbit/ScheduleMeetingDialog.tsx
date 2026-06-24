@@ -54,9 +54,9 @@ export function ScheduleMeetingDialog({ open, onOpenChange, prospect, empresaId 
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    if (!open || !prospect) return;
-    setSummary(`Reunião — ${prospect.nome_razao ?? "Prospect"}`);
-    setDescription(prospect.nome_fantasia ? `Empresa: ${prospect.nome_fantasia}` : "");
+    if (!open) return;
+    setSummary(prospect?.nome_razao ? `Reunião — ${prospect.nome_razao}` : "Nova reunião");
+    setDescription(prospect?.nome_fantasia ? `Empresa: ${prospect.nome_fantasia}` : "");
     setLocation("");
     setAvail({ kind: "idle" });
   }, [open, prospect]);
