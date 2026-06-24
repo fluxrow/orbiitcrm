@@ -25,7 +25,7 @@ serve(async (req) => {
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return fail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401);
+      return fail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401, undefined, req);
     }
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
@@ -34,13 +34,13 @@ serve(async (req) => {
       authHeader.replace("Bearer ", ""),
     );
     if (claimsErr || !claimsRes?.claims) {
-      return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401);
+      return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401, undefined, req);
     }
     const userId = claimsRes.claims.sub as string;
 
     const body: Body = await req.json();
     if (!body.empresa_id || !body.cliente_nome || !body.cliente_email) {
-      return fail(ErrorCodes.VALIDATION_ERROR, "empresa_id, cliente_nome e cliente_email são obrigatórios");
+      return fail(ErrorCodes.VALIDATION_ERROR, "empresa_id, cliente_nome e cliente_email são obrigatórios", 400, undefined, req);
     }
 
     // Verify membership
@@ -51,7 +51,7 @@ serve(async (req) => {
       const { data: profile } = await supabase
         .from("profiles").select("empresa_id").eq("id", userId).maybeSingle();
       if (profile?.empresa_id !== body.empresa_id) {
-        return fail(ErrorCodes.FORBIDDEN, "Usuário não pertence à empresa", 403);
+        return fail(ErrorCodes.FORBIDDEN, "Usuário não pertence à empresa", 403, undefined, req);
       }
     }
 
@@ -76,7 +76,7 @@ serve(async (req) => {
       .single();
 
     if (insErr || !inserted) {
-      return fail(ErrorCodes.INTERNAL_ERROR, insErr?.message || "Falha ao criar onboarding", 500);
+      return fail(ErrorCodes.INTERNAL_ERROR, insErr?.message || "Falha ao criar onboarding", 500, undefined, req);
     }
 
     const publicLink = `${APP_BASE_URL}/onboarding-cliente/${inserted.public_token}`;
@@ -142,9 +142,9 @@ serve(async (req) => {
       public_token: inserted.public_token,
       public_link: publicLink,
       email_sent: emailSent,
-    });
+    }, undefined, req);
   } catch (e) {
-    return fail(ErrorCodes.INTERNAL_ERROR, (e as Error).message, 500);
+    return fail(ErrorCodes.INTERNAL_ERROR, (e as Error).message, 500, undefined, req);
   }
 });
 
