@@ -147,6 +147,21 @@ const handler = async (req: Request): Promise<Response> => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // ── JWT auth ──
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return fail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401, undefined, req);
+    }
+    const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsRes, error: claimsErr } = await userClient.auth.getClaims(token);
+    if (claimsErr || !claimsRes?.claims) {
+      return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401, undefined, req);
+    }
+    const callerUserId = claimsRes.claims.sub as string;
+
     const { campaign_id }: CampaignRequest = await req.json();
 
     if (!campaign_id) {
@@ -161,6 +176,25 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (campaignError || !campaign) {
       return fail(ErrorCodes.NOT_FOUND, "Campanha não encontrada", 404, undefined, req);
+    }
+
+    // ── Authorize: caller must belong to campaign.empresa_id (or be super_admin) ──
+    if (campaign.empresa_id) {
+      const { data: roleRows } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", callerUserId);
+      const isSuperAdmin = (roleRows ?? []).some((r: any) => r.role === "super_admin");
+      if (!isSuperAdmin) {
+        const { data: callerProfile } = await supabase
+          .from("profiles")
+          .select("empresa_id")
+          .eq("id", callerUserId)
+          .maybeSingle();
+        if (callerProfile?.empresa_id !== campaign.empresa_id) {
+          return fail(ErrorCodes.UNAUTHORIZED, "Usuário não pertence à empresa da campanha", 403, undefined, req);
+        }
+      }
     }
 
     if (campaign.aprovacao_status !== "aprovada") {
