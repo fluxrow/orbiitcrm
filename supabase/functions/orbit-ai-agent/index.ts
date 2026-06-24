@@ -885,6 +885,28 @@ Mapeamento de campos para dados_extraidos:
           })
           .eq("id", prospect_id);
       }
+
+      // ── Registrar lead no funil (idempotente) ──
+      try {
+        const { data: dealId, error: dealErr } = await supabase.rpc(
+          "ensure_deal_for_prospect",
+          { _prospect_id: prospect_id },
+        );
+        if (dealErr) {
+          console.error("[orbit-ai-agent] ensure_deal_for_prospect erro:", dealErr);
+        } else if (dealId) {
+          console.log("[orbit-ai-agent] Deal garantido no funil:", dealId);
+          await supabase.from("prospect_events").insert({
+            empresa_id: empresaId,
+            prospect_id,
+            event_type: "deal_created_by_ai",
+            titulo: "Lead movido para o funil pela IA",
+            descricao: "Oportunidade criada automaticamente após qualificação",
+          });
+        }
+      } catch (e) {
+        console.error("[orbit-ai-agent] Falha ao registrar deal no funil:", e);
+      }
     }
 
 
