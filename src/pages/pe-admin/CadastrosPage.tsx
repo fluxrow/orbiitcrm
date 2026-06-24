@@ -35,7 +35,11 @@ export default function CadastrosPage() {
 
   const filteredSaas = (saasEmpresas ?? []).filter((s: any) => {
     const q = searchSaas.toLowerCase();
-    return !q || (s.responsible_name ?? "").toLowerCase().includes(q) || (s.responsible_email ?? "").toLowerCase().includes(q);
+    return !q
+      || (s.empresa_nome ?? "").toLowerCase().includes(q)
+      || (s.empresa_slug ?? "").toLowerCase().includes(q)
+      || (s.responsible_name ?? "").toLowerCase().includes(q)
+      || (s.responsible_email ?? "").toLowerCase().includes(q);
   });
 
   return (
@@ -45,7 +49,7 @@ export default function CadastrosPage() {
       <Card className="p-4">
         <div className="relative mb-4 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Buscar por responsável ou email..." className="pl-9" value={searchSaas} onChange={(e) => setSearchSaas(e.target.value)} />
+          <Input placeholder="Buscar por empresa, slug, responsável ou email..." className="pl-9" value={searchSaas} onChange={(e) => setSearchSaas(e.target.value)} />
         </div>
         {loadingSaas ? (
           <div className="flex justify-center py-8">
@@ -55,10 +59,11 @@ export default function CadastrosPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Empresa</TableHead>
                 <TableHead>Responsável</TableHead>
-                <TableHead>Email</TableHead>
                 <TableHead>Plano</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Usuários</TableHead>
                 <TableHead>Convidado em</TableHead>
                 <TableHead>Ativado em</TableHead>
                 <TableHead>Ações</TableHead>
@@ -67,15 +72,24 @@ export default function CadastrosPage() {
             <TableBody>
               {filteredSaas.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">Nenhum cadastro encontrado</TableCell>
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">Nenhum cadastro encontrado</TableCell>
                 </TableRow>
               ) : (
                 filteredSaas.map((s: any) => (
                   <TableRow key={s.empresa_id}>
-                    <TableCell className="font-medium">{s.responsible_name || "—"}</TableCell>
-                    <TableCell>{s.responsible_email || "—"}</TableCell>
+                    <TableCell>
+                      <div className="font-medium">{s.empresa_nome || "—"}</div>
+                      <div className="text-xs text-muted-foreground">{s.empresa_slug ? `/${s.empresa_slug}` : "sem slug"}</div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-medium">{s.responsible_name || "—"}</div>
+                      <div className="text-xs text-muted-foreground">{s.responsible_email || "—"}</div>
+                    </TableCell>
                     <TableCell><Badge variant="outline">{s.saas_plans?.name || "—"}</Badge></TableCell>
                     <TableCell>{statusBadgeSaas(s.status)}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{s.member_count ?? 0}</Badge>
+                    </TableCell>
                     <TableCell className="text-muted-foreground text-xs">{fmt(s.invited_at)}</TableCell>
                     <TableCell className="text-muted-foreground text-xs">{fmt(s.activated_at)}</TableCell>
                     <TableCell>
