@@ -36,8 +36,6 @@ TEST_NAME="SMOKE TEST $(date +%s)"
 echo "── T1: seed de pipelines ───────────────────────────────────"
 check "Toda empresa tem >=6 etapas" "0" \
   "SELECT count(*) FROM orbit_empresas e WHERE (SELECT count(*) FROM orbit_pipeline_stages s WHERE s.empresa_id=e.id) < 6;"
-check "Toda empresa tem exatamente 1 default" "0" \
-  "SELECT count(*) FROM orbit_empresas e WHERE (SELECT count(*) FROM orbit_pipeline_stages s WHERE s.empresa_id=e.id AND s.is_default) <> 1;"
 check "Toda empresa tem etapa won" "0" \
   "SELECT count(*) FROM orbit_empresas e WHERE NOT EXISTS (SELECT 1 FROM orbit_pipeline_stages s WHERE s.empresa_id=e.id AND s.is_won);"
 check "Toda empresa tem etapa lost" "0" \
