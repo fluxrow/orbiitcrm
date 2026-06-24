@@ -21,6 +21,7 @@ import { Bot, MessageSquare, Mail, Save, Loader2, Copy, Lock, Eye, EyeOff, Check
 import { AudioLibraryManager } from "@/components/orbit/AudioLibraryManager";
 import { ChatbotFlowManager } from "@/components/orbit/ChatbotFlowManager";
 import { PipelineConfigTab } from "@/components/orbit/PipelineConfigTab";
+import { FluxosTab } from "@/components/orbit/FluxosTab";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useOrbitAIConfig, useUpdateAIConfig, useOrbitZAPIConfig, useUpdateZAPIConfig, useOrbitResendConfig, useUpdateResendConfig, useTestResendConnection, useWhatsAppSendingConfig, useUpdateWhatsAppSendingConfig, useWhatsAppDailyUsage } from "@/hooks/useOrbitConfig";
@@ -1798,6 +1799,9 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
         </TabsContent>
         <TabsContent value="pipeline">
           <PipelineConfigTab />
+        </TabsContent>
+        <TabsContent value="fluxos">
+          <FluxosTab empresaId={empresaId} />
         </TabsContent>
         <TabsContent value="agenda">
           {empresaId ? <AgendaConfigTab empresaId={empresaId} /> : <div className="text-sm text-muted-foreground">Selecione uma empresa para configurar a agenda.</div>}

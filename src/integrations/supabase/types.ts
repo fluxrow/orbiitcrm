@@ -1740,6 +1740,307 @@ export type Database = {
           },
         ]
       }
+      orbit_flow_actions: {
+        Row: {
+          action_config: Json
+          action_type: Database["public"]["Enums"]["orbit_flow_action_type"]
+          created_at: string
+          delay_seconds: number
+          flow_id: string
+          id: string
+          ordem: number
+          updated_at: string
+        }
+        Insert: {
+          action_config?: Json
+          action_type: Database["public"]["Enums"]["orbit_flow_action_type"]
+          created_at?: string
+          delay_seconds?: number
+          flow_id: string
+          id?: string
+          ordem?: number
+          updated_at?: string
+        }
+        Update: {
+          action_config?: Json
+          action_type?: Database["public"]["Enums"]["orbit_flow_action_type"]
+          created_at?: string
+          delay_seconds?: number
+          flow_id?: string
+          id?: string
+          ordem?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_flow_actions_flow_id_fkey"
+            columns: ["flow_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_flows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_flow_events: {
+        Row: {
+          created_at: string
+          dedupe_key: string | null
+          empresa_id: string
+          entity_id: string | null
+          entity_type: string
+          event_type: Database["public"]["Enums"]["orbit_flow_trigger_type"]
+          id: string
+          payload: Json
+          processed: boolean
+          processed_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          dedupe_key?: string | null
+          empresa_id: string
+          entity_id?: string | null
+          entity_type: string
+          event_type: Database["public"]["Enums"]["orbit_flow_trigger_type"]
+          id?: string
+          payload?: Json
+          processed?: boolean
+          processed_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          dedupe_key?: string | null
+          empresa_id?: string
+          entity_id?: string | null
+          entity_type?: string
+          event_type?: Database["public"]["Enums"]["orbit_flow_trigger_type"]
+          id?: string
+          payload?: Json
+          processed?: boolean
+          processed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_flow_events_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_flow_run_steps: {
+        Row: {
+          action_id: string | null
+          created_at: string
+          error: string | null
+          finished_at: string | null
+          id: string
+          ordem: number
+          output: Json | null
+          run_id: string
+          started_at: string | null
+          status: Database["public"]["Enums"]["orbit_flow_run_status"]
+        }
+        Insert: {
+          action_id?: string | null
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          ordem?: number
+          output?: Json | null
+          run_id: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["orbit_flow_run_status"]
+        }
+        Update: {
+          action_id?: string | null
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          ordem?: number
+          output?: Json | null
+          run_id?: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["orbit_flow_run_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_flow_run_steps_action_id_fkey"
+            columns: ["action_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_flow_actions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_flow_run_steps_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_flow_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_flow_runs: {
+        Row: {
+          context: Json
+          created_at: string
+          empresa_id: string
+          entity_id: string | null
+          entity_type: string | null
+          error: string | null
+          event_id: string | null
+          finished_at: string | null
+          flow_id: string
+          id: string
+          started_at: string | null
+          status: Database["public"]["Enums"]["orbit_flow_run_status"]
+          updated_at: string
+        }
+        Insert: {
+          context?: Json
+          created_at?: string
+          empresa_id: string
+          entity_id?: string | null
+          entity_type?: string | null
+          error?: string | null
+          event_id?: string | null
+          finished_at?: string | null
+          flow_id: string
+          id?: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["orbit_flow_run_status"]
+          updated_at?: string
+        }
+        Update: {
+          context?: Json
+          created_at?: string
+          empresa_id?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          error?: string | null
+          event_id?: string | null
+          finished_at?: string | null
+          flow_id?: string
+          id?: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["orbit_flow_run_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_flow_runs_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_flow_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_flow_runs_flow_id_fkey"
+            columns: ["flow_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_flows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_flow_templates: {
+        Row: {
+          categoria: string | null
+          created_at: string
+          definicao: Json
+          descricao: string | null
+          id: string
+          is_global: boolean
+          nome: string
+          updated_at: string
+        }
+        Insert: {
+          categoria?: string | null
+          created_at?: string
+          definicao?: Json
+          descricao?: string | null
+          id?: string
+          is_global?: boolean
+          nome: string
+          updated_at?: string
+        }
+        Update: {
+          categoria?: string | null
+          created_at?: string
+          definicao?: Json
+          descricao?: string | null
+          id?: string
+          is_global?: boolean
+          nome?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      orbit_flows: {
+        Row: {
+          ativo: boolean
+          condicoes: Json
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          descricao: string | null
+          empresa_id: string
+          id: string
+          nome: string
+          template_id: string | null
+          trigger_config: Json
+          trigger_type: Database["public"]["Enums"]["orbit_flow_trigger_type"]
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          condicoes?: Json
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          descricao?: string | null
+          empresa_id: string
+          id?: string
+          nome: string
+          template_id?: string | null
+          trigger_config?: Json
+          trigger_type: Database["public"]["Enums"]["orbit_flow_trigger_type"]
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          condicoes?: Json
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          descricao?: string | null
+          empresa_id?: string
+          id?: string
+          nome?: string
+          template_id?: string | null
+          trigger_config?: Json
+          trigger_type?: Database["public"]["Enums"]["orbit_flow_trigger_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_flows_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_flows_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_flow_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_google_oauth_states: {
         Row: {
           created_at: string
@@ -4211,9 +4512,30 @@ export type Database = {
         }
         Returns: Json
       }
+      user_has_empresa_access: {
+        Args: { _empresa_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "super_admin" | "admin" | "vendedor" | "visualizador"
+      orbit_flow_action_type:
+        | "send_whatsapp_template"
+        | "move_deal_stage"
+        | "create_task"
+        | "toggle_ai_agent"
+        | "notify_vendedor"
+      orbit_flow_run_status:
+        | "pending"
+        | "running"
+        | "success"
+        | "error"
+        | "skipped"
+      orbit_flow_trigger_type:
+        | "prospect_qualified"
+        | "deal_stage_changed"
+        | "deal_idle"
+        | "conversa_no_reply"
       orbit_onboarding_status:
         | "rascunho"
         | "enviado"
@@ -4349,6 +4671,26 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["super_admin", "admin", "vendedor", "visualizador"],
+      orbit_flow_action_type: [
+        "send_whatsapp_template",
+        "move_deal_stage",
+        "create_task",
+        "toggle_ai_agent",
+        "notify_vendedor",
+      ],
+      orbit_flow_run_status: [
+        "pending",
+        "running",
+        "success",
+        "error",
+        "skipped",
+      ],
+      orbit_flow_trigger_type: [
+        "prospect_qualified",
+        "deal_stage_changed",
+        "deal_idle",
+        "conversa_no_reply",
+      ],
       orbit_onboarding_status: [
         "rascunho",
         "enviado",
