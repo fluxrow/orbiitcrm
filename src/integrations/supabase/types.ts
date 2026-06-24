@@ -3448,9 +3448,11 @@ export type Database = {
           invited_at: string | null
           last_invoice_status: string | null
           last_payment_error: string | null
+          monthly_price_cents_override: number | null
           plan_id: string
           responsible_email: string | null
           responsible_name: string | null
+          setup_fee_cents_override: number | null
           status: string
           stripe_customer_id: string | null
           stripe_status: string | null
@@ -3471,9 +3473,11 @@ export type Database = {
           invited_at?: string | null
           last_invoice_status?: string | null
           last_payment_error?: string | null
+          monthly_price_cents_override?: number | null
           plan_id: string
           responsible_email?: string | null
           responsible_name?: string | null
+          setup_fee_cents_override?: number | null
           status?: string
           stripe_customer_id?: string | null
           stripe_status?: string | null
@@ -3494,9 +3498,11 @@ export type Database = {
           invited_at?: string | null
           last_invoice_status?: string | null
           last_payment_error?: string | null
+          monthly_price_cents_override?: number | null
           plan_id?: string
           responsible_email?: string | null
           responsible_name?: string | null
+          setup_fee_cents_override?: number | null
           status?: string
           stripe_customer_id?: string | null
           stripe_status?: string | null
@@ -3579,7 +3585,9 @@ export type Database = {
           features: Json
           id: string
           limits: Json
+          monthly_price_cents: number | null
           name: string
+          setup_fee_cents: number | null
           stripe_active: boolean | null
           stripe_price_id_monthly: string | null
           stripe_price_id_yearly: string | null
@@ -3592,7 +3600,9 @@ export type Database = {
           features?: Json
           id?: string
           limits?: Json
+          monthly_price_cents?: number | null
           name: string
+          setup_fee_cents?: number | null
           stripe_active?: boolean | null
           stripe_price_id_monthly?: string | null
           stripe_price_id_yearly?: string | null
@@ -3605,7 +3615,9 @@ export type Database = {
           features?: Json
           id?: string
           limits?: Json
+          monthly_price_cents?: number | null
           name?: string
+          setup_fee_cents?: number | null
           stripe_active?: boolean | null
           stripe_price_id_monthly?: string | null
           stripe_price_id_yearly?: string | null

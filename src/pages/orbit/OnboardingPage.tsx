@@ -126,24 +126,43 @@ function OnboardingRow({ onboarding, onOpen }: { onboarding: ClientOnboarding; o
 }
 
 function NewOnboardingDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const [empresaNome, setEmpresaNome] = useState("");
+  const [slug, setSlug] = useState("");
+  const [mensalidade, setMensalidade] = useState("1200");
+  const [implementacao, setImplementacao] = useState("3000");
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
-  const [empresa, setEmpresa] = useState("");
   const [notes, setNotes] = useState("");
   const create = useCreateOnboarding();
 
   const submit = () => {
-    if (!nome || !email) {
-      toast.error("Nome e email são obrigatórios");
+    if (!empresaNome || !nome || !email) {
+      toast.error("Empresa, nome do contato e email são obrigatórios");
       return;
     }
+    const monthly = Math.round(parseFloat((mensalidade || "0").replace(",", ".")) * 100) || undefined;
+    const setup = Math.round(parseFloat((implementacao || "0").replace(",", ".")) * 100) || undefined;
     create.mutate(
-      { cliente_nome: nome, cliente_email: email, cliente_empresa: empresa, notes },
+      {
+        empresa_nome: empresaNome,
+        slug: slug || undefined,
+        monthly_price_cents: monthly,
+        setup_fee_cents: setup,
+        cliente_nome: nome,
+        cliente_email: email,
+        cliente_empresa: empresaNome,
+        notes,
+      },
       {
         onSuccess: (res) => {
-          toast.success(res.email_sent ? "Onboarding criado e email enviado" : "Onboarding criado (email falhou — copie o link)");
+          toast.success(
+            res.email_sent
+              ? `Empresa "${res.empresa_nome}" criada e email enviado`
+              : `Empresa criada (email falhou — link copiado)`
+          );
           navigator.clipboard.writeText(res.public_link).catch(() => null);
-          setNome(""); setEmail(""); setEmpresa(""); setNotes("");
+          setEmpresaNome(""); setSlug(""); setMensalidade("1200"); setImplementacao("3000");
+          setNome(""); setEmail(""); setNotes("");
           onOpenChange(false);
         },
         onError: (e: any) => toast.error(e?.message || "Erro ao criar"),
@@ -156,19 +175,37 @@ function NewOnboardingDialog({ open, onOpenChange }: { open: boolean; onOpenChan
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Novo onboarding</DialogTitle>
+          <p className="text-xs text-muted-foreground">
+            Cria um novo tenant para o cliente, envia o link de onboarding e prepara o ambiente Orbit.
+          </p>
         </DialogHeader>
         <div className="space-y-3">
+          <div>
+            <Label>Empresa do cliente *</Label>
+            <Input value={empresaNome} onChange={(e) => setEmpresaNome(e.target.value)} placeholder="Ex: Acme S.A." />
+          </div>
+          <div>
+            <Label>Slug do tenant (opcional)</Label>
+            <Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="acme (gera automático se vazio)" />
+            <p className="text-[11px] text-muted-foreground mt-1">URL final: orbit.fluxrow.pro/{slug || "<gerado>"}</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Mensalidade (R$)</Label>
+              <Input value={mensalidade} onChange={(e) => setMensalidade(e.target.value)} placeholder="1200" />
+            </div>
+            <div>
+              <Label>Implementação (R$)</Label>
+              <Input value={implementacao} onChange={(e) => setImplementacao(e.target.value)} placeholder="3000" />
+            </div>
+          </div>
           <div>
             <Label>Nome do contato *</Label>
             <Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Maria Souza" />
           </div>
           <div>
-            <Label>Email *</Label>
+            <Label>Email do contato *</Label>
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="cliente@empresa.com" />
-          </div>
-          <div>
-            <Label>Empresa do cliente</Label>
-            <Input value={empresa} onChange={(e) => setEmpresa(e.target.value)} placeholder="Nome fantasia" />
           </div>
           <div>
             <Label>Observações internas</Label>
@@ -179,7 +216,7 @@ function NewOnboardingDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button onClick={submit} disabled={create.isPending} className="gap-2">
             <Mail className="w-4 h-4" />
-            {create.isPending ? "Enviando…" : "Criar e enviar email"}
+            {create.isPending ? "Enviando…" : "Criar tenant e enviar email"}
           </Button>
         </DialogFooter>
       </DialogContent>

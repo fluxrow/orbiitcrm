@@ -47,18 +47,37 @@ export function useCreateOnboarding() {
   const { empresaId } = useTenant();
   return useMutation({
     mutationFn: async (input: {
+      // New-tenant flow (preferred for paying clients)
+      empresa_nome?: string;
+      slug?: string;
+      monthly_price_cents?: number;
+      setup_fee_cents?: number;
+      // Onboarding contact data
       cliente_nome: string;
       cliente_email: string;
       cliente_empresa?: string;
       notes?: string;
+      // Optional: target an existing empresa instead of creating a new one
+      empresa_id?: string;
     }) => {
-      if (!empresaId) throw new Error("empresa_id ausente");
-      const { data, error } = await supabase.functions.invoke("orbit-onboarding-create", {
-        body: { empresa_id: empresaId, ...input },
-      });
+      const payload: Record<string, unknown> = { ...input };
+      // If neither new-tenant name nor explicit empresa_id was provided, fall back to current tenant
+      if (!input.empresa_nome && !input.empresa_id) {
+        if (!empresaId) throw new Error("empresa_id ausente");
+        payload.empresa_id = empresaId;
+      }
+      const { data, error } = await supabase.functions.invoke("orbit-onboarding-create", { body: payload });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error?.message || "Falha ao criar onboarding");
-      return data.data as { id: string; public_token: string; public_link: string; email_sent: boolean };
+      return data.data as {
+        id: string;
+        public_token: string;
+        public_link: string;
+        empresa_id: string;
+        empresa_nome: string;
+        empresa_slug: string;
+        email_sent: boolean;
+      };
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["client-onboardings", empresaId] }),
   });

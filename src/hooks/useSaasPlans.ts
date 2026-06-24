@@ -89,9 +89,28 @@ export function useSaasEmpresas() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("saas_empresa" as any)
-        .select("*, saas_plans(*)");
+        .select("*, saas_plans(*), orbit_empresas:empresa_id(nome, slug)");
       if (error) throw error;
-      return data as unknown as SaasEmpresa[];
+
+      // Fetch member counts in a single query
+      const empresaIds = ((data as any[]) ?? []).map((s) => s.empresa_id);
+      let memberCounts: Record<string, number> = {};
+      if (empresaIds.length > 0) {
+        const { data: memberships } = await supabase
+          .from("user_empresa_memberships" as any)
+          .select("empresa_id")
+          .in("empresa_id", empresaIds);
+        for (const m of (memberships as any[]) ?? []) {
+          memberCounts[m.empresa_id] = (memberCounts[m.empresa_id] ?? 0) + 1;
+        }
+      }
+
+      return ((data as any[]) ?? []).map((s) => ({
+        ...s,
+        empresa_nome: s.orbit_empresas?.nome ?? null,
+        empresa_slug: s.orbit_empresas?.slug ?? null,
+        member_count: memberCounts[s.empresa_id] ?? 0,
+      })) as unknown as SaasEmpresa[];
     },
   });
 }
