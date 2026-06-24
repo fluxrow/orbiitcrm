@@ -1,149 +1,102 @@
-# Etapa 2 — Motor de Fluxos
+# Roadmap Atualizado — Pós Etapa 2
 
-> **Status Etapa 2 (Motor de Fluxos)** — F1 schema, F2 triggers, F3 dispatcher, F4 executor + 5 handlers, F5 UI em /config aba Fluxos. Cron pg_cron rodando a cada 1min. Smoke test E2E validado (evento → run → step). Falta F6 (integração com agente IA + script automatizado).
+> **Etapa 2 (Motor de Fluxos) — entregue.** Schema, triggers no CRM, dispatcher + executor com `pg_cron`, 5 handlers de ação, UI em /orbit/config e hook do `orbit-ai-agent` emitindo `prospect_qualified` ao vivo.
 
-Objetivo: transformar a aba "Fluxos" em um motor real de automação por empresa, capaz de reagir a eventos do CRM (lead novo, mudança de etapa, inatividade, classificação da IA) e executar ações (enviar mensagem, mover de etapa, criar tarefa, ativar/desativar agente). Sem quebrar nada do que já roda.
+## Diretrizes globais (aprovadas)
 
-## Princípios
+- **Zero seeds globais para regras de negócio**. Tudo que envolve valores específicos da operação (highlight rules, gatilhos, condições) é **100% tenant-scoped** com RLS estrita por `empresa_id`. O sistema pode sugerir categorias; o usuário define gatilhos e valores.
+- **Identidade visual premium**. Cor de marca `#f9b217` (token `--brand` em `index.css`, classe Tailwind `brand`) para tags de destaque, toggle IA ativo e CTAs de ação. Evitar verde/azul genéricos de sistema nesses pontos. Estética editorial.
+- **Paralelizar quando não houver dependência**. Backend de F1 roda em paralelo com componentes visuais de F2/F3.
 
-- **Aditivo**: novas tabelas `orbit_flow_*`. Não altera schema de `orbit_deals`, `orbit_conversas`, `orbit_prospects`.
-- **Por empresa**: tudo filtrado por `empresa_id` com RLS.
-- **Opt-in**: fluxos nascem `inativo`. Sem ativação manual, nada dispara.
-- **Idempotente**: cada execução tem chave única por `(flow_id, trigger_entity_id, trigger_event_id)` pra evitar duplicar.
-- **Observável**: toda execução grava log com status, payload, erro.
-- **Reversível**: drop das tabelas novas não afeta CRM.
+---
 
-## Arquitetura
+## Etapa 2.5 — Mapa de Fluxos + Raio-X do Lead
+
+### F1 — Mapa "Eventos → Fluxos" em /orbit/config ✅ ENTREGUE
+
+- `useFlowEventMap()` agrupa fluxos por `trigger_type` a partir do catálogo (`TRIGGER_CATALOG`).
+- `FlowEventMap.tsx` renderiza painel acima da lista, com badge "N ativo(s)" em cor de marca ou "Nenhum fluxo escutando".
+- Botão **Testar** por evento → `useTriggerTestEvent` insere evento sintético em `orbit_flow_events` (`payload.is_test=true`) e invoca o dispatcher.
+- Integrado em `FluxosTab`.
+
+### F2 — Raio-X da Qualificação (frontend pronto) ✅ ENTREGUE
+
+- `ProspectRaioX.tsx` com parser tolerante (`dados_adicionais` aceito como array `{pergunta, resposta}`, objeto plano, string JSON).
+- Seção colapsável, ordem estável, truncamento com "ver mais" em respostas longas.
+- Borda/header em cor de marca `--brand`.
+- **Pendente**: plugar em `ProspectActionCard` e/ou drawer de detalhes do prospect (próximo commit pequeno).
+
+### F3 — Tags de Destaque Automáticas (frontend pronto) ✅ FRONTEND ENTREGUE
+
+- **Sem seeds globais** — confirmado.
+- `useLeadHighlightRules()` lê de `orbit_lead_highlight_rules` filtrado por `empresa_id` (degrada para `[]` enquanto a tabela não existir).
+- Avaliador (`evaluateHighlights`) suporta operadores `equals | not_equals | contains | gte | lte | regex | exists`.
+- `LeadHighlightTags.tsx` renderiza badges em `--brand` (15% bg, 40% border, 100% texto).
+- **Pendente (backend)**: migration `orbit_lead_highlight_rules` (id, empresa_id, campo, operador, valor, label, emoji, ativo) com RLS por tenant + GRANT a `authenticated`/`service_role` + UI de gestão em /orbit/config aba "Tags Automáticas".
+
+### F4 — Barra de Ações Rápidas no Card (próximo)
+
+Adicionar ao `ProspectActionCard` e ao header do drawer:
+1. **Toggle IA on/off** — patch em `orbit_conversas.human_talk` da conversa ativa. Cor `--brand` quando IA ativa (ao invés de verde sistema).
+2. **Mover etapa** — dropdown com etapas do funil; `update orbit_deals.etapa_id` (cria deal via `ensure_deal_for_prospect` se necessário).
+3. **Forçar fluxo** — popover lista fluxos ativos da empresa; insere evento `manual_trigger` em `orbit_flow_events` com `payload.flow_id` forçado; dispatcher trata como override.
+
+Smoke: toggle IA alterna `human_talk` · mover etapa emite `deal_stage_changed` e fluxos rodam · forçar fluxo cria 1 run.
+
+---
+
+## Etapa 3 — Entrada de Dados e Retenção
+
+Usa o motor já pronto. Adiciona portas de entrada e despertadores.
+
+### F1 — Webhook Receiver Nativo
+- Edge function `orbit-webhook-receiver` em `/{empresa_id}/{source}`.
+- Token único por empresa em `orbit_webhook_tokens` (rotacionável via UI).
+- Payload livre → mapeia campos conhecidos para `orbit_prospects`; resto cai em `dados_adicionais` (JSONB).
+- Cria prospect + emite `webhook_received` (e opcionalmente `prospect_qualified`).
+- UI aba **Webhooks** em /orbit/config: URLs, copy, regerar token, histórico das últimas 50 chamadas.
+
+### F2 — Importador Inteligente de CSV
+- Wizard 3 passos: upload → mapeamento "De → Para" → preview + confirmação.
+- Não mapeado vira `dados_adicionais`.
+- Bulk insert em lotes de 500 com progresso.
+- Deduplicação por telefone/email/CNPJ (regras existentes).
+- Pós-import opcional: enfileirar N eventos `manual_trigger` para fluxo específico.
+
+### F3 — Anti No-Show (Gatilhos por Data/Hora)
+- Tabela `orbit_meetings` (1 deal → N reuniões) com `data_hora_reuniao`.
+- `orbit-meeting-scheduler` via `pg_cron` cada 10min.
+- Emite `meeting_reminder_24h` e `meeting_reminder_1h` com dedupe por `(meeting_id, kind)`.
+- Novos `trigger_type` no catálogo do wizard.
+- Templates seed da empresa (não globais com valores fixos): estrutura sim, valores não.
+
+### F4 — Observabilidade e Smoke Tests
+- `scripts/smoke/etapa-3.sh`: webhook synthetic → prospect criado → fluxo rodou; CSV upload; meeting → evento emitido.
+- Painel "Saúde do Motor" em /orbit/config: eventos por tipo nas últimas 24h, taxa de sucesso, p95 dispatcher→executor.
+
+---
+
+## Ordem revisada (paralelização)
 
 ```text
-evento no CRM (deal movido / prospect qualificado / msg recebida)
-        │
-        ▼
-emissor publica em orbit_flow_events (fila append-only)
-        │
-        ▼
-orbit-flow-dispatcher (edge function, cron 1min + invoke manual)
-   ├─ casa eventos com orbit_flows ativos (trigger_type compatível)
-   ├─ avalia condições (JSONB simples: stage_id, segmento, valor, etc.)
-   └─ cria orbit_flow_runs (status=pending) e enfileira ações
-        │
-        ▼
-orbit-flow-executor (edge function por run)
-   └─ executa orbit_flow_actions em ordem, grava resultado em orbit_flow_run_steps
+Etapa 2.5
+  [DONE] F1 Mapa Eventos→Fluxos          (backend + UI)
+  [DONE] F2 Raio-X (componente)          (paralelo)
+  [DONE] F3 Tags (avaliador + tags UI)   (paralelo, sem seeds globais)
+  ...    F3 backend: migration tenant + UI de regras
+  ...    F2/F3 integração no ProspectActionCard
+  ...    F4 Ações Rápidas (Toggle IA / Mover / Forçar)
+
+Etapa 3
+  F1 Webhook Receiver
+  F2 Importador CSV
+  F3 Anti No-Show
+  F4 Smoke + Observabilidade
 ```
 
-Triggers MVP: `prospect_qualified`, `deal_stage_changed`, `deal_idle` (sem movimento há N dias), `conversa_no_reply` (sem resposta do cliente há N horas).
+## Fora deste escopo (Etapa 4+)
 
-Ações MVP: `send_whatsapp_template`, `move_deal_stage`, `create_task`, `toggle_ai_agent` (liga/desliga IA para a conversa), `notify_vendedor`.
-
-Condições MVP (JSONB): `pipeline_stage_id`, `segmento`, `valor_estimado_min/max`, `origem`, `dias_sem_movimento`.
-
-## Sub-etapas
-
-### F1 — Schema base (alta, bloqueia tudo)
-
-Migration cria:
-
-- `orbit_flow_templates(id, nome, descricao, categoria, definicao jsonb, is_global)` — biblioteca de templates prontos (3 sementes: "Nutrir lead frio 7d", "Lembrete pós-proposta", "Ativar IA em leads novos").
-- `orbit_flows(id, empresa_id, nome, descricao, trigger_type, trigger_config jsonb, condicoes jsonb, ativo bool default false, template_id fk null, created_by, created_at, updated_at)`.
-- `orbit_flow_actions(id, flow_id, ordem int, action_type, action_config jsonb, delay_seconds int default 0)`.
-- `orbit_flow_events(id, empresa_id, event_type, entity_type, entity_id, payload jsonb, created_at, processed_at, processed bool default false)` — fila.
-- `orbit_flow_runs(id, flow_id, event_id, entity_type, entity_id, status enum(pending/running/success/error/skipped), started_at, finished_at, error)`.
-- `orbit_flow_run_steps(id, run_id, action_id, ordem, status, started_at, finished_at, output jsonb, error)`.
-- Unique `(flow_id, event_id)` em `orbit_flow_runs` para idempotência.
-- RLS por `empresa_id` em tudo; `service_role` total; `authenticated` só lê/escreve do próprio tenant.
-- Grants completos.
-
-**Smoke test:** inserir flow manual via SQL, listar via `select`, RLS bloqueia cross-tenant.
-
-### F2 — Emissão de eventos a partir do CRM (alta)
-
-- Trigger SQL `AFTER UPDATE` em `orbit_deals` (mudança de `etapa_id`) → insert em `orbit_flow_events` com `event_type='deal_stage_changed'`.
-- Trigger SQL `AFTER UPDATE` em `orbit_prospects` (mudança de `status_qualificacao` para `qualificado`) → insert `event_type='prospect_qualified'`.
-- Sem mudança no código JS/edge — triggers fazem tudo no banco.
-- Eventos com `processed=false` ficam disponíveis para o dispatcher.
-
-**Smoke test:** mover um deal de etapa via UI; conferir `select * from orbit_flow_events order by created_at desc limit 1` retorna o evento.
-
-### F3 — Dispatcher + Executor (alta)
-
-- Edge function `orbit-flow-dispatcher`:
-  - Lê `orbit_flow_events where processed=false limit 100`.
-  - Para cada evento, busca `orbit_flows where ativo=true and empresa_id=evento.empresa_id and trigger_type=evento.event_type`.
-  - Avalia condições (helper `matchesConditions(flow.condicoes, evento.payload)`).
-  - Cria `orbit_flow_runs(status='pending')`, marca evento `processed=true`.
-  - Invoca `orbit-flow-executor` por run (fire-and-forget).
-- Edge function `orbit-flow-executor`:
-  - Recebe `run_id`, marca `running`.
-  - Executa actions em ordem; cada uma vira `orbit_flow_run_step`.
-  - Handlers por `action_type` (case/switch), todos retornam `{ok, output, error}`.
-  - Marca run `success` ou `error`.
-- Cron `pg_cron` a cada 1 min invoca o dispatcher (pg_net).
-
-**Smoke test:** criar flow "ao mover para Qualificação, criar tarefa para vendedor", mover deal, ver tarefa criada em até 1min e `flow_run.status='success'`.
-
-### F4 — Action handlers MVP (alta)
-
-Implementar dentro do executor:
-
-- `send_whatsapp_template`: usa `orbit-send-message` existente, com `template_id` do `orbit_message_templates`.
-- `move_deal_stage`: `update orbit_deals set etapa_id=...`.
-- `create_task`: insert `orbit_tasks`.
-- `toggle_ai_agent`: `update orbit_conversas set human_talk=...` (true desliga IA, false reativa).
-- `notify_vendedor`: invoca `send-vendedor-notification` existente.
-
-Cada handler valida config e retorna erro estruturado. Sem retry automático no MVP.
-
-**Smoke test:** flow com 3 ações em sequência, ver 3 `run_steps` com `status=success`.
-
-### F5 — UI de Fluxos em Configurações (média)
-
-Substitui placeholder atual da aba Fluxos por:
-
-- Lista de fluxos (nome, trigger, status ativo/inativo, último run, ações).
-- Botão "Novo Fluxo" abre wizard de 3 passos:
-  1. Escolher template ou começar em branco.
-  2. Configurar trigger + condições (formulário guiado por `trigger_type`).
-  3. Adicionar ações em sequência (drag não — só ordem com setas pra cima/baixo).
-- Toggle ativar/desativar inline.
-- Modal "Histórico" mostra últimas 20 runs com status e steps expansíveis.
-- Hook `useOrbitFlows`, `useOrbitFlowRuns(flow_id)`, `useOrbitFlowTemplates`.
-
-**Smoke test:** criar flow do template "Nutrir lead frio 7d", ativar, conferir aparece na lista; abrir histórico vazio sem erro.
-
-### F6 — Integração com Agente IA + smoke tests automatizados (média)
-
-- No `orbit-ai-agent`: ao classificar prospect como `qualificado`, além do `ensure_deal_for_prospect` (já feito na 1.5), inserir evento `prospect_qualified` em `orbit_flow_events` (redundante com trigger SQL, mas garante mesmo se o status já estava qualificado e só re-classificou — usar `event_dedupe_key`).
-- Ação `toggle_ai_agent` permite que cliente configure: "quando deal entrar em Proposta, desligar IA" ou "quando entrar em Novo Lead, ligar IA".
-- Estender `scripts/smoke/etapa-1-5.sh` com etapa-2:
-  - Cria flow programaticamente.
-  - Insere evento sintético.
-  - Aguarda dispatcher.
-  - Assert run criado e bem-sucedido.
-
-**Smoke test final:** rodar `scripts/smoke/etapa-2.sh` → 6/6 asserts verdes.
-
-## Ordem de execução
-
-F1 → F2 → F3 → F4 → F5 → F6. Cada uma é commit isolado e reversível. Posso pausar entre cada para você validar.
-
-## Detalhes técnicos
-
-- Cron: `pg_cron` + `pg_net` para invocar o dispatcher a cada minuto. SQL via `supabase--insert` (não migration, contém URL/anon key).
-- `verify_jwt = false` nas duas edge functions novas; validação interna via `service_role`.
-- Limite anti-loop: max 50 runs por flow por hora por entidade (check no dispatcher).
-- Soft-delete de flow: `deleted_at` em `orbit_flows`, filtrado nas queries.
-
-## Riscos e mitigação
-
-- **Loop infinito**: ação `move_deal_stage` dispara trigger `deal_stage_changed` que pode reativar o mesmo flow. Mitigação: dispatcher ignora eventos cujo `payload.triggered_by_flow_id` está setado.
-- **Custo de execução**: dispatcher só roda se houver eventos pendentes (`limit 0` retorna cedo).
-- **Templates errados**: sementes em `is_global=true` viram clones por empresa quando escolhidos no wizard.
-
-## O que NÃO entra nesta etapa
-
-- Editor visual de fluxo (drag-and-drop estilo n8n) — fica para Etapa 3.
-- Branching condicional (if/else dentro do fluxo) — MVP é linear.
-- Webhook externo como trigger — Etapa 4.
-
-Confirma para eu começar pela **F1 (schema base)**?
+- Editor visual drag-and-drop (n8n-like).
+- Branching condicional (if/else dentro do fluxo).
+- Webhook outbound (motor chama URL externa como ação).
+- A/B testing de fluxos.
