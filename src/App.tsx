@@ -39,6 +39,8 @@ import AnalyticsPage from "./pages/orbit/AnalyticsPage";
 import MeuPlanoPage from "./pages/orbit/MeuPlanoPage";
 import UsuariosEmpresaPage from "./pages/orbit/UsuariosEmpresaPage";
 import TarefasPage from "./pages/orbit/TarefasPage";
+import OnboardingPage from "./pages/orbit/OnboardingPage";
+import ClientOnboardingPage from "./pages/public/ClientOnboardingPage";
 import NovaCampanhaPage from "./pages/orbit/NovaCampanhaPage";
 
 // Super Admin Pages (legacy)
@@ -123,6 +125,7 @@ function OrbitRoutes() {
       <Route path="config" element={<ConfigPage />} />
       <Route path="analytics" element={<AnalyticsPage />} />
       <Route path="tarefas" element={<TarefasPage />} />
+      <Route path="onboarding" element={<OnboardingPage />} />
       <Route path="meu-plano" element={<MeuPlanoPage />} />
       <Route path="usuarios" element={<UsuariosEmpresaPage />} />
     </Routes>
@@ -154,6 +157,9 @@ const AppRoutes = () => (
 
     {/* Empresa selector (post-login, when user belongs to >1 empresa) */}
     <Route path="/select-empresa" element={<ProtectedRoute><SelectEmpresaPage /></ProtectedRoute>} />
+
+    {/* Public onboarding wizard (token-based, no auth) */}
+    <Route path="/onboarding-cliente/:token" element={<ClientOnboardingPage />} />
 
 
     
