@@ -1,98 +1,120 @@
-## Auditoria das rotas atuais
+# Pipeline & Fluxos — Plano por Etapas
 
-Levantei tudo que está registrado no `src/App.tsx` e classifiquei por necessidade.
-
-### ✅ Manter (essenciais)
-
-**Públicas (sem login)**
-- `/` — Landing page
-- `/auth` — Login/cadastro
-- `/documentacao` — Documentação interna pública
-- `/setup` — Setup inicial (usado pelo fluxo de signup em `AuthPage`)
-- `/invite/:token`, `/accept-invite-pe/:token`, `/accept-invite` — Aceitar convite (3 formatos usados por edge functions diferentes)
-- `/reset-password` — Reset de senha
-- `/privacy`, `/terms` — Políticas
-- `/apresentacao/orbit-2026` — Apresentação comercial (oculta, sem link)
-- `/onboarding-cliente/:token` — Wizard público de onboarding do cliente
-
-**Logadas**
-- `/select-empresa` — Quando o usuário pertence a mais de uma empresa
-- `/:slug/*` (tenant real do cliente) com todas as subrotas: `dashboard`, `prospects`, `conversas`, `funil`, `campanhas`, `campanhas/nova`, `campanhas/:id/editar`, `templates`, `templates/email/new`, `templates/email/:id/edit`, `lead-finder`, `config`, `analytics`, `tarefas`, `onboarding` (já restrito a super_admin), `meu-plano`, `usuarios`
-
-**Admin Fluxrow (PE Admin — novo)**
-- `/pe-admin`, `/pe-admin/cadastros`, `/pe-admin/organizations`, `/pe-admin/organizations/:id/users`, `/pe-admin/users`, `/pe-admin/planos`, `/pe-admin/tenants`, `/pe-admin/audit`, `/pe-admin/documentacao`
-
-### ❌ Remover
-
-**Demo (tudo)** — você não usa para vender
-- Rotas: `/demo`, `/demo/*`, `/orbit`, `/orbit/*` (redirect legado que aponta para `/demo`)
-- CTAs que apontam para `/demo`: botão "Ver demo" no `HotsiteHeader` (desktop e mobile) e botão "Ver demonstração" no `HeroSection`
-- Badge "DEMO" no `OrbitSidebar` e barra "DEMO" no `OrbitLayout`
-- Ramo `isDemo` do `TenantContext`, hook `useIsDemo`, e fallbacks que mandam pra `/demo` (`SuperAdminRoute`, `EmpresaSwitcher`, `OrbitRedirect`) — passam a redirecionar para `/auth` ou `/`
-
-**Trial (tudo)** — não deve aparecer em lugar nenhum
-- Rota `/trial` e página `TrialPage`
-- Hook `useTrialRequests` e referências
-- Aba "Trials" e listagem em `CadastrosPage` (PE Admin)
-- Botão "Solicitar trial" e bloco "Trial expira em…" no `MeuPlanoPage`
-- Labels "Trial" nos badges de status (`MeuPlanoPage`) — viram apenas "Ativo"/"Pendente"
-- Bloqueio `trial_expired` em `TenantBlocked` — substituído por mensagem genérica "Acesso suspenso, entre em contato"
-- `plan code "trial"` no `usePlanGuard` mantém grant total (sem mudar acesso a quem já está marcado), mas a interface não menciona mais trial
-
-**Super Admin legado (substituído pelo PE Admin)**
-- Rotas `/super-admin`, `/super-admin/empresas`, `/super-admin/empresas/:id/usuarios`, `/super-admin/usuarios`
-- Páginas em `src/pages/super-admin/` (Dashboard, EmpresasPage, EmpresaUsersPage, UsuariosGlobaisPage, SuperAdminLayout)
-- Componente `super-admin/EmpresaDialog`
-- Os componentes ainda usados (`super-admin/AddUserDialog`) ficam — apenas a pasta de páginas e o layout são removidos
-
-**Rota órfã**
-- `/org/users` (`OrgUsersPage`) — não tem nenhum link interno apontando, função coberta por `/pe-admin/users` e `/:slug/usuarios`
-
-### 🧹 Limpeza adicional
-- Atualizar `DocumentacaoPage` para remover linhas que citam `/trial`, `/demo`, `/super-admin/*`
-- Atualizar `PeAdminDocPage` se citar trial
-- Remover imports e dead code dos arquivos acima em `App.tsx`
-
-### 🛡️ Banco de dados (NÃO mexer)
-- Tabela `trial_requests`, colunas `trial_ends_at`/`status='trial'` em `saas_empresa`, plan code `demo` no `saas_plans` — ficam intactos para não quebrar empresas já cadastradas. Só a UI e as rotas somem.
+Objetivo: transformar pipeline em algo **configurável por cliente** (com templates), e tornar a aba **Fluxos** real — capaz de disparar automações e ligar/desligar o agente de IA conforme a etapa. Tudo aditivo: nada do que já roda (Funil, Deals, AI atual) será quebrado.
 
 ---
 
-## Mudanças técnicas
+## Princípios
 
-Arquivos editados:
-- `src/App.tsx` — remover rotas `/trial`, `/demo`, `/orbit`, `/orbit/*`, `/super-admin/*`, `/org/users`; remover imports correspondentes; `SuperAdminRoute` passa a redirecionar para `/auth` em vez de `/demo`
-- `src/components/HotsiteHeader.tsx` — remover botões "Ver demo" e "Acessar Demo"
-- `src/components/landing/HeroSection.tsx` — remover botão "Ver demonstração"
-- `src/components/orbit/OrbitSidebar.tsx` — remover badge "DEMO" e prop `isDemo`
-- `src/components/orbit/OrbitLayout.tsx` — remover barra de aviso "DEMO"
-- `src/components/orbit/EmpresaSwitcher.tsx` — fallback para `/` em vez de `/demo/dashboard`
-- `src/contexts/TenantContext.tsx` — remover ramo `isDemo`; o contexto sempre exige slug
-- `src/pages/tenant/TenantLayout.tsx` — remover prop `isDemo` e bloco que redireciona super admin saindo de `/demo`
-- `src/pages/orbit/MeuPlanoPage.tsx` — remover CTA `navigate("/trial")` e bloco "Trial expira em…"; mapear status `trial`/`trialing` para "Ativo"
-- `src/pages/tenant/TenantBlocked.tsx` — remover branch `trial_expired`, usar mensagem genérica
-- `src/pages/pe-admin/CadastrosPage.tsx` — remover aba/lista de trials e import de `useTrialRequests`
-- `src/pages/DocumentacaoPage.tsx` — limpar linhas obsoletas
-
-Arquivos deletados:
-- `src/pages/TrialPage.tsx`
-- `src/hooks/useTrialRequests.ts`
-- `src/hooks/useIsDemo.ts`
-- `src/pages/org/OrgUsersPage.tsx`
-- `src/pages/super-admin/SuperAdminDashboard.tsx`
-- `src/pages/super-admin/EmpresasPage.tsx`
-- `src/pages/super-admin/EmpresaUsersPage.tsx`
-- `src/pages/super-admin/UsuariosGlobaisPage.tsx`
-- `src/pages/super-admin/SuperAdminLayout.tsx`
-- `src/components/super-admin/EmpresaDialog.tsx`
-
-Sem migrations. Sem mudanças em edge functions.
+- **Aditivo**: novas colunas com defaults; código antigo continua funcionando.
+- **Multi-tenant**: tudo escopado por `empresa_id` + RLS.
+- **Reversível**: cada etapa pode ser feita, testada e revertida isoladamente.
+- **AI compatível**: agente continua respondendo como hoje quando nenhum fluxo/regra estiver ativo.  
+os agentes devem seguir as regras/fluxos especificas de cada uma, sem interferir nas demais. devem agir isoladamente entre ela seguindo uma logica criada na implementaçao e em conjunto com o cliente. 
 
 ---
 
-## O que pode quebrar
+## Etapa 1 — Pipeline configurável por cliente (sem mexer no agente)
 
-- Links externos antigos para `/demo/...`, `/trial`, `/orbit/...` ou `/super-admin/...` cairão no `NotFound`. Nenhum desses está em material seu de venda atual.
-- Empresas cujo `saas_status = 'trial'` continuam funcionando normalmente — o app simplesmente não mostra mais a palavra "Trial". Se quiser, posso depois migrar todas para `active`.
+Hoje `orbit_pipeline_stages` existe mas é simples (nome, ordem, cor, is_won/is_lost). Vamos enriquecer **sem quebrar** o Funil atual.
 
-Confirma esse pente fino?
+**Schema (aditivo):**
+
+- `orbit_pipeline_stages`: + `descricao`, `slug`, `probabilidade_default`, `sla_dias`, `requer_motivo` (bool), `automacoes_config jsonb default '{}'`, `is_default` (bool).
+- Nova `orbit_pipeline_templates` (globais + por empresa): `id, empresa_id nullable, nome, descricao, vertical, stages jsonb`. Empresa_id NULL = template do sistema (joalheria, imobiliária, SaaS, serviços, etc.).
+- Nova `orbit_pipelines` opcional para suportar **múltiplos pipelines** por empresa (ex: Vendas, Pós-venda). Stages ganham `pipeline_id nullable` — default = pipeline principal da empresa (mantém compatibilidade).
+
+**UI (Configurações → Pipeline):**
+
+- Tela "Pipeline" com lista de etapas drag-and-drop (reordenar), criar/editar/arquivar.
+- Botão "Aplicar template" com pré-visualização (não destrutivo: cria etapas novas, não apaga existentes salvo confirmação).
+- Por etapa: cor, probabilidade, SLA em dias, motivo obrigatório (perda).  
+os pipe lines devem permitir unir automaçoes pque ativem o agente de acordo com fluxos de captaçao e intergraçao com outras ferramentas, perminido uma maior autonimia do proprio agente.
+
+**Compatibilidade:** Funil atual (`FunilPage`) continua lendo `orbit_pipeline_stages` normalmente.
+
+---
+
+## Etapa 2 — Motor de Fluxos (estrutura real)
+
+Substitui a aba "Fluxos" vazia por um sistema real, sem mexer no `orbit_chatbot_flows` (que continua para chatbot WhatsApp).
+
+**Schema:**
+
+- `orbit_flows`: `id, empresa_id, nome, descricao, ativo, trigger_type, trigger_config jsonb, created_at, updated_at`.
+  - `trigger_type`: `stage_enter`, `stage_exit`, `prospect_created`, `inactivity`, `tag_added`, `manual`, `schedule`.
+- `orbit_flow_steps`: `id, flow_id, ordem, tipo, config jsonb, delay_minutos, condicao jsonb nullable`.
+  - `tipo`: `send_whatsapp`, `send_email`, `create_task`, `notify_vendedor`, `move_stage`, `update_field`, `assign_owner`, `ai_enable`, `ai_disable`, `ai_set_prompt`, `webhook`, `wait`.
+- `orbit_flow_runs`: `id, flow_id, prospect_id, deal_id, started_at, finished_at, status, current_step, log jsonb` — para auditoria e retomada.
+
+**Execução:**
+
+- Edge function `orbit-flow-engine` (cron a cada 1min + invocado por triggers).
+- Triggers no banco: ao mover deal de etapa (`orbit_deals.etapa_id` change) → insere em `orbit_flow_runs` os fluxos ativos com `trigger_type='stage_enter'` matching.
+- Engine processa steps em ordem, respeita `delay_minutos` e `condicao`, grava log.
+
+**UI (Configurações → Fluxos):**
+
+- Lista de fluxos (ativo/inativo, último run, contagem).
+- Builder simples (não node-graph): formulário linear "Quando X acontece → faça A, depois B, depois C". Cada step é um card editável.
+- Templates: "Boas-vindas novo lead", "Follow-up 3 dias sem resposta", "Notificar vendedor ao entrar em Proposta", "Cobrar documentos em Negociação".  
+alem disso devemos ter mais configraçao para ativar triggers que acionem o agente correto de cada fluxo, sendo permitido adicionar aos fluxos, audios gravados, documentos, links e outras opçoes que façam sentido para o processo do agente 
+
+---
+
+## Etapa 3 — Integração Agente IA ↔ Pipeline/Fluxos
+
+Hoje `orbit_ai_config.modo_automatico` é global por empresa. Vamos permitir **override por etapa e por fluxo**, sem quebrar o default.
+
+**Schema:**
+
+- `orbit_pipeline_stages.ai_config jsonb` — opcional: `{ "modo": "auto|manual|off", "prompt_override": "...", "handoff_humano": true }`.
+- Reuso de `orbit_handoffs` que já existe para registrar transferência humano↔IA.
+
+**Lógica no `orbit-ai-agent`:**
+
+1. Ao receber mensagem, descobrir deal/prospect → etapa atual.
+2. Se etapa tem `ai_config.modo = 'off'` → não responde (cria handoff).
+3. Se `ai_config.prompt_override` → mescla com prompt global.
+4. Fluxos podem chamar steps `ai_enable`/`ai_disable`/`ai_set_prompt` que escrevem em `orbit_handoffs` ou em campo `prospect.ai_state`.
+
+**UI:**
+
+- Na edição de etapa: seção "Agente IA nesta etapa" (auto/manual/off + prompt extra).
+- Na edição de fluxo: steps "Ativar IA" / "Pausar IA" / "Trocar prompt da IA".
+
+**Compatibilidade:** se `ai_config` for null em todas as etapas, comportamento atual preservado 100%.
+
+---
+
+## Etapa 4 — Observabilidade & Templates de Pipeline prontos
+
+- Seed de 4-5 templates de pipeline + 6-8 templates de fluxos no banco (empresa_id NULL).
+- Página "Automações → Histórico" lendo `orbit_flow_runs` (filtro por fluxo, status, prospect).
+- Métricas no dashboard: fluxos disparados, taxa de sucesso, tempo médio por etapa (usa `orbit_deals.moved_at`).
+
+---
+
+## Ordem de execução recomendada
+
+1. **Etapa 1** (pipeline configurável + templates) — rollout isolado, valida com Viver Semijoias.
+2. **Etapa 2** (motor de fluxos) — fluxos manuais primeiro, depois triggers de stage.
+3. **Etapa 3** (AI por etapa/fluxo) — só depois que 1+2 estiverem estáveis.
+4. **Etapa 4** (templates seed + observabilidade).
+
+Cada etapa termina com: migration aprovada → UI → smoke test em tenant real → seguir.
+
+---
+
+## Detalhes técnicos (resumo)
+
+- Migrations aditivas, RLS por `empresa_id` via `has_empresa_access(empresa_id)`.
+- Engine de fluxos = edge function com cron (`supabase/functions/orbit-flow-engine`) + trigger SQL que enfileira runs.
+- Builder UI usa shadcn (sem libs novas de node-graph nesta versão).
+- Nenhuma alteração em `useOrbitDeals`, `FunilPage`, `orbit-ai-agent` na Etapa 1 — só leituras novas opcionais.
+
+---
+
+## Pergunta antes de partir
+
+Confirma que quero começar pela **Etapa 1 (Pipeline configurável + templates)** ou prefere que eu já entregue Etapas 1+2 juntas no primeiro ciclo? pode começar pela 1 primeiro seguindo sua ordem de validaçao. Leve em consideraçao os ajustes que fiz nesse plano e se necessario mande um plano ajkustado de acordo com o que eu solitei., 

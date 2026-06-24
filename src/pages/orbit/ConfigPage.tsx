@@ -17,9 +17,10 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Bot, MessageSquare, Mail, Save, Loader2, Copy, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Send, Upload, Download, FileText, X, Settings2, Info, Link2, ClipboardList, Clock, Music2, Volume2, Mic, GitBranch } from "lucide-react";
+import { Bot, MessageSquare, Mail, Save, Loader2, Copy, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Send, Upload, Download, FileText, X, Settings2, Info, Link2, ClipboardList, Clock, Music2, Volume2, Mic, GitBranch, Workflow } from "lucide-react";
 import { AudioLibraryManager } from "@/components/orbit/AudioLibraryManager";
 import { ChatbotFlowManager } from "@/components/orbit/ChatbotFlowManager";
+import { PipelineConfigTab } from "@/components/orbit/PipelineConfigTab";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useOrbitAIConfig, useUpdateAIConfig, useOrbitZAPIConfig, useUpdateZAPIConfig, useOrbitResendConfig, useUpdateResendConfig, useTestResendConnection, useWhatsAppSendingConfig, useUpdateWhatsAppSendingConfig, useWhatsAppDailyUsage } from "@/hooks/useOrbitConfig";
@@ -376,6 +377,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
           <TabsTrigger value="agenda"><Calendar className="h-4 w-4 mr-2" />Agenda</TabsTrigger>
           <TabsTrigger value="import"><Upload className="h-4 w-4 mr-2" />Importar</TabsTrigger>
           <TabsTrigger value="audios"><Music2 className="h-4 w-4 mr-2" />Áudios</TabsTrigger>
+          <TabsTrigger value="pipeline"><Workflow className="h-4 w-4 mr-2" />Pipeline</TabsTrigger>
           <TabsTrigger value="fluxos"><GitBranch className="h-4 w-4 mr-2" />Fluxos</TabsTrigger>
           {isOrgAdmin && <TabsTrigger value="users"><Users className="h-4 w-4 mr-2" />Usuários</TabsTrigger>}
         </TabsList>
@@ -1791,6 +1793,9 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
               <AudioLibraryManager />
             </CardContent>
           </Card>
+        </TabsContent>
+        <TabsContent value="pipeline">
+          <PipelineConfigTab />
         </TabsContent>
         <TabsContent value="agenda">
           {empresaId ? <AgendaConfigTab empresaId={empresaId} /> : <div className="text-sm text-muted-foreground">Selecione uma empresa para configurar a agenda.</div>}

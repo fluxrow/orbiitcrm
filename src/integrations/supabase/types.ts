@@ -2427,38 +2427,109 @@ export type Database = {
       }
       orbit_pipeline_stages: {
         Row: {
+          ai_config: Json | null
+          automacoes_config: Json
           cor: string | null
           created_at: string | null
+          descricao: string | null
           empresa_id: string | null
           id: string
+          is_archived: boolean
           is_lost: boolean | null
           is_won: boolean | null
           nome: string
           ordem: number
+          probabilidade_default: number | null
+          requer_motivo: boolean
+          sla_dias: number | null
+          slug: string | null
+          updated_at: string
         }
         Insert: {
+          ai_config?: Json | null
+          automacoes_config?: Json
           cor?: string | null
           created_at?: string | null
+          descricao?: string | null
           empresa_id?: string | null
           id?: string
+          is_archived?: boolean
           is_lost?: boolean | null
           is_won?: boolean | null
           nome: string
           ordem: number
+          probabilidade_default?: number | null
+          requer_motivo?: boolean
+          sla_dias?: number | null
+          slug?: string | null
+          updated_at?: string
         }
         Update: {
+          ai_config?: Json | null
+          automacoes_config?: Json
           cor?: string | null
           created_at?: string | null
+          descricao?: string | null
           empresa_id?: string | null
           id?: string
+          is_archived?: boolean
           is_lost?: boolean | null
           is_won?: boolean | null
           nome?: string
           ordem?: number
+          probabilidade_default?: number | null
+          requer_motivo?: boolean
+          sla_dias?: number | null
+          slug?: string | null
+          updated_at?: string
         }
         Relationships: [
           {
             foreignKeyName: "orbit_pipeline_stages_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_pipeline_templates: {
+        Row: {
+          created_at: string
+          descricao: string | null
+          empresa_id: string | null
+          id: string
+          is_system: boolean
+          nome: string
+          stages: Json
+          updated_at: string
+          vertical: string | null
+        }
+        Insert: {
+          created_at?: string
+          descricao?: string | null
+          empresa_id?: string | null
+          id?: string
+          is_system?: boolean
+          nome: string
+          stages?: Json
+          updated_at?: string
+          vertical?: string | null
+        }
+        Update: {
+          created_at?: string
+          descricao?: string | null
+          empresa_id?: string | null
+          id?: string
+          is_system?: boolean
+          nome?: string
+          stages?: Json
+          updated_at?: string
+          vertical?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_pipeline_templates_empresa_id_fkey"
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "orbit_empresas"
@@ -3905,6 +3976,14 @@ export type Database = {
       }
       _build_orbit_zapi_runtime_response: {
         Args: { p_config_id: string }
+        Returns: Json
+      }
+      apply_pipeline_template: {
+        Args: {
+          p_empresa_id: string
+          p_replace?: boolean
+          p_template_id: string
+        }
         Returns: Json
       }
       extract_domain: { Args: { p: string }; Returns: string }
