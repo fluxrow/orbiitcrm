@@ -67,8 +67,9 @@ export default function HeroSection() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.15 }}
           >
-            <span className="gradient-text">Sua equipe comercial</span>
+            <span className="gradient-text">Orbit CRM</span>
             <br />
+            <span className="text-foreground">Sua equipe comercial</span>{" "}
             <span className="text-primary">no piloto automático</span>
           </motion.h1>
 
