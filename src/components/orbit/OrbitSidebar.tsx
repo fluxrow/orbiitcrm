@@ -39,6 +39,8 @@ export function OrbitSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { isAdmin } = useIsAdmin();
+  const { hasRole: isSuperAdmin } = useIsSuperAdmin();
+
   const { basePath, isDemo } = useTenant();
   const { user, signOut } = useAuth();
   const { data: pendingTasks } = useOrbitTasks({ status: "pending" });
