@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import { useIsDemo } from "@/hooks/useIsDemo";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { ZapiConnectionAlert } from "@/components/orbit/ZapiConnectionAlert";
 
 interface ParsedProspect {
   nome_razao: string;
