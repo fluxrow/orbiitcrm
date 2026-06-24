@@ -125,7 +125,7 @@ function OrbitRoutes() {
       <Route path="config" element={<ConfigPage />} />
       <Route path="analytics" element={<AnalyticsPage />} />
       <Route path="tarefas" element={<TarefasPage />} />
-      <Route path="onboarding" element={<OnboardingPage />} />
+      <Route path="onboarding" element={<SuperAdminRoute><OnboardingPage /></SuperAdminRoute>} />
       <Route path="meu-plano" element={<MeuPlanoPage />} />
       <Route path="usuarios" element={<UsuariosEmpresaPage />} />
     </Routes>
