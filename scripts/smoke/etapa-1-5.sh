@@ -41,8 +41,6 @@ check "Toda empresa tem etapa won" "0" \
 # Aviso (não falha): empresas com pipeline customizado podem não ter is_lost — apenas reporta.
 MISSING_LOST=$(psql -tAX -c "SELECT count(*) FROM orbit_empresas e WHERE NOT EXISTS (SELECT 1 FROM orbit_pipeline_stages s WHERE s.empresa_id=e.id AND s.is_lost);" | tr -d '[:space:]')
 [ "$MISSING_LOST" = "0" ] && echo "  ✓ Toda empresa tem etapa lost" || echo "  ⚠ $MISSING_LOST empresa(s) sem etapa is_lost (pipeline customizado — não bloqueia)"
-check "Toda empresa tem etapa lost" "0" \
-  "SELECT count(*) FROM orbit_empresas e WHERE NOT EXISTS (SELECT 1 FROM orbit_pipeline_stages s WHERE s.empresa_id=e.id AND s.is_lost);"
 
 echo "── T2 + T3: ensure_deal_for_prospect + evento IA ───────────"
 PROSPECT_ID=$(psql -tAX -c "WITH ins AS (INSERT INTO orbit_prospects(empresa_id, nome_razao, telefone, whatsapp, status_qualificacao, origem_contato)
