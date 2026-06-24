@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import DOMPurify from "isomorphic-dompurify";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { EmailTemplateEditor } from "@/components/orbit/EmailTemplateEditor";
