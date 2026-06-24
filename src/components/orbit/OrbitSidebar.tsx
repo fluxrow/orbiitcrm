@@ -18,7 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import orbitLogo from "@/assets/orbit-logo.png";
 import orbitIcon from "@/assets/orbit-icon.png";
-import { useIsAdmin } from "@/hooks/useUserRole";
+import { useIsAdmin, useIsSuperAdmin } from "@/hooks/useUserRole";
 import { useOrbitTasks } from "@/hooks/useOrbitTasks";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAuth } from "@/hooks/useAuth";
@@ -39,6 +39,8 @@ export function OrbitSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { isAdmin } = useIsAdmin();
+  const { hasRole: isSuperAdmin } = useIsSuperAdmin();
+
   const { basePath, isDemo } = useTenant();
   const { user, signOut } = useAuth();
   const { data: pendingTasks } = useOrbitTasks({ status: "pending" });
@@ -73,7 +75,7 @@ export function OrbitSidebar() {
     { name: "Conversas", href: `${basePath}/conversas`, icon: MessageSquare },
     { name: "Funil", href: `${basePath}/funil`, icon: Kanban },
     { name: "Tarefas", href: `${basePath}/tarefas`, icon: CheckSquare, badge: pendingCount > 0 ? pendingCount : undefined },
-    { name: "Onboarding", href: `${basePath}/onboarding`, icon: ClipboardList },
+    ...(isSuperAdmin ? [{ name: "Onboarding", href: `${basePath}/onboarding`, icon: ClipboardList }] : []),
     ...(canUseFeature("whatsapp") || canUseFeature("email") ? [{ name: "Campanhas", href: `${basePath}/campanhas`, icon: Mail }] : []),
     { name: "Templates", href: `${basePath}/templates`, icon: FileText },
     ...(canUseFeature("lead_finder") ? [{ name: "Lead Finder", href: `${basePath}/lead-finder`, icon: Search }] : []),
