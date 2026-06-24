@@ -561,6 +561,7 @@ serve(async (req) => {
             headers: {
               "Content-Type": "application/json",
               "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              "x-orbit-internal-secret": Deno.env.get("ORBIT_AI_AGENT_SECRET") ?? "",
             },
             body: JSON.stringify({
               conversa_id: conversa.id,
