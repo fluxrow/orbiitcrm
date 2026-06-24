@@ -136,16 +136,17 @@ Deno.serve(async (req) => {
       if (invErr) throw new Error(`saas_invites: ${invErr.message}`);
 
       const { apiKey: resendKey, fromEmail } = await getSystemEmailConfig(supabase);
+      const planName = plan?.name || "Orbit";
       if (resendKey) {
         const appUrl = getAppUrl(req);
         const activationUrl = `${appUrl}/accept-invite?token=${tokenPlaintext}`;
-        const emailHtml = buildEmailHtml(body.empresa_nome.trim(), plan.name, activationUrl);
+        const emailHtml = buildEmailHtml(empresa.nome, planName, activationUrl);
         const emailRes = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             from: fromEmail, to: [body.responsible_email.trim()],
-            subject: `Convite: ative sua empresa ${body.empresa_nome.trim()} no Orbit`, html: emailHtml,
+            subject: `Convite: ative sua conta em ${empresa.nome} no Orbit`, html: emailHtml,
           }),
         });
         if (!emailRes.ok) { const err = await emailRes.json(); console.error("Erro Resend:", err); }
@@ -154,17 +155,20 @@ Deno.serve(async (req) => {
       }
 
       await supabase.from("pe_audit_log").insert({
-        actor_user_id: user.id, action: "EMPRESA_INVITED", entity_type: "saas_invites", entity_id: invite.id,
-        metadata: { empresa_id: empresa.id, email: body.responsible_email.trim().toLowerCase(), plan_code: body.plan_code },
+        actor_user_id: user.id, action: reuseExisting ? "EMPRESA_USER_INVITED" : "EMPRESA_INVITED", entity_type: "saas_invites", entity_id: invite.id,
+        metadata: { empresa_id: empresa.id, email: body.responsible_email.trim().toLowerCase(), plan_code: body.plan_code, reuse_existing: reuseExisting },
       });
 
       return ok({ empresa_id: empresa.id, invite_id: invite.id, expires_at: invite.expires_at });
     } catch (innerErr: unknown) {
-      await supabase.from("orbit_empresas").delete().eq("id", empresa.id);
+      if (!reuseExisting) {
+        await supabase.from("orbit_empresas").delete().eq("id", empresa.id);
+      }
       console.error("Erro interno:", innerErr);
       const msg = innerErr instanceof Error ? innerErr.message : String(innerErr);
       return fail(ErrorCodes.INTERNAL_ERROR, `Erro interno: ${msg}`, 500);
     }
+
   } catch (err: unknown) {
     console.error("Unexpected error:", err);
     const msg = err instanceof Error ? err.message : String(err);
