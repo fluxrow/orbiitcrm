@@ -330,19 +330,20 @@ export default function DocumentacaoPage() {
                   ["/setup", "Configuração inicial", "Pública"],
                   ["/invite/:token", "Aceitar convite", "Pública"],
                   ["/documentacao", "Documentação do sistema", "Pública"],
-                  ["/orbit", "Dashboard do CRM", "Autenticado"],
-                  ["/orbit/prospects", "Lista de prospects", "Autenticado"],
-                  ["/orbit/conversas", "Chat multicanal", "Autenticado"],
-                  ["/orbit/funil", "Pipeline de vendas", "Autenticado"],
-                  ["/orbit/campanhas", "Gestão de campanhas", "Autenticado"],
-                  ["/orbit/templates", "Templates de mensagem", "Autenticado"],
-                  ["/orbit/lead-finder", "Busca de leads", "Autenticado"],
-                  ["/orbit/analytics", "Relatórios e métricas", "Autenticado"],
-                  ["/orbit/config", "Configurações", "Autenticado"],
-                  ["/orbit/usuarios", "Gestão de usuários da empresa", "Autenticado"],
+                  ["/:slug/dashboard", "Dashboard do CRM (por empresa)", "Autenticado"],
+                  ["/:slug/prospects", "Lista de prospects", "Autenticado"],
+                  ["/:slug/conversas", "Chat multicanal", "Autenticado"],
+                  ["/:slug/funil", "Pipeline de vendas", "Autenticado"],
+                  ["/:slug/campanhas", "Gestão de campanhas", "Autenticado"],
+                  ["/:slug/templates", "Templates de mensagem", "Autenticado"],
+                  ["/:slug/lead-finder", "Busca de leads", "Autenticado"],
+                  ["/:slug/analytics", "Relatórios e métricas", "Autenticado"],
+                  ["/:slug/config", "Configurações", "Autenticado"],
+                  ["/:slug/usuarios", "Gestão de usuários da empresa", "Autenticado"],
+                  ["/:slug/onboarding", "Onboarding de clientes", "Super Admin"],
                   ["/pe-admin/*", "Admin do Prospecting Engine", "Super Admin"],
-                  ["/super-admin/*", "Admin legado", "Super Admin"],
                 ].map(([r, d, p]) => <TableRow key={r}><TableCell className="font-mono text-xs">{r}</TableCell><TableCell className="text-muted-foreground">{d}</TableCell><TableCell><Badge variant={p === "Pública" ? "outline" : p === "Super Admin" ? "destructive" : "secondary"}>{p}</Badge></TableCell></TableRow>)}
+
               </TableBody></Table>
             </CardContent></Card>
           </section>
