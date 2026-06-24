@@ -267,7 +267,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
     return "**** " + key.slice(-4);
   };
 
-  const isApiKeyConfigured = !!resendConfig?.api_key;
+  const isApiKeyConfigured = !!(resendConfig as any)?.has_api_key;
 
   // CSV Import functions
   const handleDownloadTemplate = () => {
