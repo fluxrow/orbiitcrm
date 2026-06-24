@@ -14,6 +14,7 @@ import {
   CheckSquare,
   Building2,
   ClipboardList,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import orbitLogo from "@/assets/orbit-logo.png";
