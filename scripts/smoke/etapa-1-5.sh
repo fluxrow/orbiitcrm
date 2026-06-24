@@ -60,7 +60,7 @@ check "Deal na 1ª etapa aberta (menor ordem, não won/lost)" "1" \
   "SELECT (d.etapa_id = (SELECT id FROM orbit_pipeline_stages WHERE empresa_id='$EMPRESA_ID' AND NOT is_won AND NOT is_lost AND NOT is_archived ORDER BY ordem LIMIT 1))::int
    FROM orbit_deals d WHERE d.id='$DEAL_ID_1';"
 
-psql -q -c "UPDATE orbit_prospects SET status_qualificacao='qualificado' WHERE id='$PROSPECT_ID';"
+# OBS: UPDATE em orbit_prospects exige sessão autenticada (RLS) — não testado via psql.
 psql -q -c "INSERT INTO prospect_events(empresa_id, prospect_id, event_type, titulo, descricao)
   VALUES ('$EMPRESA_ID', '$PROSPECT_ID', 'deal_created_by_ai', 'Lead movido para o funil pela IA', 'smoke');"
 check "Evento deal_created_by_ai registrado" "1" \
