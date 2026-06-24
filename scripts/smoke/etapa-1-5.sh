@@ -45,8 +45,8 @@ check "Toda empresa tem etapa lost" "0" \
   "SELECT count(*) FROM orbit_empresas e WHERE NOT EXISTS (SELECT 1 FROM orbit_pipeline_stages s WHERE s.empresa_id=e.id AND s.is_lost);"
 
 echo "── T2 + T3: ensure_deal_for_prospect + evento IA ───────────"
-PROSPECT_ID=$(psql -tAX -c "INSERT INTO orbit_prospects(empresa_id, nome_razao, telefone, whatsapp, status_qualificacao, origem_contato)
-  VALUES ('$EMPRESA_ID', '$TEST_NAME', '$TEST_PHONE', '$TEST_PHONE', 'novo', 'PROSPECTS') RETURNING id;" | tr -d '[:space:]')
+PROSPECT_ID=$(psql -tAX -c "WITH ins AS (INSERT INTO orbit_prospects(empresa_id, nome_razao, telefone, whatsapp, status_qualificacao, origem_contato)
+  VALUES ('$EMPRESA_ID', '$TEST_NAME', '$TEST_PHONE', '$TEST_PHONE', 'novo', 'PROSPECTS') RETURNING id) SELECT id FROM ins;" | tr -d '[:space:]')
 echo "  · prospect de teste: $PROSPECT_ID"
 
 DEAL_ID_1=$(psql -tAX -c "SELECT ensure_deal_for_prospect('$PROSPECT_ID'::uuid);" | tr -d '[:space:]')
