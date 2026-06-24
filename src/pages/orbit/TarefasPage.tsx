@@ -5,18 +5,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Kanban, List, Calendar as CalendarIcon } from "lucide-react";
+import { Plus, Search, Kanban, List, Calendar as CalendarIcon, CalendarClock, Link2 } from "lucide-react";
 import { useOrbitTasks, useCompleteOrbitTask, useUpdateOrbitTask } from "@/hooks/useOrbitTasks";
 import { OrbitTaskKanban } from "@/components/orbit/OrbitTaskKanban";
 import { OrbitTaskCard } from "@/components/orbit/OrbitTaskCard";
 import { OrbitTaskDialog } from "@/components/orbit/OrbitTaskDialog";
-import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, addDays, nextFriday } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { UnifiedCalendar } from "@/components/orbit/UnifiedCalendar";
+import { ScheduleMeetingDialog } from "@/components/orbit/ScheduleMeetingDialog";
+import { format, startOfMonth, endOfMonth, addDays, nextFriday } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useTenant } from "@/contexts/TenantContext";
+import { useGoogleCalendarStatus, useCalendarEventsRange } from "@/hooks/useOrbitGoogleCalendar";
 
 export default function TarefasPage() {
-  const { basePath } = useTenant();
+  const { basePath, empresaId } = useTenant();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -24,6 +26,7 @@ export default function TarefasPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<any>(null);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [eventDialogOpen, setEventDialogOpen] = useState(false);
 
   const { data: tasks, isLoading } = useOrbitTasks({
     search: search || undefined,
@@ -32,6 +35,18 @@ export default function TarefasPage() {
   });
   const completeTask = useCompleteOrbitTask();
   const updateTask = useUpdateOrbitTask();
+
+  // Google Calendar
+  const { data: gStatus } = useGoogleCalendarStatus(empresaId);
+  const googleConnected = !!gStatus?.connected;
+  const rangeStart = startOfMonth(calendarMonth).toISOString();
+  const rangeEnd = endOfMonth(calendarMonth).toISOString();
+  const { data: gEvents, isFetching: gFetching } = useCalendarEventsRange(
+    empresaId,
+    rangeStart,
+    rangeEnd,
+    googleConnected,
+  );
 
   const handleComplete = (task: any) => {
     completeTask.mutate({ id: task.id, prospect_id: task.prospect_id, empresa_id: task.empresa_id });
@@ -42,7 +57,7 @@ export default function TarefasPage() {
     setDialogOpen(true);
   };
 
-  const handleOpenProspect = (prospectId: string) => {
+  const handleOpenProspect = (_prospectId: string) => {
     navigate(`${basePath}/prospects`);
   };
 
@@ -74,15 +89,9 @@ export default function TarefasPage() {
     updateTask.mutate({ id: taskId, due_date: newDate });
   };
 
-  // Calendar view helpers
-  const monthStart = startOfMonth(calendarMonth);
-  const monthEnd = endOfMonth(calendarMonth);
-  const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
-  const startPadding = (getDay(monthStart) + 6) % 7; // Monday start
-
   return (
     <OrbitLayout>
-      <PageHeader title="Tarefas" description="Gerencie atividades e follow-ups" />
+      <PageHeader title="Tarefas & Agenda" description="Gerencie atividades, follow-ups e a agenda do Google" />
 
       {/* Top bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-6">
@@ -111,6 +120,17 @@ export default function TarefasPage() {
         <Button onClick={handleNewTask} className="gap-2">
           <Plus className="w-4 h-4" /> Nova Tarefa
         </Button>
+        {empresaId && (
+          <Button
+            variant="outline"
+            onClick={() => setEventDialogOpen(true)}
+            className="gap-2"
+            disabled={!googleConnected}
+            title={googleConnected ? "Criar evento no Google Calendar" : "Conecte o Google Calendar em Configurações → Agenda"}
+          >
+            <CalendarClock className="w-4 h-4" /> Novo Evento
+          </Button>
+        )}
       </div>
 
       {/* Views */}
@@ -118,7 +138,7 @@ export default function TarefasPage() {
         <TabsList className="mb-4">
           <TabsTrigger value="kanban" className="gap-1"><Kanban className="w-4 h-4" /> Kanban</TabsTrigger>
           <TabsTrigger value="list" className="gap-1"><List className="w-4 h-4" /> Lista</TabsTrigger>
-          <TabsTrigger value="calendar" className="gap-1"><CalendarIcon className="w-4 h-4" /> Calendário</TabsTrigger>
+          <TabsTrigger value="calendar" className="gap-1"><CalendarIcon className="w-4 h-4" /> Agenda</TabsTrigger>
         </TabsList>
 
         <TabsContent value="kanban">
@@ -152,47 +172,26 @@ export default function TarefasPage() {
         </TabsContent>
 
         <TabsContent value="calendar">
-          <div className="flex items-center gap-4 mb-4">
-            <Button variant="outline" size="sm" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1))}>
-              ←
-            </Button>
-            <span className="text-sm font-medium capitalize">
-              {format(calendarMonth, "MMMM yyyy", { locale: ptBR })}
-            </span>
-            <Button variant="outline" size="sm" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1))}>
-              →
-            </Button>
-          </div>
-          <div className="grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden">
-            {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((d) => (
-              <div key={d} className="bg-muted/50 p-2 text-xs font-medium text-center text-muted-foreground">{d}</div>
-            ))}
-            {Array.from({ length: startPadding }).map((_, i) => (
-              <div key={`pad-${i}`} className="bg-card p-2 min-h-[80px]" />
-            ))}
-            {daysInMonth.map((day) => {
-              const dayTasks = (tasks || []).filter((t) => t.due_date && isSameDay(parseISO(t.due_date), day));
-              return (
-                <div key={day.toISOString()} className="bg-card p-1.5 min-h-[80px] border-border">
-                  <span className="text-xs text-muted-foreground">{format(day, "d")}</span>
-                  <div className="space-y-0.5 mt-1">
-                    {dayTasks.slice(0, 3).map((t) => (
-                      <div
-                        key={t.id}
-                        className="text-[10px] truncate px-1 py-0.5 rounded bg-primary/10 text-primary cursor-pointer hover:bg-primary/20"
-                        onClick={() => handleEdit(t)}
-                      >
-                        {t.titulo}
-                      </div>
-                    ))}
-                    {dayTasks.length > 3 && (
-                      <span className="text-[10px] text-muted-foreground px-1">+{dayTasks.length - 3}</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {!googleConnected && (
+            <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 flex items-center justify-between gap-3">
+              <div className="text-sm">
+                <span className="font-medium">Conecte sua agenda do Google</span>
+                <span className="text-muted-foreground"> para ver seus compromissos e reuniões agendadas pela IA aqui.</span>
+              </div>
+              <Button size="sm" variant="outline" className="gap-2" onClick={() => navigate(`${basePath}/config?tab=agenda`)}>
+                <Link2 className="w-3.5 h-3.5" /> Conectar
+              </Button>
+            </div>
+          )}
+          <UnifiedCalendar
+            tasks={(tasks || []) as any}
+            googleEvents={gEvents || []}
+            googleEnabled={googleConnected}
+            googleLoading={gFetching}
+            monthDate={calendarMonth}
+            onMonthChange={setCalendarMonth}
+            onTaskClick={handleEdit}
+          />
         </TabsContent>
       </Tabs>
 
@@ -201,6 +200,15 @@ export default function TarefasPage() {
         onOpenChange={setDialogOpen}
         task={editingTask}
       />
+
+      {empresaId && (
+        <ScheduleMeetingDialog
+          open={eventDialogOpen}
+          onOpenChange={setEventDialogOpen}
+          prospect={null}
+          empresaId={empresaId}
+        />
+      )}
     </OrbitLayout>
   );
 }
