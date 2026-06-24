@@ -18,10 +18,44 @@ const handler = async (req: Request): Promise<Response> => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // ── JWT auth: require a valid user token ──
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return fail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401);
+    }
+    const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsRes, error: claimsErr } = await userClient.auth.getClaims(token);
+    if (claimsErr || !claimsRes?.claims) {
+      return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401);
+    }
+    const userId = claimsRes.claims.sub as string;
+
     const { to, subject, html, empresa_id, sender_user_id }: EmailRequest = await req.json();
 
     if (!to || !subject || !html) {
       return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios: to, subject, html", 200);
+    }
+
+    // ── Authorize empresa membership (super_admin bypass) ──
+    if (empresa_id) {
+      const { data: roleRows } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId);
+      const isSuperAdmin = (roleRows ?? []).some((r: any) => r.role === "super_admin");
+      if (!isSuperAdmin) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("empresa_id")
+          .eq("id", userId)
+          .maybeSingle();
+        if (profile?.empresa_id !== empresa_id) {
+          return fail(ErrorCodes.UNAUTHORIZED, "Usuário não pertence à empresa", 403);
+        }
+      }
     }
 
     // ── Load sender user data for signature + reply-to ──

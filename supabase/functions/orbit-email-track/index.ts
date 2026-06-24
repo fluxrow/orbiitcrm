@@ -82,6 +82,17 @@ serve(async (req: Request) => {
       return new Response("Missing url", { status: 400 });
     }
 
+    // ── Open-redirect guard: only allow absolute http(s) URLs ──
+    let parsed: URL;
+    try {
+      parsed = new URL(targetUrl);
+    } catch {
+      return new Response("Invalid url", { status: 400 });
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return new Response("Invalid url scheme", { status: 400 });
+    }
+
     // Log event
     await supabase.from("orbit_email_events").insert({
       recipient_id: rid,
@@ -126,7 +137,7 @@ serve(async (req: Request) => {
 
     return new Response(null, {
       status: 302,
-      headers: { Location: targetUrl },
+      headers: { Location: parsed.toString() },
     });
   }
 

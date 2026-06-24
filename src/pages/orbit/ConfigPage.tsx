@@ -156,7 +156,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
   }, [zapiConfig]);
   useEffect(() => { 
     if (resendConfig) setResendForm({ 
-      api_key: resendConfig.api_key || "", 
+      api_key: "", // never read api_key from server (revoked); leave blank, only set on save
       email_teste: resendConfig.email_teste || "", 
       from_email: resendConfig.from_email || "", 
       from_name: resendConfig.from_name || "Orbit CRM", 
@@ -267,7 +267,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
     return "**** " + key.slice(-4);
   };
 
-  const isApiKeyConfigured = !!resendConfig?.api_key;
+  const isApiKeyConfigured = !!(resendConfig as any)?.has_api_key;
 
   // CSV Import functions
   const handleDownloadTemplate = () => {
@@ -1424,7 +1424,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     {isApiKeyConfigured && (
                       <div className="flex items-center gap-2 text-sm text-green-600">
                         <CheckCircle2 className="h-4 w-4" />
-                        <span>API Key configurada: {getMaskedApiKey(resendConfig?.api_key || "")}</span>
+                        <span>API Key configurada (oculta por segurança)</span>
                       </div>
                     )}
                     {!isApiKeyConfigured && (

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import DOMPurify from "isomorphic-dompurify";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { EmailTemplateEditor } from "@/components/orbit/EmailTemplateEditor";
@@ -425,7 +426,7 @@ export default function EmailTemplateEditorPage() {
                     {form.corpo_texto ? (
                        <div
                          className="prose prose-sm max-w-none text-black [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1.5"
-                         dangerouslySetInnerHTML={{ __html: previewHtml }}
+                         dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml) }}
                        />
                     ) : (
                       <p className="text-muted-foreground italic text-sm">O conteúdo do email aparecerá aqui...</p>

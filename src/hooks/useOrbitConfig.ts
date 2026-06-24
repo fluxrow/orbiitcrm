@@ -203,15 +203,28 @@ export function useRemoveVendedorFromDistribuicao() {
 }
 
 // Resend Config Hooks
+// NOTE: api_key column is REVOKE'd from authenticated for security; we read everything
+// except api_key and derive a `has_api_key` flag via a SECURITY DEFINER RPC.
+const RESEND_SAFE_COLS =
+  "id, empresa_id, from_email, from_name, ativo, created_at, updated_at, dominio_verificado, email_teste, reply_to_email";
+
 export function useOrbitResendConfig(empresaId?: string | null) {
   return useQuery({
     queryKey: ["orbit_resend_config", empresaId],
     queryFn: async () => {
-      let q = supabase.from("orbit_resend_config").select("*");
+      let q = supabase.from("orbit_resend_config").select(RESEND_SAFE_COLS);
       if (empresaId) q = q.eq("empresa_id", empresaId);
       const { data, error } = await q.maybeSingle();
       if (error) throw error;
-      return data as ResendConfig & { api_key?: string; dominio_verificado?: string; email_teste?: string } | null;
+      if (!data) return null;
+      const { data: hasKey } = await supabase.rpc("orbit_resend_has_api_key", {
+        p_empresa_id: empresaId ?? null,
+      });
+      return { ...(data as any), has_api_key: !!hasKey } as ResendConfig & {
+        dominio_verificado?: string;
+        email_teste?: string;
+        has_api_key?: boolean;
+      } | null;
     },
     enabled: !!empresaId,
   });
@@ -232,7 +245,7 @@ export function useUpdateResendConfig() {
           .from("orbit_resend_config")
           .update(updates as any)
           .eq("id", existing.id)
-          .select()
+          .select(RESEND_SAFE_COLS)
           .single();
         if (error) throw error;
         return data;
@@ -240,7 +253,7 @@ export function useUpdateResendConfig() {
         const { data, error } = await supabase
           .from("orbit_resend_config")
           .insert({ ...updates, empresa_id: empresaId } as any)
-          .select()
+          .select(RESEND_SAFE_COLS)
           .single();
         if (error) throw error;
         return data;

@@ -42,8 +42,46 @@ const handler = async (req: Request): Promise<Response> => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const body = await req.json();
-    console.log("[orbit-meta-webhook] Received:", JSON.stringify(body));
+    // ── Verify Meta x-hub-signature-256 (HMAC-SHA256 of raw body using META_APP_SECRET) ──
+    const appSecret = Deno.env.get("META_APP_SECRET");
+    const rawBody = await req.text();
+
+    if (!appSecret) {
+      console.error("[orbit-meta-webhook] META_APP_SECRET not configured — rejecting");
+      return new Response("Server not configured", { status: 503, headers: corsHeaders });
+    }
+
+    const sigHeader = req.headers.get("x-hub-signature-256") || "";
+    if (!sigHeader.startsWith("sha256=")) {
+      return new Response("Forbidden", { status: 403, headers: corsHeaders });
+    }
+    const provided = sigHeader.slice("sha256=".length);
+
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      enc.encode(appSecret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const sigBytes = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(rawBody)));
+    const expected = Array.from(sigBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+
+    // constant-time-ish comparison
+    if (provided.length !== expected.length) {
+      return new Response("Forbidden", { status: 403, headers: corsHeaders });
+    }
+    let diff = 0;
+    for (let i = 0; i < expected.length; i++) {
+      diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
+    }
+    if (diff !== 0) {
+      return new Response("Forbidden", { status: 403, headers: corsHeaders });
+    }
+
+    const body = JSON.parse(rawBody);
+    console.log("[orbit-meta-webhook] Verified signature, processing event");
 
     // Processar eventos do Meta
     if (body.object === "instagram" || body.object === "page") {
