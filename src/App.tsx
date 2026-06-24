@@ -158,6 +158,9 @@ const AppRoutes = () => (
     {/* Empresa selector (post-login, when user belongs to >1 empresa) */}
     <Route path="/select-empresa" element={<ProtectedRoute><SelectEmpresaPage /></ProtectedRoute>} />
 
+    {/* Public onboarding wizard (token-based, no auth) */}
+    <Route path="/onboarding-cliente/:token" element={<ClientOnboardingPage />} />
+
 
     
     {/* Compatibility redirect: /orbit/* → /demo/* */}
