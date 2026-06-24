@@ -2,7 +2,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   MessageCircle, Mail, StickyNote, CalendarPlus, GitBranch,
-  Phone, PhoneOff, MailX, Flame, History, CheckSquare,
+  Phone, PhoneOff, MailX, Flame, History, CheckSquare, CalendarClock,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
