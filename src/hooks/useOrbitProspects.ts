@@ -17,18 +17,22 @@ interface ProspectFilters {
 }
 
 export function useOrbitProspectsCount() {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: orbitProspectKeys.count(),
+    queryKey: [...orbitProspectKeys.count(), empresaId],
+    enabled: !!empresaId,
     queryFn: async () => {
       const { count, error } = await supabase
         .from("orbit_prospects")
         .select("*", { count: "exact", head: true })
+        .eq("empresa_id", empresaId!)
         .is("deleted_at", null);
       if (error) throw error;
       return count ?? 0;
     },
   });
 }
+
 
 export function useOrbitProspects(filters?: ProspectFilters) {
   return useQuery({
