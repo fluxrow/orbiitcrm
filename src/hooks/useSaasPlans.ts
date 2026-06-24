@@ -38,7 +38,11 @@ export interface SaasEmpresa {
   trial_end: string | null;
   last_invoice_status: string | null;
   last_payment_error: string | null;
+  empresa_nome?: string | null;
+  empresa_slug?: string | null;
+  member_count?: number;
 }
+
 
 export interface SaasUsageMonthly {
   id: string;
