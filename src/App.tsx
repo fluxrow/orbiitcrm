@@ -39,6 +39,8 @@ import AnalyticsPage from "./pages/orbit/AnalyticsPage";
 import MeuPlanoPage from "./pages/orbit/MeuPlanoPage";
 import UsuariosEmpresaPage from "./pages/orbit/UsuariosEmpresaPage";
 import TarefasPage from "./pages/orbit/TarefasPage";
+import OnboardingPage from "./pages/orbit/OnboardingPage";
+import ClientOnboardingPage from "./pages/public/ClientOnboardingPage";
 import NovaCampanhaPage from "./pages/orbit/NovaCampanhaPage";
 
 // Super Admin Pages (legacy)
