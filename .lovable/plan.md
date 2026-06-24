@@ -1,5 +1,7 @@
 # Etapa 2 — Motor de Fluxos
 
+> **Status Etapa 2 (Motor de Fluxos)** — F1 schema, F2 triggers, F3 dispatcher, F4 executor + 5 handlers, F5 UI em /config aba Fluxos. Cron pg_cron rodando a cada 1min. Smoke test E2E validado (evento → run → step). Falta F6 (integração com agente IA + script automatizado).
+
 Objetivo: transformar a aba "Fluxos" em um motor real de automação por empresa, capaz de reagir a eventos do CRM (lead novo, mudança de etapa, inatividade, classificação da IA) e executar ações (enviar mensagem, mover de etapa, criar tarefa, ativar/desativar agente). Sem quebrar nada do que já roda.
 
 ## Princípios
