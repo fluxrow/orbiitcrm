@@ -148,6 +148,8 @@ const AppRoutes = () => (
       <Route path="/accept-invite-pe/:token" element={<AcceptInvitePage />} />
       <Route path="/accept-invite" element={<AcceptInviteSaasPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/terms" element={<TermsPage />} />
     </Route>
 
     {/* Empresa selector (post-login, when user belongs to >1 empresa) */}
