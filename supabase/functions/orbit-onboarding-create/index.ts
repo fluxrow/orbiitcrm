@@ -43,17 +43,14 @@ serve(async (req) => {
       return fail(ErrorCodes.VALIDATION_ERROR, "empresa_id, cliente_nome e cliente_email são obrigatórios", 400, undefined, req);
     }
 
-    // Verify membership
+    // Only Fluxrow super admin can create onboardings
     const { data: roleRows } = await supabase
       .from("user_roles").select("role").eq("user_id", userId);
     const isSuper = (roleRows ?? []).some((r: any) => r.role === "super_admin");
     if (!isSuper) {
-      const { data: profile } = await supabase
-        .from("profiles").select("empresa_id").eq("id", userId).maybeSingle();
-      if (profile?.empresa_id !== body.empresa_id) {
-        return fail(ErrorCodes.FORBIDDEN, "Usuário não pertence à empresa", 403, undefined, req);
-      }
+      return fail(ErrorCodes.FORBIDDEN, "Apenas o administrador Fluxrow pode criar onboardings", 403, undefined, req);
     }
+
 
     // Tenant slug for URL
     const { data: empresa } = await supabase
