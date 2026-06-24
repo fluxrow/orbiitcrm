@@ -1794,6 +1794,9 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
             </CardContent>
           </Card>
         </TabsContent>
+        <TabsContent value="pipeline">
+          <PipelineConfigTab />
+        </TabsContent>
         <TabsContent value="agenda">
           {empresaId ? <AgendaConfigTab empresaId={empresaId} /> : <div className="text-sm text-muted-foreground">Selecione uma empresa para configurar a agenda.</div>}
         </TabsContent>
