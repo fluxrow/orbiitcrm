@@ -8,10 +8,8 @@ import { Navigate } from "react-router-dom";
 
 const navItems = [
   { to: "/pe-admin/cadastros", label: "Cadastros", icon: ClipboardList },
-  { to: "/pe-admin/organizations", label: "Organizações", icon: Building2 },
   { to: "/pe-admin/users", label: "Usuários Globais", icon: Users },
   { to: "/pe-admin/planos", label: "Planos", icon: CreditCard },
-  { to: "/pe-admin/tenants", label: "Tenant Map", icon: Link2 },
   { to: "/pe-admin/audit", label: "Auditoria", icon: FileText },
   { to: "/pe-admin/documentacao", label: "Documentação", icon: BookOpen },
 ];
