@@ -19,6 +19,7 @@ import {
   type OrbitFlow,
   type OrbitFlowTemplate,
 } from "@/hooks/useOrbitFlows";
+import { FlowEventMap } from "./FlowEventMap";
 import { toast } from "sonner";
 
 const TRIGGER_LABELS: Record<string, string> = {
@@ -50,6 +51,8 @@ export function FluxosTab({ empresaId }: { empresaId: string | null | undefined 
 
   return (
     <div className="space-y-4">
+      <FlowEventMap empresaId={empresaId} />
+
       <Card className="glass-card">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
