@@ -7,6 +7,7 @@ import { ProspectActionCard } from "@/components/orbit/ProspectActionCard";
 import { ProspectTimeline } from "@/components/orbit/ProspectTimeline";
 import { AddToFunnelDialog } from "@/components/orbit/AddToFunnelDialog";
 import { AddNoteDialog } from "@/components/orbit/AddNoteDialog";
+import { ScheduleMeetingDialog } from "@/components/orbit/ScheduleMeetingDialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
