@@ -196,6 +196,9 @@ serve(async (req) => {
       id: inserted.id,
       public_token: inserted.public_token,
       public_link: publicLink,
+      empresa_id: empresaId,
+      empresa_nome: empresaNome,
+      empresa_slug: empresaSlug,
       email_sent: emailSent,
     }, undefined, req);
   } catch (e) {
