@@ -406,6 +406,33 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // ── Shared-secret auth: only the orbit-webhook processor may call this ──
+  const expectedSecret = Deno.env.get("ORBIT_AI_AGENT_SECRET");
+  if (!expectedSecret) {
+    console.error("[orbit-ai-agent] ORBIT_AI_AGENT_SECRET not configured");
+    return new Response(JSON.stringify({ error: "Server not configured" }), {
+      status: 503,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const providedSecret = req.headers.get("x-orbit-internal-secret") || "";
+  if (providedSecret.length !== expectedSecret.length) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  let diff = 0;
+  for (let i = 0; i < expectedSecret.length; i++) {
+    diff |= providedSecret.charCodeAt(i) ^ expectedSecret.charCodeAt(i);
+  }
+  if (diff !== 0) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   try {
     const { conversa_id, prospect_id, mensagem, telefone } = await req.json();
     console.log("[orbit-ai-agent] Processando:", { conversa_id, prospect_id, mensagem: mensagem?.substring(0, 50) });
