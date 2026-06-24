@@ -15,7 +15,7 @@ import { useGoogleCalendarStatus } from "@/hooks/useOrbitGoogleCalendar";
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  prospect: any | null;
+  prospect?: any | null;
   empresaId: string;
 }
 
