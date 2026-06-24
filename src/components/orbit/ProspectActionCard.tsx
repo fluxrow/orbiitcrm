@@ -173,6 +173,15 @@ export function ProspectActionCard({
           <TooltipContent>Enviar para funil</TooltipContent>
         </Tooltip>
 
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={(e) => { e.stopPropagation(); onSchedule(prospect); }}>
+              <CalendarClock className="w-3.5 h-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Agendar reunião</TooltipContent>
+        </Tooltip>
+
         <div className="ml-auto">
           <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-muted-foreground" onClick={(e) => { e.stopPropagation(); onViewHistory(prospect); }}>
             <History className="w-3.5 h-3.5 mr-1" />Histórico
