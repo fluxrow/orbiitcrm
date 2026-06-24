@@ -40,22 +40,26 @@ export default function AuthPage() {
 
   async function resolveRedirect() {
     try {
-      // 1. Check if super_admin → redirect to /pe-admin
+      // 1. Check if super_admin
       const { data: roles } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", user!.id)
         .eq("role", "super_admin")
         .limit(1);
+      const isSuperAdmin = !!(roles && roles.length > 0);
 
-      if (roles && roles.length > 0) {
+      // 1b. Check empresa memberships
+      const { data: memberships } = await supabase.rpc("get_my_empresas" as any);
+      const membershipList = ((memberships as any[]) || []) as Array<{ empresa_id: string; slug: string | null }>;
+
+      // Super admin with no memberships → pe-admin only
+      if (isSuperAdmin && membershipList.length === 0) {
         navigate("/pe-admin", { replace: true });
         return;
       }
 
-      // 1b. If user belongs to multiple empresas, show picker
-      const { data: memberships } = await supabase.rpc("get_my_empresas" as any);
-      const membershipList = (memberships as any[]) || [];
+      // Multiple empresas → picker
       if (membershipList.length > 1) {
         navigate("/select-empresa", { replace: true });
         return;

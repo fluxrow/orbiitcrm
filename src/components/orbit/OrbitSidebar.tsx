@@ -14,6 +14,7 @@ import {
   CheckSquare,
   Building2,
   ClipboardList,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import orbitLogo from "@/assets/orbit-logo.png";
@@ -76,6 +77,7 @@ export function OrbitSidebar() {
     { name: "Funil", href: `${basePath}/funil`, icon: Kanban },
     { name: "Tarefas", href: `${basePath}/tarefas`, icon: CheckSquare, badge: pendingCount > 0 ? pendingCount : undefined },
     ...(isSuperAdmin ? [{ name: "Onboarding", href: `${basePath}/onboarding`, icon: ClipboardList }] : []),
+    ...(isSuperAdmin ? [{ name: "Admin Fluxrow", href: `/pe-admin`, icon: Shield }] : []),
     ...(canUseFeature("whatsapp") || canUseFeature("email") ? [{ name: "Campanhas", href: `${basePath}/campanhas`, icon: Mail }] : []),
     { name: "Templates", href: `${basePath}/templates`, icon: FileText },
     ...(canUseFeature("lead_finder") ? [{ name: "Lead Finder", href: `${basePath}/lead-finder`, icon: Search }] : []),
