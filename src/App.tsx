@@ -148,7 +148,7 @@ const AppRoutes = () => (
     <Route path="/pe-admin" element={<PeAdminLayout />}>
       <Route index element={<Navigate to="/pe-admin/cadastros" replace />} />
       <Route path="cadastros" element={<CadastrosPage />} />
-      <Route path="organizations" element={<OrganizationsPage />} />
+      <Route path="organizations" element={<Navigate to="/pe-admin/cadastros" replace />} />
       <Route path="organizations/:id/users" element={<PeOrgUsersPage />} />
       <Route path="users" element={<PeGlobalUsersPage />} />
       <Route path="planos" element={<PlanosPage />} />

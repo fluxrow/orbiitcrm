@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Navigate } from "react-router-dom";
 
 const navItems = [
-  { to: "/pe-admin/cadastros", label: "Cadastros", icon: ClipboardList },
+  { to: "/pe-admin/cadastros", label: "Empresas", icon: Building2 },
   { to: "/pe-admin/users", label: "Usuários Globais", icon: Users },
   { to: "/pe-admin/planos", label: "Planos", icon: CreditCard },
   { to: "/pe-admin/audit", label: "Auditoria", icon: FileText },
