@@ -1135,6 +1135,69 @@ export type Database = {
           },
         ]
       }
+      orbit_client_onboardings: {
+        Row: {
+          archived: boolean
+          cliente_email: string | null
+          cliente_empresa: string | null
+          cliente_nome: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          empresa_id: string
+          id: string
+          implementation_checklist: Json
+          last_saved_at: string | null
+          notes: string | null
+          public_token: string
+          responses: Json
+          sent_at: string | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["orbit_onboarding_status"]
+          updated_at: string
+        }
+        Insert: {
+          archived?: boolean
+          cliente_email?: string | null
+          cliente_empresa?: string | null
+          cliente_nome?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          empresa_id: string
+          id?: string
+          implementation_checklist?: Json
+          last_saved_at?: string | null
+          notes?: string | null
+          public_token?: string
+          responses?: Json
+          sent_at?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["orbit_onboarding_status"]
+          updated_at?: string
+        }
+        Update: {
+          archived?: boolean
+          cliente_email?: string | null
+          cliente_empresa?: string | null
+          cliente_nome?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          empresa_id?: string
+          id?: string
+          implementation_checklist?: Json
+          last_saved_at?: string | null
+          notes?: string | null
+          public_token?: string
+          responses?: Json
+          sent_at?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["orbit_onboarding_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       orbit_conversas: {
         Row: {
           ai_contexto: Json | null
@@ -3881,6 +3944,7 @@ export type Database = {
           slug: string
         }[]
       }
+      get_onboarding_by_token: { Args: { p_token: string }; Returns: Json }
       get_orbit_analytics_summary: {
         Args: { p_empresa_id: string }
         Returns: Json
@@ -4007,7 +4071,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      save_onboarding_responses: {
+        Args: { p_responses: Json; p_token: string }
+        Returns: Json
+      }
       set_active_empresa: { Args: { p_empresa_id: string }; Returns: Json }
+      submit_onboarding: {
+        Args: { p_responses: Json; p_token: string }
+        Returns: Json
+      }
       super_admin_exists: { Args: never; Returns: boolean }
       switch_active_empresa: { Args: { p_empresa_id: string }; Returns: Json }
       upsert_orbit_zapi_config_secure: {
@@ -4027,6 +4099,13 @@ export type Database = {
     }
     Enums: {
       app_role: "super_admin" | "admin" | "vendedor" | "visualizador"
+      orbit_onboarding_status:
+        | "rascunho"
+        | "enviado"
+        | "em_andamento"
+        | "concluido"
+        | "revisado"
+        | "arquivado"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -4155,6 +4234,14 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["super_admin", "admin", "vendedor", "visualizador"],
+      orbit_onboarding_status: [
+        "rascunho",
+        "enviado",
+        "em_andamento",
+        "concluido",
+        "revisado",
+        "arquivado",
+      ],
     },
   },
 } as const
