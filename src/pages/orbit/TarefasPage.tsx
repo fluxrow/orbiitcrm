@@ -203,6 +203,29 @@ export default function TarefasPage() {
               </Button>
             </div>
           )}
+          {googleConnected && (
+            <div className="mb-3 flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
+              <span>Sincronização automática:</span>
+              <Select value={String(syncIntervalMin)} onValueChange={handleSyncIntervalChange}>
+                <SelectTrigger className="h-8 w-[150px] text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Desativada</SelectItem>
+                  <SelectItem value="5">A cada 5 min</SelectItem>
+                  <SelectItem value="15">A cada 15 min</SelectItem>
+                  <SelectItem value="30">A cada 30 min</SelectItem>
+                  <SelectItem value="60">A cada 1 hora</SelectItem>
+                </SelectContent>
+              </Select>
+              {gUpdatedAt > 0 && (
+                <span className="hidden sm:inline">
+                  Atualizado {format(new Date(gUpdatedAt), "HH:mm:ss")}
+                </span>
+              )}
+              <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={handleManualSync} disabled={gFetching}>
+                <RefreshCw className={`w-3.5 h-3.5 ${gFetching ? "animate-spin" : ""}`} /> Sincronizar
+              </Button>
+            </div>
+          )}
           <UnifiedCalendar
             tasks={(tasks || []) as any}
             googleEvents={gEvents || []}
@@ -212,6 +235,7 @@ export default function TarefasPage() {
             onMonthChange={setCalendarMonth}
             onTaskClick={handleEdit}
           />
+
         </TabsContent>
       </Tabs>
 
