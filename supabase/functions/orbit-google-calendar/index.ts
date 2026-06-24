@@ -72,6 +72,7 @@ Deno.serve(async (req) => {
           attendees: body.attendees,
           location: body.location,
           addMeet: !!body.add_meet,
+          source: body.source || "orbit",
         });
         return ok({ event }, undefined, req);
       }
