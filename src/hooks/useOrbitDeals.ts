@@ -52,12 +52,14 @@ export function useOrbitPipelineStages() {
       const { data, error } = await supabase
         .from("orbit_pipeline_stages")
         .select("*")
+        .eq("empresa_id", empresaId!)
         .order("ordem", { ascending: true });
       if (error) throw error;
       return data;
     },
   });
 }
+
 
 export function useOrbitDeals(etapa_id?: string) {
   const { empresaId } = useTenant();
