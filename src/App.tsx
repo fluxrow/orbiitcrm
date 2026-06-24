@@ -10,7 +10,6 @@ import { useIsSuperAdmin } from "@/hooks/useUserRole";
 import NotFound from "./pages/NotFound";
 import AuthPage from "./pages/AuthPage";
 import LandingPage from "./pages/LandingPage";
-import TrialPage from "./pages/TrialPage";
 import SetupPage from "./pages/SetupPage";
 import AcceptInvitePage from "./pages/AcceptInvitePage";
 import AcceptInviteSaasPage from "./pages/AcceptInviteSaasPage";
@@ -43,12 +42,6 @@ import OnboardingPage from "./pages/orbit/OnboardingPage";
 import ClientOnboardingPage from "./pages/public/ClientOnboardingPage";
 import NovaCampanhaPage from "./pages/orbit/NovaCampanhaPage";
 
-// Super Admin Pages (legacy)
-import SuperAdminDashboard from "./pages/super-admin/SuperAdminDashboard";
-import EmpresasPage from "./pages/super-admin/EmpresasPage";
-import EmpresaUsersPage from "./pages/super-admin/EmpresaUsersPage";
-import UsuariosGlobaisPage from "./pages/super-admin/UsuariosGlobaisPage";
-
 // PE Admin Pages
 import PeAdminLayout from "./pages/pe-admin/PeAdminLayout";
 import OrganizationsPage from "./pages/pe-admin/OrganizationsPage";
@@ -59,9 +52,6 @@ import TenantMapPage from "./pages/pe-admin/TenantMapPage";
 import PeAdminDocPage from "./pages/pe-admin/PeAdminDocPage";
 import CadastrosPage from "./pages/pe-admin/CadastrosPage";
 import PlanosPage from "./pages/pe-admin/PlanosPage";
-
-// Org Pages
-import OrgUsersPage from "./pages/org/OrgUsersPage";
 
 const queryClient = new QueryClient();
 
@@ -100,7 +90,7 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!isSuperAdmin) {
-    return <Navigate to="/demo" replace />;
+    return <Navigate to="/auth" replace />;
   }
 
   return <>{children}</>;
@@ -132,19 +122,12 @@ function OrbitRoutes() {
   );
 }
 
-// Compatibility: redirect /orbit/* to /demo/*
-function OrbitRedirect() {
-  const path = window.location.pathname.replace(/^\/orbit\/?/, "");
-  return <Navigate to={`/demo/${path || "dashboard"}`} replace />;
-}
-
 const AppRoutes = () => (
   <Routes>
     {/* Public routes with hotsite header */}
     <Route element={<PublicLayout />}>
       <Route path="/" element={<LandingPage />} />
       <Route path="/auth" element={<AuthPage />} />
-      <Route path="/trial" element={<TrialPage />} />
       <Route path="/documentacao" element={<DocumentacaoPage />} />
       <Route path="/setup" element={<SetupPage />} />
       <Route path="/invite/:token" element={<AcceptInvitePage />} />
@@ -161,24 +144,6 @@ const AppRoutes = () => (
     {/* Public onboarding wizard (token-based, no auth) */}
     <Route path="/onboarding-cliente/:token" element={<ClientOnboardingPage />} />
 
-
-    
-    {/* Compatibility redirect: /orbit/* → /demo/* */}
-    <Route path="/orbit/*" element={<OrbitRedirect />} />
-    <Route path="/orbit" element={<Navigate to="/demo/dashboard" replace />} />
-
-    {/* Demo tenant routes */}
-    <Route path="/demo" element={<TenantLayout isDemo />}>
-      <Route index element={<Navigate to="dashboard" replace />} />
-      <Route path="*" element={<OrbitRoutes />} />
-    </Route>
-
-    {/* Legacy Super Admin Routes */}
-    <Route path="/super-admin" element={<SuperAdminRoute><SuperAdminDashboard /></SuperAdminRoute>} />
-    <Route path="/super-admin/empresas" element={<SuperAdminRoute><EmpresasPage /></SuperAdminRoute>} />
-    <Route path="/super-admin/empresas/:id/usuarios" element={<SuperAdminRoute><EmpresaUsersPage /></SuperAdminRoute>} />
-    <Route path="/super-admin/usuarios" element={<SuperAdminRoute><UsuariosGlobaisPage /></SuperAdminRoute>} />
-
     {/* PE Admin Routes */}
     <Route path="/pe-admin" element={<PeAdminLayout />}>
       <Route index element={<Navigate to="/pe-admin/cadastros" replace />} />
@@ -193,20 +158,15 @@ const AppRoutes = () => (
       <Route path="*" element={<Navigate to="/pe-admin/cadastros" replace />} />
     </Route>
 
-    {/* Org Routes */}
-    <Route path="/org/users" element={<ProtectedRoute><OrgUsersPage /></ProtectedRoute>} />
-
     {/* Hidden sales presentation (no nav link, noindex) */}
     <Route path="/apresentacao/orbit-2026" element={<ApresentacaoOrbit2026 />} />
-
-
 
     {/* Slug tenant routes (catch-all, must be last) */}
     <Route path="/:slug" element={<TenantLayout />}>
       <Route index element={<Navigate to="dashboard" replace />} />
       <Route path="*" element={<OrbitRoutes />} />
     </Route>
-    
+
     <Route path="*" element={<NotFound />} />
   </Routes>
 );

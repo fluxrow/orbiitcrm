@@ -12,12 +12,7 @@ interface TenantBlockedProps {
 }
 
 const REASON_CONFIG: Record<string, { icon: typeof ShieldAlert; title: string; description: string; showPortal?: boolean; showUpgrade?: boolean }> = {
-  trial_expired: {
-    icon: Clock,
-    title: "Período de teste encerrado",
-    description: "Seu período de teste de 7 dias acabou. Para continuar usando o Orbit, ative um plano.",
-    showUpgrade: true,
-  },
+
   suspended: {
     icon: ShieldAlert,
     title: "Conta suspensa",

@@ -60,7 +60,7 @@ export function EmpresaSwitcher({ collapsed }: EmpresaSwitcherProps) {
     try {
       await selectMutation.mutateAsync(e.empresa_id);
       setOpen(false);
-      const target = e.slug ? `/${e.slug}/dashboard` : "/demo/dashboard";
+      const target = e.slug ? `/${e.slug}/dashboard` : "/select-empresa";
       // Force full reload so TenantContext re-initializes cleanly
       window.location.assign(target);
     } catch (err: any) {
@@ -163,7 +163,7 @@ export function EmpresaSwitcher({ collapsed }: EmpresaSwitcherProps) {
                       )}
                     </div>
                     <p className="text-[11px] text-muted-foreground truncate">
-                      {e.slug ? `/${e.slug}` : "demo"} · {e.role}
+                      {e.slug ? `/${e.slug}` : "—"} · {e.role}
                     </p>
                   </div>
                 </button>
