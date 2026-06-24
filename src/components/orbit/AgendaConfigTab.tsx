@@ -166,40 +166,17 @@ export default function AgendaConfigTab({ empresaId }: Props) {
       </Card>
 
       {connected && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Próximos eventos</CardTitle>
-            <CardDescription>Visualização rápida da agenda conectada.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {events.isLoading && <div className="text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin inline mr-2" />Buscando…</div>}
-            {events.error && <div className="text-sm text-destructive">Erro: {(events.error as Error).message}</div>}
-            {events.data && events.data.length === 0 && <p className="text-sm text-muted-foreground">Nenhum evento futuro.</p>}
-            {events.data && events.data.length > 0 && (
-              <ul className="space-y-2">
-                {events.data.map((ev) => {
-                  const start = ev.start?.dateTime || ev.start?.date;
-                  return (
-                    <li key={ev.id} className="flex items-start justify-between gap-3 rounded-md border border-border/50 p-3">
-                      <div>
-                        <p className="font-medium text-sm">{ev.summary || "(sem título)"}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {start ? format(new Date(start), "dd/MM HH:mm", { locale: ptBR }) : "—"}
-                          {ev.attendees?.length ? ` · ${ev.attendees.length} participante(s)` : ""}
-                        </p>
-                      </div>
-                      {ev.htmlLink && (
-                        <a href={ev.htmlLink} target="_blank" rel="noopener noreferrer" className="text-primary text-xs hover:underline shrink-0">
-                          Abrir
-                        </a>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+        <div className="rounded-lg border border-border/50 bg-muted/20 p-4 flex items-center justify-between gap-3">
+          <div className="text-sm">
+            <p className="font-medium">Sua agenda agora aparece em Tarefas → Agenda</p>
+            <p className="text-muted-foreground text-xs mt-0.5">
+              Eventos do Google e reuniões agendadas pela IA são exibidos junto com suas tarefas.
+            </p>
+          </div>
+          <a href="../tarefas" className="text-primary text-sm hover:underline shrink-0 inline-flex items-center gap-1">
+            Ver agenda <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
       )}
     </div>
   );
