@@ -3,11 +3,13 @@ import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
 import { getSystemEmailConfig } from "../_shared/system-email.ts";
 
 interface InviteRequest {
-  empresa_nome: string;
+  empresa_nome?: string;
   responsible_name: string;
   responsible_email: string;
-  plan_code: "demo" | "basic" | "professional" | "plus";
+  plan_code?: "demo" | "basic" | "professional" | "plus" | "orbit";
+  empresa_id?: string; // when provided, reuse existing empresa
 }
+
 
 async function hashToken(plaintext: string): Promise<string> {
   const encoder = new TextEncoder();
