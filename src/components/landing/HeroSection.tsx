@@ -1,12 +1,12 @@
 import { useRef } from "react";
 import { motion, useMotionValue, useTransform, useSpring } from "framer-motion";
-import { MessageCircle, Play } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
 import StarfieldCanvas from "./StarfieldCanvas";
 import HeroDashboardMockup from "./HeroDashboardMockup";
 import { WHATSAPP_LP_HREF } from "@/lib/whatsapp";
+
 
 const STATS = [
   { value: "2.400+", label: "Leads qualificados" },
@@ -15,9 +15,9 @@ const STATS = [
 ];
 
 export default function HeroSection() {
-  const navigate = useNavigate();
   const isMobile = useIsMobile();
   const containerRef = useRef<HTMLDivElement>(null);
+
 
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
@@ -114,15 +114,7 @@ export default function HeroSection() {
                 Falar no WhatsApp
               </a>
             </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              onClick={() => navigate("/demo")}
-              className="gap-2 text-base px-8 hover:scale-105 transition-transform border-border/50 backdrop-blur-sm"
-            >
-              <Play className="w-4 h-4" />
-              Ver demonstração
-            </Button>
+
           </motion.div>
         </div>
 

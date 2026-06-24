@@ -29,7 +29,7 @@ import { orbitProspectKeys } from "@/lib/query-keys";
 
 const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   active: { label: "Ativo", variant: "default" },
-  trial: { label: "Trial", variant: "outline" },
+  trial: { label: "Ativo", variant: "default" },
   expired: { label: "Expirado", variant: "destructive" },
   suspended: { label: "Suspenso", variant: "destructive" },
   canceled: { label: "Cancelado", variant: "destructive" },
@@ -38,7 +38,7 @@ const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondar
 
 const STRIPE_STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   active: { label: "Ativa", variant: "default" },
-  trialing: { label: "Trial", variant: "outline" },
+  trialing: { label: "Ativa", variant: "default" },
   past_due: { label: "Pagamento pendente", variant: "destructive" },
   canceled: { label: "Cancelada", variant: "destructive" },
   unpaid: { label: "Não paga", variant: "destructive" },
@@ -46,6 +46,7 @@ const STRIPE_STATUS_MAP: Record<string, { label: string; variant: "default" | "s
   incomplete_expired: { label: "Expirada", variant: "destructive" },
   paused: { label: "Pausada", variant: "secondary" },
 };
+
 
 /* ── UsageCard ── */
 
@@ -281,21 +282,8 @@ export default function MeuPlanoPage() {
                   <p className="text-sm text-muted-foreground">{empresaNome}</p>
                 )}
 
-                {/* Trial info */}
-                {trialEndsAt && !hasSubscription && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                    <Calendar className="w-4 h-4" />
-                    <span>
-                      Trial expira em{" "}
-                      {format(parseISO(trialEndsAt), "dd/MM/yyyy", { locale: ptBR })}
-                      {trialDaysLeft !== null && trialDaysLeft >= 0 && (
-                        <span className="font-medium text-foreground ml-1">
-                          ({trialDaysLeft} {trialDaysLeft === 1 ? "dia" : "dias"})
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                )}
+                {/* Next billing rendered below */}
+
 
                 {/* Next billing */}
                 {nextBilling && hasSubscription && (
@@ -509,13 +497,8 @@ export default function MeuPlanoPage() {
               </Button>
             )}
 
-            {/* Demo user: request access */}
-            {isDemo && (
-              <Button onClick={() => navigate("/trial")}>
-                Solicitar Acesso
-                <ArrowUpRight className="w-4 h-4 ml-1" />
-              </Button>
-            )}
+
+
 
             {/* No subscription and no plans available */}
             {!hasSubscription && !isDemo && sortedPlans.length === 0 && (

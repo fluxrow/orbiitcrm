@@ -17,11 +17,11 @@ interface SaasManageDialogProps {
 const STATUS_OPTIONS = [
   { value: "invited", label: "Convidado" },
   { value: "onboarding", label: "Onboarding" },
-  { value: "trial", label: "Trial" },
   { value: "active", label: "Ativo" },
   { value: "suspended", label: "Suspenso" },
   { value: "canceled", label: "Cancelado" },
 ];
+
 
 export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasManageDialogProps) {
   const updateSaas = useUpdateSaasEmpresa();
@@ -98,10 +98,8 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label>Trial expira em</Label>
-            <Input type="date" value={trialEndsAt} onChange={(e) => setTrialEndsAt(e.target.value)} />
-          </div>
+
+
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>

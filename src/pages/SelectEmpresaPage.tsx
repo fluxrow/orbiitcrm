@@ -49,7 +49,6 @@ export default function SelectEmpresaPage() {
     if (empresas.length === 1) {
       const e = empresas[0];
       if (e.slug) navigate(`/${e.slug}/dashboard`, { replace: true });
-      else navigate("/demo/dashboard", { replace: true });
     }
   }, [empresas, isLoading, navigate]);
 
@@ -57,11 +56,11 @@ export default function SelectEmpresaPage() {
     try {
       await selectMutation.mutateAsync(e.empresa_id);
       if (e.slug) navigate(`/${e.slug}/dashboard`, { replace: true });
-      else navigate("/demo/dashboard", { replace: true });
     } catch (err: any) {
       toast.error(err?.message || "Erro ao selecionar empresa");
     }
   };
+
 
   if (authLoading || isLoading) {
     return (
@@ -78,14 +77,14 @@ export default function SelectEmpresaPage() {
           <Building2 className="h-12 w-12 mx-auto text-muted-foreground" />
           <h1 className="text-xl font-semibold">Nenhuma empresa vinculada</h1>
           <p className="text-sm text-muted-foreground">
-            Sua conta ainda não está vinculada a nenhuma empresa. Solicite acesso ao administrador ou faça uma nova solicitação de trial.
+            Sua conta ainda não está vinculada a nenhuma empresa. Entre em contato com o administrador para receber acesso.
           </p>
           <div className="flex gap-2 justify-center pt-2">
             <Button variant="outline" onClick={() => signOut().then(() => navigate("/auth"))}>
               <LogOut className="h-4 w-4 mr-2" /> Sair
             </Button>
-            <Button onClick={() => navigate("/trial")}>Solicitar trial</Button>
           </div>
+
         </Card>
       </div>
     );

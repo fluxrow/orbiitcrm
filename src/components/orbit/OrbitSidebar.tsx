@@ -41,7 +41,7 @@ export function OrbitSidebar() {
   const { isAdmin } = useIsAdmin();
   const { hasRole: isSuperAdmin } = useIsSuperAdmin();
 
-  const { basePath, isDemo } = useTenant();
+  const { basePath } = useTenant();
   const { user, signOut } = useAuth();
   const { data: pendingTasks } = useOrbitTasks({ status: "pending" });
   const pendingCount = pendingTasks?.length || 0;
@@ -105,10 +105,8 @@ export function OrbitSidebar() {
               isExpanded ? "opacity-100 w-auto" : "opacity-0 w-0"
             )}
           >
-            {isDemo && (
-              <span className="text-[10px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-semibold tracking-wide">DEMO</span>
-            )}
             <p className="text-xs text-muted-foreground">CRM Prospecção</p>
+
           </div>
         </Link>
       </div>

@@ -49,9 +49,6 @@ export default function HotsiteHeader() {
 
         <div className="hidden md:flex items-center gap-2">
           <ThemeToggle compact />
-          <Button variant="ghost" size="sm" onClick={() => navigate("/demo")} className="text-muted-foreground hover:text-foreground hover:bg-secondary/60">
-            Ver demo
-          </Button>
           <Button variant="ghost" size="sm" onClick={() => navigate("/auth")} className="text-muted-foreground hover:text-foreground hover:bg-secondary/60">
             Entrar
           </Button>
@@ -66,6 +63,7 @@ export default function HotsiteHeader() {
             </a>
           </Button>
         </div>
+
 
         {/* Mobile hamburger */}
         <button className="md:hidden text-foreground" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
@@ -87,7 +85,6 @@ export default function HotsiteHeader() {
           ))}
           <div className="flex flex-col gap-2 pt-2">
             <ThemeToggle className="justify-center" />
-            <Button variant="ghost" size="sm" onClick={() => { setMobileMenuOpen(false); navigate("/demo"); }}>Acessar Demo</Button>
             <Button variant="outline" size="sm" onClick={() => { setMobileMenuOpen(false); navigate("/auth"); }}>Entrar</Button>
             <Button
               asChild
@@ -100,6 +97,7 @@ export default function HotsiteHeader() {
               </a>
             </Button>
           </div>
+
         </div>
       )}
     </header>

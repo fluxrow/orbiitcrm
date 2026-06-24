@@ -23,7 +23,7 @@ const defaultState: TenantState = {
   empresaId: null,
   slug: null,
   isDemo: false,
-  basePath: "/demo",
+  basePath: "/",
   planCode: null,
   saasStatus: null,
   stripeStatus: null,
@@ -43,13 +43,12 @@ export function useTenant() {
 
 interface TenantProviderProps {
   children: ReactNode;
-  isDemo?: boolean;
 }
 
-export function TenantProvider({ children, isDemo = false }: TenantProviderProps) {
+export function TenantProvider({ children }: TenantProviderProps) {
   const { slug } = useParams<{ slug: string }>();
   const { user } = useAuth();
-  const [state, setState] = useState<TenantState>({ ...defaultState, isDemo });
+  const [state, setState] = useState<TenantState>(defaultState);
 
   useEffect(() => {
     if (!user) {
@@ -57,40 +56,10 @@ export function TenantProvider({ children, isDemo = false }: TenantProviderProps
       return;
     }
 
-    if (isDemo) {
-      loadDemoTenant();
-    } else if (slug) {
+    if (slug) {
       loadSlugTenant(slug);
     }
-  }, [user?.id, slug, isDemo]);
-
-  async function loadDemoTenant() {
-    try {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("empresa_id")
-        .eq("id", user!.id)
-        .maybeSingle();
-
-      setState({
-        empresaId: profile?.empresa_id || null,
-        slug: null,
-        isDemo: true,
-        basePath: "/demo",
-        planCode: "demo",
-        saasStatus: "active",
-        stripeStatus: null,
-        trialEndsAt: null,
-        isLoading: false,
-        isBlocked: false,
-        blockReason: null,
-        empresaNome: null,
-        notFound: false,
-      });
-    } catch {
-      setState(s => ({ ...s, isLoading: false }));
-    }
-  }
+  }, [user?.id, slug]);
 
   async function loadSlugTenant(slugParam: string) {
     try {
