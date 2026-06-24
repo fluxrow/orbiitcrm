@@ -15,7 +15,7 @@ interface Body {
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return optionsResponse();
+  if (req.method === "OPTIONS") return optionsResponse(req);
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
