@@ -51,7 +51,9 @@ export function useOrbitCampaigns(filters?: CampaignFilters) {
       let query = supabase
         .from("orbit_campaigns")
         .select("*, template:orbit_message_templates(id, nome, canal, corpo_texto, imagem_url, assunto_email)")
+        .eq("empresa_id", empresaId!)
         .order("created_at", { ascending: false });
+
 
       if (filters?.status && filters.status !== "all") {
         query = query.eq("status", filters.status);

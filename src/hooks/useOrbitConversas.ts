@@ -44,8 +44,10 @@ export function useOrbitConversas(canal?: string) {
           prospect:orbit_prospects!orbit_conversas_prospect_id_fkey(id, nome_razao, nome_fantasia, email_principal, segmento),
           human_user:profiles!orbit_conversas_human_user_id_fkey(id, nome)
         `)
+        .eq("empresa_id", empresaId!)
         .eq("status", "aberta")
         .order("ultima_mensagem_at", { ascending: false, nullsFirst: false });
+
 
       if (canal && canal !== "all") {
         query = query.eq("canal", canal);

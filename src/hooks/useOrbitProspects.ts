@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 import { orbitProspectKeys } from "@/lib/query-keys";
+import { useTenant } from "@/contexts/TenantContext";
+
 
 type Prospect = Tables<"orbit_prospects">;
 type ProspectInsert = TablesInsert<"orbit_prospects">;
@@ -15,12 +17,15 @@ interface ProspectFilters {
 }
 
 export function useOrbitProspectsCount() {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: orbitProspectKeys.count(),
+    queryKey: [...orbitProspectKeys.count(), empresaId],
+    enabled: !!empresaId,
     queryFn: async () => {
       const { count, error } = await supabase
         .from("orbit_prospects")
         .select("*", { count: "exact", head: true })
+        .eq("empresa_id", empresaId!)
         .is("deleted_at", null);
       if (error) throw error;
       return count ?? 0;
@@ -28,16 +33,21 @@ export function useOrbitProspectsCount() {
   });
 }
 
+
 export function useOrbitProspects(filters?: ProspectFilters) {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: orbitProspectKeys.list(filters),
+    queryKey: [...orbitProspectKeys.list(filters), empresaId],
+    enabled: !!empresaId,
     queryFn: async () => {
       const trimmedSearch = filters?.search?.trim();
       let query = supabase
         .from("orbit_prospects")
         .select("*, responsavel:profiles!orbit_prospects_responsavel_id_fkey(id, nome, email)")
+        .eq("empresa_id", empresaId!)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
+
 
       if (trimmedSearch) {
         query = query.textSearch("search_vector", trimmedSearch, {

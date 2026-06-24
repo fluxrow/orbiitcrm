@@ -3,11 +3,13 @@ import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
 import { getSystemEmailConfig } from "../_shared/system-email.ts";
 
 interface InviteRequest {
-  empresa_nome: string;
+  empresa_nome?: string;
   responsible_name: string;
   responsible_email: string;
-  plan_code: "demo" | "basic" | "professional" | "plus";
+  plan_code?: "demo" | "basic" | "professional" | "plus" | "orbit";
+  empresa_id?: string; // when provided, reuse existing empresa
 }
+
 
 async function hashToken(plaintext: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -77,26 +79,47 @@ Deno.serve(async (req) => {
     if (!roles?.length) return fail(ErrorCodes.FORBIDDEN, "Acesso negado. Apenas super admins.", 403);
 
     const body: InviteRequest = await req.json();
-    if (!body.empresa_nome?.trim() || !body.responsible_name?.trim() || !body.responsible_email?.trim() || !body.plan_code) {
-      return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios faltando");
+    if (!body.responsible_name?.trim() || !body.responsible_email?.trim()) {
+      return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios: responsible_name, responsible_email");
     }
 
-    const validPlans = ["demo", "basic", "professional", "plus"];
-    if (!validPlans.includes(body.plan_code)) return fail(ErrorCodes.VALIDATION_ERROR, "plan_code inválido");
+    let empresa: { id: string; nome: string };
+    let plan: { id: string; name: string } | null = null;
+    const reuseExisting = !!body.empresa_id;
 
-    const { data: plan } = await supabase.from("saas_plans").select("id, name").eq("code", body.plan_code).single();
-    if (!plan) return fail(ErrorCodes.NOT_FOUND, "Plano não encontrado", 404);
+    if (reuseExisting) {
+      const { data: existing, error: exErr } = await supabase.from("orbit_empresas").select("id, nome").eq("id", body.empresa_id!).single();
+      if (exErr || !existing) return fail(ErrorCodes.NOT_FOUND, "Empresa não encontrada", 404);
+      empresa = existing;
+      // optional plan lookup for email body
+      const { data: saasRow } = await supabase.from("saas_empresa").select("plan_id, saas_plans(name)").eq("empresa_id", existing.id).maybeSingle();
+      if (saasRow?.plan_id) plan = { id: saasRow.plan_id, name: (saasRow as any).saas_plans?.name || "Orbit" };
+    } else {
+      if (!body.empresa_nome?.trim() || !body.plan_code) {
+        return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios: empresa_nome, plan_code");
+      }
+      const validPlans = ["demo", "basic", "professional", "plus", "orbit"];
+      if (!validPlans.includes(body.plan_code)) return fail(ErrorCodes.VALIDATION_ERROR, "plan_code inválido");
 
-    const { data: empresa, error: empErr } = await supabase.from("orbit_empresas").insert({ nome: body.empresa_nome.trim(), ativo: false }).select().single();
-    if (empErr) return fail(ErrorCodes.INTERNAL_ERROR, `Erro ao criar empresa: ${empErr.message}`, 500);
+      const { data: planRow } = await supabase.from("saas_plans").select("id, name").eq("code", body.plan_code).single();
+      if (!planRow) return fail(ErrorCodes.NOT_FOUND, "Plano não encontrado", 404);
+      plan = planRow;
+
+      const { data: created, error: empErr } = await supabase.from("orbit_empresas").insert({ nome: body.empresa_nome.trim(), ativo: false }).select("id, nome").single();
+      if (empErr) return fail(ErrorCodes.INTERNAL_ERROR, `Erro ao criar empresa: ${empErr.message}`, 500);
+      empresa = created;
+    }
 
     try {
-      const { error: saasErr } = await supabase.from("saas_empresa").insert({
-        empresa_id: empresa.id, plan_id: plan.id, status: "invited",
-        responsible_name: body.responsible_name.trim(), responsible_email: body.responsible_email.trim().toLowerCase(),
-        invited_at: new Date().toISOString(), created_by_user_id: user.id,
-      });
-      if (saasErr) throw new Error(`saas_empresa: ${saasErr.message}`);
+      if (!reuseExisting) {
+        const { error: saasErr } = await supabase.from("saas_empresa").insert({
+          empresa_id: empresa.id, plan_id: plan!.id, status: "invited",
+          responsible_name: body.responsible_name.trim(), responsible_email: body.responsible_email.trim().toLowerCase(),
+          invited_at: new Date().toISOString(), created_by_user_id: user.id,
+        });
+        if (saasErr) throw new Error(`saas_empresa: ${saasErr.message}`);
+      }
+
 
       await supabase.from("saas_invites").update({ expires_at: new Date().toISOString() })
         .eq("email", body.responsible_email.trim().toLowerCase()).is("used_at", null).gt("expires_at", new Date().toISOString());
@@ -113,16 +136,17 @@ Deno.serve(async (req) => {
       if (invErr) throw new Error(`saas_invites: ${invErr.message}`);
 
       const { apiKey: resendKey, fromEmail } = await getSystemEmailConfig(supabase);
+      const planName = plan?.name || "Orbit";
       if (resendKey) {
         const appUrl = getAppUrl(req);
         const activationUrl = `${appUrl}/accept-invite?token=${tokenPlaintext}`;
-        const emailHtml = buildEmailHtml(body.empresa_nome.trim(), plan.name, activationUrl);
+        const emailHtml = buildEmailHtml(empresa.nome, planName, activationUrl);
         const emailRes = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             from: fromEmail, to: [body.responsible_email.trim()],
-            subject: `Convite: ative sua empresa ${body.empresa_nome.trim()} no Orbit`, html: emailHtml,
+            subject: `Convite: ative sua conta em ${empresa.nome} no Orbit`, html: emailHtml,
           }),
         });
         if (!emailRes.ok) { const err = await emailRes.json(); console.error("Erro Resend:", err); }
@@ -131,17 +155,20 @@ Deno.serve(async (req) => {
       }
 
       await supabase.from("pe_audit_log").insert({
-        actor_user_id: user.id, action: "EMPRESA_INVITED", entity_type: "saas_invites", entity_id: invite.id,
-        metadata: { empresa_id: empresa.id, email: body.responsible_email.trim().toLowerCase(), plan_code: body.plan_code },
+        actor_user_id: user.id, action: reuseExisting ? "EMPRESA_USER_INVITED" : "EMPRESA_INVITED", entity_type: "saas_invites", entity_id: invite.id,
+        metadata: { empresa_id: empresa.id, email: body.responsible_email.trim().toLowerCase(), plan_code: body.plan_code, reuse_existing: reuseExisting },
       });
 
       return ok({ empresa_id: empresa.id, invite_id: invite.id, expires_at: invite.expires_at });
     } catch (innerErr: unknown) {
-      await supabase.from("orbit_empresas").delete().eq("id", empresa.id);
+      if (!reuseExisting) {
+        await supabase.from("orbit_empresas").delete().eq("id", empresa.id);
+      }
       console.error("Erro interno:", innerErr);
       const msg = innerErr instanceof Error ? innerErr.message : String(innerErr);
       return fail(ErrorCodes.INTERNAL_ERROR, `Erro interno: ${msg}`, 500);
     }
+
   } catch (err: unknown) {
     console.error("Unexpected error:", err);
     const msg = err instanceof Error ? err.message : String(err);
