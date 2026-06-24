@@ -55,9 +55,9 @@ check "Idempotente (mesma chamada → mesmo deal)" "1" \
   "SELECT ('$DEAL_ID_1' = '$DEAL_ID_2')::int;"
 check "Deal criado com origem=auto_agent" "1" \
   "SELECT count(*) FROM orbit_deals WHERE id='$DEAL_ID_1' AND origem='auto_agent' AND status='open';"
-check "Deal na etapa default" "1" \
-  "SELECT count(*) FROM orbit_deals d JOIN orbit_pipeline_stages s ON s.id=d.etapa_id
-   WHERE d.id='$DEAL_ID_1' AND s.is_default;"
+check "Deal na 1ª etapa aberta (menor ordem, não won/lost)" "1" \
+  "SELECT (d.etapa_id = (SELECT id FROM orbit_pipeline_stages WHERE empresa_id='$EMPRESA_ID' AND NOT is_won AND NOT is_lost AND NOT is_archived ORDER BY ordem LIMIT 1))::int
+   FROM orbit_deals d WHERE d.id='$DEAL_ID_1';"
 
 psql -q -c "UPDATE orbit_prospects SET status_qualificacao='qualificado' WHERE id='$PROSPECT_ID';"
 psql -q -c "INSERT INTO prospect_events(empresa_id, prospect_id, event_type, titulo, descricao)
