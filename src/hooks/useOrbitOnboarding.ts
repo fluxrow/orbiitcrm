@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/contexts/TenantContext";
+import { useIsSuperAdmin } from "@/hooks/useUserRole";
 
 export type OnboardingStatus =
   | "rascunho" | "enviado" | "em_andamento" | "concluido" | "revisado" | "arquivado";
@@ -23,19 +24,24 @@ export interface ClientOnboarding {
   archived: boolean;
   created_at: string;
   updated_at: string;
+  empresa?: { nome: string | null; slug: string | null } | null;
 }
 
 export function useClientOnboardings() {
   const { empresaId } = useTenant();
+  const { hasRole: isSuper } = useIsSuperAdmin();
   return useQuery({
-    queryKey: ["client-onboardings", empresaId],
+    queryKey: ["client-onboardings", empresaId, isSuper],
     enabled: !!empresaId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from("orbit_client_onboardings" as any)
-        .select("*")
-        .eq("empresa_id", empresaId!)
+        .select("*, empresa:orbit_empresas(nome, slug)")
         .order("created_at", { ascending: false });
+      // Super admin sees onboardings of all tenants (centralized view from Fluxrow).
+      // Regular users only see their own tenant's onboardings.
+      if (!isSuper) q = q.eq("empresa_id", empresaId!);
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as unknown as ClientOnboarding[];
     },
