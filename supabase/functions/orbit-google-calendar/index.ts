@@ -45,7 +45,8 @@ Deno.serve(async (req) => {
       case "list_events": {
         const access = await ensureFreshAccessToken(row!);
         const timeMin = body.time_min ?? new Date().toISOString();
-        const events = await listUpcomingEvents(access, row!.calendar_id, timeMin, body.max ?? 20);
+        const timeMax = body.time_max ?? undefined;
+        const events = await listUpcomingEvents(access, row!.calendar_id, timeMin, body.max ?? 250, timeMax);
         return ok({ events }, undefined, req);
       }
 
@@ -71,6 +72,7 @@ Deno.serve(async (req) => {
           attendees: body.attendees,
           location: body.location,
           addMeet: !!body.add_meet,
+          source: body.source || "orbit",
         });
         return ok({ event }, undefined, req);
       }

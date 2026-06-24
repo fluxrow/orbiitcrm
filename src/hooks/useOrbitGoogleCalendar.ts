@@ -103,3 +103,30 @@ export function useUpcomingCalendarEvents(empresaId: string | null | undefined, 
     },
   });
 }
+
+export function useCalendarEventsRange(
+  empresaId: string | null | undefined,
+  startISO: string,
+  endISO: string,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["google-calendar-range", empresaId, startISO, endISO],
+    enabled: !!empresaId && enabled && !!startISO && !!endISO,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("orbit-google-calendar", {
+        body: {
+          action: "list_events",
+          empresa_id: empresaId,
+          time_min: startISO,
+          time_max: endISO,
+          max: 250,
+        },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error?.message ?? "Falha ao listar eventos");
+      return (data.data?.events?.items ?? []) as any[];
+    },
+  });
+}

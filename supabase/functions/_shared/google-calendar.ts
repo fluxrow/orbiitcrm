@@ -172,7 +172,7 @@ export interface CreateEventInput {
 export async function createCalendarEvent(
   accessToken: string,
   calendarId: string,
-  input: CreateEventInput,
+  input: CreateEventInput & { source?: string },
 ) {
   const body: Record<string, unknown> = {
     summary: input.summary,
@@ -181,6 +181,11 @@ export async function createCalendarEvent(
     start: { dateTime: input.start, timeZone: input.timezone },
     end: { dateTime: input.end, timeZone: input.timezone },
     attendees: input.attendees?.map((email) => ({ email })),
+    extendedProperties: {
+      private: {
+        source: input.source ?? "orbit",
+      },
+    },
   };
   if (input.addMeet) {
     body.conferenceData = {
@@ -205,9 +210,11 @@ export async function listUpcomingEvents(
   calendarId: string,
   timeMin: string,
   maxResults = 20,
+  timeMax?: string,
 ) {
   const url = new URL(`${CAL_BASE}/calendars/${encodeURIComponent(calendarId)}/events`);
   url.searchParams.set("timeMin", timeMin);
+  if (timeMax) url.searchParams.set("timeMax", timeMax);
   url.searchParams.set("maxResults", String(maxResults));
   url.searchParams.set("singleEvents", "true");
   url.searchParams.set("orderBy", "startTime");
