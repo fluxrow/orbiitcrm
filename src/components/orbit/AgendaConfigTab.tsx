@@ -36,7 +36,6 @@ export default function AgendaConfigTab({ empresaId }: Props) {
   const update = useUpdateGoogleCalendarConfig();
 
   const connected = !!status.data?.connected;
-  const events = useUpcomingCalendarEvents(empresaId, connected);
 
   const [calendarId, setCalendarId] = useState("primary");
   const [timezone, setTimezone] = useState("America/Sao_Paulo");
