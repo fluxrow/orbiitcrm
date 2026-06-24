@@ -102,6 +102,15 @@ export default function FunilPage() {
           <p className="text-2xl font-bold">{formatCurrency(totalPipeline)}</p>
         </div>
 
+        {dealsGrouped && dealsGrouped.length > 0 && totalPipeline === 0 &&
+          dealsGrouped.every((s) => (s.deals || []).length === 0) && (
+            <div className="mb-4 p-4 rounded-lg border border-dashed border-primary/30 bg-primary/5 text-sm text-muted-foreground">
+              Nenhum lead no funil ainda. Os cards aparecem aqui automaticamente
+              quando o agente qualifica um lead pelo WhatsApp, ou clique em{" "}
+              <span className="font-medium text-foreground">Nova Oportunidade</span> para adicionar manualmente.
+            </div>
+          )}
+
         {/* Kanban columns */}
         <div className="flex gap-4 overflow-x-auto pb-4">
           {dealsGrouped?.map((stage) => {

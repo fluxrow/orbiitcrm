@@ -96,11 +96,18 @@ export function DealCard({
             {formatCurrency(Number(deal.valor_estimado))}
           </span>
         )}
-        {deal.probabilidade != null && (
-          <Badge variant="secondary" className="text-xs">
-            {deal.probabilidade}%
-          </Badge>
-        )}
+        <div className="flex items-center gap-1">
+          {(deal as any).origem === "auto_agent" && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-primary/40 text-primary">
+              IA
+            </Badge>
+          )}
+          {deal.probabilidade != null && (
+            <Badge variant="secondary" className="text-xs">
+              {deal.probabilidade}%
+            </Badge>
+          )}
+        </div>
       </div>
 
       {/* Contact info */}

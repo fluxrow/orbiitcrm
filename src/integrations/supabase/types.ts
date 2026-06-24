@@ -3986,6 +3986,10 @@ export type Database = {
         }
         Returns: Json
       }
+      ensure_deal_for_prospect: {
+        Args: { _prospect_id: string }
+        Returns: string
+      }
       extract_domain: { Args: { p: string }; Returns: string }
       generate_unique_slug: { Args: { p_nome: string }; Returns: string }
       get_campaign_analytics_summary: {
@@ -4092,6 +4096,10 @@ export type Database = {
       orbit_resend_has_api_key: {
         Args: { p_empresa_id: string }
         Returns: boolean
+      }
+      orbit_seed_default_pipeline: {
+        Args: { _empresa_id: string }
+        Returns: undefined
       }
       pe_backfill_import_as_lista: {
         Args: {
