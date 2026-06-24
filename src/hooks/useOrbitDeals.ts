@@ -73,8 +73,10 @@ export function useOrbitDeals(etapa_id?: string) {
           etapa:orbit_pipeline_stages!orbit_deals_etapa_id_fkey(id, nome, cor, is_won, is_lost),
           responsavel:profiles!orbit_deals_responsavel_id_fkey(id, nome)
         `)
+        .eq("empresa_id", empresaId!)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
+
 
       if (etapa_id) {
         query = query.eq("etapa_id", etapa_id);
