@@ -156,7 +156,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
   }, [zapiConfig]);
   useEffect(() => { 
     if (resendConfig) setResendForm({ 
-      api_key: resendConfig.api_key || "", 
+      api_key: "", // never read api_key from server (revoked); leave blank, only set on save
       email_teste: resendConfig.email_teste || "", 
       from_email: resendConfig.from_email || "", 
       from_name: resendConfig.from_name || "Orbit CRM", 
