@@ -13,7 +13,7 @@ import {
   CreditCard,
   CheckSquare,
   Building2,
-} from "lucide-react";
+  ClipboardList,
 import { cn } from "@/lib/utils";
 import orbitLogo from "@/assets/orbit-logo.png";
 import orbitIcon from "@/assets/orbit-icon.png";
