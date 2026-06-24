@@ -106,6 +106,7 @@ serve(async (req) => {
           monthly_price_cents_override: body.monthly_price_cents ?? null,
           setup_fee_cents_override: body.setup_fee_cents ?? null,
           invited_at: new Date().toISOString(),
+          created_by_user_id: userId,
         });
       if (saasErr) {
         return fail(ErrorCodes.INTERNAL_ERROR, `Empresa criada, mas falhou plano: ${saasErr.message}`, 500, undefined, req);
