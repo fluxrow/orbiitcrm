@@ -907,6 +907,43 @@ Mapeamento de campos para dados_extraidos:
       } catch (e) {
         console.error("[orbit-ai-agent] Falha ao registrar deal no funil:", e);
       }
+
+      // ── Emitir evento prospect_qualified para o Motor de Fluxos ──
+      try {
+        const dedupeKey = `prospect_qualified:${prospect_id}`;
+        const { error: evErr } = await supabase.from("orbit_flow_events").insert({
+          empresa_id: empresaId,
+          event_type: "prospect_qualified",
+          entity_type: "prospect",
+          entity_id: prospect_id,
+          dedupe_key: dedupeKey,
+          payload: {
+            prospect_id,
+            conversa_id,
+            vendedor_id: vendedorAtribuido,
+            origem: prospect?.origem ?? null,
+            segmento: prospect?.segmento ?? null,
+            source: "orbit-ai-agent",
+          },
+        });
+        if (evErr && !String(evErr.message).toLowerCase().includes("duplicate")) {
+          console.error("[orbit-ai-agent] flow_events insert error:", evErr);
+        } else {
+          console.log("[orbit-ai-agent] flow_event prospect_qualified emitido", { prospect_id });
+          // best-effort: kick dispatcher imediatamente
+          const fnBase = `${Deno.env.get("SUPABASE_URL")}/functions/v1`;
+          fetch(`${fnBase}/orbit-flow-dispatcher`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+            },
+            body: JSON.stringify({ trigger: "ai-agent", prospect_id }),
+          }).catch((e) => console.warn("[orbit-ai-agent] dispatcher invoke falhou:", e));
+        }
+      } catch (e) {
+        console.error("[orbit-ai-agent] Falha ao emitir flow_event:", e);
+      }
     }
 
 
