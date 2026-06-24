@@ -34,6 +34,10 @@
     --warning: 38 92% 46%;
     --warning-foreground: 210 40% 98%;
 
+    /* Brand accent (Orbit yellow #f9b217) */
+    --brand: 40 95% 53%;
+    --brand-foreground: 222 47% 8%;
+
     --border: 214 25% 88%;
     --input: 214 25% 92%;
     --ring: 187 92% 40%;
@@ -98,6 +102,9 @@
 
     --warning: 38 92% 50%;
     --warning-foreground: 222 47% 6%;
+
+    --brand: 40 95% 53%;
+    --brand-foreground: 222 47% 6%;
 
     --border: 240 30% 18%;
     --input: 240 30% 14%;
