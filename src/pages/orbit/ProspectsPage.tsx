@@ -66,6 +66,8 @@ export default function ProspectsPage() {
 
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteProspect, setNoteProspect] = useState<any>(null);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleProspect, setScheduleProspect] = useState<any>(null);
 
   const [funnelOpen, setFunnelOpen] = useState(false);
   const [funnelProspects, setFunnelProspects] = useState<any[]>([]);
