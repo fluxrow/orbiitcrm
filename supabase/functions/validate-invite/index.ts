@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
 
     const { data: invite, error } = await supabase
       .from("saas_invites")
-      .select("id, email, responsible_name, expires_at, used_at, empresa_id, orbit_empresas(id, nome), saas_empresa:empresa_id(plan_id, saas_plans(code, name))")
+      .select("id, email, responsible_name, expires_at, used_at, empresa_id")
       .eq("token_hash", tokenHash)
       .maybeSingle();
 
@@ -49,9 +49,19 @@ Deno.serve(async (req) => {
       return fail(ErrorCodes.INVITE_EXPIRED, "Este convite expirou", 200, undefined, req);
     }
 
-    const empresa = invite.orbit_empresas as any;
-    const saasEmpresa = invite.saas_empresa as any;
-    const plan = saasEmpresa?.saas_plans as any;
+    const { data: empresa } = await supabase
+      .from("orbit_empresas")
+      .select("nome")
+      .eq("id", invite.empresa_id)
+      .maybeSingle();
+
+    const { data: saasEmpresa } = await supabase
+      .from("saas_empresa")
+      .select("plan_id, saas_plans(code, name)")
+      .eq("empresa_id", invite.empresa_id)
+      .maybeSingle();
+
+    const plan = (saasEmpresa?.saas_plans as any) || null;
 
     return ok({
       valid: true,
