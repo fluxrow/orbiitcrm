@@ -15,6 +15,7 @@ import {
   Building2,
   ClipboardList,
   Shield,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import orbitLogo from "@/assets/orbit-logo.png";
@@ -75,8 +76,8 @@ export function OrbitSidebar() {
 
   const { canUseFeature } = usePlanGuard();
 
-  const navigation = [
-    { name: "Funil", href: `${basePath}/funil`, icon: Kanban },
+  const navigation: Array<{ name: string; href: string; icon: LucideIcon; badge?: number; featured?: boolean }> = [
+    { name: "Funil", href: `${basePath}/funil`, icon: Kanban, featured: true },
     { name: "Prospects", href: `${basePath}/prospects`, icon: Users },
     { name: "Conversas", href: `${basePath}/conversas`, icon: MessageSquare },
     { name: "Tarefas", href: `${basePath}/tarefas`, icon: CheckSquare, badge: pendingCount > 0 ? pendingCount : undefined },
@@ -133,8 +134,12 @@ export function OrbitSidebar() {
                   "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
                   "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                   isActive
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground",
+                    ? item.featured
+                      ? "bg-primary/15 text-primary border border-primary/30 shadow-sm shadow-primary/10"
+                      : "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : item.featured
+                      ? "text-sidebar-foreground font-semibold border border-transparent"
+                      : "text-sidebar-foreground",
                   !isExpanded && "justify-center px-0"
                 )}
               >

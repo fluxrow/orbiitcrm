@@ -20,11 +20,25 @@ export function useOrbitMeetingsAsTasks() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orbit_meetings" as any)
-        .select("*, prospect:orbit_prospects(id, nome_razao)")
+        .select("*")
         .eq("empresa_id", empresaId!)
         .in("status", ["scheduled", "rescheduled"])
         .order("scheduled_at", { ascending: true });
       if (error) throw error;
+
+      const prospectIds = Array.from(
+        new Set((data || []).map((m: any) => m.prospect_id).filter(Boolean)),
+      );
+      let prospectsById = new Map<string, any>();
+      if (prospectIds.length > 0) {
+        const { data: prospects, error: prospectsError } = await supabase
+          .from("orbit_prospects" as any)
+          .select("id, nome_razao, nome_fantasia")
+          .eq("empresa_id", empresaId!)
+          .in("id", prospectIds);
+        if (prospectsError) throw prospectsError;
+        prospectsById = new Map((prospects || []).map((p: any) => [p.id, p]));
+      }
 
       return (data || []).map((m: any) => {
         const dt = new Date(m.scheduled_at);
@@ -47,7 +61,7 @@ export function useOrbitMeetingsAsTasks() {
           due_time,
           scheduled_at: m.scheduled_at,
           meeting_url: m.meeting_url,
-          prospect: m.prospect,
+          prospect: m.prospect_id ? prospectsById.get(m.prospect_id) ?? null : null,
           assignee: null,
           created_at: m.created_at,
         };
@@ -63,7 +77,23 @@ export function useOrbitTasksAndMeetings(filters?: OrbitTaskFilters) {
   const tasksQ = useOrbitTasks(filters);
   const meetingsQ = useOrbitMeetingsAsTasks();
 
-  const combined = [...(tasksQ.data || []), ...(meetingsQ.data || [])].sort(
+  const normalizedSearch = filters?.search?.trim().toLowerCase();
+  const filteredMeetings = (meetingsQ.data || []).filter((meeting: any) => {
+    if (filters?.status && filters.status !== "all" && meeting.status !== filters.status) return false;
+    if (filters?.prioridade && filters.prioridade !== "all" && meeting.prioridade !== filters.prioridade) return false;
+    if (filters?.prospect_id && meeting.prospect_id !== filters.prospect_id) return false;
+    if (!normalizedSearch) return true;
+    return [
+      meeting.titulo,
+      meeting.descricao,
+      meeting.prospect?.nome_razao,
+      meeting.prospect?.nome_fantasia,
+    ]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(normalizedSearch));
+  });
+
+  const combined = [...(tasksQ.data || []), ...filteredMeetings].sort(
     (a: any, b: any) => {
       const da = a.due_date ? `${a.due_date} ${a.due_time || "00:00:00"}` : "";
       const db = b.due_date ? `${b.due_date} ${b.due_time || "00:00:00"}` : "";
@@ -77,6 +107,6 @@ export function useOrbitTasksAndMeetings(filters?: OrbitTaskFilters) {
     data: combined,
     isLoading: tasksQ.isLoading || meetingsQ.isLoading,
     tasks: tasksQ.data || [],
-    meetings: meetingsQ.data || [],
+    meetings: filteredMeetings,
   };
 }

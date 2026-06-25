@@ -67,7 +67,7 @@ export default function AuthPage() {
 
 
 
-      // 2. Check empresa_id → redirect to /{slug}/dashboard
+      // 2. Check empresa_id → redirect to the sales funnel
       const { data: profile } = await supabase
         .from("profiles")
         .select("empresa_id")
