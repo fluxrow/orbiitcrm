@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Kanban, List, Calendar as CalendarIcon, CalendarClock, Link2, RefreshCw } from "lucide-react";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Plus, Search, Kanban, List, Calendar as CalendarIcon, CalendarClock, Link2, RefreshCw, LayoutGrid } from "lucide-react";
+import { useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useOrbitTasks, useCompleteOrbitTask, useUpdateOrbitTask } from "@/hooks/useOrbitTasks";
@@ -15,7 +17,7 @@ import { OrbitTaskCard } from "@/components/orbit/OrbitTaskCard";
 import { OrbitTaskDialog } from "@/components/orbit/OrbitTaskDialog";
 import { UnifiedCalendar } from "@/components/orbit/UnifiedCalendar";
 import { ScheduleMeetingDialog } from "@/components/orbit/ScheduleMeetingDialog";
-import { format, startOfMonth, endOfMonth, addDays, nextFriday } from "date-fns";
+import { format, startOfMonth, endOfMonth, addDays, nextFriday, parseISO, isToday, isFuture } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useTenant } from "@/contexts/TenantContext";
 import { useGoogleCalendarStatus, useCalendarEventsRange } from "@/hooks/useOrbitGoogleCalendar";
@@ -27,6 +29,7 @@ export default function TarefasPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [prioridadeFilter, setPrioridadeFilter] = useState("all");
+  const [scope, setScope] = useState<"today" | "meetings" | "all">("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<any>(null);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -49,6 +52,41 @@ export default function TarefasPage() {
   });
   const completeTask = useCompleteOrbitTask();
   const updateTask = useUpdateOrbitTask();
+
+  const visibleTasks = useMemo(() => {
+    const all = tasks || [];
+    if (scope === "all") return all;
+    if (scope === "meetings") {
+      return all
+        .filter((t: any) => t._kind === "meeting")
+        .filter((t: any) => {
+          if (!t.scheduled_at) return false;
+          const d = new Date(t.scheduled_at);
+          return isToday(d) || isFuture(d);
+        });
+    }
+    // today: tasks due today + meetings today
+    return all.filter((t: any) => {
+      if (t._kind === "meeting" && t.scheduled_at) return isToday(new Date(t.scheduled_at));
+      if (t.due_date) return isToday(parseISO(t.due_date));
+      return false;
+    });
+  }, [tasks, scope]);
+
+  const counts = useMemo(() => {
+    const all = tasks || [];
+    const today = all.filter((t: any) => {
+      if (t._kind === "meeting" && t.scheduled_at) return isToday(new Date(t.scheduled_at));
+      if (t.due_date) return isToday(parseISO(t.due_date));
+      return false;
+    }).length;
+    const meetings = all.filter((t: any) => {
+      if (t._kind !== "meeting" || !t.scheduled_at) return false;
+      const d = new Date(t.scheduled_at);
+      return isToday(d) || isFuture(d);
+    }).length;
+    return { today, meetings, all: all.length };
+  }, [tasks]);
 
   // Google Calendar
   const { data: gStatus } = useGoogleCalendarStatus(empresaId);
@@ -157,6 +195,30 @@ export default function TarefasPage() {
         )}
       </div>
 
+      {/* Scope (agrupamento) */}
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <ToggleGroup
+          type="single"
+          value={scope}
+          onValueChange={(v) => v && setScope(v as typeof scope)}
+          variant="outline"
+          className="justify-start"
+        >
+          <ToggleGroupItem value="today" className="gap-2">
+            <CalendarIcon className="w-4 h-4" /> Hoje
+            <span className="text-xs text-muted-foreground">({counts.today})</span>
+          </ToggleGroupItem>
+          <ToggleGroupItem value="meetings" className="gap-2">
+            <CalendarClock className="w-4 h-4" /> Próximas reuniões
+            <span className="text-xs text-muted-foreground">({counts.meetings})</span>
+          </ToggleGroupItem>
+          <ToggleGroupItem value="all" className="gap-2">
+            <LayoutGrid className="w-4 h-4" /> Tudo
+            <span className="text-xs text-muted-foreground">({counts.all})</span>
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+
       {/* Views */}
       <Tabs defaultValue="kanban">
         <TabsList className="mb-4">
@@ -170,7 +232,7 @@ export default function TarefasPage() {
             <p className="text-muted-foreground text-center py-12">Carregando...</p>
           ) : (
             <OrbitTaskKanban
-              tasks={tasks || []}
+              tasks={visibleTasks}
               onComplete={handleComplete}
               onEdit={handleEdit}
               onOpenProspect={handleOpenProspect}
@@ -184,10 +246,10 @@ export default function TarefasPage() {
             <p className="text-muted-foreground text-center py-12">Carregando...</p>
           ) : (
             <div className="grid gap-2 max-w-2xl">
-              {(tasks || []).length === 0 ? (
+              {visibleTasks.length === 0 ? (
                 <p className="text-muted-foreground text-center py-12">Nenhuma tarefa encontrada</p>
               ) : (
-                (tasks || []).map((task) => (
+                visibleTasks.map((task) => (
                   <OrbitTaskCard key={task.id} task={task} onComplete={handleComplete} onEdit={handleEdit} onOpenProspect={handleOpenProspect} />
                 ))
               )}
@@ -231,7 +293,7 @@ export default function TarefasPage() {
             </div>
           )}
           <UnifiedCalendar
-            tasks={(tasks || []) as any}
+            tasks={visibleTasks as any}
             googleEvents={gEvents || []}
             googleEnabled={googleConnected}
             googleLoading={gFetching}
