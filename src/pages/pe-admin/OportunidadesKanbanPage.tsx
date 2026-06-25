@@ -87,7 +87,10 @@ export default function OportunidadesKanbanPage() {
       </div>
 
       {/* Board */}
-      <div className="flex gap-4 overflow-x-auto pb-4">
+      <div
+        className="flex gap-4 overflow-x-auto overscroll-x-contain pb-4"
+        style={{ overscrollBehaviorX: "contain" }}
+      >
         {(etapas || []).map((etapa: any) => {
           const items = (oportunidades || []).filter((o: any) => o.etapa_id === etapa.id);
           return (

@@ -74,6 +74,9 @@ export function DealCard({
       draggable
       onDragStart={onDragStart}
       onClick={onEdit}
+      data-deal-id={deal.id}
+      data-prospect-id={deal.prospect_id ?? undefined}
+      data-prospect-phone={prospect?.whatsapp ?? prospect?.telefone ?? undefined}
       className={`bg-card border rounded-lg p-3 cursor-grab hover:border-primary/50 transition-colors ${isDragging ? "opacity-50" : ""}`}
     >
       {/* Header */}

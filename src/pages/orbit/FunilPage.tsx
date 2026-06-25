@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
 import { DealDialog } from "@/components/orbit/DealDialog";
@@ -11,6 +12,8 @@ import { useOrbitDealsGrouped, useMoveDealToStage, useConvertDealToClient } from
 import { toast } from "sonner";
 import type { Tables } from "@/integrations/supabase/types";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { supabase } from "@/integrations/supabase/client";
+import { useTenant } from "@/contexts/TenantContext";
 
 export default function FunilPage() {
   const navigate = useNavigate();
@@ -24,6 +27,26 @@ export default function FunilPage() {
   const { data: dealsGrouped, isLoading } = useOrbitDealsGrouped();
   const moveDeal = useMoveDealToStage();
   const convertDeal = useConvertDealToClient();
+  const queryClient = useQueryClient();
+  const { empresaId } = useTenant();
+
+  // H2.b — Realtime: refletir mudanças em orbit_deals sem precisar dar F5
+  useEffect(() => {
+    if (!empresaId) return;
+    const channel = supabase
+      .channel(`funil-deals-${empresaId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orbit_deals", filter: `empresa_id=eq.${empresaId}` },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["orbit-deals-grouped"] });
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [empresaId, queryClient]);
 
   const formatCurrency = (v: number | null) =>
     v
@@ -112,12 +135,17 @@ export default function FunilPage() {
           )}
 
         {/* Kanban columns */}
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        <div
+          className="flex gap-4 overflow-x-auto overscroll-x-contain pb-4"
+          style={{ overscrollBehaviorX: "contain" }}
+        >
           {dealsGrouped?.map((stage) => {
             const stageDeals = stage.deals || [];
             return (
               <div
                 key={stage.id}
+                data-column-id={stage.id}
+                data-column-name={stage.nome}
                 className="flex-shrink-0 w-80 bg-muted/30 rounded-lg"
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => handleDrop(e, stage.id)}
