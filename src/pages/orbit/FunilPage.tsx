@@ -28,7 +28,7 @@ export default function FunilPage() {
   const moveDeal = useMoveDealToStage();
   const convertDeal = useConvertDealToClient();
   const queryClient = useQueryClient();
-  const { empresaId } = useTenant();
+  const { empresaId, basePath } = useTenant();
 
   // H2.b — Realtime: refletir mudanças em orbit_deals sem precisar dar F5
   useEffect(() => {
@@ -191,12 +191,12 @@ export default function FunilPage() {
                       }}
                       onOpenProspect={() => {
                         if (deal.prospect_id) {
-                          navigate(`/orbit/prospects?id=${deal.prospect_id}`);
+                          navigate(`${basePath}/prospects?id=${deal.prospect_id}`);
                         }
                       }}
                       onStartConversation={() => {
                         if (deal.prospect?.whatsapp || deal.prospect?.telefone) {
-                          navigate("/orbit/conversas");
+                          navigate(`${basePath}/conversas`);
                         }
                       }}
                     />
