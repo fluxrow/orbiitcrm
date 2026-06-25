@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { formatCnpj, normalizeCnpj, validateCnpjDv } from "@/lib/cnpj";
+import { formatDocumento, normalizeDocumento, validateDocumento, type TipoDocumento } from "@/lib/documento";
 import { Loader2, CheckCircle2, XCircle, Building2, User, KeyRound } from "lucide-react";
 
 interface InviteData {
