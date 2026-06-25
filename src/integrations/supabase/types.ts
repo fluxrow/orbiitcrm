@@ -2928,6 +2928,7 @@ export type Database = {
           consentimento_email: boolean | null
           consentimento_whatsapp: boolean | null
           created_at: string | null
+          dados_adicionais: Json
           deleted_at: string | null
           email_principal: string | null
           empresa_id: string | null
@@ -2960,6 +2961,7 @@ export type Database = {
           consentimento_email?: boolean | null
           consentimento_whatsapp?: boolean | null
           created_at?: string | null
+          dados_adicionais?: Json
           deleted_at?: string | null
           email_principal?: string | null
           empresa_id?: string | null
@@ -2992,6 +2994,7 @@ export type Database = {
           consentimento_email?: boolean | null
           consentimento_whatsapp?: boolean | null
           created_at?: string | null
+          dados_adicionais?: Json
           deleted_at?: string | null
           email_principal?: string | null
           empresa_id?: string | null
