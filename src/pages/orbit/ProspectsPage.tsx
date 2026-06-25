@@ -19,7 +19,7 @@ import {
 import { ImportProspectsWizard } from "@/components/orbit/ImportProspectsWizard";
 import { ImportHistoryPanel } from "@/components/orbit/ImportHistoryPanel";
 import { Badge } from "@/components/ui/badge";
-import { useOrbitProspects, useDeleteProspect } from "@/hooks/useOrbitProspects";
+import { useOrbitProspects, useDeleteProspect, useOrbitProspect } from "@/hooks/useOrbitProspects";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useOrbitPeLinks } from "@/hooks/usePromoteProspect";
 import { useAuth } from "@/hooks/useAuth";
