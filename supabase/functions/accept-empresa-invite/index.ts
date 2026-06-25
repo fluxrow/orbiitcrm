@@ -50,7 +50,7 @@ interface AcceptRequest {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return optionsResponse();
+  if (req.method === "OPTIONS") return optionsResponse(req);
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -62,11 +62,11 @@ Deno.serve(async (req) => {
     const body: AcceptRequest = await req.json();
 
     if (!body.token || !body.password || !body.full_name?.trim()) {
-      return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios faltando");
+      return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios faltando", 400, undefined, req);
     }
 
     if (body.password.length < 6) {
-      return fail(ErrorCodes.VALIDATION_ERROR, "Senha deve ter pelo menos 6 caracteres");
+      return fail(ErrorCodes.VALIDATION_ERROR, "Senha deve ter pelo menos 6 caracteres", 400, undefined, req);
     }
 
     const tokenHash = await hashToken(body.token);
@@ -77,9 +77,9 @@ Deno.serve(async (req) => {
       .eq("token_hash", tokenHash)
       .maybeSingle();
 
-    if (invErr || !invite) return fail(ErrorCodes.INVITE_INVALID, "Convite não encontrado ou token inválido", 404);
-    if (invite.used_at) return fail(ErrorCodes.INVITE_USED, "Este convite já foi utilizado", 410);
-    if (new Date(invite.expires_at) < new Date()) return fail(ErrorCodes.INVITE_EXPIRED, "Este convite expirou", 410);
+    if (invErr || !invite) return fail(ErrorCodes.INVITE_INVALID, "Convite não encontrado ou token inválido", 404, undefined, req);
+    if (invite.used_at) return fail(ErrorCodes.INVITE_USED, "Este convite já foi utilizado", 410, undefined, req);
+    if (new Date(invite.expires_at) < new Date()) return fail(ErrorCodes.INVITE_EXPIRED, "Este convite expirou", 410, undefined, req);
 
     const { data: saasEmpresa } = await supabase
       .from("saas_empresa")
@@ -94,9 +94,9 @@ Deno.serve(async (req) => {
 
     let cnpjNormalized: string | null = null;
     if (!isDemo) {
-      if (!body.cnpj) return fail(ErrorCodes.CNPJ_INVALID, "CNPJ é obrigatório para planos pagos");
+      if (!body.cnpj) return fail(ErrorCodes.CNPJ_INVALID, "CNPJ é obrigatório para planos pagos", 400, undefined, req);
       cnpjNormalized = body.cnpj.replace(/[^0-9]/g, "");
-      if (cnpjNormalized.length !== 14) return fail(ErrorCodes.CNPJ_INVALID, "CNPJ deve ter 14 dígitos");
+      if (cnpjNormalized.length !== 14) return fail(ErrorCodes.CNPJ_INVALID, "CNPJ deve ter 14 dígitos", 400, undefined, req);
 
       const { data: existing } = await supabase
         .from("orbit_empresas")
@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
         .neq("id", invite.empresa_id)
         .maybeSingle();
 
-      if (existing) return fail(ErrorCodes.CNPJ_ALREADY_EXISTS, "CNPJ já cadastrado em outra empresa", 409);
+      if (existing) return fail(ErrorCodes.CNPJ_ALREADY_EXISTS, "CNPJ já cadastrado em outra empresa", 409, undefined, req);
     }
 
     // Try to create the auth user; if email already exists, locate and reuse it
@@ -124,17 +124,17 @@ Deno.serve(async (req) => {
       const alreadyExists = msg.includes("already") || msg.includes("registered") || msg.includes("exist");
       if (!alreadyExists) {
         console.error("Auth error:", authErr);
-        return fail(ErrorCodes.INTERNAL_ERROR, `Erro ao criar usuário: ${authErr.message}`, 500);
+        return fail(ErrorCodes.INTERNAL_ERROR, `Erro ao criar usuário: ${authErr.message}`, 500, undefined, req);
       }
 
       const { data: list, error: listErr } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 });
       if (listErr) {
         console.error("listUsers error:", listErr);
-        return fail(ErrorCodes.INTERNAL_ERROR, `Não foi possível localizar o usuário existente: ${listErr.message}`, 500);
+        return fail(ErrorCodes.INTERNAL_ERROR, `Não foi possível localizar o usuário existente: ${listErr.message}`, 500, undefined, req);
       }
       const existing = list.users.find((u) => (u.email || "").toLowerCase() === invite.email.toLowerCase());
       if (!existing) {
-        return fail(ErrorCodes.INTERNAL_ERROR, "Email já registrado, mas usuário não localizado.", 500);
+        return fail(ErrorCodes.INTERNAL_ERROR, "Email já registrado, mas usuário não localizado.", 500, undefined, req);
       }
       userId = existing.id;
       isExistingUser = true;
@@ -284,10 +284,10 @@ Deno.serve(async (req) => {
       status: isPaid ? "trial" : "active",
       slug,
       redirect_url: redirectUrl,
-    });
+    }, undefined, req);
   } catch (err: unknown) {
     console.error("Unexpected error:", err);
     const msg = err instanceof Error ? err.message : String(err);
-    return fail(ErrorCodes.INTERNAL_ERROR, msg, 500);
+    return fail(ErrorCodes.INTERNAL_ERROR, msg, 500, undefined, req);
   }
 });
