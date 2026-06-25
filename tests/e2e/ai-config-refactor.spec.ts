@@ -97,9 +97,9 @@ test.describe("E2.7 — Refator Agente IA (RAG + 3 blocos)", () => {
     await login(page);
     await page.goto(`${BASE}/${SLUG}/config?tab=ai`, { waitUntil: "domcontentloaded" });
 
-    const identidade = page.getByLabel(/Prompt de Identidade/i);
-    const roteiro = page.getByLabel(/Roteiro de Qualificação/i).first();
-    const regras = page.getByLabel(/Regras Invioláveis/i);
+    const identidade = page.getByPlaceholder(/Você é a Júlia/i);
+    const roteiro = page.getByPlaceholder(/Cumprimente pelo nome/i);
+    const regras = page.getByPlaceholder(/Nunca dê descontos/i);
 
     await identidade.waitFor({ timeout: 15000 });
     await identidade.fill(fixtureIdentidade);
