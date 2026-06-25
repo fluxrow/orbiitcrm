@@ -48,9 +48,10 @@ export default function AcceptInviteSaasPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  // CNPJ form
-  const [cnpj, setCnpj] = useState("");
-  const [cnpjValid, setCnpjValid] = useState<boolean | null>(null);
+  // Documento form (CPF ou CNPJ)
+  const [documento, setDocumento] = useState("");
+  const [docValid, setDocValid] = useState<boolean | null>(null);
+  const [docTipo, setDocTipo] = useState<TipoDocumento | null>(null);
   const [cnpjData, setCnpjData] = useState<CnpjData | null>(null);
   const [cnpjLoading, setCnpjLoading] = useState(false);
 
