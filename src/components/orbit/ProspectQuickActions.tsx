@@ -201,6 +201,7 @@ export function ProspectQuickActions({ prospect }: Props) {
                 size="sm"
                 className="h-8 px-2 hover:text-brand"
                 disabled={busy === "flow"}
+                data-testid="force-flow-action"
               >
                 {busy === "flow" ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
