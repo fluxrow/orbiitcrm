@@ -102,6 +102,8 @@ test.describe("E2.7 — Refator Agente IA (RAG + 3 blocos)", () => {
     const regras = page.getByPlaceholder(/Nunca dê descontos/i);
 
     await identidade.waitFor({ timeout: 15000 });
+    // Evita race: aguarda o efeito que hidrata aiForm com o snapshot do servidor.
+    await page.waitForTimeout(1500);
     await identidade.fill(fixtureIdentidade);
     await roteiro.fill(fixtureRoteiro);
     await regras.fill(fixtureRegras);
