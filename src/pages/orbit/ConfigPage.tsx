@@ -615,38 +615,12 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     <p className="text-xs text-muted-foreground">Este prompt será usado quando a IA detectar que o prospect quer um orçamento</p>
                   </div>
 
-                  {/* Campos a Coletar */}
-                  <div className="space-y-3">
-                    <div>
-                      <Label className="text-base">Campos a Coletar</Label>
-                      <p className="text-sm text-muted-foreground">Selecione os campos que a IA deve coletar do prospect durante a conversa</p>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      {[
-                        { value: "nome_razao", label: "Nome/Razão Social" },
-                        { value: "nome_fantasia", label: "Nome Fantasia" },
-                        { value: "email_principal", label: "Email" },
-                        { value: "cidade", label: "Cidade" },
-                        { value: "segmento", label: "Segmento" },
-                        { value: "telefone_comercial", label: "Telefone Comercial" },
-                      ].map(campo => (
-                        <div key={campo.value} className="flex items-center space-x-2">
-                          <Checkbox 
-                            id={campo.value}
-                            checked={aiForm.campos_cadastro.includes(campo.value)}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                setAiForm({ ...aiForm, campos_cadastro: [...aiForm.campos_cadastro, campo.value] });
-                              } else {
-                                setAiForm({ ...aiForm, campos_cadastro: aiForm.campos_cadastro.filter(c => c !== campo.value) });
-                              }
-                            }}
-                          />
-                          <label htmlFor={campo.value} className="text-sm cursor-pointer">{campo.label}</label>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  {/* Perguntas de Qualificação (JSONB dinâmico) */}
+                  <QualificationFieldsBuilder
+                    value={aiForm.campos_qualificacao}
+                    onChange={(next) => setAiForm({ ...aiForm, campos_qualificacao: next })}
+                  />
+
 
                   {/* Info Box - Fluxo Automático */}
                   <div className="p-4 bg-muted rounded-lg space-y-3">
