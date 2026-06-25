@@ -279,26 +279,34 @@ export default function AcceptInviteSaasPage() {
             </div>
           )}
 
-          {/* Step 3: CNPJ (non-demo) */}
+          {/* Step 3: Documento — CPF (pessoa física) ou CNPJ (empresa) */}
           {step === 3 && !isDemo && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>CNPJ</Label>
+                <Label>CPF ou CNPJ</Label>
                 <div className="relative">
                   <Input
-                    value={cnpj}
-                    onChange={e => handleCnpjChange(e.target.value)}
-                    placeholder="XX.XXX.XXX/XXXX-XX"
+                    value={documento}
+                    onChange={e => handleDocumentoChange(e.target.value)}
+                    placeholder="Digite seu CPF ou CNPJ"
                     maxLength={18}
+                    inputMode="numeric"
                   />
                   {cnpjLoading && <Loader2 className="absolute right-3 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />}
-                  {cnpjValid === true && !cnpjLoading && <CheckCircle2 className="absolute right-3 top-2.5 h-4 w-4 text-primary" />}
-                  {cnpjValid === false && <XCircle className="absolute right-3 top-2.5 h-4 w-4 text-destructive" />}
+                  {docValid === true && !cnpjLoading && <CheckCircle2 className="absolute right-3 top-2.5 h-4 w-4 text-primary" />}
+                  {docValid === false && <XCircle className="absolute right-3 top-2.5 h-4 w-4 text-destructive" />}
                 </div>
-                {cnpjValid === false && <p className="text-sm text-destructive">CNPJ inválido</p>}
+                <p className="text-xs text-muted-foreground">
+                  {docTipo === "PF" && docValid && "CPF válido — cadastro como pessoa física."}
+                  {docTipo === "PJ" && docValid && "CNPJ válido — buscando dados na Receita..."}
+                  {!docValid && "Use 11 dígitos (CPF) ou 14 dígitos (CNPJ)."}
+                </p>
+                {docValid === false && normalizeDocumento(documento).length >= 11 && (
+                  <p className="text-sm text-destructive">Documento inválido</p>
+                )}
               </div>
 
-              {cnpjData && (
+              {docTipo === "PJ" && cnpjData && (
                 <div className="bg-muted p-4 rounded-lg space-y-2 text-sm">
                   <div>
                     <span className="text-muted-foreground">Razão Social: </span>
@@ -327,7 +335,7 @@ export default function AcceptInviteSaasPage() {
 
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setStep(2)}>Voltar</Button>
-                <Button className="flex-1" disabled={!canProceedCnpj()} onClick={handleFinalize}>
+                <Button className="flex-1" disabled={!canProceedDocumento()} onClick={handleFinalize}>
                   Finalizar Ativação
                 </Button>
               </div>
