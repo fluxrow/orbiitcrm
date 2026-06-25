@@ -108,6 +108,9 @@ Deno.serve(async (req) => {
       if (existing) return fail(ErrorCodes.CNPJ_ALREADY_EXISTS, "CNPJ já cadastrado em outra empresa", 409);
     }
 
+    // Try to create the auth user; if email already exists, locate and reuse it
+    // (prevents "usuário órfão" and lets the invite link an existing user to this empresa).
+    let userId: string;
     const { data: authUser, error: authErr } = await supabase.auth.admin.createUser({
       email: invite.email,
       password: body.password,
@@ -116,11 +119,37 @@ Deno.serve(async (req) => {
     });
 
     if (authErr) {
-      console.error("Auth error:", authErr);
-      return fail(ErrorCodes.INTERNAL_ERROR, `Erro ao criar usuário: ${authErr.message}`, 500);
-    }
+      const msg = (authErr.message || "").toLowerCase();
+      const alreadyExists = msg.includes("already") || msg.includes("registered") || msg.includes("exist");
+      if (!alreadyExists) {
+        console.error("Auth error:", authErr);
+        return fail(ErrorCodes.INTERNAL_ERROR, `Erro ao criar usuário: ${authErr.message}`, 500);
+      }
 
-    const userId = authUser.user.id;
+      // Locate existing user by email and reset password to the one chosen now
+      const { data: list, error: listErr } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 });
+      if (listErr) {
+        console.error("listUsers error:", listErr);
+        return fail(ErrorCodes.INTERNAL_ERROR, `Não foi possível localizar o usuário existente: ${listErr.message}`, 500);
+      }
+      const existing = list.users.find((u) => (u.email || "").toLowerCase() === invite.email.toLowerCase());
+      if (!existing) {
+        return fail(ErrorCodes.INTERNAL_ERROR, "Email já registrado, mas usuário não localizado.", 500);
+      }
+      userId = existing.id;
+      const { error: updErr } = await supabase.auth.admin.updateUserById(userId, {
+        password: body.password,
+        email_confirm: true,
+        user_metadata: { ...(existing.user_metadata || {}), nome: body.full_name.trim(), empresa_id: invite.empresa_id },
+      });
+      if (updErr) {
+        console.error("updateUserById error:", updErr);
+        return fail(ErrorCodes.INTERNAL_ERROR, `Erro ao vincular usuário existente: ${updErr.message}`, 500);
+      }
+      console.log("Linked existing auth user to empresa", { userId, empresa_id: invite.empresa_id });
+    } else {
+      userId = authUser.user.id;
+    }
 
     await supabase.from("profiles").update({ empresa_id: invite.empresa_id, nome: body.full_name.trim(), cargo: "Admin" }).eq("id", userId);
     await supabase.from("user_roles").insert({ user_id: userId, role: "admin" });
