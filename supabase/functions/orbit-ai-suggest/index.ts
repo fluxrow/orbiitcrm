@@ -44,7 +44,6 @@ serve(async (req) => {
       .join("\n");
 
     const identidade = (aiConfig?.prompt_identidade && String(aiConfig.prompt_identidade).trim())
-      || aiConfig?.prompt_treinamento
       || "Você é um assistente de vendas ajudando um humano a responder um cliente.";
     const regras = (aiConfig?.prompt_regras && String(aiConfig.prompt_regras).trim()) || "";
 

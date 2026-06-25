@@ -74,7 +74,6 @@ export default function ConfigPage() {
   const [aiForm, setAiForm] = useState({ 
     modo_automatico: true, 
     tom_conversa: "profissional", 
-    prompt_treinamento: "", 
     prompt_identidade: "",
     prompt_roteiro: "",
     prompt_regras: "",
@@ -87,8 +86,6 @@ export default function ConfigPage() {
     idioma: "pt-BR",
     max_tokens: 500,
     tempo_espera: 10,
-    prompt_orcamentos: "",
-    campos_cadastro: ["nome_razao", "nome_fantasia", "email_principal", "cidade", "segmento"] as string[],
     tts_ativo: false,
     tts_api_key: "",
     tts_voice_id: "EXAVITQu4vr4xnSDxMaL",
@@ -138,8 +135,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
     if (aiConfig) setAiForm({ 
       modo_automatico: aiConfig.modo_automatico ?? true, 
       tom_conversa: aiConfig.tom_conversa || "profissional", 
-      prompt_treinamento: aiConfig.prompt_treinamento || "", 
-      prompt_identidade: (aiConfig as any).prompt_identidade || aiConfig.prompt_treinamento || "",
+      prompt_identidade: (aiConfig as any).prompt_identidade || "",
       prompt_roteiro: (aiConfig as any).prompt_roteiro || "",
       prompt_regras: (aiConfig as any).prompt_regras || "",
       campos_qualificacao: Array.isArray((aiConfig as any).campos_qualificacao) ? (aiConfig as any).campos_qualificacao : [],
@@ -151,8 +147,6 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
       idioma: (aiConfig as any).idioma || "pt-BR",
       max_tokens: (aiConfig as any).max_tokens || 500,
       tempo_espera: (aiConfig as any).tempo_espera || 10,
-      prompt_orcamentos: (aiConfig as any).prompt_orcamentos || "",
-      campos_cadastro: aiConfig.campos_cadastro || ["nome_razao", "nome_fantasia", "email_principal", "cidade", "segmento"],
       tts_ativo: (aiConfig as any).tts_ativo ?? false,
       tts_api_key: (aiConfig as any).tts_api_key || "",
       tts_voice_id: (aiConfig as any).tts_voice_id || "EXAVITQu4vr4xnSDxMaL",
@@ -606,17 +600,8 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     />
                   </div>
 
-                  {/* Prompt para Orçamentos */}
-                  <div className="space-y-2">
-                    <Label>Prompt para Orçamentos</Label>
-                    <Textarea 
-                      className="min-h-[100px]"
-                      placeholder="Quando o prospect mencionar orçamento, cotação, preço ou valores, colete os seguintes dados: nome da empresa, email, telefone e descrição do que precisa..."
-                      value={aiForm.prompt_orcamentos} 
-                      onChange={(e) => setAiForm({ ...aiForm, prompt_orcamentos: e.target.value })} 
-                    />
-                    <p className="text-xs text-muted-foreground">Este prompt será usado quando a IA detectar que o prospect quer um orçamento</p>
-                  </div>
+                  {/* Prompt para Orçamentos removido — substituído por prompt_identidade/roteiro/regras + campos_qualificacao */}
+
 
                   {/* Perguntas de Qualificação (JSONB dinâmico) */}
                   <QualificationFieldsBuilder

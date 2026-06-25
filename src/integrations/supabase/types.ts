@@ -583,7 +583,6 @@ export type Database = {
       }
       orbit_ai_config: {
         Row: {
-          campos_cadastro: string[] | null
           campos_qualificacao: Json
           created_at: string | null
           empresa_id: string | null
@@ -597,10 +596,8 @@ export type Database = {
           mensagem_fora_horario: string | null
           modo_automatico: boolean | null
           prompt_identidade: string | null
-          prompt_orcamentos: string | null
           prompt_regras: string | null
           prompt_roteiro: string | null
-          prompt_treinamento: string | null
           responder_fora_horario: boolean | null
           tempo_espera: number | null
           tom_conversa: string | null
@@ -612,7 +609,6 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
-          campos_cadastro?: string[] | null
           campos_qualificacao?: Json
           created_at?: string | null
           empresa_id?: string | null
@@ -626,10 +622,8 @@ export type Database = {
           mensagem_fora_horario?: string | null
           modo_automatico?: boolean | null
           prompt_identidade?: string | null
-          prompt_orcamentos?: string | null
           prompt_regras?: string | null
           prompt_roteiro?: string | null
-          prompt_treinamento?: string | null
           responder_fora_horario?: boolean | null
           tempo_espera?: number | null
           tom_conversa?: string | null
@@ -641,7 +635,6 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
-          campos_cadastro?: string[] | null
           campos_qualificacao?: Json
           created_at?: string | null
           empresa_id?: string | null
@@ -655,10 +648,8 @@ export type Database = {
           mensagem_fora_horario?: string | null
           modo_automatico?: boolean | null
           prompt_identidade?: string | null
-          prompt_orcamentos?: string | null
           prompt_regras?: string | null
           prompt_roteiro?: string | null
-          prompt_treinamento?: string | null
           responder_fora_horario?: boolean | null
           tempo_espera?: number | null
           tom_conversa?: string | null
