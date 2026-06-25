@@ -223,6 +223,19 @@ export function DealCard({
               variant="ghost"
               size="icon"
               className="h-7 w-7"
+              onClick={(e) => { e.stopPropagation(); setMeetingOpen(true); }}
+            >
+              <CalendarClock className="h-3.5 w-3.5" style={{ color: BRAND_YELLOW }} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Agendar reunião</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
               onClick={(e) => { e.stopPropagation(); onOpenProspect(); }}
             >
               <ExternalLink className="h-3.5 w-3.5" />
@@ -231,6 +244,14 @@ export function DealCard({
           <TooltipContent>Abrir prospect</TooltipContent>
         </Tooltip>
       </div>
+
+      <MeetingSchedulerDialog
+        open={meetingOpen}
+        onOpenChange={setMeetingOpen}
+        dealId={deal.id}
+        prospectId={deal.prospect_id ?? null}
+        defaultTitle={deal.titulo ? `Reunião — ${deal.titulo}` : undefined}
+      />
     </div>
   );
 }
