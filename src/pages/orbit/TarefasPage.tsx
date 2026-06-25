@@ -246,10 +246,10 @@ export default function TarefasPage() {
             <p className="text-muted-foreground text-center py-12">Carregando...</p>
           ) : (
             <div className="grid gap-2 max-w-2xl">
-              {(tasks || []).length === 0 ? (
+              {visibleTasks.length === 0 ? (
                 <p className="text-muted-foreground text-center py-12">Nenhuma tarefa encontrada</p>
               ) : (
-                (tasks || []).map((task) => (
+                visibleTasks.map((task) => (
                   <OrbitTaskCard key={task.id} task={task} onComplete={handleComplete} onEdit={handleEdit} onOpenProspect={handleOpenProspect} />
                 ))
               )}
