@@ -28,7 +28,7 @@ export default function FunilPage() {
   const moveDeal = useMoveDealToStage();
   const convertDeal = useConvertDealToClient();
   const queryClient = useQueryClient();
-  const { empresaId } = useTenant();
+  const { empresaId, basePath } = useTenant();
 
   // H2.b — Realtime: refletir mudanças em orbit_deals sem precisar dar F5
   useEffect(() => {
