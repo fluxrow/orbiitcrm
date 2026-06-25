@@ -117,16 +117,27 @@ export function ProspectActionCard({
           </div>
         </div>
 
-        {/* Indicators */}
-        <div className="flex items-center gap-2 mb-3 pl-6">
+        {/* Indicators + Highlight Tags */}
+        <div className="flex items-center gap-2 mb-3 pl-6 flex-wrap">
           {isHot && (
             <Tooltip>
               <TooltipTrigger><Flame className="w-4 h-4 text-[hsl(var(--warning))]" /></TooltipTrigger>
               <TooltipContent>Lead quente (score {prospect.score})</TooltipContent>
             </Tooltip>
           )}
+          <LeadHighlightTags
+            empresaId={prospect.empresa_id}
+            dadosAdicionais={prospect.dados_adicionais}
+          />
         </div>
       </div>
+
+      {/* Raio-X da Qualificação */}
+      <div className="pl-6 mb-3">
+        <ProspectRaioX dadosAdicionais={prospect.dados_adicionais} />
+      </div>
+
+
 
       {/* Quick Actions */}
       <div className="flex items-center gap-1 pt-3 border-t border-border/50 flex-wrap">
