@@ -53,6 +53,41 @@ export default function TarefasPage() {
   const completeTask = useCompleteOrbitTask();
   const updateTask = useUpdateOrbitTask();
 
+  const visibleTasks = useMemo(() => {
+    const all = tasks || [];
+    if (scope === "all") return all;
+    if (scope === "meetings") {
+      return all
+        .filter((t: any) => t._kind === "meeting")
+        .filter((t: any) => {
+          if (!t.scheduled_at) return false;
+          const d = new Date(t.scheduled_at);
+          return isToday(d) || isFuture(d);
+        });
+    }
+    // today: tasks due today + meetings today
+    return all.filter((t: any) => {
+      if (t._kind === "meeting" && t.scheduled_at) return isToday(new Date(t.scheduled_at));
+      if (t.due_date) return isToday(parseISO(t.due_date));
+      return false;
+    });
+  }, [tasks, scope]);
+
+  const counts = useMemo(() => {
+    const all = tasks || [];
+    const today = all.filter((t: any) => {
+      if (t._kind === "meeting" && t.scheduled_at) return isToday(new Date(t.scheduled_at));
+      if (t.due_date) return isToday(parseISO(t.due_date));
+      return false;
+    }).length;
+    const meetings = all.filter((t: any) => {
+      if (t._kind !== "meeting" || !t.scheduled_at) return false;
+      const d = new Date(t.scheduled_at);
+      return isToday(d) || isFuture(d);
+    }).length;
+    return { today, meetings, all: all.length };
+  }, [tasks]);
+
   // Google Calendar
   const { data: gStatus } = useGoogleCalendarStatus(empresaId);
   const googleConnected = !!gStatus?.connected;
