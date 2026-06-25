@@ -36,15 +36,26 @@ export function useClientOnboardings() {
     queryFn: async () => {
       let q = supabase
         .from("orbit_client_onboardings" as any)
-        .select("*, empresa:orbit_empresas(nome, slug)")
+        .select("*")
         .order("created_at", { ascending: false });
       // Super admin sees onboardings of all tenants (centralized view from Fluxrow).
       // Regular users only see their own tenant's onboardings.
       if (!isSuper) q = q.eq("empresa_id", empresaId!);
       const { data, error } = await q;
       if (error) throw error;
-      return (data ?? []) as unknown as ClientOnboarding[];
+      const rows = (data ?? []) as any[];
+      const empresaIds = Array.from(new Set(rows.map((r) => r.empresa_id).filter(Boolean)));
+      let empresasMap: Record<string, { nome: string | null; slug: string | null }> = {};
+      if (empresaIds.length > 0) {
+        const { data: emps } = await supabase
+          .from("orbit_empresas")
+          .select("id, nome, slug")
+          .in("id", empresaIds);
+        for (const e of emps ?? []) empresasMap[e.id] = { nome: e.nome, slug: e.slug };
+      }
+      return rows.map((r) => ({ ...r, empresa: empresasMap[r.empresa_id] ?? null })) as unknown as ClientOnboarding[];
     },
+
   });
 }
 
