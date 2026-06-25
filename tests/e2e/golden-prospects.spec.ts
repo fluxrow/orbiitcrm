@@ -39,6 +39,8 @@ const admin = createClient(SUPABASE_URL, SUPABASE_ANON, {
 
 const tag = `e2e-prospect-${Date.now()}`;
 const nomeProspect = `E2E Prospect ${tag}`;
+// telefone único por run (timestamp encurtado para 10 dígitos finais)
+const telefoneE2E = `55419${String(Date.now()).slice(-8)}`;
 let createdProspectId: string | undefined;
 
 async function login(page: Page, route: string) {
