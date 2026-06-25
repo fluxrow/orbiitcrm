@@ -192,9 +192,9 @@ Deno.serve(async (req) => {
     );
 
     const empresaUpdate: Record<string, unknown> = { ativo: true };
-    if (cnpjNormalized) empresaUpdate.cnpj = body.cnpj;
+    if (cnpjNormalized) empresaUpdate.cnpj = cnpjNormalized;
+    if (cpfNormalized) empresaUpdate.cnpj = cpfNormalized; // armazena CPF no mesmo campo `cnpj` (texto livre); coluna cnpj_normalized é gerada apenas para CNPJ.
     // NÃO sobrescrever `nome`: o nome amigável foi definido no convite e deve ser preservado.
-    // A razão social da Receita fica apenas como referência via CNPJ.
     await supabase.from("orbit_empresas").update(empresaUpdate).eq("id", invite.empresa_id);
 
     // Trial/activation logic
