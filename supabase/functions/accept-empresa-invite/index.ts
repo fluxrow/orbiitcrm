@@ -111,6 +111,7 @@ Deno.serve(async (req) => {
     // Try to create the auth user; if email already exists, locate and reuse it
     // (prevents "usuário órfão" and lets the invite link an existing user to this empresa).
     let userId: string;
+    let isExistingUser = false;
     const { data: authUser, error: authErr } = await supabase.auth.admin.createUser({
       email: invite.email,
       password: body.password,
@@ -126,7 +127,6 @@ Deno.serve(async (req) => {
         return fail(ErrorCodes.INTERNAL_ERROR, `Erro ao criar usuário: ${authErr.message}`, 500);
       }
 
-      // Locate existing user by email and reset password to the one chosen now
       const { data: list, error: listErr } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 });
       if (listErr) {
         console.error("listUsers error:", listErr);
@@ -137,21 +137,23 @@ Deno.serve(async (req) => {
         return fail(ErrorCodes.INTERNAL_ERROR, "Email já registrado, mas usuário não localizado.", 500);
       }
       userId = existing.id;
-      const { error: updErr } = await supabase.auth.admin.updateUserById(userId, {
-        password: body.password,
-        email_confirm: true,
-        user_metadata: { ...(existing.user_metadata || {}), nome: body.full_name.trim(), empresa_id: invite.empresa_id },
-      });
-      if (updErr) {
-        console.error("updateUserById error:", updErr);
-        return fail(ErrorCodes.INTERNAL_ERROR, `Erro ao vincular usuário existente: ${updErr.message}`, 500);
-      }
-      console.log("Linked existing auth user to empresa", { userId, empresa_id: invite.empresa_id });
+      isExistingUser = true;
+      // For existing users, DO NOT reset password nor overwrite user_metadata —
+      // this is an additional tenant membership, not an account takeover.
+      console.log("Linking existing auth user to empresa (profile preserved)", { userId, empresa_id: invite.empresa_id });
     } else {
       userId = authUser.user.id;
     }
 
-    await supabase.from("profiles").update({ empresa_id: invite.empresa_id, nome: body.full_name.trim(), cargo: "Admin" }).eq("id", userId);
+    // HOTFIX F4.7: Only seed profile fields when this is a brand-new user.
+    // Existing users (e.g. Super Admin being invited to another tenant) keep their
+    // current profiles.empresa_id / nome / cargo — multi-tenant access is granted
+    // exclusively via user_empresa_memberships and resolved at runtime by TenantContext
+    // (which calls switch_active_empresa based on the URL slug).
+    if (!isExistingUser) {
+      await supabase.from("profiles").update({ empresa_id: invite.empresa_id, nome: body.full_name.trim(), cargo: "Admin" }).eq("id", userId);
+    }
+
     // Idempotent: avoid duplicate (user_id, role) violations when relinking an existing user.
     const { data: hasRole } = await supabase.from("user_roles").select("user_id").eq("user_id", userId).eq("role", "admin").maybeSingle();
     if (!hasRole) {
