@@ -8,6 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ProspectRaioX } from "./ProspectRaioX";
+import { LeadHighlightTags } from "./LeadHighlightTags";
+import { ProspectQuickActions } from "./ProspectQuickActions";
 
 interface ProspectActionCardProps {
   prospect: any;
@@ -114,16 +117,27 @@ export function ProspectActionCard({
           </div>
         </div>
 
-        {/* Indicators */}
-        <div className="flex items-center gap-2 mb-3 pl-6">
+        {/* Indicators + Highlight Tags */}
+        <div className="flex items-center gap-2 mb-3 pl-6 flex-wrap">
           {isHot && (
             <Tooltip>
               <TooltipTrigger><Flame className="w-4 h-4 text-[hsl(var(--warning))]" /></TooltipTrigger>
               <TooltipContent>Lead quente (score {prospect.score})</TooltipContent>
             </Tooltip>
           )}
+          <LeadHighlightTags
+            empresaId={prospect.empresa_id}
+            dadosAdicionais={prospect.dados_adicionais}
+          />
         </div>
       </div>
+
+      {/* Raio-X da Qualificação */}
+      <div className="pl-6 mb-3">
+        <ProspectRaioX dadosAdicionais={prospect.dados_adicionais} />
+      </div>
+
+
 
       {/* Quick Actions */}
       <div className="flex items-center gap-1 pt-3 border-t border-border/50 flex-wrap">
@@ -181,6 +195,9 @@ export function ProspectActionCard({
           </TooltipTrigger>
           <TooltipContent>Agendar reunião</TooltipContent>
         </Tooltip>
+
+        <div className="mx-1 h-5 w-px bg-border/60" />
+        <ProspectQuickActions prospect={prospect} />
 
         <div className="ml-auto">
           <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-muted-foreground" onClick={(e) => { e.stopPropagation(); onViewHistory(prospect); }}>
