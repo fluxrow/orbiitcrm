@@ -36,6 +36,9 @@ interface AcceptRequest {
   token: string;
   password: string;
   full_name: string;
+  /** Documento unificado: CPF (11) ou CNPJ (14). Preferir este campo. */
+  documento?: string;
+  /** Compat: campo legado. */
   cnpj?: string;
   dados_receita?: {
     razao_social?: string;
@@ -47,6 +50,18 @@ interface AcceptRequest {
     uf?: string;
     cnae_fiscal_descricao?: string;
   };
+}
+
+function validateCpfDv(cpf: string): boolean {
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+  let s = 0;
+  for (let i = 0; i < 9; i++) s += parseInt(cpf[i]) * (10 - i);
+  let dv = (s * 10) % 11; if (dv === 10) dv = 0;
+  if (dv !== parseInt(cpf[9])) return false;
+  s = 0;
+  for (let i = 0; i < 10; i++) s += parseInt(cpf[i]) * (11 - i);
+  dv = (s * 10) % 11; if (dv === 10) dv = 0;
+  return dv === parseInt(cpf[10]);
 }
 
 Deno.serve(async (req) => {
@@ -92,20 +107,32 @@ Deno.serve(async (req) => {
     const isDemo = planCode === "demo";
     const isPaid = ["basic", "professional", "plus"].includes(planCode);
 
+    // Documento: aceita CPF (PF, 11 dígitos) ou CNPJ (PJ, 14 dígitos).
+    // Compat: também aceita campo legado `cnpj`.
     let cnpjNormalized: string | null = null;
+    let cpfNormalized: string | null = null;
+    let tipoPessoa: "PF" | "PJ" | null = null;
     if (!isDemo) {
-      if (!body.cnpj) return fail(ErrorCodes.CNPJ_INVALID, "CNPJ é obrigatório para planos pagos", 400, undefined, req);
-      cnpjNormalized = body.cnpj.replace(/[^0-9]/g, "");
-      if (cnpjNormalized.length !== 14) return fail(ErrorCodes.CNPJ_INVALID, "CNPJ deve ter 14 dígitos", 400, undefined, req);
+      const raw = (body.documento ?? body.cnpj ?? "").replace(/[^0-9]/g, "");
+      if (!raw) return fail(ErrorCodes.VALIDATION_ERROR, "Documento (CPF ou CNPJ) é obrigatório", 400, undefined, req);
 
-      const { data: existing } = await supabase
-        .from("orbit_empresas")
-        .select("id")
-        .eq("cnpj_normalized", cnpjNormalized)
-        .neq("id", invite.empresa_id)
-        .maybeSingle();
-
-      if (existing) return fail(ErrorCodes.CNPJ_ALREADY_EXISTS, "CNPJ já cadastrado em outra empresa", 409, undefined, req);
+      if (raw.length === 11) {
+        if (!validateCpfDv(raw)) return fail(ErrorCodes.VALIDATION_ERROR, "CPF inválido", 400, undefined, req);
+        tipoPessoa = "PF";
+        cpfNormalized = raw;
+      } else if (raw.length === 14) {
+        tipoPessoa = "PJ";
+        cnpjNormalized = raw;
+        const { data: existing } = await supabase
+          .from("orbit_empresas")
+          .select("id")
+          .eq("cnpj_normalized", cnpjNormalized)
+          .neq("id", invite.empresa_id)
+          .maybeSingle();
+        if (existing) return fail(ErrorCodes.CNPJ_ALREADY_EXISTS, "CNPJ já cadastrado em outra empresa", 409, undefined, req);
+      } else {
+        return fail(ErrorCodes.VALIDATION_ERROR, "Documento deve ter 11 (CPF) ou 14 (CNPJ) dígitos", 400, undefined, req);
+      }
     }
 
     // Try to create the auth user; if email already exists, locate and reuse it
@@ -165,9 +192,9 @@ Deno.serve(async (req) => {
     );
 
     const empresaUpdate: Record<string, unknown> = { ativo: true };
-    if (cnpjNormalized) empresaUpdate.cnpj = body.cnpj;
+    if (cnpjNormalized) empresaUpdate.cnpj = cnpjNormalized;
+    if (cpfNormalized) empresaUpdate.cnpj = cpfNormalized; // armazena CPF no mesmo campo `cnpj` (texto livre); coluna cnpj_normalized é gerada apenas para CNPJ.
     // NÃO sobrescrever `nome`: o nome amigável foi definido no convite e deve ser preservado.
-    // A razão social da Receita fica apenas como referência via CNPJ.
     await supabase.from("orbit_empresas").update(empresaUpdate).eq("id", invite.empresa_id);
 
     // Trial/activation logic
