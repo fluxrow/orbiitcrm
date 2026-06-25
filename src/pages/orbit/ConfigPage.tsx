@@ -191,7 +191,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
     });
   }, [sendingConfig]);
 
-  const saveAI = async () => { await updateAI.mutateAsync({ id: aiConfig?.id, ...aiForm, empresa_id: empresaId }); toast.success("Salvo!"); };
+  const saveAI = async () => { await updateAI.mutateAsync({ id: aiConfig?.id, ...aiForm, campos_qualificacao: aiForm.campos_qualificacao as any, empresa_id: empresaId }); toast.success("Salvo!"); };
   const saveZAPI = async () => {
     if (!empresaId) {
       toast.error("Empresa não identificada. Recarregue a página e tente novamente.");
