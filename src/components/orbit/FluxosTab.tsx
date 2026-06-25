@@ -64,7 +64,10 @@ export function FluxosTab({ empresaId }: { empresaId: string | null | undefined 
               Automatize ações com base em eventos do CRM (lead qualificado, mudança de etapa, etc.).
             </CardDescription>
           </div>
-          <Button onClick={() => setWizardOpen(true)}>
+          <Button
+            onClick={() => setWizardOpen(true)}
+            className="bg-brand text-brand-foreground hover:bg-brand/90"
+          >
             <Plus className="h-4 w-4 mr-2" />
             Novo Fluxo
           </Button>
