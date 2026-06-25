@@ -152,7 +152,11 @@ Deno.serve(async (req) => {
     }
 
     await supabase.from("profiles").update({ empresa_id: invite.empresa_id, nome: body.full_name.trim(), cargo: "Admin" }).eq("id", userId);
-    await supabase.from("user_roles").insert({ user_id: userId, role: "admin" });
+    // Idempotent: avoid duplicate (user_id, role) violations when relinking an existing user.
+    const { data: hasRole } = await supabase.from("user_roles").select("user_id").eq("user_id", userId).eq("role", "admin").maybeSingle();
+    if (!hasRole) {
+      await supabase.from("user_roles").insert({ user_id: userId, role: "admin" });
+    }
     await supabase.from("user_empresa_memberships").upsert(
       { user_id: userId, empresa_id: invite.empresa_id, role: "admin" },
       { onConflict: "user_id,empresa_id" },
