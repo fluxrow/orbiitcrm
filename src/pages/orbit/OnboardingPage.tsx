@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
-import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList } from "lucide-react";
+import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList, Download } from "lucide-react";
 import { toast } from "sonner";
 import {
   useClientOnboardings,
