@@ -1,9 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useEmpresaVendedores } from "@/hooks/useEmpresaVendedores";
 import { useTenant } from "@/contexts/TenantContext";
+import { MeetingSchedulerDialog } from "./MeetingSchedulerDialog";
+import { CalendarClock } from "lucide-react";
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -86,6 +88,7 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
   const updateProspect = useUpdateProspect();
   const { data: vendedores } = useEmpresaVendedores();
   const isEditing = !!prospect;
+  const [meetingOpen, setMeetingOpen] = useState(false);
 
   // CRITICAL: empresa from URL tenant — not from profiles.empresa_id.
   const { empresaId: tenantEmpresaId } = useTenant();
@@ -458,27 +461,51 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
               )}
             />
 
-            <div className="flex justify-end gap-2 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                disabled={createProspect.isPending || updateProspect.isPending}
-              >
-                {createProspect.isPending || updateProspect.isPending
-                  ? "Salvando..."
-                  : isEditing
-                  ? "Salvar Alterações"
-                  : "Criar Prospect"}
-              </Button>
+            <div className="flex justify-between gap-2 pt-4">
+              {isEditing && prospect ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setMeetingOpen(true)}
+                  className="border-[#f9b217]/50 hover:bg-[#f9b217]/10"
+                >
+                  <CalendarClock className="h-4 w-4 mr-1.5" style={{ color: "#f9b217" }} />
+                  Agendar reunião
+                </Button>
+              ) : (
+                <span />
+              )}
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onOpenChange(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={createProspect.isPending || updateProspect.isPending}
+                >
+                  {createProspect.isPending || updateProspect.isPending
+                    ? "Salvando..."
+                    : isEditing
+                    ? "Salvar Alterações"
+                    : "Criar Prospect"}
+                </Button>
+              </div>
             </div>
           </form>
         </Form>
+
+        {isEditing && prospect && (
+          <MeetingSchedulerDialog
+            open={meetingOpen}
+            onOpenChange={setMeetingOpen}
+            prospectId={prospect.id}
+            defaultTitle={`Reunião — ${prospect.nome_fantasia || prospect.nome_razao}`}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
