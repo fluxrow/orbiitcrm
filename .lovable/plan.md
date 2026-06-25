@@ -1,6 +1,6 @@
 # Plano Revisado — Refatoração do Agente IA (High-Ticket + RAG) antes da Etapa 3
 
-**Status E2.7:** A (schema) ✅ · B (UI divididas + Base de Conhecimento) ✅ · C1 (edge `orbit-knowledge-ingest` com background job) ✅ · C2 (refator `orbit-ai-agent` 3-block + RAG + merge `dados_adicionais`) ⏳ · D (E2E ai-config-refactor) ⏳.
+**Status E2.7:** A (schema) ✅ · B (UI divididas + Base de Conhecimento) ✅ · C1 (edge `orbit-knowledge-ingest` com background job) ✅ · C2 (refator `orbit-ai-agent` 3-block + RAG + merge `dados_adicionais`) ✅ · D (E2E `ai-config-refactor.spec.ts` — 3/3 green) ✅. **Etapa 2.7 fechada — liberada Etapa 3 F1 (Webhook Receiver).**
 
 
 
