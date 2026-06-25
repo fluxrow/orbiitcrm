@@ -53,6 +53,7 @@ const fixtureFields = [
 ];
 
 test.describe.configure({ mode: "serial" });
+test.use({ viewport: { width: 1440, height: 1000 } });
 
 test.beforeAll(async () => {
   const { data, error } = await admin
