@@ -1,6 +1,8 @@
 # Plano Revisado — Refatoração do Agente IA (High-Ticket + RAG) antes da Etapa 3
 
-A refatoração da área de Configuração do Agente IA entra como **Etapa 2.7**, executada **antes** da Etapa 3 (Webhook Receiver). Os hotfixes H1–H4 já estão verdes; a partir daqui o foco é arquitetural: schema (JSONB dinâmico + pgvector RAG), quebra do prompt em 3 blocos, e nova Base de Conhecimento.
+**Status E2.7:** A (schema) ✅ · B (UI divididas + Base de Conhecimento) ✅ · C1 (edge `orbit-knowledge-ingest` com background job) ✅ · C2 (refator `orbit-ai-agent` 3-block + RAG + merge `dados_adicionais`) ⏳ · D (E2E ai-config-refactor) ⏳.
+
+
 
 ---
 
