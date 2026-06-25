@@ -26,7 +26,6 @@ import PublicLayout from "./layouts/PublicLayout";
 import TenantLayout from "./pages/tenant/TenantLayout";
 
 // Orbit CRM Pages
-import OrbitDashboard from "./pages/orbit/OrbitDashboard";
 import ProspectsPage from "./pages/orbit/ProspectsPage";
 import ConversasPage from "./pages/orbit/ConversasPage";
 import FunilPage from "./pages/orbit/FunilPage";
