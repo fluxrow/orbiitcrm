@@ -1848,6 +1848,11 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
             <ConfigUsersTab />
           </TabsContent>
         )}
+        <TabsContent value="health">
+          <SuperAdminOnly fallback={<p className="text-sm text-muted-foreground">Restrito a Super Admin.</p>}>
+            <SystemHealthTab />
+          </SuperAdminOnly>
+        </TabsContent>
       </Tabs>
     </OrbitLayout>
   );
