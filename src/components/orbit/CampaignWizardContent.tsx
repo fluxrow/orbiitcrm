@@ -32,7 +32,7 @@ interface CampaignWizardContentProps {
 interface CampaignData {
   nome: string;
   canal: "email" | "whatsapp";
-  publico_origem: "prospects" | "prometheus" | "ambos";
+  publico_origem: "prospects";
   template_id: string;
   filtros: {
     status_qualificacao?: string[];
@@ -476,17 +476,8 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
                   </Card>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>Origem do Público</Label>
-                <Select value={data.publico_origem} onValueChange={(v: "prospects" | "prometheus" | "ambos") => setData({ ...data, publico_origem: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="prospects">Apenas Prospects</SelectItem>
-                    <SelectItem value="prometheus">Apenas Prometheus</SelectItem>
-                    <SelectItem value="ambos">Ambos</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* Origem do Público: removida (Prometheus não faz mais parte do sistema). */}
+              {/* publico_origem fixo em 'prospects' — destinatários são definidos no passo 3. */}
             </div>
           )}
 
