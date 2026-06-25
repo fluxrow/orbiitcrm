@@ -43,7 +43,12 @@ serve(async (req) => {
       .map((m) => `${m.direcao === "IN" ? "Cliente" : "Assistente"}: ${m.mensagem}`)
       .join("\n");
 
-    const systemPrompt = `Você é um assistente de vendas ajudando um humano a responder um cliente.
+    const identidade = (aiConfig?.prompt_identidade && String(aiConfig.prompt_identidade).trim())
+      || aiConfig?.prompt_treinamento
+      || "Você é um assistente de vendas ajudando um humano a responder um cliente.";
+    const regras = (aiConfig?.prompt_regras && String(aiConfig.prompt_regras).trim()) || "";
+
+    const systemPrompt = `${identidade}
 
 Tom de voz: ${aiConfig?.tom_conversa || "profissional e amigável"}
 
@@ -61,7 +66,8 @@ Responda em JSON:
     { "tipo": "amigavel", "mensagem": "..." },
     { "tipo": "casual", "mensagem": "..." }
   ]
-}`;
+}
+${regras ? `\n=== REGRAS INVIOLÁVEIS ===\n${regras}\n=== FIM ===` : ""}`;
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
