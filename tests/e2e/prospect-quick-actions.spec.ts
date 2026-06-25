@@ -160,8 +160,8 @@ test.describe("ProspectActionCard — Ações Rápidas", () => {
     await login(page);
     const card = page.locator(`[data-prospect-id="${prospectId}"]`).first();
     await card.locator('[data-testid="move-stage-action"]').click();
-    // Abre o Select dentro do Popover
-    await page.getByRole("combobox").first().click();
+    const popover = page.locator("[data-radix-popper-content-wrapper]").last();
+    await popover.getByRole("combobox").click();
     await page.getByRole("option", { name: "Qualificação" }).click();
     await expect(
       page.locator('[data-sonner-toast], li[role="status"]').first(),
