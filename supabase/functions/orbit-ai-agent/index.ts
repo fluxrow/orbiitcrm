@@ -634,12 +634,14 @@ serve(async (req) => {
 
     const emColetaOrcamento = aiContexto.em_coleta_orcamento || false;
     const camposColetados = aiContexto.campos_coletados || {};
-    const camposCadastro = aiConfig.campos_cadastro || ["nome_razao", "email_principal", "cidade"];
+    const camposCadastro: string[] = Array.isArray(aiConfig.campos_qualificacao)
+      ? (aiConfig.campos_qualificacao as Array<{ key?: string }>).map((c) => c?.key).filter((k): k is string => !!k)
+      : [];
+    const camposCadastroEffective = camposCadastro.length > 0 ? camposCadastro : ["nome_razao", "email_principal", "cidade"];
     const maxTokens = aiConfig.max_tokens || 500;
     const idioma = aiConfig.idioma || "pt-BR";
-    const promptOrcamentos = aiConfig.prompt_orcamentos || "";
 
-    const camposFaltantes = camposCadastro.filter(
+    const camposFaltantes = camposCadastroEffective.filter(
       (campo: string) => !camposColetados[campo] && !prospect?.[campo]
     );
     const cadastroCompleto = camposFaltantes.length === 0;
@@ -654,9 +656,7 @@ serve(async (req) => {
       : false;
     const isReturningContact = !primeiraInteracao || (prospect?.nome_razao && !prospect.nome_razao.startsWith("WhatsApp "));
 
-    const instrucaoOrcamento = promptOrcamentos 
-      ? `\nINSTRUÇÃO ESPECIAL PARA ORÇAMENTOS:\n${promptOrcamentos}`
-      : "";
+    const instrucaoOrcamento = "";
 
     // ── Prompt refatorado com contexto estruturado ──
     const campaignContinuity = isFromCampaign
@@ -691,7 +691,6 @@ serve(async (req) => {
 
     // ── E2.7.C2: prompt em 3 blocos + RAG + campos dinâmicos ──
     const promptIdentidade = (aiConfig.prompt_identidade && String(aiConfig.prompt_identidade).trim())
-      || aiConfig.prompt_treinamento
       || "Você é um assistente de vendas.";
     const promptRoteiro = (aiConfig.prompt_roteiro && String(aiConfig.prompt_roteiro).trim()) || "";
     const promptRegras = (aiConfig.prompt_regras && String(aiConfig.prompt_regras).trim()) || "";
