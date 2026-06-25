@@ -15,13 +15,47 @@ const handler = async (req: Request): Promise<Response> => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    // SECURITY: require Authorization. Accept either a valid user JWT (and
+    // verify tenant membership) OR an internal service-role bearer (used by
+    // orbit-flow-executor for server-to-server notifications).
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return fail(ErrorCodes.UNAUTHORIZED, "Não autenticado", 401);
+    }
+    const bearer = authHeader.replace("Bearer ", "");
+    const isInternalCall = bearer === supabaseKey;
+
+    let callerUserId: string | null = null;
+    if (!isInternalCall) {
+      const { data: { user }, error: authError } = await createClient(
+        supabaseUrl,
+        supabaseAnonKey,
+      ).auth.getUser(bearer);
+      if (authError || !user) return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401);
+      callerUserId = user.id;
+    }
+
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { prospect_id, vendedor_id, empresa_id, tipo = "atribuicao" }: NotificationRequest = await req.json();
 
     if (!prospect_id || !vendedor_id || !empresa_id) {
       return fail(ErrorCodes.VALIDATION_ERROR, "prospect_id, vendedor_id e empresa_id são obrigatórios");
+    }
+
+    // SECURITY: when called by a user, enforce tenant membership.
+    if (!isInternalCall && callerUserId) {
+      const { data: profile } = await supabase
+        .from("profiles").select("empresa_id").eq("id", callerUserId).maybeSingle();
+      const { data: membership } = await supabase
+        .from("user_empresa_memberships").select("empresa_id")
+        .eq("user_id", callerUserId).eq("empresa_id", empresa_id).maybeSingle();
+      const { data: isSuperAdmin } = await supabase.rpc("pe_is_super_admin", { p_user_id: callerUserId });
+      const belongs = profile?.empresa_id === empresa_id || !!membership || !!isSuperAdmin;
+      if (!belongs) return fail(ErrorCodes.UNAUTHORIZED, "Acesso negado ao tenant", 403);
     }
 
     const { data: prospect } = await supabase.from("orbit_prospects").select("*").eq("id", prospect_id).single();
