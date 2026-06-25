@@ -293,7 +293,7 @@ export default function TarefasPage() {
             </div>
           )}
           <UnifiedCalendar
-            tasks={(tasks || []) as any}
+            tasks={visibleTasks as any}
             googleEvents={gEvents || []}
             googleEnabled={googleConnected}
             googleLoading={gFetching}
