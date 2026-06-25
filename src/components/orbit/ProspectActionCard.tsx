@@ -196,6 +196,9 @@ export function ProspectActionCard({
           <TooltipContent>Agendar reunião</TooltipContent>
         </Tooltip>
 
+        <div className="mx-1 h-5 w-px bg-border/60" />
+        <ProspectQuickActions prospect={prospect} />
+
         <div className="ml-auto">
           <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-muted-foreground" onClick={(e) => { e.stopPropagation(); onViewHistory(prospect); }}>
             <History className="w-3.5 h-3.5 mr-1" />Histórico
