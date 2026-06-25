@@ -22,7 +22,7 @@ const KANBAN_CARDS = [
 
 /* ── AI messages ── */
 const AI_MESSAGES = [
-  { from: "lead", text: "Olá, tenho interesse no plano Professional" },
+  { from: "lead", text: "Olá, tenho interesse no Orbit CRM" },
   { from: "ai", text: "Oi! Qual o tamanho da sua equipe comercial?" },
   { from: "lead", text: "Somos 5 vendedores" },
   { from: "ai", text: "Perfeito! Vou encaminhar para o consultor ideal ✨" },
