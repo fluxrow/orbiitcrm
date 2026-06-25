@@ -195,6 +195,30 @@ export default function TarefasPage() {
         )}
       </div>
 
+      {/* Scope (agrupamento) */}
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <ToggleGroup
+          type="single"
+          value={scope}
+          onValueChange={(v) => v && setScope(v as typeof scope)}
+          variant="outline"
+          className="justify-start"
+        >
+          <ToggleGroupItem value="today" className="gap-2">
+            <CalendarIcon className="w-4 h-4" /> Hoje
+            <span className="text-xs text-muted-foreground">({counts.today})</span>
+          </ToggleGroupItem>
+          <ToggleGroupItem value="meetings" className="gap-2">
+            <CalendarClock className="w-4 h-4" /> Próximas reuniões
+            <span className="text-xs text-muted-foreground">({counts.meetings})</span>
+          </ToggleGroupItem>
+          <ToggleGroupItem value="all" className="gap-2">
+            <LayoutGrid className="w-4 h-4" /> Tudo
+            <span className="text-xs text-muted-foreground">({counts.all})</span>
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+
       {/* Views */}
       <Tabs defaultValue="kanban">
         <TabsList className="mb-4">
