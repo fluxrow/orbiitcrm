@@ -66,7 +66,7 @@ test.beforeAll(async () => {
       empresa_id: EMPRESA_ID,
       tipo: "pessoa",
       nome_razao: `Kanban Lead ${tag}`,
-      telefone: "+5541997776655",
+      telefone: `+55429${String(Date.now()).slice(-8)}`,
       status_qualificacao: "qualificado",
       origem_contato: "PROSPECTS",
     })
