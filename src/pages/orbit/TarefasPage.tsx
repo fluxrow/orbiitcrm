@@ -232,7 +232,7 @@ export default function TarefasPage() {
             <p className="text-muted-foreground text-center py-12">Carregando...</p>
           ) : (
             <OrbitTaskKanban
-              tasks={tasks || []}
+              tasks={visibleTasks}
               onComplete={handleComplete}
               onEdit={handleEdit}
               onOpenProspect={handleOpenProspect}
