@@ -36,6 +36,9 @@ interface AcceptRequest {
   token: string;
   password: string;
   full_name: string;
+  /** Documento unificado: CPF (11) ou CNPJ (14). Preferir este campo. */
+  documento?: string;
+  /** Compat: campo legado. */
   cnpj?: string;
   dados_receita?: {
     razao_social?: string;
@@ -47,6 +50,18 @@ interface AcceptRequest {
     uf?: string;
     cnae_fiscal_descricao?: string;
   };
+}
+
+function validateCpfDv(cpf: string): boolean {
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+  let s = 0;
+  for (let i = 0; i < 9; i++) s += parseInt(cpf[i]) * (10 - i);
+  let dv = (s * 10) % 11; if (dv === 10) dv = 0;
+  if (dv !== parseInt(cpf[9])) return false;
+  s = 0;
+  for (let i = 0; i < 10; i++) s += parseInt(cpf[i]) * (11 - i);
+  dv = (s * 10) % 11; if (dv === 10) dv = 0;
+  return dv === parseInt(cpf[10]);
 }
 
 Deno.serve(async (req) => {
