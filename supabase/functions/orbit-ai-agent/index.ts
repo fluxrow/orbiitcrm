@@ -399,6 +399,52 @@ async function sendWhatsAppAudio(supabase: any, telefone: string, audioUrl: stri
   }
 }
 
+// ── RAG: embedding + busca semântica ──
+async function embedQuery(text: string): Promise<number[] | null> {
+  try {
+    const key = Deno.env.get("LOVABLE_API_KEY");
+    if (!key || !text?.trim()) return null;
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "google/gemini-embedding-001", input: text.slice(0, 4000) }),
+    });
+    if (!res.ok) {
+      console.warn("[orbit-ai-agent] embed_failed:", res.status);
+      return null;
+    }
+    const data = await res.json();
+    const v = data?.data?.[0]?.embedding;
+    return Array.isArray(v) ? v : null;
+  } catch (e) {
+    console.warn("[orbit-ai-agent] embed exception:", e);
+    return null;
+  }
+}
+
+interface RagChunk { titulo: string | null; conteudo_texto: string; similarity: number; tipo: string }
+async function fetchRagChunks(supabase: any, empresaId: string | null | undefined, query: string): Promise<RagChunk[]> {
+  if (!empresaId) return [];
+  const emb = await embedQuery(query);
+  if (!emb) return [];
+  try {
+    const { data, error } = await supabase.rpc("match_orbit_knowledge", {
+      p_empresa_id: empresaId,
+      query_embedding: emb as unknown as string,
+      match_count: 3,
+      min_similarity: 0.7,
+    });
+    if (error) {
+      console.warn("[orbit-ai-agent] match_orbit_knowledge error:", error.message);
+      return [];
+    }
+    return (data || []) as RagChunk[];
+  } catch (e) {
+    console.warn("[orbit-ai-agent] rag rpc exception:", e);
+    return [];
+  }
+}
+
 serve(async (req) => {
   const corsHeaders = getCorsHeaders(req);
 
