@@ -31,7 +31,7 @@ interface CampaignWizardProps {
 interface CampaignData {
   nome: string;
   canal: "email" | "whatsapp";
-  publico_origem: "prospects" | "prometheus" | "ambos";
+  publico_origem: "prospects";
   template_id: string;
   filtros: {
     status_qualificacao?: string[];
