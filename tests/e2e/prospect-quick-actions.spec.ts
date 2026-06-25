@@ -180,9 +180,12 @@ test.describe("ProspectActionCard — Ações Rápidas", () => {
       .from("orbit_flow_events")
       .select("event_type, payload")
       .eq("entity_id", prospectId)
-      .eq("event_type", "manual_trigger")
-      .limit(1);
-    expect(data && data.length).toBeGreaterThan(0);
-    expect((data?.[0]?.payload as any)?.forced_flow_id).toBe(flowId);
+      .order("created_at", { ascending: false })
+      .limit(5);
+    const manual = (data ?? []).find(
+      (e: any) => e.payload?.manual_trigger === true,
+    );
+    expect(manual).toBeTruthy();
+    expect((manual?.payload as any)?.forced_flow_id).toBe(flowId);
   });
 });
