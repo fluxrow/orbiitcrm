@@ -104,7 +104,7 @@ test.beforeAll(async () => {
     .insert({
       empresa_id: EMPRESA_ID,
       nome: `E2E Flow ${tag}`,
-      trigger_type: "manual_trigger",
+      trigger_type: "prospect_qualified",
       ativo: true,
     })
     .select("id")
