@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
 import { DealDialog } from "@/components/orbit/DealDialog";
@@ -11,6 +12,8 @@ import { useOrbitDealsGrouped, useMoveDealToStage, useConvertDealToClient } from
 import { toast } from "sonner";
 import type { Tables } from "@/integrations/supabase/types";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { supabase } from "@/integrations/supabase/client";
+import { useTenant } from "@/contexts/TenantContext";
 
 export default function FunilPage() {
   const navigate = useNavigate();
