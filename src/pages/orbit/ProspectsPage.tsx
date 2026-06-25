@@ -161,6 +161,17 @@ export default function ProspectsPage() {
 
   const empresaId = myProfile?.empresa_id || "";
 
+  // Auto-open prospect when navigating via /prospects/:id
+  const { id: prospectIdFromParams } = useParams();
+  const { data: prospectFromParams } = useOrbitProspect(prospectIdFromParams);
+
+  useEffect(() => {
+    if (prospectFromParams) {
+      setSelectedProspect(prospectFromParams);
+      setDialogOpen(true);
+    }
+  }, [prospectFromParams]);
+
   return (
     <OrbitLayout>
       <TooltipProvider>
