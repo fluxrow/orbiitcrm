@@ -69,29 +69,41 @@ test.afterAll(async () => {
 });
 
 test("Criação manual de Prospect cria registro e Deal no funil", async ({ page }) => {
-  await login(page, `/${SLUG}/prospects`);
+  const consoleErrors: string[] = [];
+  page.on("console", (m) => {
+    if (m.type() === "error") consoleErrors.push(m.text());
+  });
 
+  await login(page, `/${SLUG}/prospects`);
+  // garante que a página carregou
+  await page.getByRole("button", { name: /Novo Prospect/i }).waitFor({ timeout: 15_000 });
   await page.getByRole("button", { name: /Novo Prospect/i }).click();
 
-  // Form mínimo: nome_razao é o único required (zod min 2)
-  await page
+  // Aguarda dialog
+  const dialog = page.getByRole("dialog");
+  await dialog.waitFor({ timeout: 10_000 });
+  await expect(dialog.getByText(/Novo Prospect/i).first()).toBeVisible();
+
+  await dialog
     .getByPlaceholder(/Nome completo ou razão social/i)
     .fill(nomeProspect);
-  await page.getByPlaceholder(/5511999999999/).fill("5541998887766");
+  await dialog.getByPlaceholder(/5511999999999/).fill("5541998887766");
 
-  // Submit
-  await page.getByRole("button", { name: /Criar Prospect|Salvar Alterações/i }).click();
+  await dialog.getByRole("button", { name: /Criar Prospect/i }).click();
 
-  // Aguarda o dialog fechar ou um toast (o que vier primeiro). Ambos com timeout absorvido.
-  await page
-    .locator('[data-sonner-toast], li[role="status"]')
-    .first()
-    .waitFor({ timeout: 15_000 })
-    .catch(() => null);
+  // Aguarda dialog fechar OU toast aparecer (qualquer um indica resposta do servidor)
+  await Promise.race([
+    dialog.waitFor({ state: "detached", timeout: 15_000 }).catch(() => null),
+    page
+      .locator('[data-sonner-toast], li[role="status"]')
+      .first()
+      .waitFor({ timeout: 15_000 })
+      .catch(() => null),
+  ]);
 
-  // Confirma no banco que o prospect foi criado (busca global por nome)
+  // Confirma no banco
   let prospect: { id: string; empresa_id: string | null } | null = null;
-  for (let i = 0; i < 10 && !prospect?.id; i++) {
+  for (let i = 0; i < 20 && !prospect?.id; i++) {
     const { data } = await admin
       .from("orbit_prospects")
       .select("id, empresa_id")
@@ -99,6 +111,10 @@ test("Criação manual de Prospect cria registro e Deal no funil", async ({ page
       .maybeSingle();
     prospect = data;
     if (!prospect?.id) await page.waitForTimeout(500);
+  }
+
+  if (!prospect?.id) {
+    console.log("[E2E] console errors:", consoleErrors.slice(-5));
   }
 
   expect(prospect?.id).toBeTruthy();
