@@ -91,6 +91,7 @@ test.beforeAll(async () => {
       canal: "whatsapp",
       status: "aberta",
       human_talk: false,
+      telefone_whatsapp: "+5541999990000",
     })
     .select("id")
     .single();
