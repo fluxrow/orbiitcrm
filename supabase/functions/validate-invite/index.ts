@@ -10,7 +10,7 @@ async function hashToken(plaintext: string): Promise<string> {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return optionsResponse();
+  if (req.method === "OPTIONS") return optionsResponse(req);
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
 
     const { token } = await req.json();
     if (!token || typeof token !== "string") {
-      return fail(ErrorCodes.VALIDATION_ERROR, "Token obrigatório");
+      return fail(ErrorCodes.VALIDATION_ERROR, "Token obrigatório", 400, undefined, req);
     }
 
     const tokenHash = await hashToken(token);
@@ -34,19 +34,19 @@ Deno.serve(async (req) => {
 
     if (error) {
       console.error("Query error:", error);
-      return fail(ErrorCodes.INTERNAL_ERROR, "Erro ao buscar convite", 200);
+      return fail(ErrorCodes.INTERNAL_ERROR, "Erro ao buscar convite", 200, undefined, req);
     }
 
     if (!invite) {
-      return fail(ErrorCodes.INVITE_INVALID, "Convite não encontrado ou token inválido", 200);
+      return fail(ErrorCodes.INVITE_INVALID, "Convite não encontrado ou token inválido", 200, undefined, req);
     }
 
     if (invite.used_at) {
-      return fail(ErrorCodes.INVITE_USED, "Este convite já foi utilizado", 200);
+      return fail(ErrorCodes.INVITE_USED, "Este convite já foi utilizado", 200, undefined, req);
     }
 
     if (new Date(invite.expires_at) < new Date()) {
-      return fail(ErrorCodes.INVITE_EXPIRED, "Este convite expirou", 200);
+      return fail(ErrorCodes.INVITE_EXPIRED, "Este convite expirou", 200, undefined, req);
     }
 
     const empresa = invite.orbit_empresas as any;
@@ -61,10 +61,10 @@ Deno.serve(async (req) => {
       plan_code: plan?.code || "demo",
       plan_name: plan?.name || "Demo",
       expires_at: invite.expires_at,
-    });
+    }, undefined, req);
   } catch (err: unknown) {
     console.error("Unexpected error:", err);
     const msg = err instanceof Error ? err.message : String(err);
-    return fail(ErrorCodes.INTERNAL_ERROR, msg, 500);
+    return fail(ErrorCodes.INTERNAL_ERROR, msg, 500, undefined, req);
   }
 });
