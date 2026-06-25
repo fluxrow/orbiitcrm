@@ -70,12 +70,19 @@ test.afterAll(async () => {
 
 test("Criação manual de Prospect cria registro e Deal no funil", async ({ page }) => {
   const consoleErrors: string[] = [];
+  const failedResponses: Array<{ url: string; status: number; body?: string }> = [];
   page.on("console", (m) => {
     if (m.type() === "error") consoleErrors.push(m.text());
   });
+  page.on("response", async (res) => {
+    if (res.status() >= 400 && res.url().includes("orbit_prospects")) {
+      try {
+        failedResponses.push({ url: res.url(), status: res.status(), body: await res.text() });
+      } catch {}
+    }
+  });
 
   await login(page, `/${SLUG}/prospects`);
-  // garante que a página carregou
   await page.getByRole("button", { name: /Novo Prospect/i }).waitFor({ timeout: 15_000 });
   await page.getByRole("button", { name: /Novo Prospect/i }).click();
 
