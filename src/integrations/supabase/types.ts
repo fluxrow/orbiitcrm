@@ -4595,6 +4595,7 @@ export type Database = {
       normalize_name: { Args: { p: string }; Returns: string }
       normalize_phone: { Args: { p: string }; Returns: string }
       normalize_slug: { Args: { p: string }; Returns: string }
+      orbit_first_stage_id: { Args: { p_empresa_id: string }; Returns: string }
       orbit_resend_has_api_key: {
         Args: { p_empresa_id: string }
         Returns: boolean
