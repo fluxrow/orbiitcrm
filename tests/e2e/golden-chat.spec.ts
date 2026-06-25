@@ -45,7 +45,8 @@ const tag = `e2e-chat-${Date.now()}`;
 const inboundText = `Ola mensagem inbound de teste E2E`;
 const outboundText = `Resposta automatica do teste E2E`;
 // nome SEM longas sequências de dígitos para a UI escolher nome_razao como label
-const contatoLabel = `Chat E2E Teste Lead`;
+const contatoLabel = `Chat E2E Teste Lead ${tag.slice(-5).replace(/\d/g, "X")}`;
+const telefoneChat = `+55439${String(Date.now()).slice(-8)}`;
 let prospectId = "";
 let conversaId = "";
 
