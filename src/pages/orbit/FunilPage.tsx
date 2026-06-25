@@ -191,12 +191,12 @@ export default function FunilPage() {
                       }}
                       onOpenProspect={() => {
                         if (deal.prospect_id) {
-                          navigate(`/orbit/prospects?id=${deal.prospect_id}`);
+                          navigate(`${basePath}/prospects?id=${deal.prospect_id}`);
                         }
                       }}
                       onStartConversation={() => {
                         if (deal.prospect?.whatsapp || deal.prospect?.telefone) {
-                          navigate("/orbit/conversas");
+                          navigate(`${basePath}/conversas`);
                         }
                       }}
                     />
