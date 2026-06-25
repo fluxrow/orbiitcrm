@@ -6,7 +6,10 @@ import { usePeAuth } from "@/hooks/usePeAuth";
 import { useTenant } from "@/contexts/TenantContext";
 import ConfigUsersTab from "@/components/orbit/ConfigUsersTab";
 import AgendaConfigTab from "@/components/orbit/AgendaConfigTab";
-import { Users, Phone, Calendar } from "lucide-react";
+import { SystemHealthTab } from "@/components/orbit/SystemHealthTab";
+import { SuperAdminOnly } from "@/components/auth/SuperAdminOnly";
+import { useIsSuperAdmin } from "@/hooks/useUserRole";
+import { Users, Phone, Calendar, Activity } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -57,6 +60,7 @@ export default function ConfigPage() {
   const { empresaId } = useTenant();
   const [searchParams] = useSearchParams();
   const isOrgAdmin = roleCode === "ORG_ADMIN";
+  const { hasRole: isSuperAdmin } = useIsSuperAdmin();
   const { isDemo } = useIsDemo();
   const { data: aiConfig, isLoading: aiLoading } = useOrbitAIConfig(empresaId);
   const { data: zapiConfig, isLoading: zapiLoading } = useOrbitZAPIConfig(empresaId);
@@ -389,6 +393,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
           <TabsTrigger value="pipeline"><Workflow className="h-4 w-4 mr-2" />Pipeline</TabsTrigger>
           <TabsTrigger value="fluxos"><GitBranch className="h-4 w-4 mr-2" />Fluxos</TabsTrigger>
           {isOrgAdmin && <TabsTrigger value="users"><Users className="h-4 w-4 mr-2" />Usuários</TabsTrigger>}
+          {isSuperAdmin && <TabsTrigger value="health"><Activity className="h-4 w-4 mr-2" />Saúde do Sistema</TabsTrigger>}
         </TabsList>
         <TabsContent value="ai">
           {aiLoading ? <Loader2 className="animate-spin" /> : (
@@ -1843,6 +1848,11 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
             <ConfigUsersTab />
           </TabsContent>
         )}
+        <TabsContent value="health">
+          <SuperAdminOnly fallback={<p className="text-sm text-muted-foreground">Restrito a Super Admin.</p>}>
+            <SystemHealthTab />
+          </SuperAdminOnly>
+        </TabsContent>
       </Tabs>
     </OrbitLayout>
   );

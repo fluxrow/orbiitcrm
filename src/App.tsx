@@ -33,7 +33,7 @@ import FunilPage from "./pages/orbit/FunilPage";
 import CampanhasPage from "./pages/orbit/CampanhasPage";
 import TemplatesPage from "./pages/orbit/TemplatesPage";
 import EmailTemplateEditorPage from "./pages/orbit/EmailTemplateEditorPage";
-import LeadFinderPage from "./pages/orbit/LeadFinderPage";
+
 import ConfigPage from "./pages/orbit/ConfigPage";
 import AnalyticsPage from "./pages/orbit/AnalyticsPage";
 import MeuPlanoPage from "./pages/orbit/MeuPlanoPage";
@@ -155,7 +155,7 @@ function OrbitRoutes() {
       <Route path="templates" element={<TemplatesPage />} />
       <Route path="templates/email/new" element={<EmailTemplateEditorPage />} />
       <Route path="templates/email/:id/edit" element={<EmailTemplateEditorPage />} />
-      <Route path="lead-finder" element={<LeadFinderPage />} />
+      
       <Route path="config" element={<ConfigPage />} />
       <Route path="analytics" element={<AnalyticsPage />} />
       <Route path="tarefas" element={<TarefasPage />} />
