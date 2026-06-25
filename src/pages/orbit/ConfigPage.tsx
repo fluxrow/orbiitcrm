@@ -416,17 +416,42 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                   <CardDescription>Configure o treinamento da IA para geração de mensagens</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {/* Texto de Treinamento */}
+                  {/* Bloco 1: Identidade & Tom */}
                   <div className="space-y-2">
-                    <Label>Texto de Treinamento *</Label>
+                    <Label>Prompt de Identidade *</Label>
                     <Textarea 
-                      className="min-h-[150px]"
-                      placeholder="Você é um assistente de vendas profissional. Seu objetivo é iniciar conversas com prospects de forma amigável e identificar suas necessidades..."
-                      value={aiForm.prompt_treinamento} 
-                      onChange={(e) => setAiForm({ ...aiForm, prompt_treinamento: e.target.value })} 
+                      className="min-h-[120px]"
+                      placeholder="Você é a Júlia, SDR sênior de uma mentoria high-ticket. Tom consultivo, direto, sem floreio. Trate o lead com respeito mas sem subserviência..."
+                      value={aiForm.prompt_identidade} 
+                      onChange={(e) => setAiForm({ ...aiForm, prompt_identidade: e.target.value })} 
                     />
-                    <p className="text-xs text-muted-foreground">Este texto será usado como contexto para gerar mensagens personalizadas</p>
+                    <p className="text-xs text-muted-foreground">Quem é a IA, persona, tom de voz e postura.</p>
                   </div>
+
+                  {/* Bloco 2: Roteiro */}
+                  <div className="space-y-2">
+                    <Label>Roteiro de Qualificação</Label>
+                    <Textarea 
+                      className="min-h-[140px]"
+                      placeholder="1. Cumprimente pelo nome. 2. Confirme o canal de origem. 3. Faça as perguntas de qualificação na ordem. 4. Se qualificado, ofereça call de diagnóstico..."
+                      value={aiForm.prompt_roteiro} 
+                      onChange={(e) => setAiForm({ ...aiForm, prompt_roteiro: e.target.value })} 
+                    />
+                    <p className="text-xs text-muted-foreground">Passo a passo que a IA deve seguir para mover o lead no funil.</p>
+                  </div>
+
+                  {/* Bloco 3: Regras Invioláveis */}
+                  <div className="space-y-2">
+                    <Label>Regras Invioláveis</Label>
+                    <Textarea 
+                      className="min-h-[100px]"
+                      placeholder={"- Nunca dê descontos.\n- Não responda sobre assuntos fora da mentoria.\n- Nunca prometa resultados financeiros específicos."}
+                      value={aiForm.prompt_regras} 
+                      onChange={(e) => setAiForm({ ...aiForm, prompt_regras: e.target.value })} 
+                    />
+                    <p className="text-xs text-muted-foreground">Uma regra por linha. Serão injetadas <strong>ao final</strong> do prompt (maior peso para o LLM).</p>
+                  </div>
+
 
                   {/* Tom, Idioma, Max Tokens */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
