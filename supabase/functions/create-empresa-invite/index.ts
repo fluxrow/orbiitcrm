@@ -61,7 +61,7 @@ function buildEmailHtml(empresaNome: string, planName: string, activationUrl: st
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return optionsResponse();
+  if (req.method === "OPTIONS") return optionsResponse(req);
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -69,18 +69,18 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
 
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return fail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401);
+    if (!authHeader) return fail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401, undefined, req);
 
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: userErr } = await supabase.auth.getUser(token);
-    if (userErr || !user) return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401);
+    if (userErr || !user) return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401, undefined, req);
 
     const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id).eq("role", "super_admin");
-    if (!roles?.length) return fail(ErrorCodes.FORBIDDEN, "Acesso negado. Apenas super admins.", 403);
+    if (!roles?.length) return fail(ErrorCodes.FORBIDDEN, "Acesso negado. Apenas super admins.", 403, undefined, req);
 
     const body: InviteRequest = await req.json();
     if (!body.responsible_name?.trim() || !body.responsible_email?.trim()) {
-      return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios: responsible_name, responsible_email");
+      return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios: responsible_name, responsible_email", 400, undefined, req);
     }
 
     let empresa: { id: string; nome: string };
@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
 
     if (reuseExisting) {
       const { data: existing, error: exErr } = await supabase.from("orbit_empresas").select("id, nome").eq("id", body.empresa_id!).single();
-      if (exErr || !existing) return fail(ErrorCodes.NOT_FOUND, "Empresa não encontrada", 404);
+      if (exErr || !existing) return fail(ErrorCodes.NOT_FOUND, "Empresa não encontrada", 404, undefined, req);
       empresa = existing;
       // optional plan lookup for email body
       const { data: saasRow } = await supabase.from("saas_empresa").select("plan_id, saas_plans(name)").eq("empresa_id", existing.id).maybeSingle();
@@ -99,14 +99,14 @@ Deno.serve(async (req) => {
         return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios: empresa_nome, plan_code");
       }
       const validPlans = ["demo", "basic", "professional", "plus", "orbit"];
-      if (!validPlans.includes(body.plan_code)) return fail(ErrorCodes.VALIDATION_ERROR, "plan_code inválido");
+      if (!validPlans.includes(body.plan_code)) return fail(ErrorCodes.VALIDATION_ERROR, "plan_code inválido", 400, undefined, req);
 
       const { data: planRow } = await supabase.from("saas_plans").select("id, name").eq("code", body.plan_code).single();
-      if (!planRow) return fail(ErrorCodes.NOT_FOUND, "Plano não encontrado", 404);
+      if (!planRow) return fail(ErrorCodes.NOT_FOUND, "Plano não encontrado", 404, undefined, req);
       plan = planRow;
 
       const { data: created, error: empErr } = await supabase.from("orbit_empresas").insert({ nome: body.empresa_nome.trim(), ativo: false }).select("id, nome").single();
-      if (empErr) return fail(ErrorCodes.INTERNAL_ERROR, `Erro ao criar empresa: ${empErr.message}`, 500);
+      if (empErr) return fail(ErrorCodes.INTERNAL_ERROR, `Erro ao criar empresa: ${empErr.message}`, 500, undefined, req);
       empresa = created;
     }
 
@@ -159,19 +159,19 @@ Deno.serve(async (req) => {
         metadata: { empresa_id: empresa.id, email: body.responsible_email.trim().toLowerCase(), plan_code: body.plan_code, reuse_existing: reuseExisting },
       });
 
-      return ok({ empresa_id: empresa.id, invite_id: invite.id, expires_at: invite.expires_at });
+      return ok({ empresa_id: empresa.id, invite_id: invite.id, expires_at: invite.expires_at }, undefined, req);
     } catch (innerErr: unknown) {
       if (!reuseExisting) {
         await supabase.from("orbit_empresas").delete().eq("id", empresa.id);
       }
       console.error("Erro interno:", innerErr);
       const msg = innerErr instanceof Error ? innerErr.message : String(innerErr);
-      return fail(ErrorCodes.INTERNAL_ERROR, `Erro interno: ${msg}`, 500);
+      return fail(ErrorCodes.INTERNAL_ERROR, `Erro interno: ${msg}`, 500, undefined, req);
     }
 
   } catch (err: unknown) {
     console.error("Unexpected error:", err);
     const msg = err instanceof Error ? err.message : String(err);
-    return fail(ErrorCodes.INTERNAL_ERROR, msg, 500);
+    return fail(ErrorCodes.INTERNAL_ERROR, msg, 500, undefined, req);
   }
 });
