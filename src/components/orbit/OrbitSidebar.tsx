@@ -42,7 +42,11 @@ export function OrbitSidebar() {
   const { isAdmin } = useIsAdmin();
   const { hasRole: isSuperAdmin } = useIsSuperAdmin();
 
-  const { basePath } = useTenant();
+  const { basePath, slug } = useTenant();
+  // Ferramentas internas do SaaS (Onboarding, Admin Fluxrow, Lead Finder) só aparecem
+  // quando o super admin está dentro do master tenant. Em outros tenants (suporte),
+  // a UI fica idêntica à do cliente comum.
+  const isMasterTenant = isSuperAdmin && slug === "fluxrow";
   const { user, signOut } = useAuth();
   const { data: pendingTasks } = useOrbitTasks({ status: "pending" });
   const pendingCount = pendingTasks?.length || 0;
@@ -76,13 +80,13 @@ export function OrbitSidebar() {
     { name: "Conversas", href: `${basePath}/conversas`, icon: MessageSquare },
     { name: "Funil", href: `${basePath}/funil`, icon: Kanban },
     { name: "Tarefas", href: `${basePath}/tarefas`, icon: CheckSquare, badge: pendingCount > 0 ? pendingCount : undefined },
-    ...(isSuperAdmin ? [{ name: "Onboarding", href: `${basePath}/onboarding`, icon: ClipboardList }] : []),
-    ...(isSuperAdmin ? [{ name: "Admin Fluxrow", href: `/pe-admin`, icon: Shield }] : []),
+    ...(isMasterTenant ? [{ name: "Onboarding", href: `${basePath}/onboarding`, icon: ClipboardList }] : []),
+    ...(isMasterTenant ? [{ name: "Admin Fluxrow", href: `/pe-admin`, icon: Shield }] : []),
     ...(canUseFeature("whatsapp") || canUseFeature("email") ? [{ name: "Campanhas", href: `${basePath}/campanhas`, icon: Mail }] : []),
     { name: "Templates", href: `${basePath}/templates`, icon: FileText },
-    // Lead Finder (Apollo) — oculto para usuários comuns durante pivô para nicho High-Ticket.
-    // Backend/schemas mantidos; UI restrita ao super admin para suporte/QA.
-    ...(isSuperAdmin && canUseFeature("lead_finder") ? [{ name: "Lead Finder", href: `${basePath}/lead-finder`, icon: Search }] : []),
+    // Lead Finder (Apollo) — restrito ao master tenant. Durante o pivô High-Ticket
+    // não aparece em /:slug/ de cliente, mesmo para super admin (isolamento visual).
+    ...(isMasterTenant && canUseFeature("lead_finder") ? [{ name: "Lead Finder", href: `${basePath}/lead-finder`, icon: Search }] : []),
     { name: "Analytics", href: `${basePath}/analytics`, icon: BarChart3 },
     ...(isAdmin ? [{ name: "Meu Plano", href: `${basePath}/meu-plano`, icon: CreditCard }] : []),
     { name: "Configurações", href: `${basePath}/config`, icon: Settings },

@@ -334,9 +334,9 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
               name="cnpj_cpf"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>CPF/CNPJ</FormLabel>
+                  <FormLabel>Documento (CPF/CNPJ)</FormLabel>
                   <FormControl>
-                    <Input placeholder="Documento" {...field} />
+                    <Input placeholder="000.000.000-00 ou 00.000.000/0000-00" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

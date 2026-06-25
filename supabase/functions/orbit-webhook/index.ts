@@ -42,9 +42,7 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Optional shared-secret authentication. When ORBIT_WEBHOOK_SECRET is
-  // configured, callers (Z-API) must include header `x-webhook-secret` with
-  // the matching value. Constant-time comparison to avoid timing attacks.
+  // 1) Auth shared-secret (fast, sync — sempre antes do ACK)
   const webhookSecret = Deno.env.get("ORBIT_WEBHOOK_SECRET");
   if (webhookSecret) {
     const provided = req.headers.get("x-webhook-secret") || "";
@@ -63,6 +61,59 @@ serve(async (req) => {
     }
   }
 
+  // 2) Parse + validação rápida do payload (ainda síncrono para responder 400 cedo)
+  let payload: any;
+  try {
+    payload = await req.json();
+  } catch {
+    return new Response(JSON.stringify({ error: "invalid_json" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (!payload || typeof payload !== "object") {
+    return new Response(JSON.stringify({ error: "invalid_payload" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const _rawText = JSON.stringify(payload);
+  if (_rawText.length > 200_000) {
+    return new Response(JSON.stringify({ error: "payload_too_large" }), {
+      status: 413,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const url = new URL(req.url);
+  const eventType = url.searchParams.get("event") || "on-receive";
+  console.log(`[orbit-webhook] ACK rápido — event=${eventType} len=${_rawText.length}`);
+
+  // 3) Dispara processamento pesado em background e ACK em <1s.
+  //    EdgeRuntime.waitUntil mantém o worker vivo até o processInboundZapi resolver,
+  //    sem bloquear a resposta para o provedor (Z-API).
+  const processor = processInboundZapi(payload, eventType, corsHeaders).catch((e) => {
+    console.error("[orbit-webhook] background error:", e instanceof Error ? e.message : String(e));
+  });
+  // @ts-ignore — EdgeRuntime é um global do runtime do Supabase Edge
+  if (typeof EdgeRuntime !== "undefined") {
+    // @ts-ignore
+    EdgeRuntime.waitUntil(processor);
+  }
+
+  return new Response(JSON.stringify({ ok: true, queued: true }), {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+});
+
+/**
+ * Worker assíncrono que processa o payload Z-API depois do ACK.
+ * Pode demorar (lookups, IA, RAG, inserts) sem prejudicar o tempo de resposta.
+ * Idempotência garantida pelo índice único parcial em orbit_mensagens(empresa_id, provider_message_id).
+ * Retorna Response apenas por compat de código legado — o valor é ignorado pelo waitUntil.
+ */
+async function processInboundZapi(payload: any, eventType: string, corsHeaders: Record<string, string>): Promise<Response> {
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -71,25 +122,7 @@ serve(async (req) => {
   let logId: string | null = null;
 
   try {
-    const url = new URL(req.url);
-    const eventType = url.searchParams.get("event") || "on-receive";
 
-    const payload = await req.json();
-    // Basic input validation
-    if (!payload || typeof payload !== "object") {
-      return new Response(JSON.stringify({ error: "invalid_payload" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    const _rawText = JSON.stringify(payload);
-    if (_rawText.length > 200_000) {
-      return new Response(JSON.stringify({ error: "payload_too_large" }), {
-        status: 413,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    console.log(`[orbit-webhook] Evento: ${eventType}, Payload:`, _rawText);
 
 
 
@@ -594,4 +627,4 @@ serve(async (req) => {
     });
   }
 
-});
+}

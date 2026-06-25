@@ -81,121 +81,22 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const body = JSON.parse(rawBody);
-    console.log("[orbit-meta-webhook] Verified signature, processing event");
+    console.log("[orbit-meta-webhook] Verified signature, dispatching to background");
 
-    // Processar eventos do Meta
-    if (body.object === "instagram" || body.object === "page") {
-      for (const entry of body.entry || []) {
-        const pageId = entry.id;
-        
-        // Buscar empresa por page_id ou instagram_business_id
-        const { data: config } = await supabase
-          .from("orbit_meta_config")
-          .select("*")
-          .or(`facebook_page_id.eq.${pageId},instagram_business_id.eq.${pageId}`)
-          .maybeSingle();
-
-        if (!config) {
-          console.log("[orbit-meta-webhook] Config not found for page:", pageId);
-          continue;
-        }
-
-        const empresa_id = config.empresa_id;
-        const canal = body.object === "instagram" ? "instagram" : "facebook";
-
-        // Processar mensagens
-        for (const messaging of entry.messaging || []) {
-          const senderId = messaging.sender?.id;
-          const message = messaging.message;
-
-          if (!senderId || !message) continue;
-
-          // Buscar ou criar prospect
-          let { data: prospect } = await supabase
-            .from("orbit_prospects")
-            .select("*")
-            .eq("empresa_id", empresa_id)
-            .or(`cnpj_cpf.eq.${senderId},observacoes.ilike.%${senderId}%`)
-            .maybeSingle();
-
-          if (!prospect) {
-            // Criar prospect com ID do Meta
-            const { data: newProspect } = await supabase
-              .from("orbit_prospects")
-              .insert({
-                empresa_id,
-                nome_razao: `Usuário ${canal} ${senderId.slice(-4)}`,
-                origem_contato: canal.toUpperCase(),
-                status_qualificacao: "novo",
-                observacoes: `Meta ID: ${senderId}`,
-              })
-              .select()
-              .single();
-            
-            prospect = newProspect;
-          }
-
-          if (!prospect) continue;
-
-          // Buscar ou criar conversa
-          let { data: conversa } = await supabase
-            .from("orbit_conversas")
-            .select("*")
-            .eq("prospect_id", prospect.id)
-            .eq("canal", canal)
-            .maybeSingle();
-
-          if (!conversa) {
-            const { data: newConversa } = await supabase
-              .from("orbit_conversas")
-              .insert({
-                empresa_id,
-                prospect_id: prospect.id,
-                telefone_whatsapp: senderId, // Usar o sender ID
-                canal,
-                status: "aberta",
-              })
-              .select()
-              .single();
-
-            conversa = newConversa;
-          }
-
-          if (!conversa) continue;
-
-          // Salvar mensagem
-          const texto = message.text || message.attachments?.[0]?.payload?.url || "[Mídia]";
-          
-          await supabase
-            .from("orbit_mensagens")
-            .insert({
-              empresa_id,
-              conversa_id: conversa.id,
-              direcao: "IN",
-              mensagem: texto,
-              canal,
-              provider_message_id: message.mid,
-              tipo_midia: message.attachments ? message.attachments[0]?.type || "text" : "text",
-              url_midia: message.attachments?.[0]?.payload?.url,
-            });
-
-          // Atualizar conversa
-          await supabase
-            .from("orbit_conversas")
-            .update({
-              ultima_mensagem_at: new Date().toISOString(),
-              ultima_mensagem_preview: texto.substring(0, 100),
-              mensagens_nao_lidas: (conversa.mensagens_nao_lidas || 0) + 1,
-            })
-            .eq("id", conversa.id);
-
-          console.log("[orbit-meta-webhook] Message saved from", senderId);
-        }
-      }
+    // ACK <1s — processamento pesado em background via EdgeRuntime.waitUntil.
+    // Idempotência: insert em orbit_mensagens com onConflict no índice único parcial
+    // (empresa_id, provider_message_id) silenciosamente descarta duplicatas.
+    const processor = processInboundMeta(body, supabase).catch((e) => {
+      console.error("[orbit-meta-webhook] background error:", e instanceof Error ? e.message : String(e));
+    });
+    // @ts-ignore — EdgeRuntime global do runtime Supabase Edge
+    if (typeof EdgeRuntime !== "undefined") {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(processor);
     }
 
     return new Response(
-      JSON.stringify({ success: true }),
+      JSON.stringify({ ok: true, queued: true }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
 
@@ -209,3 +110,123 @@ const handler = async (req: Request): Promise<Response> => {
 };
 
 serve(handler);
+
+/**
+ * Worker assíncrono para eventos do Meta (Instagram/Facebook).
+ * Executado via EdgeRuntime.waitUntil depois que a assinatura HMAC foi validada
+ * e o ACK 200 já foi devolvido ao Meta.
+ *
+ * Idempotência: insert em orbit_mensagens com onConflict no índice único parcial
+ * uniq_orbit_mensagens_provider_msg_id (empresa_id, provider_message_id).
+ */
+async function processInboundMeta(body: any, supabase: any): Promise<void> {
+  if (body.object !== "instagram" && body.object !== "page") return;
+
+  for (const entry of body.entry || []) {
+    const pageId = entry.id;
+
+    const { data: config } = await supabase
+      .from("orbit_meta_config")
+      .select("*")
+      .or(`facebook_page_id.eq.${pageId},instagram_business_id.eq.${pageId}`)
+      .maybeSingle();
+
+    if (!config) {
+      console.log("[orbit-meta-webhook][bg] Config not found for page:", pageId);
+      continue;
+    }
+
+    const empresa_id = config.empresa_id;
+    const canal = body.object === "instagram" ? "instagram" : "facebook";
+
+    for (const messaging of entry.messaging || []) {
+      const senderId = messaging.sender?.id;
+      const message = messaging.message;
+      if (!senderId || !message) continue;
+
+      // Buscar ou criar prospect
+      let { data: prospect } = await supabase
+        .from("orbit_prospects")
+        .select("*")
+        .eq("empresa_id", empresa_id)
+        .or(`cnpj_cpf.eq.${senderId},observacoes.ilike.%${senderId}%`)
+        .maybeSingle();
+
+      if (!prospect) {
+        const { data: newProspect } = await supabase
+          .from("orbit_prospects")
+          .insert({
+            empresa_id,
+            nome_razao: `Usuário ${canal} ${senderId.slice(-4)}`,
+            origem_contato: canal.toUpperCase(),
+            status_qualificacao: "novo",
+            observacoes: `Meta ID: ${senderId}`,
+          })
+          .select()
+          .single();
+        prospect = newProspect;
+      }
+      if (!prospect) continue;
+
+      // Buscar ou criar conversa
+      let { data: conversa } = await supabase
+        .from("orbit_conversas")
+        .select("*")
+        .eq("prospect_id", prospect.id)
+        .eq("canal", canal)
+        .maybeSingle();
+
+      if (!conversa) {
+        const { data: newConversa } = await supabase
+          .from("orbit_conversas")
+          .insert({
+            empresa_id,
+            prospect_id: prospect.id,
+            telefone_whatsapp: senderId,
+            canal,
+            status: "aberta",
+          })
+          .select()
+          .single();
+        conversa = newConversa;
+      }
+      if (!conversa) continue;
+
+      const texto = message.text || message.attachments?.[0]?.payload?.url || "[Mídia]";
+
+      // Idempotência: ignora silenciosamente se provider_message_id já existe para a empresa
+      const { error: insertError } = await supabase
+        .from("orbit_mensagens")
+        .insert({
+          empresa_id,
+          conversa_id: conversa.id,
+          direcao: "IN",
+          mensagem: texto,
+          canal,
+          provider_message_id: message.mid,
+          tipo_midia: message.attachments ? message.attachments[0]?.type || "text" : "text",
+          url_midia: message.attachments?.[0]?.payload?.url,
+        });
+
+      if (insertError) {
+        // 23505 = unique_violation (duplicata silenciosa)
+        if ((insertError as any).code === "23505") {
+          console.log("[orbit-meta-webhook][bg] duplicate ignored:", message.mid);
+          continue;
+        }
+        throw insertError;
+      }
+
+      await supabase
+        .from("orbit_conversas")
+        .update({
+          ultima_mensagem_at: new Date().toISOString(),
+          ultima_mensagem_preview: texto.substring(0, 100),
+          mensagens_nao_lidas: (conversa.mensagens_nao_lidas || 0) + 1,
+        })
+        .eq("id", conversa.id);
+
+      console.log("[orbit-meta-webhook][bg] Message saved from", senderId);
+    }
+  }
+}

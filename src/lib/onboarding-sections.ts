@@ -27,7 +27,7 @@ export const ONBOARDING_SECTIONS: OnboardingSection[] = [
     fields: [
       { key: "razao_social", label: "Razão social", type: "text", required: true },
       { key: "nome_fantasia", label: "Nome fantasia", type: "text" },
-      { key: "cnpj", label: "CNPJ", type: "text", placeholder: "00.000.000/0000-00" },
+      { key: "cnpj", label: "Documento (CPF/CNPJ)", type: "text", placeholder: "000.000.000-00 ou 00.000.000/0000-00" },
       { key: "site", label: "Site", type: "url", placeholder: "https://" },
       { key: "segmento", label: "Segmento de atuação", type: "text", required: true },
       { key: "porte", label: "Porte", type: "select", options: ["MEI / Solo", "Até 10 pessoas", "11–50", "51–200", "200+"] },
