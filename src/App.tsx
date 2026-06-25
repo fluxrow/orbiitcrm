@@ -4,8 +4,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useIsSuperAdmin } from "@/hooks/useUserRole";
+import { supabase } from "@/integrations/supabase/client";
 
 import NotFound from "./pages/NotFound";
 import AuthPage from "./pages/AuthPage";
@@ -55,15 +57,62 @@ import PlanosPage from "./pages/pe-admin/PlanosPage";
 
 const queryClient = new QueryClient();
 
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
+    </div>
+  );
+}
+
+function DefaultFunilRedirect() {
+  const { user, loading } = useAuth();
+  const [target, setTarget] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+
+    let mounted = true;
+    async function resolveTarget() {
+      try {
+        const [{ data: memberships }, { data: roles }, { data: profile }] = await Promise.all([
+          supabase.rpc("get_my_empresas" as any),
+          supabase.from("user_roles").select("role").eq("user_id", user!.id),
+          supabase.from("profiles").select("empresa_id").eq("id", user!.id).maybeSingle(),
+        ]);
+
+        const empresas = ((memberships as any[]) || []) as Array<{ empresa_id: string; slug: string | null; is_active?: boolean }>;
+        const active = empresas.find((e) => e.empresa_id === profile?.empresa_id) || empresas.find((e) => e.is_active) || empresas[0];
+
+        if (active?.slug) {
+          if (mounted) setTarget(`/${active.slug}/funil`);
+          return;
+        }
+
+        const isSuperAdmin = ((roles as any[]) || []).some((r) => r.role === "super_admin");
+        if (mounted) setTarget(isSuperAdmin ? "/pe-admin" : "/select-empresa");
+      } catch {
+        if (mounted) setTarget("/select-empresa");
+      }
+    }
+
+    resolveTarget();
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
+
+  if (loading) return <LoadingScreen />;
+  if (!user) return <Navigate to="/auth" replace />;
+  if (!target) return <LoadingScreen />;
+  return <Navigate to={target} replace />;
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   if (!user) {
@@ -78,11 +127,7 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   const { hasRole: isSuperAdmin, isLoading: roleLoading } = useIsSuperAdmin();
 
   if (loading || roleLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   if (!user) {
@@ -100,7 +145,7 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
 function OrbitRoutes() {
   return (
     <Routes>
-      <Route index element={<Navigate to="dashboard" replace />} />
+      <Route index element={<Navigate to="funil" replace />} />
       <Route path="dashboard" element={<OrbitDashboard />} />
       <Route path="prospects" element={<ProspectsPage />} />
       <Route path="conversas" element={<ConversasPage />} />
@@ -126,7 +171,6 @@ const AppRoutes = () => (
   <Routes>
     {/* Public routes with hotsite header */}
     <Route element={<PublicLayout />}>
-      <Route path="/" element={<LandingPage />} />
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/documentacao" element={<DocumentacaoPage />} />
       <Route path="/setup" element={<SetupPage />} />
@@ -137,6 +181,9 @@ const AppRoutes = () => (
       <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/terms" element={<TermsPage />} />
     </Route>
+
+    <Route path="/" element={<DefaultFunilRedirect />} />
+    <Route path="/funil" element={<DefaultFunilRedirect />} />
 
     {/* Empresa selector (post-login, when user belongs to >1 empresa) */}
     <Route path="/select-empresa" element={<ProtectedRoute><SelectEmpresaPage /></ProtectedRoute>} />
@@ -163,7 +210,7 @@ const AppRoutes = () => (
 
     {/* Slug tenant routes (catch-all, must be last) */}
     <Route path="/:slug" element={<TenantLayout />}>
-      <Route index element={<Navigate to="dashboard" replace />} />
+      <Route index element={<Navigate to="funil" replace />} />
       <Route path="*" element={<OrbitRoutes />} />
     </Route>
 

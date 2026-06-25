@@ -39,6 +39,8 @@ export function useScheduleMeeting() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["orbit-meetings"] });
+      qc.invalidateQueries({ queryKey: ["orbit_meetings_as_tasks"] });
+      qc.invalidateQueries({ queryKey: ["orbit_tasks"] });
       qc.invalidateQueries({ queryKey: ["orbit-deals"] });
     },
   });

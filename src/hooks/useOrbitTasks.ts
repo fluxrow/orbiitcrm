@@ -21,6 +21,7 @@ export function useOrbitTasks(filters?: OrbitTaskFilters) {
       let query = supabase
         .from("orbit_tasks" as any)
         .select("*, prospect:orbit_prospects!orbit_tasks_prospect_id_fkey(id, nome_razao), assignee:profiles!orbit_tasks_assigned_to_fkey(id, nome, email)")
+        .eq("empresa_id", empresaId!)
         .order("due_date", { ascending: true, nullsFirst: false })
         .order("created_at", { ascending: false });
 
