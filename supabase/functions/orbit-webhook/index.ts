@@ -627,4 +627,4 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
     });
   }
 
-});
+}
