@@ -70,10 +70,12 @@ export default function TarefasPage() {
 
 
   const handleComplete = (task: any) => {
+    if (task._kind === "meeting") return; // reuniões não usam complete; gerencie no Deal
     completeTask.mutate({ id: task.id, prospect_id: task.prospect_id, empresa_id: task.empresa_id });
   };
 
   const handleEdit = (task: any) => {
+    if (task._kind === "meeting") return; // edição de reunião acontece no Deal/Prospect
     setEditingTask(task);
     setDialogOpen(true);
   };
@@ -88,6 +90,7 @@ export default function TarefasPage() {
   };
 
   const handleMoveTask = (taskId: string, targetColumn: string) => {
+    if (taskId.startsWith("meeting:")) return;
     if (targetColumn === "overdue") return;
     const task = (tasks || []).find((t) => t.id === taskId);
     if (!task) return;
