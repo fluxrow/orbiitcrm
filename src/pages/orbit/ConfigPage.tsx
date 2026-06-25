@@ -393,6 +393,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
           <TabsTrigger value="pipeline"><Workflow className="h-4 w-4 mr-2" />Pipeline</TabsTrigger>
           <TabsTrigger value="fluxos"><GitBranch className="h-4 w-4 mr-2" />Fluxos</TabsTrigger>
           {isOrgAdmin && <TabsTrigger value="users"><Users className="h-4 w-4 mr-2" />Usuários</TabsTrigger>}
+          {isSuperAdmin && <TabsTrigger value="health"><Activity className="h-4 w-4 mr-2" />Saúde do Sistema</TabsTrigger>}
         </TabsList>
         <TabsContent value="ai">
           {aiLoading ? <Loader2 className="animate-spin" /> : (
