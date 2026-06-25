@@ -62,7 +62,7 @@ test.beforeAll(async () => {
     .from("orbit_prospects")
     .insert({
       empresa_id: EMPRESA_ID,
-      tipo_pessoa: "PF",
+      tipo: "pessoa",
       nome_razao: `E2E Lead ${tag}`,
       telefone: "+5541999990000",
       whatsapp: "+5541999990000",
