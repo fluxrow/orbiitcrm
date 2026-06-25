@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Search, Kanban, List, Calendar as CalendarIcon, CalendarClock, Link2, RefreshCw } from "lucide-react";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Plus, Search, Kanban, List, Calendar as CalendarIcon, CalendarClock, Link2, RefreshCw, LayoutGrid } from "lucide-react";
+import { useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useOrbitTasks, useCompleteOrbitTask, useUpdateOrbitTask } from "@/hooks/useOrbitTasks";
