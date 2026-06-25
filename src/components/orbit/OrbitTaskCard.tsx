@@ -54,7 +54,8 @@ export function OrbitTaskCard({ task, onComplete, onEdit, onOpenProspect }: Orbi
       isCompleted && "opacity-60 bg-muted/30",
       isOverdue && "border-destructive/50 bg-destructive/5",
       isDueToday && !isOverdue && "border-primary/50 bg-primary/5",
-      !isOverdue && !isDueToday && !isCompleted && "bg-card border-border"
+      !isOverdue && !isDueToday && !isCompleted && "bg-card border-border",
+      task._kind === "meeting" && "border-l-4 border-l-[#f9b217] bg-[#f9b217]/5"
     )}>
       {/* Header */}
       <div className="flex items-start justify-between gap-2">

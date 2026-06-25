@@ -9,6 +9,7 @@ import { Plus, Search, Kanban, List, Calendar as CalendarIcon, CalendarClock, Li
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useOrbitTasks, useCompleteOrbitTask, useUpdateOrbitTask } from "@/hooks/useOrbitTasks";
+import { useOrbitTasksAndMeetings } from "@/hooks/useOrbitTasksAndMeetings";
 import { OrbitTaskKanban } from "@/components/orbit/OrbitTaskKanban";
 import { OrbitTaskCard } from "@/components/orbit/OrbitTaskCard";
 import { OrbitTaskDialog } from "@/components/orbit/OrbitTaskDialog";
@@ -41,7 +42,7 @@ export default function TarefasPage() {
   };
 
 
-  const { data: tasks, isLoading } = useOrbitTasks({
+  const { data: tasks, isLoading } = useOrbitTasksAndMeetings({
     search: search || undefined,
     status: statusFilter !== "all" ? statusFilter : undefined,
     prioridade: prioridadeFilter !== "all" ? prioridadeFilter : undefined,
@@ -69,10 +70,12 @@ export default function TarefasPage() {
 
 
   const handleComplete = (task: any) => {
+    if (task._kind === "meeting") return; // reuniões não usam complete; gerencie no Deal
     completeTask.mutate({ id: task.id, prospect_id: task.prospect_id, empresa_id: task.empresa_id });
   };
 
   const handleEdit = (task: any) => {
+    if (task._kind === "meeting") return; // edição de reunião acontece no Deal/Prospect
     setEditingTask(task);
     setDialogOpen(true);
   };
@@ -87,6 +90,7 @@ export default function TarefasPage() {
   };
 
   const handleMoveTask = (taskId: string, targetColumn: string) => {
+    if (taskId.startsWith("meeting:")) return;
     if (targetColumn === "overdue") return;
     const task = (tasks || []).find((t) => t.id === taskId);
     if (!task) return;
@@ -156,7 +160,7 @@ export default function TarefasPage() {
       {/* Views */}
       <Tabs defaultValue="kanban">
         <TabsList className="mb-4">
-          <TabsTrigger value="kanban" className="gap-1"><Kanban className="w-4 h-4" /> Kanban</TabsTrigger>
+          <TabsTrigger value="kanban" className="gap-1"><Kanban className="w-4 h-4" /> Quadro de Tarefas</TabsTrigger>
           <TabsTrigger value="list" className="gap-1"><List className="w-4 h-4" /> Lista</TabsTrigger>
           <TabsTrigger value="calendar" className="gap-1"><CalendarIcon className="w-4 h-4" /> Agenda</TabsTrigger>
         </TabsList>
