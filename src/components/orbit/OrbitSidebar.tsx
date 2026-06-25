@@ -7,7 +7,7 @@ import {
   Mail,
   FileText,
   Settings,
-  Search,
+  
   BarChart3,
   LogOut,
   CreditCard,
