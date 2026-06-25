@@ -122,6 +122,7 @@ test("Criação manual de Prospect cria registro e Deal no funil", async ({ page
 
   if (!prospect?.id) {
     console.log("[E2E] console errors:", consoleErrors.slice(-5));
+    console.log("[E2E] failed responses:", JSON.stringify(failedResponses, null, 2));
   }
 
   expect(prospect?.id).toBeTruthy();
