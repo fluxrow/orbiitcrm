@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
-import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList } from "lucide-react";
+import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList, Download } from "lucide-react";
 import { toast } from "sonner";
 import {
   useClientOnboardings,
@@ -257,7 +257,7 @@ function OnboardingDetailSheet({
         </SheetHeader>
 
         <div className="mt-6 space-y-6">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button variant="outline" size="sm" className="gap-1.5" asChild>
               <a href={link} target="_blank" rel="noreferrer">
                 <ExternalLink className="w-3.5 h-3.5" /> Abrir wizard do cliente
@@ -268,6 +268,41 @@ function OnboardingDetailSheet({
               onClick={() => { navigator.clipboard.writeText(link); toast.success("Link copiado"); }}
             >
               <Copy className="w-3.5 h-3.5" /> Copiar link
+            </Button>
+            <Button
+              variant="outline" size="sm" className="gap-1.5"
+              onClick={() => {
+                const payload = {
+                  exported_at: new Date().toISOString(),
+                  empresa: onboarding.empresa?.nome ?? onboarding.cliente_empresa ?? null,
+                  slug: onboarding.empresa?.slug ?? null,
+                  status: onboarding.status,
+                  cliente: {
+                    nome: onboarding.cliente_nome,
+                    email: onboarding.cliente_email,
+                    empresa: onboarding.cliente_empresa,
+                  },
+                  progress: calculateProgress(onboarding.responses),
+                  responses: onboarding.responses ?? {},
+                  implementation_checklist: checklist,
+                  public_link: link,
+                  raw: onboarding,
+                };
+                const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                const safe = (onboarding.empresa?.slug || onboarding.cliente_empresa || onboarding.cliente_nome || "onboarding")
+                  .toString().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+                a.href = url;
+                a.download = `onboarding-${safe}-${new Date().toISOString().slice(0,10)}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                toast.success("JSON exportado");
+              }}
+            >
+              <Download className="w-3.5 h-3.5" /> Exportar JSON
             </Button>
           </div>
 
