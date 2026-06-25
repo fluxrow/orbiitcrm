@@ -70,7 +70,7 @@ test.beforeAll(async () => {
       email_principal: `${tag}@example.com`,
       status_qualificacao: "qualificado",
       score: 90,
-      origem_contato: "e2e-test",
+      origem_contato: "PROSPECTS",
     })
     .select("id")
     .single();
