@@ -23,11 +23,12 @@ function generateToken(): string {
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function getAppUrl(req: Request): string {
+function getAppUrl(_req: Request): string {
+  // Always use the canonical production URL for invite links.
+  // Using request origin would point users at preview/sandbox URLs that
+  // are gated or short-lived, making the activation button appear "dead".
   const envUrl = Deno.env.get("APP_URL");
   if (envUrl) return envUrl.replace(/\/$/, "");
-  const origin = req.headers.get("origin") || req.headers.get("referer");
-  if (origin) { try { return new URL(origin).origin; } catch { /* ignore */ } }
   return "https://orbit.fluxrow.pro";
 }
 
@@ -140,6 +141,7 @@ Deno.serve(async (req) => {
       if (resendKey) {
         const appUrl = getAppUrl(req);
         const activationUrl = `${appUrl}/accept-invite?token=${tokenPlaintext}`;
+        console.log("Sending invite email", { to: body.responsible_email.trim(), activationUrl });
         const emailHtml = buildEmailHtml(empresa.nome, planName, activationUrl);
         const emailRes = await fetch("https://api.resend.com/emails", {
           method: "POST",
