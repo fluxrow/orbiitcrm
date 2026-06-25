@@ -689,54 +689,79 @@ serve(async (req) => {
       ? `\nCLASSIFICAÇÃO DA MENSAGEM RECEBIDA: INTERAÇÃO HUMANA. Continue a qualificação normalmente.`
       : "";
 
-    const systemPrompt = `${aiConfig.prompt_treinamento || "Você é um assistente de vendas."}
+    // ── E2.7.C2: prompt em 3 blocos + RAG + campos dinâmicos ──
+    const promptIdentidade = (aiConfig.prompt_identidade && String(aiConfig.prompt_identidade).trim())
+      || aiConfig.prompt_treinamento
+      || "Você é um assistente de vendas.";
+    const promptRoteiro = (aiConfig.prompt_roteiro && String(aiConfig.prompt_roteiro).trim()) || "";
+    const promptRegras = (aiConfig.prompt_regras && String(aiConfig.prompt_regras).trim()) || "";
+    const camposQualificacao: Array<{ key: string; label: string; pergunta: string; tipo: string; required?: boolean; opcoes?: string[] }> =
+      Array.isArray(aiConfig.campos_qualificacao) ? aiConfig.campos_qualificacao : [];
+
+    // RAG: buscar contexto relevante (top-3, se base habilitada)
+    let ragChunks: RagChunk[] = [];
+    if (aiConfig.knowledge_base_enabled && empresaId) {
+      ragChunks = await fetchRagChunks(supabase, empresaId, mensagemAgregada);
+      console.log("[orbit-ai-agent] RAG chunks:", ragChunks.length, ragChunks.map(c => `${c.titulo ?? c.tipo}(${c.similarity?.toFixed(2)})`).join(", "));
+    }
+    const ragBlock = ragChunks.length > 0
+      ? `\nCONTEXTO EXTRA (Base de Conhecimento) — use estas informações ao responder, citando naturalmente:\n${ragChunks.map((c, i) => `[#${i + 1}${c.titulo ? ` ${c.titulo}` : ""}]\n${c.conteudo_texto}`).join("\n\n")}\n`
+      : "";
+
+    // Dynamic qualification: quais campos do builder ainda faltam em dados_adicionais
+    const dadosAdicionais = (prospect?.dados_adicionais || {}) as Record<string, unknown>;
+    const camposQualificacaoFaltantes = camposQualificacao.filter(
+      (c) => !dadosAdicionais[c.key] || String(dadosAdicionais[c.key]).trim() === "",
+    );
+    const camposQualificacaoBlock = camposQualificacao.length > 0
+      ? `\nPERGUNTAS DE QUALIFICAÇÃO DINÂMICAS (extraia respostas em "dados_adicionais"):\n${camposQualificacao.map((c) => {
+          const filled = dadosAdicionais[c.key] ? ` ✅ já respondido: "${dadosAdicionais[c.key]}"` : (c.required ? " (obrigatório)" : "");
+          const opt = c.tipo === "select" && c.opcoes?.length ? ` [opções: ${c.opcoes.join(" | ")}]` : "";
+          return `- ${c.key} (${c.tipo})${opt} — "${c.pergunta || c.label}"${filled}`;
+        }).join("\n")}\nNUNCA pergunte algo já respondido. Faça UMA pergunta por vez, na ordem listada. Só pergunte as obrigatórias se ainda faltarem.\n`
+      : "";
+
+    const regrasBlock = promptRegras
+      ? `\n=== REGRAS INVIOLÁVEIS (MAIOR PESO — devem ser sempre obedecidas) ===\n${promptRegras}\n=== FIM DAS REGRAS INVIOLÁVEIS ===\n`
+      : "";
+
+    const systemPrompt = `${promptIdentidade}
 
 Tom de voz: ${aiConfig.tom_conversa || "profissional e amigável"}
 Idioma: ${idioma === "pt-BR" ? "Português do Brasil" : idioma === "en" ? "Inglês" : "Espanhol"}
 ${campaignContinuity}${stateInstruction}${classificationInstruction}
-
+${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
-
+${camposQualificacaoBlock}${ragBlock}
 REGRAS CRÍTICAS:
 1. DADOS EXISTENTES: Se um dado do lead já está preenchido no contexto acima (personName, companyName, city, email, etc.), NUNCA pergunte novamente. Use naturalmente na conversa.
-2. CAMPOS FALTANTES: Solicite APENAS os campos marcados como "true" em missingFields. Siga esta ordem de prioridade:
-   a) Identificar se é demanda corporativa
-   b) companyName (empresa)
-   c) city (cidade)
-   d) email
-   e) isRecurring (recorrência)
-   Pule os que já estão preenchidos.
+2. CAMPOS FALTANTES: Solicite APENAS os campos marcados como "true" em missingFields, e as perguntas dinâmicas ainda não respondidas.
 3. Se for PRIMEIRA INTERAÇÃO (isFirstInteraction=true) E NÃO for campanha, envie a mensagem de boas-vindas: "${aiConfig.mensagem_boas_vindas || 'Olá! Como posso ajudá-lo?'}"
 4. Se o cliente pedir ORÇAMENTO, COTAÇÃO ou demonstrar interesse em comprar, inicie a coleta dos campos faltantes.
-5. Quando TODOS os campos estiverem preenchidos, agradeça e informe: "Perfeito. Vou colocar o Alexandre aqui para avançarmos de forma mais objetiva."
-6. NUNCA invente dados sobre produtos ou preços.
+5. Quando TODAS as informações relevantes (cadastro + qualificação obrigatória) estiverem preenchidas, agradeça e informe: "Perfeito. Vou colocar um especialista para avançarmos de forma mais objetiva."
+6. NUNCA invente dados sobre produtos ou preços — se a Base de Conhecimento não trouxer a resposta, diga que vai confirmar e seguir.
 7. Seja cordial e responda de forma concisa — máximo 2-3 frases.
 8. SEMPRE responda no idioma configurado.
-9. Se precisar CONFIRMAR um dado antigo ou possivelmente desatualizado, use confirmação leve: "Segue sendo pela [empresa], certo?" — nunca reinicie a coleta.
-10. NUNCA resetar conversa. NUNCA reapresentar-se se já houve interação anterior.
-11. Se o cliente pedir para falar com um vendedor, atendente humano ou pessoa real, defina "intencao" como "falar_humano".
+9. NUNCA resetar conversa. NUNCA reapresentar-se se já houve interação anterior.
+10. Se o cliente pedir para falar com um vendedor humano, defina "intencao" como "falar_humano".
 ${instrucaoOrcamento}
 
-REGRA DE ATUALIZAÇÃO CADASTRAL: ${isStaleProspect && isReturningContact ? `O cadastro está DESATUALIZADO (>90 dias). Após a saudação, pergunte gentilmente se os dados ainda estão corretos. Se confirmar ou fornecer novos dados, extraia-os em "dados_extraidos".` : "Cadastro atualizado, não solicitar atualização."}
+REGRA DE ATUALIZAÇÃO CADASTRAL: ${isStaleProspect && isReturningContact ? `Cadastro DESATUALIZADO (>90 dias). Confirme gentilmente se os dados ainda estão corretos e extraia novos em "dados_extraidos".` : "Cadastro atualizado, não solicitar atualização."}
 
 IMPORTANTE: Responda em JSON com esta estrutura:
 {
   "intencao": "saudacao|orcamento|duvida|reclamacao|agradecimento|falar_humano|outro",
   "mensagem": "sua resposta ao cliente em linguagem natural",
   "iniciar_coleta_orcamento": true|false,
-  "dados_extraidos": { "campo_do_banco": "valor" },
+  "dados_extraidos": { "nome_fantasia": "...", "cidade": "...", "email_principal": "...", "segmento": "...", "nome_contato": "...", "nome_razao": "..." },
+  "dados_adicionais": { ${camposQualificacao.map(c => `"${c.key}": "..."`).join(", ")} },
   "campo_solicitado": "nome_do_campo ou null",
   "cadastro_completo": true|false
 }
 
-Mapeamento de campos para dados_extraidos:
-- Nome da empresa → "nome_fantasia"
-- Cidade → "cidade"
-- Email → "email_principal"
-- Segmento/tipo de demanda → "segmento"
-- Nome da pessoa de contato → "nome_contato"
-- Nome/razão social → "nome_razao"`;
+Inclua em "dados_adicionais" SOMENTE chaves listadas em PERGUNTAS DE QUALIFICAÇÃO DINÂMICAS, e apenas as que a mensagem do cliente realmente responde. Não invente valores.
+${regrasBlock}`;
 
     // Chamar Lovable AI
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
