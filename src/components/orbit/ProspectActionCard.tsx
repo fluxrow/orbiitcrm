@@ -8,6 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ProspectRaioX } from "./ProspectRaioX";
+import { LeadHighlightTags } from "./LeadHighlightTags";
+import { ProspectQuickActions } from "./ProspectQuickActions";
 
 interface ProspectActionCardProps {
   prospect: any;
