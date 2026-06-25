@@ -220,6 +220,8 @@ const PROSPECT_COLUMN_MAP: Record<string, string> = {
   "cnpj": "cnpj_cpf",
   "cpf": "cnpj_cpf",
   "cnpj/cpf": "cnpj_cpf",
+  "documento": "cnpj_cpf",
+  "doc": "cnpj_cpf",
   "email": "email_principal",
   "e-mail": "email_principal",
   "email principal": "email_principal",

@@ -80,7 +80,9 @@ export function OrbitSidebar() {
     ...(isSuperAdmin ? [{ name: "Admin Fluxrow", href: `/pe-admin`, icon: Shield }] : []),
     ...(canUseFeature("whatsapp") || canUseFeature("email") ? [{ name: "Campanhas", href: `${basePath}/campanhas`, icon: Mail }] : []),
     { name: "Templates", href: `${basePath}/templates`, icon: FileText },
-    ...(canUseFeature("lead_finder") ? [{ name: "Lead Finder", href: `${basePath}/lead-finder`, icon: Search }] : []),
+    // Lead Finder (Apollo) — oculto para usuários comuns durante pivô para nicho High-Ticket.
+    // Backend/schemas mantidos; UI restrita ao super admin para suporte/QA.
+    ...(isSuperAdmin && canUseFeature("lead_finder") ? [{ name: "Lead Finder", href: `${basePath}/lead-finder`, icon: Search }] : []),
     { name: "Analytics", href: `${basePath}/analytics`, icon: BarChart3 },
     ...(isAdmin ? [{ name: "Meu Plano", href: `${basePath}/meu-plano`, icon: CreditCard }] : []),
     { name: "Configurações", href: `${basePath}/config`, icon: Settings },

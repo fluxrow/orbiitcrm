@@ -71,6 +71,7 @@ export type Database = {
           cidade: string | null
           cnpj: string | null
           created_at: string
+          documento: string | null
           dominio_principal: string | null
           id: string
           nome_fantasia: string | null
@@ -82,6 +83,7 @@ export type Database = {
           segmento_id: string | null
           site: string | null
           status_geral: string
+          tipo_documento: string | null
           uf: string | null
           updated_at: string
         }
@@ -89,6 +91,7 @@ export type Database = {
           cidade?: string | null
           cnpj?: string | null
           created_at?: string
+          documento?: string | null
           dominio_principal?: string | null
           id?: string
           nome_fantasia?: string | null
@@ -100,6 +103,7 @@ export type Database = {
           segmento_id?: string | null
           site?: string | null
           status_geral?: string
+          tipo_documento?: string | null
           uf?: string | null
           updated_at?: string
         }
@@ -107,6 +111,7 @@ export type Database = {
           cidade?: string | null
           cnpj?: string | null
           created_at?: string
+          documento?: string | null
           dominio_principal?: string | null
           id?: string
           nome_fantasia?: string | null
@@ -118,6 +123,7 @@ export type Database = {
           segmento_id?: string | null
           site?: string | null
           status_geral?: string
+          tipo_documento?: string | null
           uf?: string | null
           updated_at?: string
         }
@@ -2951,6 +2957,7 @@ export type Database = {
           tags: string[] | null
           telefone: string | null
           tipo: string | null
+          tipo_documento: string | null
           updated_at: string | null
           whatsapp: string | null
           whatsapp_last_check_at: string | null
@@ -2982,6 +2989,7 @@ export type Database = {
           tags?: string[] | null
           telefone?: string | null
           tipo?: string | null
+          tipo_documento?: string | null
           updated_at?: string | null
           whatsapp?: string | null
           whatsapp_last_check_at?: string | null
@@ -3013,6 +3021,7 @@ export type Database = {
           tags?: string[] | null
           telefone?: string | null
           tipo?: string | null
+          tipo_documento?: string | null
           updated_at?: string | null
           whatsapp?: string | null
           whatsapp_last_check_at?: string | null
@@ -4612,6 +4621,7 @@ export type Database = {
         Args: { _empresa_id: string }
         Returns: boolean
       }
+      validate_documento: { Args: { p_doc: string }; Returns: Json }
     }
     Enums: {
       app_role: "super_admin" | "admin" | "vendedor" | "visualizador"
