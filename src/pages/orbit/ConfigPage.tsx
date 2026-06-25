@@ -60,6 +60,7 @@ export default function ConfigPage() {
   const { empresaId } = useTenant();
   const [searchParams] = useSearchParams();
   const isOrgAdmin = roleCode === "ORG_ADMIN";
+  const { hasRole: isSuperAdmin } = useIsSuperAdmin();
   const { isDemo } = useIsDemo();
   const { data: aiConfig, isLoading: aiLoading } = useOrbitAIConfig(empresaId);
   const { data: zapiConfig, isLoading: zapiLoading } = useOrbitZAPIConfig(empresaId);
