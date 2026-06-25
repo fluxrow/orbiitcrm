@@ -60,8 +60,9 @@ test.describe("Golden Path — Auth", () => {
   test("Logout limpa sessão e volta para /auth", async ({ page }) => {
     await injectSession(page);
     await page.goto(`${BASE}/${SLUG}/dashboard`, { waitUntil: "domcontentloaded" });
-    // Sidebar abre no hover. Hover na <aside> para expandir.
-    await page.locator("aside").first().hover();
+    // Sidebar abre no hover (onMouseEnter no wrapper). Move o mouse para o canto esquerdo.
+    await page.mouse.move(10, 400);
+    await page.mouse.move(30, 400);
     const sair = page.getByRole("button", { name: /Sair/i });
     await expect(sair).toBeVisible({ timeout: 15_000 });
     await sair.click({ force: true });
