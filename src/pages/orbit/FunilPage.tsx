@@ -191,7 +191,7 @@ export default function FunilPage() {
                       }}
                       onOpenProspect={() => {
                         if (deal.prospect_id) {
-                          navigate(`${basePath}/prospects?id=${deal.prospect_id}`);
+                          navigate(`${basePath}/prospects/${deal.prospect_id}`);
                         }
                       }}
                       onStartConversation={() => {
