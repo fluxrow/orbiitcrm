@@ -15,6 +15,7 @@ import {
   Building2,
   ClipboardList,
   Shield,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import orbitLogo from "@/assets/orbit-logo.png";
@@ -75,7 +76,7 @@ export function OrbitSidebar() {
 
   const { canUseFeature } = usePlanGuard();
 
-  const navigation = [
+  const navigation: Array<{ name: string; href: string; icon: LucideIcon; badge?: number; featured?: boolean }> = [
     { name: "Funil", href: `${basePath}/funil`, icon: Kanban, featured: true },
     { name: "Prospects", href: `${basePath}/prospects`, icon: Users },
     { name: "Conversas", href: `${basePath}/conversas`, icon: MessageSquare },
