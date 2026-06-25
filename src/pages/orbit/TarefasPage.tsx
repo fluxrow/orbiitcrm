@@ -17,7 +17,7 @@ import { OrbitTaskCard } from "@/components/orbit/OrbitTaskCard";
 import { OrbitTaskDialog } from "@/components/orbit/OrbitTaskDialog";
 import { UnifiedCalendar } from "@/components/orbit/UnifiedCalendar";
 import { ScheduleMeetingDialog } from "@/components/orbit/ScheduleMeetingDialog";
-import { format, startOfMonth, endOfMonth, addDays, nextFriday } from "date-fns";
+import { format, startOfMonth, endOfMonth, addDays, nextFriday, parseISO, isToday, isFuture } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useTenant } from "@/contexts/TenantContext";
 import { useGoogleCalendarStatus, useCalendarEventsRange } from "@/hooks/useOrbitGoogleCalendar";
