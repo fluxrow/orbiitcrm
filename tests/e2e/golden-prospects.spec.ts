@@ -96,7 +96,7 @@ test("Criação manual de Prospect cria registro e Deal no funil", async ({ page
   await dialog
     .getByPlaceholder(/Nome completo ou razão social/i)
     .fill(nomeProspect);
-  await dialog.getByPlaceholder(/5511999999999/).fill("5541998887766");
+  await dialog.getByPlaceholder(/5511999999999/).fill(telefoneE2E);
 
   await dialog.getByRole("button", { name: /Criar Prospect/i }).click();
 
