@@ -29,6 +29,7 @@ export default function TarefasPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [prioridadeFilter, setPrioridadeFilter] = useState("all");
+  const [scope, setScope] = useState<"today" | "meetings" | "all">("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<any>(null);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
