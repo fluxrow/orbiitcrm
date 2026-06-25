@@ -3270,6 +3270,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "orbit_tasks_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "orbit_tasks_deal_id_fkey"
             columns: ["deal_id"]
             isOneToOne: false
