@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useMemo, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { PageHeader } from "@/components/orbit/PageHeader";
 import { ProspectDialog } from "@/components/orbit/ProspectDialog";
@@ -19,7 +19,7 @@ import {
 import { ImportProspectsWizard } from "@/components/orbit/ImportProspectsWizard";
 import { ImportHistoryPanel } from "@/components/orbit/ImportHistoryPanel";
 import { Badge } from "@/components/ui/badge";
-import { useOrbitProspects, useDeleteProspect } from "@/hooks/useOrbitProspects";
+import { useOrbitProspects, useDeleteProspect, useOrbitProspect } from "@/hooks/useOrbitProspects";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useOrbitPeLinks } from "@/hooks/usePromoteProspect";
 import { useAuth } from "@/hooks/useAuth";
@@ -160,6 +160,17 @@ export default function ProspectsPage() {
   };
 
   const empresaId = myProfile?.empresa_id || "";
+
+  // Auto-open prospect when navigating via /prospects/:id
+  const { id: prospectIdFromParams } = useParams();
+  const { data: prospectFromParams } = useOrbitProspect(prospectIdFromParams);
+
+  useEffect(() => {
+    if (prospectFromParams) {
+      setSelectedProspect(prospectFromParams);
+      setDialogOpen(true);
+    }
+  }, [prospectFromParams]);
 
   return (
     <OrbitLayout>
