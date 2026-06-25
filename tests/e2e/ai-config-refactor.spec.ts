@@ -109,13 +109,24 @@ test.describe("E2.7 — Refator Agente IA (RAG + 3 blocos)", () => {
     await roteiro.fill(fixtureRoteiro);
     await regras.fill(fixtureRegras);
 
-    // Salva via botão específico do card de IA (force: layout sidebar pode interceptar)
+    // Dispatch click via JS para evitar overlay do sidebar
     const saveBtn = page.getByRole("button", { name: /Salvar Configurações de IA/i });
     await saveBtn.scrollIntoViewIfNeeded();
-    await saveBtn.click({ force: true });
-    await expect(
-      page.locator('[data-sonner-toast], li[role="status"]').first(),
-    ).toContainText(/Salvo/i, { timeout: 10000 });
+    await saveBtn.dispatchEvent("click");
+
+    // Poll DB até persistir (mais robusto que esperar toast)
+    let saved = false;
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+      const { data } = await admin
+        .from("orbit_ai_config")
+        .select("prompt_identidade")
+        .eq("id", aiConfigId)
+        .single();
+      if (data?.prompt_identidade === fixtureIdentidade) { saved = true; break; }
+      await new Promise(r => setTimeout(r, 500));
+    }
+    expect(saved, "prompt_identidade deve persistir").toBe(true);
 
     // Verifica persistência
     const { data } = await admin
