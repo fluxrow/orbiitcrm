@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { GripVertical, Phone, MessageCircle, User, Calendar, FileText, CheckSquare, ExternalLink, ListTodo } from "lucide-react";
+import { GripVertical, Phone, MessageCircle, User, Calendar, FileText, CheckSquare, ExternalLink, ListTodo, CalendarClock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,9 @@ import { useUpdateDealChecklist, useConvertDealToClient } from "@/hooks/useOrbit
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { MeetingSchedulerDialog } from "./MeetingSchedulerDialog";
+
+const BRAND_YELLOW = "#f9b217";
 
 const DEFAULT_DOCS_CHECKLIST = [
   { key: "contrato", label: "Contrato assinado", checked: false },
@@ -42,6 +45,7 @@ export function DealCard({
   const updateChecklist = useUpdateDealChecklist();
   const prospect = deal.prospect;
   const responsavel = deal.responsavel;
+  const [meetingOpen, setMeetingOpen] = useState(false);
 
   const isDocStage = stageName === "Recebimento de Documentos";
   const isAgendarStage = stageName === "Agendar Reunião";
@@ -148,16 +152,16 @@ export function DealCard({
       {/* Stage-specific: Agendar Reunião */}
       {isAgendarStage && (
         <Button
-          variant="outline"
           size="sm"
-          className="w-full mt-2 text-xs"
+          className="w-full mt-2 text-xs font-semibold hover:opacity-90"
+          style={{ backgroundColor: BRAND_YELLOW, color: "#1a1100" }}
           onClick={(e) => {
             e.stopPropagation();
-            onCreateTask();
+            setMeetingOpen(true);
           }}
         >
-          <Calendar className="h-3 w-3 mr-1" />
-          Criar evento de reunião
+          <CalendarClock className="h-3 w-3 mr-1" />
+          Agendar reunião
         </Button>
       )}
 
