@@ -893,6 +893,34 @@ ${regrasBlock}`;
       }
     }
 
+    // ── E2.7.C2: merge JSONB dados_adicionais (qualificação dinâmica) ──
+    if (parsed.dados_adicionais && typeof parsed.dados_adicionais === "object") {
+      const allowedKeys = new Set(camposQualificacao.map((c) => c.key));
+      const novos: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(parsed.dados_adicionais as Record<string, unknown>)) {
+        if (!allowedKeys.has(k)) continue;
+        if (v === null || v === undefined) continue;
+        const sv = String(v).trim();
+        if (!sv) continue;
+        const existing = dadosAdicionais[k];
+        if (existing && String(existing).trim() !== "") continue; // não sobrescrever
+        novos[k] = sv;
+      }
+      if (Object.keys(novos).length > 0) {
+        const merged = { ...(dadosAdicionais as Record<string, unknown>), ...novos };
+        const { error: daErr } = await supabase
+          .from("orbit_prospects")
+          .update({ dados_adicionais: merged })
+          .eq("id", prospect_id);
+        if (daErr) {
+          console.warn("[orbit-ai-agent] dados_adicionais update error:", daErr.message);
+        } else {
+          console.log("[orbit-ai-agent] dados_adicionais merged:", Object.keys(novos));
+        }
+      }
+    }
+
+
     // Distribuir para vendedor — SEMPRE escopado à empresa do prospect.
     let vendedorAtribuido: string | null = null;
 
