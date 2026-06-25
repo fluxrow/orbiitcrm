@@ -10,7 +10,7 @@ export function useOrgInvitations(orgId: string | null | undefined) {
       if (!orgId) return [];
       const { data, error } = await supabase
         .from("pe_invitations" as any)
-        .select("*, pe_roles(code, name)")
+        .select("id, email, organization_id, role_id, status, expires_at, created_at, invited_by_user_id, pe_roles(code, name)")
         .eq("organization_id", orgId)
         .order("created_at", { ascending: false });
       if (error) throw error;

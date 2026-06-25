@@ -5,7 +5,6 @@ import { getOrbitZapiRuntimeConfig } from "../_shared/orbit-zapi.ts";
 
 interface ApprovalRequest {
   campaign_id: string;
-  user_id: string;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -30,9 +29,12 @@ const handler = async (req: Request): Promise<Response> => {
       return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401);
     }
 
+    // SECURITY: use only the verified JWT user id; never trust user_id from body.
+    const callerUserId = claimsData.user.id;
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { campaign_id, user_id }: ApprovalRequest = await req.json();
+    const { campaign_id }: ApprovalRequest = await req.json();
 
     if (!campaign_id) {
       return fail(ErrorCodes.VALIDATION_ERROR, "campaign_id é obrigatório");
@@ -48,7 +50,27 @@ const handler = async (req: Request): Promise<Response> => {
       return fail(ErrorCodes.NOT_FOUND, "Campanha não encontrada", 404);
     }
 
-    const { data: solicitante } = await supabase.from("profiles").select("nome").eq("id", user_id).single();
+    // SECURITY: enforce tenant membership before any write.
+    const { data: callerProfile } = await supabase
+      .from("profiles")
+      .select("empresa_id")
+      .eq("id", callerUserId)
+      .maybeSingle();
+    const { data: membership } = await supabase
+      .from("user_empresa_memberships")
+      .select("empresa_id")
+      .eq("user_id", callerUserId)
+      .eq("empresa_id", campaign.empresa_id)
+      .maybeSingle();
+    const { data: isSuperAdmin } = await supabase.rpc("pe_is_super_admin", { p_user_id: callerUserId });
+
+    const belongsToEmpresa =
+      callerProfile?.empresa_id === campaign.empresa_id || !!membership || !!isSuperAdmin;
+    if (!belongsToEmpresa) {
+      return fail(ErrorCodes.UNAUTHORIZED, "Acesso negado ao tenant da campanha", 403);
+    }
+
+    const { data: solicitante } = await supabase.from("profiles").select("nome").eq("id", callerUserId).single();
 
     await supabase.from("orbit_campaigns").update({ aprovacao_status: "pendente", status: "pendente_aprovacao" }).eq("id", campaign_id);
 
@@ -56,7 +78,7 @@ const handler = async (req: Request): Promise<Response> => {
       campaign_id,
       empresa_id: campaign.empresa_id,
       acao: "solicitada",
-      user_id,
+      user_id: callerUserId,
     });
 
     // Buscar admins para notificar

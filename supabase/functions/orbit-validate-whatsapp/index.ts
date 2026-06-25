@@ -75,20 +75,29 @@ const handler = async (req: Request): Promise<Response> => {
       return fail(ErrorCodes.VALIDATION_ERROR, "prospect_ids é obrigatório");
     }
 
+    // SECURITY: resolve caller empresa and restrict to prospects of that tenant.
+    const { data: callerProfile } = await supabase
+      .from("profiles")
+      .select("empresa_id")
+      .eq("id", callerUser.id)
+      .maybeSingle();
+    const callerEmpresaId = callerProfile?.empresa_id;
+    if (!callerEmpresaId) {
+      return fail(ErrorCodes.UNAUTHORIZED, "Usuário sem empresa associada", 403);
+    }
+
     const { data: prospects, error } = await supabase
       .from("orbit_prospects")
       .select("id, whatsapp, whatsapp_status, telefone, empresa_id")
-      .in("id", prospect_ids);
+      .in("id", prospect_ids)
+      .eq("empresa_id", callerEmpresaId);
 
     if (error) throw error;
     if (!prospects?.length) {
       return ok({ validados: 0, validos: 0, invalidos: 0, message: "Nenhum prospect encontrado" });
     }
 
-    const empresaId = prospects[0].empresa_id;
-    if (!empresaId) {
-      return fail(ErrorCodes.VALIDATION_ERROR, "Prospect sem empresa_id");
-    }
+    const empresaId = callerEmpresaId;
 
     const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresaId);
 
