@@ -132,10 +132,11 @@ async function login(page: Page) {
     ([k, v]) => window.localStorage.setItem(k, v),
     [STORAGE_KEY, SESSION_JSON],
   );
-  await page.goto(`${BASE}/${SLUG}/funil`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${BASE}/${SLUG}/prospects`, { waitUntil: "domcontentloaded" });
   await page.locator(`[data-prospect-id="${prospectId}"]`).first().waitFor({
     timeout: 15000,
   });
+  await page.locator(`[data-prospect-id="${prospectId}"]`).first().scrollIntoViewIfNeeded();
 }
 
 test.describe("ProspectActionCard — Ações Rápidas", () => {
