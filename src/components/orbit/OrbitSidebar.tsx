@@ -42,7 +42,11 @@ export function OrbitSidebar() {
   const { isAdmin } = useIsAdmin();
   const { hasRole: isSuperAdmin } = useIsSuperAdmin();
 
-  const { basePath } = useTenant();
+  const { basePath, slug } = useTenant();
+  // Ferramentas internas do SaaS (Onboarding, Admin Fluxrow, Lead Finder) só aparecem
+  // quando o super admin está dentro do master tenant. Em outros tenants (suporte),
+  // a UI fica idêntica à do cliente comum.
+  const isMasterTenant = isSuperAdmin && slug === "fluxrow";
   const { user, signOut } = useAuth();
   const { data: pendingTasks } = useOrbitTasks({ status: "pending" });
   const pendingCount = pendingTasks?.length || 0;
