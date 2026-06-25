@@ -35,7 +35,7 @@ const SOLUTION_POINTS = [
 ];
 
 const STEPS = [
-  { icon: Target, title: "Lead entra", desc: "Via WhatsApp, importação de planilha, busca ativa (Apollo) ou formulário." },
+  { icon: Target, title: "Lead entra", desc: "Via WhatsApp, importação de planilha, formulário ou indicação." },
   { icon: BotMessageSquare, title: "IA atende e qualifica", desc: "Atendimento automático 24h extrai dados, responde dúvidas e classifica o interesse." },
   { icon: Send, title: "Handoff ao vendedor", desc: "Lead qualificado é encaminhado ao vendedor certo com resumo completo da conversa." },
   { icon: Kanban, title: "Negociação no funil", desc: "Pipeline Kanban com tarefas, timeline de interações e acompanhamento visual." },
