@@ -31,6 +31,9 @@ import { useIsDemo } from "@/hooks/useIsDemo";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ZapiConnectionAlert } from "@/components/orbit/ZapiConnectionAlert";
+import { QualificationFieldsBuilder } from "@/components/orbit/QualificationFieldsBuilder";
+import { KnowledgeBaseManager } from "@/components/orbit/KnowledgeBaseManager";
+import { Database } from "lucide-react";
 
 interface ParsedProspect {
   nome_razao: string;
@@ -72,6 +75,11 @@ export default function ConfigPage() {
     modo_automatico: true, 
     tom_conversa: "profissional", 
     prompt_treinamento: "", 
+    prompt_identidade: "",
+    prompt_roteiro: "",
+    prompt_regras: "",
+    campos_qualificacao: [] as import("@/components/orbit/QualificationFieldsBuilder").QualificationField[],
+    knowledge_base_enabled: false,
     horario_inicio: "08:00", 
     horario_fim: "18:00",
     responder_fora_horario: false,
@@ -131,6 +139,11 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
       modo_automatico: aiConfig.modo_automatico ?? true, 
       tom_conversa: aiConfig.tom_conversa || "profissional", 
       prompt_treinamento: aiConfig.prompt_treinamento || "", 
+      prompt_identidade: (aiConfig as any).prompt_identidade || aiConfig.prompt_treinamento || "",
+      prompt_roteiro: (aiConfig as any).prompt_roteiro || "",
+      prompt_regras: (aiConfig as any).prompt_regras || "",
+      campos_qualificacao: Array.isArray((aiConfig as any).campos_qualificacao) ? (aiConfig as any).campos_qualificacao : [],
+      knowledge_base_enabled: (aiConfig as any).knowledge_base_enabled ?? false,
       horario_inicio: aiConfig.horario_inicio || "08:00", 
       horario_fim: aiConfig.horario_fim || "18:00",
       responder_fora_horario: aiConfig.responder_fora_horario ?? false,
@@ -181,7 +194,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
     });
   }, [sendingConfig]);
 
-  const saveAI = async () => { await updateAI.mutateAsync({ id: aiConfig?.id, ...aiForm, empresa_id: empresaId }); toast.success("Salvo!"); };
+  const saveAI = async () => { await updateAI.mutateAsync({ id: aiConfig?.id, ...aiForm, campos_qualificacao: aiForm.campos_qualificacao as any, empresa_id: empresaId }); toast.success("Salvo!"); };
   const saveZAPI = async () => {
     if (!empresaId) {
       toast.error("Empresa não identificada. Recarregue a página e tente novamente.");
@@ -406,17 +419,42 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                   <CardDescription>Configure o treinamento da IA para geração de mensagens</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {/* Texto de Treinamento */}
+                  {/* Bloco 1: Identidade & Tom */}
                   <div className="space-y-2">
-                    <Label>Texto de Treinamento *</Label>
+                    <Label>Prompt de Identidade *</Label>
                     <Textarea 
-                      className="min-h-[150px]"
-                      placeholder="Você é um assistente de vendas profissional. Seu objetivo é iniciar conversas com prospects de forma amigável e identificar suas necessidades..."
-                      value={aiForm.prompt_treinamento} 
-                      onChange={(e) => setAiForm({ ...aiForm, prompt_treinamento: e.target.value })} 
+                      className="min-h-[120px]"
+                      placeholder="Você é a Júlia, SDR sênior de uma mentoria high-ticket. Tom consultivo, direto, sem floreio. Trate o lead com respeito mas sem subserviência..."
+                      value={aiForm.prompt_identidade} 
+                      onChange={(e) => setAiForm({ ...aiForm, prompt_identidade: e.target.value })} 
                     />
-                    <p className="text-xs text-muted-foreground">Este texto será usado como contexto para gerar mensagens personalizadas</p>
+                    <p className="text-xs text-muted-foreground">Quem é a IA, persona, tom de voz e postura.</p>
                   </div>
+
+                  {/* Bloco 2: Roteiro */}
+                  <div className="space-y-2">
+                    <Label>Roteiro de Qualificação</Label>
+                    <Textarea 
+                      className="min-h-[140px]"
+                      placeholder="1. Cumprimente pelo nome. 2. Confirme o canal de origem. 3. Faça as perguntas de qualificação na ordem. 4. Se qualificado, ofereça call de diagnóstico..."
+                      value={aiForm.prompt_roteiro} 
+                      onChange={(e) => setAiForm({ ...aiForm, prompt_roteiro: e.target.value })} 
+                    />
+                    <p className="text-xs text-muted-foreground">Passo a passo que a IA deve seguir para mover o lead no funil.</p>
+                  </div>
+
+                  {/* Bloco 3: Regras Invioláveis */}
+                  <div className="space-y-2">
+                    <Label>Regras Invioláveis</Label>
+                    <Textarea 
+                      className="min-h-[100px]"
+                      placeholder={"- Nunca dê descontos.\n- Não responda sobre assuntos fora da mentoria.\n- Nunca prometa resultados financeiros específicos."}
+                      value={aiForm.prompt_regras} 
+                      onChange={(e) => setAiForm({ ...aiForm, prompt_regras: e.target.value })} 
+                    />
+                    <p className="text-xs text-muted-foreground">Uma regra por linha. Serão injetadas <strong>ao final</strong> do prompt (maior peso para o LLM).</p>
+                  </div>
+
 
                   {/* Tom, Idioma, Max Tokens */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -580,38 +618,12 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     <p className="text-xs text-muted-foreground">Este prompt será usado quando a IA detectar que o prospect quer um orçamento</p>
                   </div>
 
-                  {/* Campos a Coletar */}
-                  <div className="space-y-3">
-                    <div>
-                      <Label className="text-base">Campos a Coletar</Label>
-                      <p className="text-sm text-muted-foreground">Selecione os campos que a IA deve coletar do prospect durante a conversa</p>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      {[
-                        { value: "nome_razao", label: "Nome/Razão Social" },
-                        { value: "nome_fantasia", label: "Nome Fantasia" },
-                        { value: "email_principal", label: "Email" },
-                        { value: "cidade", label: "Cidade" },
-                        { value: "segmento", label: "Segmento" },
-                        { value: "telefone_comercial", label: "Telefone Comercial" },
-                      ].map(campo => (
-                        <div key={campo.value} className="flex items-center space-x-2">
-                          <Checkbox 
-                            id={campo.value}
-                            checked={aiForm.campos_cadastro.includes(campo.value)}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                setAiForm({ ...aiForm, campos_cadastro: [...aiForm.campos_cadastro, campo.value] });
-                              } else {
-                                setAiForm({ ...aiForm, campos_cadastro: aiForm.campos_cadastro.filter(c => c !== campo.value) });
-                              }
-                            }}
-                          />
-                          <label htmlFor={campo.value} className="text-sm cursor-pointer">{campo.label}</label>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  {/* Perguntas de Qualificação (JSONB dinâmico) */}
+                  <QualificationFieldsBuilder
+                    value={aiForm.campos_qualificacao}
+                    onChange={(next) => setAiForm({ ...aiForm, campos_qualificacao: next })}
+                  />
+
 
                   {/* Info Box - Fluxo Automático */}
                   <div className="p-4 bg-muted rounded-lg space-y-3">
@@ -640,8 +652,43 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                 </CardContent>
               </Card>
 
+              {/* Card: Base de Conhecimento (RAG) */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Database className="h-5 w-5 text-primary" />
+                      <CardTitle>Base de Conhecimento (Contexto Extra)</CardTitle>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="kb-enabled" className="text-sm">Ativa</Label>
+                      <Switch
+                        id="kb-enabled"
+                        checked={aiForm.knowledge_base_enabled}
+                        onCheckedChange={(v) => {
+                          setAiForm({ ...aiForm, knowledge_base_enabled: v });
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <CardDescription>
+                    Documentos e páginas que a IA consulta via busca semântica (RAG) antes de responder dúvidas complexas.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <KnowledgeBaseManager empresaId={empresaId} />
+                  <div className="pt-4">
+                    <Button onClick={saveAI} disabled={updateAI.isPending} variant="outline">
+                      {updateAI.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                      Salvar estado da Base
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Card 3: Voz (TTS) */}
               <Card>
+
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
