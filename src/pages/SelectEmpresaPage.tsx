@@ -48,14 +48,14 @@ export default function SelectEmpresaPage() {
     if (!empresas || isLoading) return;
     if (empresas.length === 1) {
       const e = empresas[0];
-      if (e.slug) navigate(`/${e.slug}/dashboard`, { replace: true });
+      if (e.slug) navigate(`/${e.slug}/funil`, { replace: true });
     }
   }, [empresas, isLoading, navigate]);
 
   const handleSelect = async (e: EmpresaRow) => {
     try {
       await selectMutation.mutateAsync(e.empresa_id);
-      if (e.slug) navigate(`/${e.slug}/dashboard`, { replace: true });
+      if (e.slug) navigate(`/${e.slug}/funil`, { replace: true });
     } catch (err: any) {
       toast.error(err?.message || "Erro ao selecionar empresa");
     }

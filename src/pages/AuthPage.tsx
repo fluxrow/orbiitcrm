@@ -102,7 +102,7 @@ export default function AuthPage() {
       }
 
       if (!empresaId) {
-        navigate("/demo/dashboard", { replace: true });
+        navigate("/demo/funil", { replace: true });
         return;
       }
 
@@ -113,12 +113,12 @@ export default function AuthPage() {
         .maybeSingle();
 
       if (empresa?.slug) {
-        navigate(`/${empresa.slug}/dashboard`, { replace: true });
+        navigate(`/${empresa.slug}/funil`, { replace: true });
       } else {
-        navigate("/demo/dashboard", { replace: true });
+        navigate("/demo/funil", { replace: true });
       }
     } catch {
-      navigate("/demo/dashboard", { replace: true });
+      navigate("/demo/funil", { replace: true });
     }
   }
 

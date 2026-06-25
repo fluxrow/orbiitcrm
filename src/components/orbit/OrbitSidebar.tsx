@@ -101,7 +101,7 @@ export function OrbitSidebar() {
     >
       {/* Logo */}
       <div className="p-4 border-b border-sidebar-border shrink-0">
-        <Link to={`${basePath}/dashboard`} className="flex items-center gap-3 justify-center">
+        <Link to={`${basePath}/funil`} className="flex items-center gap-3 justify-center">
           {isExpanded ? (
             <img src={orbitLogo} alt="Orbit" className="h-9 shrink-0" />
           ) : (
