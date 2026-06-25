@@ -140,6 +140,7 @@ async function login(page: Page) {
 }
 
 test.describe("ProspectActionCard — Ações Rápidas", () => {
+  // ─── Toggle IA ────────────────────────────────────────────────
   test("Toggle IA pausa a conversa (human_talk=true)", async ({ page }) => {
     await login(page);
     const card = page.locator(`[data-prospect-id="${prospectId}"]`).first();
@@ -147,7 +148,6 @@ test.describe("ProspectActionCard — Ações Rápidas", () => {
     await expect(
       page.locator('[data-sonner-toast], li[role="status"]').first(),
     ).toContainText(/IA pausada|IA reativada/i, { timeout: 8000 });
-
     const { data } = await admin
       .from("orbit_conversas")
       .select("human_talk")
@@ -156,7 +156,48 @@ test.describe("ProspectActionCard — Ações Rápidas", () => {
     expect(data?.human_talk).toBe(true);
   });
 
-  test("Mover etapa move o card para nova coluna", async ({ page }) => {
+  test("Toggle IA reativa a conversa (human_talk=false)", async ({ page }) => {
+    // garante estado prévio = pausada
+    await admin
+      .from("orbit_conversas")
+      .update({ human_talk: true })
+      .eq("id", conversaId);
+    await login(page);
+    const card = page.locator(`[data-prospect-id="${prospectId}"]`).first();
+    await card.locator('[data-testid="toggle-ai-action"]').click();
+    await expect(
+      page.locator('[data-sonner-toast], li[role="status"]').first(),
+    ).toContainText(/IA reativada/i, { timeout: 8000 });
+    const { data } = await admin
+      .from("orbit_conversas")
+      .select("human_talk")
+      .eq("id", conversaId)
+      .single();
+    expect(data?.human_talk).toBe(false);
+  });
+
+  // ─── Mover etapa ──────────────────────────────────────────────
+  test("Popover de etapas lista todas as etapas do pipeline", async ({ page }) => {
+    await login(page);
+    const card = page.locator(`[data-prospect-id="${prospectId}"]`).first();
+    await card.locator('[data-testid="move-stage-action"]').click();
+    const popover = page.locator("[data-radix-popper-content-wrapper]").last();
+    await expect(popover).toContainText(/Mover para etapa/i);
+    await popover.getByRole("combobox").click();
+
+    const listbox = page.getByRole("listbox");
+    const { data: stages } = await admin
+      .from("orbit_pipeline_stages")
+      .select("nome, ordem")
+      .eq("empresa_id", EMPRESA_ID)
+      .order("ordem");
+    expect(stages && stages.length).toBeGreaterThan(0);
+    for (const s of stages ?? []) {
+      await expect(listbox.getByRole("option", { name: s.nome })).toBeVisible();
+    }
+  });
+
+  test("Mover etapa atualiza orbit_deals.etapa_id", async ({ page }) => {
     await login(page);
     const card = page.locator(`[data-prospect-id="${prospectId}"]`).first();
     await card.locator('[data-testid="move-stage-action"]').click();
@@ -166,13 +207,46 @@ test.describe("ProspectActionCard — Ações Rápidas", () => {
     await expect(
       page.locator('[data-sonner-toast], li[role="status"]').first(),
     ).toContainText(/Deal movido/i, { timeout: 8000 });
+
+    const { data: stage } = await admin
+      .from("orbit_pipeline_stages")
+      .select("id")
+      .eq("empresa_id", EMPRESA_ID)
+      .eq("nome", "Qualificação")
+      .single();
+    const { data: deal } = await admin
+      .from("orbit_deals")
+      .select("etapa_id")
+      .eq("prospect_id", prospectId)
+      .single();
+    expect(deal?.etapa_id).toBe(stage?.id);
   });
 
-  test("Forçar fluxo cria evento manual_trigger", async ({ page }) => {
+  // ─── Forçar fluxo ────────────────────────────────────────────
+  test("Popover de fluxos lista apenas fluxos ativos da empresa", async ({ page }) => {
     await login(page);
     const card = page.locator(`[data-prospect-id="${prospectId}"]`).first();
     await card.locator('[data-testid="force-flow-action"]').click();
-    await page.getByRole("button", { name: new RegExp(`E2E Flow ${tag}`) }).click();
+    const popover = page.locator("[data-radix-popper-content-wrapper]").last();
+    await expect(popover).toContainText(/Forçar fluxo/i);
+
+    const { data: activeFlows } = await admin
+      .from("orbit_flows")
+      .select("nome")
+      .eq("empresa_id", EMPRESA_ID)
+      .eq("ativo", true);
+    expect(activeFlows && activeFlows.length).toBeGreaterThan(0);
+    for (const f of activeFlows ?? []) {
+      await expect(popover.getByRole("button", { name: f.nome })).toBeVisible();
+    }
+  });
+
+  test("Forçar fluxo cria evento manual_trigger no banco", async ({ page }) => {
+    await login(page);
+    const card = page.locator(`[data-prospect-id="${prospectId}"]`).first();
+    await card.locator('[data-testid="force-flow-action"]').click();
+    const popover = page.locator("[data-radix-popper-content-wrapper]").last();
+    await popover.getByRole("button", { name: new RegExp(`E2E Flow ${tag}`) }).click();
     await expect(
       page.locator('[data-sonner-toast], li[role="status"]').first(),
     ).toContainText(/Fluxo disparado/i, { timeout: 8000 });
@@ -190,3 +264,4 @@ test.describe("ProspectActionCard — Ações Rápidas", () => {
     expect((manual?.payload as any)?.forced_flow_id).toBe(flowId);
   });
 });
+
