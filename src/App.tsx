@@ -144,7 +144,7 @@ function OrbitRoutes() {
   return (
     <Routes>
       <Route index element={<Navigate to="funil" replace />} />
-      <Route path="dashboard" element={<OrbitDashboard />} />
+      <Route path="dashboard" element={<Navigate to="funil" replace />} />
       <Route path="prospects" element={<ProspectsPage />} />
       <Route path="prospects/:id" element={<ProspectsPage />} />
       <Route path="conversas" element={<ConversasPage />} />
