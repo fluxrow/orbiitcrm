@@ -141,6 +141,7 @@ Deno.serve(async (req) => {
       if (resendKey) {
         const appUrl = getAppUrl(req);
         const activationUrl = `${appUrl}/accept-invite?token=${tokenPlaintext}`;
+        console.log("Sending invite email", { to: body.responsible_email.trim(), activationUrl });
         const emailHtml = buildEmailHtml(empresa.nome, planName, activationUrl);
         const emailRes = await fetch("https://api.resend.com/emails", {
           method: "POST",
