@@ -652,8 +652,43 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                 </CardContent>
               </Card>
 
+              {/* Card: Base de Conhecimento (RAG) */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Database className="h-5 w-5 text-primary" />
+                      <CardTitle>Base de Conhecimento (Contexto Extra)</CardTitle>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="kb-enabled" className="text-sm">Ativa</Label>
+                      <Switch
+                        id="kb-enabled"
+                        checked={aiForm.knowledge_base_enabled}
+                        onCheckedChange={(v) => {
+                          setAiForm({ ...aiForm, knowledge_base_enabled: v });
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <CardDescription>
+                    Documentos e páginas que a IA consulta via busca semântica (RAG) antes de responder dúvidas complexas.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <KnowledgeBaseManager empresaId={empresaId} />
+                  <div className="pt-4">
+                    <Button onClick={saveAI} disabled={updateAI.isPending} variant="outline">
+                      {updateAI.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                      Salvar estado da Base
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Card 3: Voz (TTS) */}
               <Card>
+
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
