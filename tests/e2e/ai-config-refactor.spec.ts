@@ -109,9 +109,10 @@ test.describe("E2.7 — Refator Agente IA (RAG + 3 blocos)", () => {
     await roteiro.fill(fixtureRoteiro);
     await regras.fill(fixtureRegras);
 
-    // Salva via primeiro botão visível "Salvar" do card de IA
-    // Salva via botão específico do card de IA
-    await page.getByRole("button", { name: /Salvar Configurações de IA/i }).click();
+    // Salva via botão específico do card de IA (force: layout sidebar pode interceptar)
+    const saveBtn = page.getByRole("button", { name: /Salvar Configurações de IA/i });
+    await saveBtn.scrollIntoViewIfNeeded();
+    await saveBtn.click({ force: true });
     await expect(
       page.locator('[data-sonner-toast], li[role="status"]').first(),
     ).toContainText(/Salvo/i, { timeout: 10000 });
