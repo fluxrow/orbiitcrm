@@ -27,6 +27,26 @@ export default function FunilPage() {
   const { data: dealsGrouped, isLoading } = useOrbitDealsGrouped();
   const moveDeal = useMoveDealToStage();
   const convertDeal = useConvertDealToClient();
+  const queryClient = useQueryClient();
+  const { empresaId } = useTenant();
+
+  // H2.b — Realtime: refletir mudanças em orbit_deals sem precisar dar F5
+  useEffect(() => {
+    if (!empresaId) return;
+    const channel = supabase
+      .channel(`funil-deals-${empresaId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orbit_deals", filter: `empresa_id=eq.${empresaId}` },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["orbit-deals-grouped"] });
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [empresaId, queryClient]);
 
   const formatCurrency = (v: number | null) =>
     v
