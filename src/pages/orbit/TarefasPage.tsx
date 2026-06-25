@@ -118,8 +118,8 @@ export default function TarefasPage() {
     setDialogOpen(true);
   };
 
-  const handleOpenProspect = (_prospectId: string) => {
-    navigate(`${basePath}/prospects`);
+  const handleOpenProspect = (prospectId: string) => {
+    navigate(`${basePath}/prospects/${prospectId}`);
   };
 
   const handleNewTask = () => {
