@@ -578,17 +578,22 @@ export type Database = {
       orbit_ai_config: {
         Row: {
           campos_cadastro: string[] | null
+          campos_qualificacao: Json
           created_at: string | null
           empresa_id: string | null
           horario_fim: string | null
           horario_inicio: string | null
           id: string
           idioma: string | null
+          knowledge_base_enabled: boolean
           max_tokens: number | null
           mensagem_boas_vindas: string | null
           mensagem_fora_horario: string | null
           modo_automatico: boolean | null
+          prompt_identidade: string | null
           prompt_orcamentos: string | null
+          prompt_regras: string | null
+          prompt_roteiro: string | null
           prompt_treinamento: string | null
           responder_fora_horario: boolean | null
           tempo_espera: number | null
@@ -602,17 +607,22 @@ export type Database = {
         }
         Insert: {
           campos_cadastro?: string[] | null
+          campos_qualificacao?: Json
           created_at?: string | null
           empresa_id?: string | null
           horario_fim?: string | null
           horario_inicio?: string | null
           id?: string
           idioma?: string | null
+          knowledge_base_enabled?: boolean
           max_tokens?: number | null
           mensagem_boas_vindas?: string | null
           mensagem_fora_horario?: string | null
           modo_automatico?: boolean | null
+          prompt_identidade?: string | null
           prompt_orcamentos?: string | null
+          prompt_regras?: string | null
+          prompt_roteiro?: string | null
           prompt_treinamento?: string | null
           responder_fora_horario?: boolean | null
           tempo_espera?: number | null
@@ -626,17 +636,22 @@ export type Database = {
         }
         Update: {
           campos_cadastro?: string[] | null
+          campos_qualificacao?: Json
           created_at?: string | null
           empresa_id?: string | null
           horario_fim?: string | null
           horario_inicio?: string | null
           id?: string
           idioma?: string | null
+          knowledge_base_enabled?: boolean
           max_tokens?: number | null
           mensagem_boas_vindas?: string | null
           mensagem_fora_horario?: string | null
           modo_automatico?: boolean | null
+          prompt_identidade?: string | null
           prompt_orcamentos?: string | null
+          prompt_regras?: string | null
+          prompt_roteiro?: string | null
           prompt_treinamento?: string | null
           responder_fora_horario?: boolean | null
           tempo_espera?: number | null
@@ -651,6 +666,71 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "orbit_ai_config_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_ai_knowledge: {
+        Row: {
+          ativo: boolean
+          chunk_index: number
+          conteudo_texto: string | null
+          created_at: string
+          embedding: string | null
+          empresa_id: string
+          erro: string | null
+          id: string
+          model_version: string
+          source_id: string
+          source_url: string | null
+          status: string
+          storage_path: string | null
+          tipo: string
+          titulo: string | null
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          chunk_index?: number
+          conteudo_texto?: string | null
+          created_at?: string
+          embedding?: string | null
+          empresa_id: string
+          erro?: string | null
+          id?: string
+          model_version?: string
+          source_id?: string
+          source_url?: string | null
+          status?: string
+          storage_path?: string | null
+          tipo: string
+          titulo?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          chunk_index?: number
+          conteudo_texto?: string | null
+          created_at?: string
+          embedding?: string | null
+          empresa_id?: string
+          erro?: string | null
+          id?: string
+          model_version?: string
+          source_id?: string
+          source_url?: string | null
+          status?: string
+          storage_path?: string | null
+          tipo?: string
+          titulo?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_ai_knowledge_empresa_id_fkey"
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "orbit_empresas"
@@ -4394,6 +4474,22 @@ export type Database = {
         Returns: {
           code: string
           name: string
+        }[]
+      }
+      match_orbit_knowledge: {
+        Args: {
+          match_count?: number
+          min_similarity?: number
+          p_empresa_id: string
+          query_embedding: string
+        }
+        Returns: {
+          conteudo_texto: string
+          id: string
+          similarity: number
+          source_id: string
+          tipo: string
+          titulo: string
         }[]
       }
       normalize_email: { Args: { p: string }; Returns: string }
