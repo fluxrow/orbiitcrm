@@ -35,6 +35,18 @@ export const TRIGGER_CATALOG: Array<{
     description: "Disparado quando o cliente não responde uma conversa por N horas.",
     entityType: "conversa",
   },
+  {
+    type: "meeting_reminder_24h" as FlowTriggerType,
+    label: "Lembrete 24h antes da reunião",
+    description: "Disparado ~24h antes da reunião agendada (anti no-show). Ideal para confirmação por WhatsApp/Email.",
+    entityType: "meeting",
+  },
+  {
+    type: "meeting_reminder_1h" as FlowTriggerType,
+    label: "Lembrete 1h antes da reunião",
+    description: "Disparado ~1h antes da reunião agendada. Use para enviar o link da call e instruções finais.",
+    entityType: "meeting",
+  },
 ];
 
 export type EventMapEntry = {
