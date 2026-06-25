@@ -31,6 +31,9 @@ import { useIsDemo } from "@/hooks/useIsDemo";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ZapiConnectionAlert } from "@/components/orbit/ZapiConnectionAlert";
+import { QualificationFieldsBuilder } from "@/components/orbit/QualificationFieldsBuilder";
+import { KnowledgeBaseManager } from "@/components/orbit/KnowledgeBaseManager";
+import { Database } from "lucide-react";
 
 interface ParsedProspect {
   nome_razao: string;
