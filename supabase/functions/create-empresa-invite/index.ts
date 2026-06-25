@@ -28,7 +28,10 @@ function getAppUrl(_req: Request): string {
   // Using request origin would point users at preview/sandbox URLs that
   // are gated or short-lived, making the activation button appear "dead".
   const envUrl = Deno.env.get("APP_URL");
-  if (envUrl) return envUrl.replace(/\/$/, "");
+  if (envUrl) {
+    const normalized = envUrl.trim().replace(/\/$/, "");
+    return /^https?:\/\//i.test(normalized) ? normalized : `https://${normalized}`;
+  }
   return "https://orbit.fluxrow.pro";
 }
 
