@@ -139,10 +139,20 @@ export function useCreateProspect() {
         }).then(() => {});
       }
 
+      // H2.a — Se já entra qualificado, garantir card no funil
+      if (data.status_qualificacao === "qualificado") {
+        try {
+          await supabase.rpc("ensure_deal_for_prospect" as any, { _prospect_id: data.id });
+        } catch (e) {
+          console.warn("[useCreateProspect] ensure_deal_for_prospect falhou:", e);
+        }
+      }
+
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: orbitProspectKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["orbit-deals-grouped"] });
     },
   });
 }
