@@ -60,7 +60,7 @@ export function EmpresaSwitcher({ collapsed }: EmpresaSwitcherProps) {
     try {
       await selectMutation.mutateAsync(e.empresa_id);
       setOpen(false);
-      const target = e.slug ? `/${e.slug}/dashboard` : "/select-empresa";
+      const target = e.slug ? `/${e.slug}/funil` : "/select-empresa";
       // Force full reload so TenantContext re-initializes cleanly
       window.location.assign(target);
     } catch (err: any) {
