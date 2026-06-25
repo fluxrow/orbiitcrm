@@ -85,18 +85,17 @@ export default function AcceptInviteSaasPage() {
     }
   }
 
-  // CNPJ auto-fill
+  // Documento auto-validate + (se CNPJ) auto-fill via Receita
   useEffect(() => {
-    const digits = normalizeCnpj(cnpj);
-    if (digits.length === 14) {
-      const valid = validateCnpjDv(digits);
-      setCnpjValid(valid);
-      if (valid) fetchCnpjData(digits);
+    const v = validateDocumento(documento);
+    setDocValid(v.valid);
+    setDocTipo(v.tipo);
+    if (v.valid && v.tipo === "PJ") {
+      fetchCnpjData(v.normalized);
     } else {
-      setCnpjValid(null);
       setCnpjData(null);
     }
-  }, [cnpj]);
+  }, [documento]);
 
   async function fetchCnpjData(digits: string) {
     setCnpjLoading(true);
@@ -124,8 +123,8 @@ export default function AcceptInviteSaasPage() {
     }
   }
 
-  function handleCnpjChange(value: string) {
-    setCnpj(formatCnpj(value));
+  function handleDocumentoChange(value: string) {
+    setDocumento(formatDocumento(value));
   }
 
   const [redirectUrl, setRedirectUrl] = useState("/demo/dashboard");
@@ -140,8 +139,8 @@ export default function AcceptInviteSaasPage() {
         full_name: fullName.trim(),
       };
       if (!isDemo) {
-        payload.cnpj = cnpj;
-        if (cnpjData) {
+        payload.documento = normalizeDocumento(documento);
+        if (docTipo === "PJ" && cnpjData) {
           payload.dados_receita = cnpjData;
         }
       }
@@ -170,8 +169,8 @@ export default function AcceptInviteSaasPage() {
     return fullName.trim().length >= 2 && password.length >= 6 && password === confirmPassword;
   }
 
-  function canProceedCnpj() {
-    return cnpjValid === true;
+  function canProceedDocumento() {
+    return docValid === true;
   }
 
   // Progress
