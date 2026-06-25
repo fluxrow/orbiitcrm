@@ -51,7 +51,7 @@ export function ProspectActionCard({
   const wsStatus = whatsappStatusConfig[prospect.whatsapp_status || "nao_verificado"] || whatsappStatusConfig.nao_verificado;
 
   return (
-    <div className="glass-card p-4 hover:border-primary/50 transition-all duration-200 animate-slide-in group relative">
+    <div data-prospect-id={prospect.id} className="glass-card p-4 hover:border-primary/50 transition-all duration-200 animate-slide-in group relative">
       {/* Checkbox */}
       <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
         <Checkbox checked={isSelected} onCheckedChange={() => onToggleSelect(prospect.id)} />
