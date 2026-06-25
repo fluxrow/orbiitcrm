@@ -11,7 +11,6 @@ import { supabase } from "@/integrations/supabase/client";
 
 import NotFound from "./pages/NotFound";
 import AuthPage from "./pages/AuthPage";
-import LandingPage from "./pages/LandingPage";
 import SetupPage from "./pages/SetupPage";
 import AcceptInvitePage from "./pages/AcceptInvitePage";
 import AcceptInviteSaasPage from "./pages/AcceptInviteSaasPage";
