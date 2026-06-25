@@ -6,7 +6,7 @@ export type OrbitFlow = {
   empresa_id: string;
   nome: string;
   descricao: string | null;
-  trigger_type: "prospect_qualified" | "deal_stage_changed" | "deal_idle" | "conversa_no_reply";
+  trigger_type: "prospect_qualified" | "deal_stage_changed" | "deal_idle" | "conversa_no_reply" | "meeting_reminder_24h" | "meeting_reminder_1h";
   trigger_config: Record<string, any>;
   condicoes: Record<string, any>;
   ativo: boolean;

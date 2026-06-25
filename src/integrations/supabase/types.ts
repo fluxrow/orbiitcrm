@@ -2579,6 +2579,95 @@ export type Database = {
           },
         ]
       }
+      orbit_meetings: {
+        Row: {
+          conversa_id: string | null
+          created_at: string
+          created_by: string | null
+          deal_id: string | null
+          descricao: string | null
+          duration_minutes: number
+          empresa_id: string
+          google_event_id: string | null
+          id: string
+          location: string | null
+          meeting_url: string | null
+          metadata: Json
+          prospect_id: string | null
+          scheduled_at: string
+          status: string
+          titulo: string | null
+          updated_at: string
+        }
+        Insert: {
+          conversa_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          deal_id?: string | null
+          descricao?: string | null
+          duration_minutes?: number
+          empresa_id: string
+          google_event_id?: string | null
+          id?: string
+          location?: string | null
+          meeting_url?: string | null
+          metadata?: Json
+          prospect_id?: string | null
+          scheduled_at: string
+          status?: string
+          titulo?: string | null
+          updated_at?: string
+        }
+        Update: {
+          conversa_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          deal_id?: string | null
+          descricao?: string | null
+          duration_minutes?: number
+          empresa_id?: string
+          google_event_id?: string | null
+          id?: string
+          location?: string | null
+          meeting_url?: string | null
+          metadata?: Json
+          prospect_id?: string | null
+          scheduled_at?: string
+          status?: string
+          titulo?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_meetings_conversa_id_fkey"
+            columns: ["conversa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_conversas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_meetings_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_meetings_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_meetings_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_mensagens: {
         Row: {
           campaign_id: string | null
@@ -4636,6 +4725,8 @@ export type Database = {
         | "deal_stage_changed"
         | "deal_idle"
         | "conversa_no_reply"
+        | "meeting_reminder_24h"
+        | "meeting_reminder_1h"
       orbit_onboarding_status:
         | "rascunho"
         | "enviado"
@@ -4790,6 +4881,8 @@ export const Constants = {
         "deal_stage_changed",
         "deal_idle",
         "conversa_no_reply",
+        "meeting_reminder_24h",
+        "meeting_reminder_1h",
       ],
       orbit_onboarding_status: [
         "rascunho",
