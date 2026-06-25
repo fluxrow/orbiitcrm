@@ -60,8 +60,8 @@ test.beforeAll(async () => {
       tipo: "pessoa",
       nome_razao: contatoLabel,
       nome_contato: contatoLabel,
-      telefone: "+5541996665544",
-      whatsapp: "+5541996665544",
+      telefone: "" + telefoneChat + "",
+      whatsapp: "" + telefoneChat + "",
       whatsapp_status: "valido",
       status_qualificacao: "em_qualificacao",
       origem_contato: "PROSPECTS",
@@ -79,7 +79,7 @@ test.beforeAll(async () => {
       canal: "whatsapp",
       status: "aberta",
       human_talk: true, // evita disparo do agente IA
-      telefone_whatsapp: "+5541996665544",
+      telefone_whatsapp: "" + telefoneChat + "",
     })
     .select("id")
     .single();
