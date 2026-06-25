@@ -144,6 +144,8 @@ export default function FunilPage() {
             return (
               <div
                 key={stage.id}
+                data-column-id={stage.id}
+                data-column-name={stage.nome}
                 className="flex-shrink-0 w-80 bg-muted/30 rounded-lg"
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => handleDrop(e, stage.id)}
