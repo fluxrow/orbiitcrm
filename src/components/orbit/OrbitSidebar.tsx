@@ -85,9 +85,6 @@ export function OrbitSidebar() {
     ...(isMasterTenant ? [{ name: "Admin Fluxrow", href: `/pe-admin`, icon: Shield }] : []),
     ...(canUseFeature("whatsapp") || canUseFeature("email") ? [{ name: "Campanhas", href: `${basePath}/campanhas`, icon: Mail }] : []),
     { name: "Templates", href: `${basePath}/templates`, icon: FileText },
-    // Lead Finder (Apollo) — restrito ao master tenant. Durante o pivô High-Ticket
-    // não aparece em /:slug/ de cliente, mesmo para super admin (isolamento visual).
-    ...(isMasterTenant && canUseFeature("lead_finder") ? [{ name: "Lead Finder", href: `${basePath}/lead-finder`, icon: Search }] : []),
     { name: "Analytics", href: `${basePath}/analytics`, icon: BarChart3 },
     ...(isAdmin ? [{ name: "Meu Plano", href: `${basePath}/meu-plano`, icon: CreditCard }] : []),
     { name: "Configurações", href: `${basePath}/config`, icon: Settings },
