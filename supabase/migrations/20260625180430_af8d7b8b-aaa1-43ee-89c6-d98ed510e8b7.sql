@@ -1,0 +1,1 @@
+UPDATE public.orbit_empresas SET nome='Viver Semijoias' WHERE slug='viver-semijoias';
