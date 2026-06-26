@@ -21,6 +21,7 @@ import ApresentacaoOrbit2026 from "./pages/ApresentacaoOrbit2026";
 import PrivacyPage from "./pages/PrivacyPage";
 import TermsPage from "./pages/TermsPage";
 import PublicLayout from "./layouts/PublicLayout";
+import LandingPage from "./pages/LandingPage";
 
 // Tenant Layout
 import TenantLayout from "./pages/tenant/TenantLayout";
@@ -181,7 +182,7 @@ const AppRoutes = () => (
       <Route path="/terms" element={<TermsPage />} />
     </Route>
 
-    <Route path="/" element={<DefaultFunilRedirect />} />
+    <Route path="/" element={<LandingPage />} />
     <Route path="/funil" element={<DefaultFunilRedirect />} />
 
     {/* Empresa selector (post-login, when user belongs to >1 empresa) */}
