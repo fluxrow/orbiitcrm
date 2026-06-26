@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import CountUp from "@/components/apresentacao/CountUp";
 import PresentationControls from "@/components/apresentacao/PresentationControls";
+import { PILLARS } from "@/lib/orbit/pillars";
 
 /* ============================================================
    Apresentação comercial Orbit CRM — rota oculta
