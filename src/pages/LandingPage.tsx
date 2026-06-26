@@ -662,7 +662,7 @@ function Faq() {
       >
         <motion.div variants={fadeUp} className="mb-12 text-center">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            05 · Dúvidas Enterprise
+            05 · Dúvidas que mentores fazem
           </span>
           <h2 className="mt-3 text-3xl md:text-5xl font-bold text-white leading-tight">
             As perguntas que mentores sérios
