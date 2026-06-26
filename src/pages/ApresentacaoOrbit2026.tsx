@@ -120,14 +120,14 @@ function Hero() {
           variants={fadeUp}
           className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight text-white leading-[1.05]"
         >
-          Seu time de vendas
+          Infraestrutura comercial
           <br />
           <span className="bg-gradient-to-r from-emerald-400 via-cyan-300 to-violet-400 bg-clip-text text-transparent">
-            nunca dorme.
+            no nível das maiores.
           </span>
           <br />
           <span className="text-white/60 text-3xl md:text-5xl lg:text-6xl font-light">
-            O nosso também não.
+            Pensada para a sua mentoria.
           </span>
         </motion.h1>
 
@@ -135,8 +135,8 @@ function Hero() {
           variants={fadeUp}
           className="max-w-2xl text-lg md:text-xl text-white/60 leading-relaxed"
         >
-          Atendimento, qualificação e vendas no piloto automático.{" "}
-          <span className="text-white/90 font-medium">24 horas. 7 dias. 365 dias.</span>
+          Captação multicanal, motor de fluxos em tempo real e observabilidade enterprise —{" "}
+          <span className="text-white/90 font-medium">a confiabilidade de um SaaS de produto, na operação do mentor.</span>
         </motion.p>
 
         <motion.div
