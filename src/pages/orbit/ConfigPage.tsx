@@ -20,11 +20,12 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Bot, MessageSquare, Mail, Save, Loader2, Copy, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Send, Upload, Download, FileText, X, Settings2, Info, Link2, ClipboardList, Clock, Music2, Volume2, Mic, GitBranch, Workflow } from "lucide-react";
+import { Bot, MessageSquare, Mail, Save, Loader2, Copy, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Send, Upload, Download, FileText, X, Settings2, Info, Link2, ClipboardList, Clock, Music2, Volume2, Mic, GitBranch, Workflow, Webhook } from "lucide-react";
 import { AudioLibraryManager } from "@/components/orbit/AudioLibraryManager";
 import { ChatbotFlowManager } from "@/components/orbit/ChatbotFlowManager";
 import { PipelineConfigTab } from "@/components/orbit/PipelineConfigTab";
 import { FluxosTab } from "@/components/orbit/FluxosTab";
+import { LeadSourcesTab } from "@/components/orbit/LeadSourcesTab";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useOrbitAIConfig, useUpdateAIConfig, useOrbitZAPIConfig, useUpdateZAPIConfig, useOrbitResendConfig, useUpdateResendConfig, useTestResendConnection, useWhatsAppSendingConfig, useUpdateWhatsAppSendingConfig, useWhatsAppDailyUsage } from "@/hooks/useOrbitConfig";
@@ -392,6 +393,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
           <TabsTrigger value="audios"><Music2 className="h-4 w-4 mr-2" />Áudios</TabsTrigger>
           <TabsTrigger value="pipeline"><Workflow className="h-4 w-4 mr-2" />Pipeline</TabsTrigger>
           <TabsTrigger value="fluxos"><GitBranch className="h-4 w-4 mr-2" />Fluxos</TabsTrigger>
+          <TabsTrigger value="lead-sources"><Webhook className="h-4 w-4 mr-2" />Fontes de Lead</TabsTrigger>
           {isOrgAdmin && <TabsTrigger value="users"><Users className="h-4 w-4 mr-2" />Usuários</TabsTrigger>}
           {isSuperAdmin && <TabsTrigger value="health"><Activity className="h-4 w-4 mr-2" />Saúde do Sistema</TabsTrigger>}
         </TabsList>
@@ -1839,6 +1841,9 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
         </TabsContent>
         <TabsContent value="fluxos">
           <FluxosTab empresaId={empresaId} />
+        </TabsContent>
+        <TabsContent value="lead-sources">
+          <LeadSourcesTab empresaId={empresaId} />
         </TabsContent>
         <TabsContent value="agenda">
           {empresaId ? <AgendaConfigTab empresaId={empresaId} /> : <div className="text-sm text-muted-foreground">Selecione uma empresa para configurar a agenda.</div>}
