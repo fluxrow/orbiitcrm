@@ -356,10 +356,10 @@ function OrbitSide() {
 
 function Dores() {
   const stats = [
-    { v: "73%", l: "dos leads de anúncio nunca são respondidos" },
-    { v: "5 min", l: "é a janela de ouro antes do lead esfriar" },
-    { v: "42h/sem", l: "perdidas em tarefas manuais repetitivas" },
-    { v: "R$ 8.500/mês", l: "custo médio de um SDR júnior com encargos" },
+    { v: "73%", l: "dos leads do seu anúncio nunca são respondidos a tempo" },
+    { v: "5 min", l: "é a janela de ouro antes do lead comprar do concorrente" },
+    { v: "42h/sem", l: "que você gasta no WhatsApp em vez de fechar venda" },
+    { v: "R$ 8.500/mês", l: "custo de um assistente de vendas com encargos" },
   ];
 
   return (
@@ -372,12 +372,12 @@ function Dores() {
       >
         <motion.div variants={fadeUp} className="mb-12 text-center">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            01 · O impacto do processo
+            01 · O custo de operar no improviso
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
             Sua planilha não fecha venda.
             <br />
-            <span className="text-white/55">A infraestrutura sim.</span>
+            <span className="text-white/55">O Orbit fecha.</span>
           </h2>
         </motion.div>
 
