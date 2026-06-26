@@ -90,9 +90,11 @@ const whatsappStatusLabel: Record<string, { label: string; className: string }> 
 export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogProps) {
   const createProspect = useCreateProspect();
   const updateProspect = useUpdateProspect();
+  const deleteProspect = useDeleteProspect();
   const { data: vendedores } = useEmpresaVendedores();
   const isEditing = !!prospect;
   const [meetingOpen, setMeetingOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // CRITICAL: empresa from URL tenant — not from profiles.empresa_id.
   const { empresaId: tenantEmpresaId } = useTenant();
