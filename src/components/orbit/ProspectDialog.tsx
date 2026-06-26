@@ -38,7 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useCreateProspect, useUpdateProspect } from "@/hooks/useOrbitProspects";
+import { useCreateProspect, useUpdateProspect, useDeleteProspect } from "@/hooks/useOrbitProspects";
 import { toast } from "sonner";
 import type { Tables } from "@/integrations/supabase/types";
 
