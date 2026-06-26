@@ -41,6 +41,7 @@ import {
   FIELD_MAPPING_TARGETS,
   type OrbitLeadSource,
 } from "@/hooks/useOrbitLeadSources";
+import { LeadSourceTutorialDialog, type TutorialKind } from "./LeadSourceTutorialDialog";
 
 function copyToClipboard(value: string, label: string) {
   navigator.clipboard.writeText(value);
