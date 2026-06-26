@@ -27,7 +27,14 @@ const TRIGGER_LABELS: Record<string, string> = {
   prospect_qualified: "Lead qualificado",
   deal_stage_changed: "Etapa do funil alterada",
   deal_idle: "Deal parado",
+const TRIGGER_LABELS: Record<string, string> = {
+  prospect_qualified: "Lead qualificado",
+  deal_stage_changed: "Etapa do funil alterada",
+  deal_idle: "Deal parado",
   conversa_no_reply: "Conversa sem resposta",
+  lead_recebido: "Lead recebido (externo)",
+  meeting_reminder_24h: "Lembrete 24h reunião",
+  meeting_reminder_1h: "Lembrete 1h reunião",
 };
 
 const STATUS_BADGE: Record<string, { label: string; cls: string; icon: any }> = {
