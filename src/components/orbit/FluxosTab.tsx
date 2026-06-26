@@ -171,7 +171,7 @@ function NewFlowWizard({
           <DialogTitle>Criar fluxo</DialogTitle>
           <DialogDescription>Escolha um template ou comece em branco. O fluxo nasce inativo.</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-3 py-2">
+        <div className="grid gap-3 py-2 max-h-[60vh] overflow-y-auto pr-1">
           {(templates ?? []).map((t) => (
             <button
               key={t.id}
