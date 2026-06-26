@@ -450,21 +450,20 @@ function Qualificacao() {
             04 · Qualificação
           </span>
           <h2 className="mt-3 text-4xl md:text-5xl font-bold text-white leading-tight">
-            Pare de queimar verba
+            A IA que separa
             <br />
-            <span className="text-red-400">com lead que ninguém atende.</span>
+            <span className="text-red-400">o curioso do comprador.</span>
           </h2>
           <p className="mt-6 text-lg text-white/60 leading-relaxed">
-            Leads vindos de Meta Ads, Google Ads, Instagram — todos respondidos em segundos. A IA puxa{" "}
-            <span className="text-emerald-300">orçamento, prazo e poder de decisão</span>, classifica como
-            quente / morno / frio e só passa pro humano quando vale a pena.
+            Cada lead que entra pelo anúncio é recebido em segundos. A IA conversa, descobre{" "}
+            <span className="text-emerald-300">se tem dinheiro, fit e urgência</span> e só coloca na sua agenda quem realmente vale uma call de fechamento.
           </p>
 
           <div className="mt-8 space-y-3">
             {[
-              { icon: Flame, t: "Lead quente → notifica vendedor instantâneo" },
-              { icon: Filter, t: "Lead morno → entra em nutrição automática" },
-              { icon: Brain, t: "Lead frio → descartado sem custo de tempo" },
+              { icon: Flame, t: "Lead pronto → vai direto pra sua agenda" },
+              { icon: Filter, t: "Lead morno → entra em perseguição automática" },
+              { icon: Brain, t: "Lead fora do perfil → descartado sem te tomar tempo" },
             ].map((it, i) => (
               <div key={i} className="flex items-center gap-3 text-white/80">
                 <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
