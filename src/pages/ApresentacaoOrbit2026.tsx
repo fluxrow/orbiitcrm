@@ -250,15 +250,15 @@ function Dores() {
    ============================================================ */
 function Comparativo() {
   const rows = [
-    { label: "Tempo de resposta", human: "4 horas em média", orbit: "8 segundos" },
+    { label: "Velocidade de agendamento", human: "horas (quando responde)", orbit: "segundos" },
     { label: "Disponibilidade", human: "8h/dia, seg–sex", orbit: "24/7/365" },
-    { label: "Leads simultâneos", human: "1 por vez", orbit: "Ilimitado" },
-    { label: "Rastreamento UTM/origem", human: "Não rastreia", orbit: "Campo por campo, em JSONB" },
-    { label: "Latência de webhook", human: "Minutos (quando entrega)", orbit: "Sub-segundo, com log" },
-    { label: "Esquece follow-up?", human: "Sempre", orbit: "Nunca" },
+    { label: "Leads atendidos ao mesmo tempo", human: "1 por vez", orbit: "Ilimitado" },
+    { label: "Visibilidade do ROI do anúncio", human: "Não sabe de onde veio", orbit: "Cada lead, cada origem" },
+    { label: "Follow-up garantido até agendar", human: "Esquece sempre", orbit: "Nunca desiste" },
+    { label: "Confirmação e lembrete da call", human: "Manual ou nenhum", orbit: "Automático, 24h e 1h antes" },
     { label: "Tira férias / fica doente", human: "Acontece", orbit: "Não existe" },
-    { label: "Mau humor na sexta às 18h", human: "Inevitável", orbit: "Impossível" },
-    { label: "Onboarding", human: "3 meses + treinamento", orbit: "15 dias chave-na-mão" },
+    { label: "Custo mensal real", human: "R$ 8.500+ com encargos", orbit: "Fração disso" },
+    { label: "Tempo até começar a faturar", human: "3 meses + treinamento", orbit: "15 dias chave-na-mão" },
   ];
 
   return (
@@ -274,7 +274,7 @@ function Comparativo() {
             02 · A comparação
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
-            Humano vs.{" "}
+            Processo Manual vs.{" "}
             <span className="bg-gradient-to-r from-emerald-400 to-violet-400 bg-clip-text text-transparent">
               Orbit
             </span>
@@ -290,7 +290,7 @@ function Comparativo() {
             <div className="p-5 text-center border-l border-white/10">
               <div className="flex items-center justify-center gap-2 text-white/70">
                 <Users className="w-4 h-4" />
-                <span className="font-medium">SDR Humano</span>
+                <span className="font-medium">Processo Manual</span>
               </div>
             </div>
             <div className="p-5 text-center border-l border-white/10 bg-gradient-to-b from-emerald-500/10 to-transparent">
