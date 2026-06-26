@@ -711,7 +711,7 @@ function CtaWhatsApp() {
             </span>
           </h2>
           <p className="text-white/65 text-lg">
-            Em uma conversa rápida no WhatsApp a gente mostra como o Orbit roda na sua operação.
+            Em uma conversa rápida no WhatsApp a gente te mostra como ter agenda cheia de calls de fechamento todo mês.
           </p>
           <a
             href={WHATSAPP_LP_HREF}
@@ -720,7 +720,7 @@ function CtaWhatsApp() {
             className="inline-flex items-center gap-2 px-8 py-4 rounded-full bg-gradient-to-r from-emerald-500 to-violet-500 text-white font-semibold shadow-2xl shadow-emerald-500/30 hover:scale-105 transition-transform"
           >
             <MessageCircle className="w-5 h-5" />
-            Automatizar meu agendamento
+            Quero minha agenda cheia
           </a>
           <p className="text-xs text-white/40">
             Sem formulário, sem ligação fria. Resposta em minutos.
