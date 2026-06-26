@@ -1,542 +1,829 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence, type Variants } from "framer-motion";
+import {
+  Webhook,
+  Sparkles,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  MessageCircle,
+  FileSpreadsheet,
+  ArrowRight,
+  Brain,
+  ShieldCheck,
+  Activity,
+  Lock,
+} from "lucide-react";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import {
-  Users, Target, BarChart3, CheckCircle, Mail, MessageSquare,
-  Kanban, Zap, MessageCircle, Star,
-  BotMessageSquare, ShieldCheck, Timer, TrendingUp, Building2,
-  HeartHandshake, AlertTriangle, UserX, PhoneOff, Brain,
-  ClipboardList, Shuffle, Send, FileText, Globe, Shield
-} from "lucide-react";
-import orbitLogo from "@/assets/orbit-logo.png";
-import AnimatedSection from "@/components/landing/AnimatedSection";
-import GlowCard from "@/components/landing/GlowCard";
-import HeroSection from "@/components/landing/HeroSection";
-import StatsImpactoSection from "@/components/landing/StatsImpactoSection";
-import HumanoVsOrbitSection from "@/components/landing/HumanoVsOrbitSection";
-import WhatsAppMockSection from "@/components/landing/WhatsAppMockSection";
 import WhatsAppFab from "@/components/landing/WhatsAppFab";
 import { WHATSAPP_LP_HREF } from "@/lib/whatsapp";
+import { PILLARS } from "@/lib/orbit/pillars";
+import orbitLogo from "@/assets/orbit-logo.png";
 
-/* ─── Data (unchanged) ─── */
-const PROBLEMS = [
-  { icon: PhoneOff, title: "Leads perdidos no WhatsApp pessoal", desc: "Vendedores usam o celular próprio, a empresa perde o histórico de conversas e não sabe o que foi prometido ao cliente." },
-  { icon: AlertTriangle, title: "Equipe sem processo comercial", desc: "Sem funil definido, sem follow-up automático e oportunidades esquecidas no meio do caminho." },
-  { icon: UserX, title: "Tempo gasto com leads frios", desc: "Vendedores perdem horas respondendo quem nunca vai comprar, enquanto leads quentes esfriam sem atendimento." },
-];
+/* ============================================================
+   Landing page — identidade Aurora alinhada à Apresentação 2026
+   ============================================================ */
 
-const SOLUTION_POINTS = [
-  { icon: Brain, title: "IA qualifica antes do vendedor", desc: "O lead já chega com dados extraídos e classificação de interesse." },
-  { icon: ClipboardList, title: "Tudo registrado automaticamente", desc: "Conversas, interações e decisões documentadas sem esforço manual." },
-  { icon: Shuffle, title: "Distribuição inteligente", desc: "Round-robin automático garante que cada vendedor receba leads de forma equilibrada." },
-];
-
-const STEPS = [
-  { icon: Target, title: "Lead entra", desc: "Via WhatsApp, importação de planilha, formulário ou indicação." },
-  { icon: BotMessageSquare, title: "IA atende e qualifica", desc: "Atendimento automático 24h extrai dados, responde dúvidas e classifica o interesse." },
-  { icon: Send, title: "Handoff ao vendedor", desc: "Lead qualificado é encaminhado ao vendedor certo com resumo completo da conversa." },
-  { icon: Kanban, title: "Negociação no funil", desc: "Pipeline Kanban com tarefas, timeline de interações e acompanhamento visual." },
-  { icon: Mail, title: "Follow-up automático", desc: "Campanhas de email e WhatsApp mantêm o lead engajado até o fechamento." },
-];
-
-const FEATURE_GROUPS = [
-  { title: "IA & Automação", icon: Zap, features: ["Atendimento IA no WhatsApp 24h", "Qualificação automática de leads", "Extração inteligente de dados", "Distribuição round-robin entre vendedores", "Handoff com contexto completo"] },
-  { title: "CRM & Pipeline", icon: Kanban, features: ["Funil Kanban drag-and-drop", "Tarefas por oportunidade", "Timeline completa de interações", "Importação de contatos (CSV/Excel)", "Segmentos e origens configuráveis"] },
-  { title: "Comunicação & Campanhas", icon: MessageSquare, features: ["WhatsApp bidirecional (envio + recebimento)", "Email marketing com templates visuais", "Campanhas agendadas com métricas", "Instagram Direct e Messenger (Plus)", "Anti-bloqueio com warm-up automático"] },
-];
-
-const DIFFERENTIALS = [
-  { icon: Brain, title: "IA de verdade, não chatbot", desc: "Qualifica leads, extrai dados estruturados, responde com contexto e encaminha ao vendedor com resumo completo da conversa." },
-  { icon: ShieldCheck, title: "Anti-bloqueio WhatsApp", desc: "Sistema de warm-up progressivo, delays aleatórios entre mensagens e controle de volume para proteger seu número." },
-  { icon: Building2, title: "Multi-empresa isolada", desc: "Cada empresa tem seu ambiente separado com dados, configurações, usuários e permissões independentes." },
-  { icon: Globe, title: "Tudo em um só lugar", desc: "CRM, WhatsApp, email, IA, campanhas e funil — sem precisar integrar 5 ferramentas diferentes." },
-];
-
-const VALUE_PROOFS = [
-  { icon: Timer, title: "Economia de horas", desc: "IA responde 24h por dia, 7 dias por semana. Seu vendedor foca apenas em leads prontos para comprar." },
-  { icon: TrendingUp, title: "Mais conversão", desc: "Leads chegam qualificados e com histórico completo. O vendedor negocia com contexto, não no escuro." },
-  { icon: Shield, title: "Zero lead perdido", desc: "Cada contato é registrado, cada conversa tem follow-up. Nenhuma oportunidade escapa." },
-];
-
-const AUDIENCES = [
-  { icon: Building2, name: "Agências de marketing", desc: "Que geram leads para clientes e precisam de CRM + automação." },
-  { icon: Users, name: "Consultorias B2B", desc: "Com vendas complexas que precisam de funil e follow-up estruturado." },
-  { icon: HeartHandshake, name: "Imobiliárias", desc: "Que recebem leads por WhatsApp e precisam distribuir entre corretores." },
-  { icon: FileText, name: "Escolas e cursos", desc: "Com alto volume de contatos e necessidade de qualificação rápida." },
-  { icon: BarChart3, name: "Equipes de vendas", desc: "Que usam WhatsApp como canal principal e querem escalar sem perder controle." },
-  { icon: Star, name: "Clínicas e serviços", desc: "Que precisam agendar, qualificar e acompanhar pacientes/clientes." },
-];
-
-const FAQ_ITEMS = [
-  { q: "O que exatamente o Orbit faz?", a: "O Orbit é um CRM com IA que centraliza todo o processo comercial: captação de leads, atendimento automático por WhatsApp, qualificação inteligente, funil de vendas, campanhas por email e WhatsApp, e distribuição automática entre vendedores." },
-  { q: "Preciso instalar algo?", a: "Não. O Orbit é 100% web. Basta acessar pelo navegador em qualquer dispositivo — computador, tablet ou celular." },
-  { q: "A IA realmente responde sozinha?", a: "Sim. A IA atende leads pelo WhatsApp 24h, faz perguntas de qualificação, extrai dados como nome, empresa e interesse, e encaminha o lead ao vendedor com um resumo completo. Você define o tom, horário e regras." },
-  { q: "Posso usar meu próprio número de WhatsApp?", a: "Sim! Você conecta seu número via API oficial (Z-API). Durante a demonstração, a IA funciona em um número de teste." },
-  { q: "Consigo importar meus contatos?", a: "Sim. Importe via planilha CSV ou Excel diretamente pelo painel. O sistema faz deduplicação automática para evitar contatos duplicados." },
-  { q: "Meus dados ficam seguros?", a: "Cada empresa tem um ambiente totalmente isolado com dados separados. Usamos criptografia e controle de acesso por função (admin, gerente, vendedor, visualizador)." },
-  { q: "Quais canais de comunicação são suportados?", a: "WhatsApp (via API oficial), email (SMTP), Instagram Direct e Facebook Messenger." },
-  { q: "Como falo com vocês?", a: "É só clicar no botão verde do WhatsApp em qualquer parte do site. A gente responde em minutos e te explica tudo direto por lá." },
-];
-
-/* ─── Animation variants ─── */
-const stagger = {
+const fadeUp: Variants = {
+  hidden: { opacity: 0, y: 28 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.65, ease: [0.21, 0.47, 0.32, 0.98] as const },
+  },
+};
+const stagger: Variants = {
   hidden: {},
-  show: { transition: { staggerChildren: 0.1 } },
-};
-const fadeUp = {
-  hidden: { opacity: 0, y: 30 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } },
+  visible: { transition: { staggerChildren: 0.1 } },
 };
 
-/* ─── Section label helper ─── */
-function SectionLabel({ children }: { children: string }) {
+/* ---------- Aurora background ---------- */
+function AuroraBg() {
   return (
-    <p className="text-sm font-semibold text-primary text-center mb-2 uppercase tracking-wider">
-      {children}
-    </p>
+    <div className="fixed inset-0 -z-10 overflow-hidden bg-[#0a0a14]">
+      <div className="absolute -top-1/4 -left-1/4 w-[80vw] h-[80vw] rounded-full bg-emerald-500/20 blur-[120px] animate-aurora-1" />
+      <div className="absolute -bottom-1/4 -right-1/4 w-[80vw] h-[80vw] rounded-full bg-violet-500/25 blur-[120px] animate-aurora-2" />
+      <div className="absolute top-1/3 left-1/2 w-[50vw] h-[50vw] rounded-full bg-cyan-500/10 blur-[100px] animate-aurora-3" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_40%,#0a0a14_100%)]" />
+      <div
+        className="absolute inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 1px 1px, white 1px, transparent 0)",
+          backgroundSize: "32px 32px",
+        }}
+      />
+    </div>
   );
 }
 
-/* ─── Main component ─── */
-export default function LandingPage() {
-  const navigate = useNavigate();
-  const [slug, setSlug] = useState("");
+function Section({
+  id,
+  children,
+  className = "",
+}: {
+  id?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <section
+      id={id}
+      className={`relative w-full px-6 md:px-12 py-24 md:py-32 ${className}`}
+    >
+      <div className="w-full max-w-7xl mx-auto">{children}</div>
+    </section>
+  );
+}
 
+const glass =
+  "bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-2xl";
+
+/* ============================================================
+   HERO — Word rotator
+   ============================================================ */
+const ROTATOR = [
+  "mentoria de negócios",
+  "mentoria para dentistas",
+  "mentoria para médicos",
+  "mentoria para advogados",
+  "mentoria de investimentos",
+];
+
+function WordRotator() {
+  const [idx, setIdx] = useState(0);
   useEffect(() => {
-    document.title = "Orbit CRM — CRM com IA para WhatsApp, Email e Vendas";
+    const t = setInterval(() => setIdx((i) => (i + 1) % ROTATOR.length), 2200);
+    return () => clearInterval(t);
   }, []);
-  const [slugError, setSlugError] = useState("");
+  return (
+    <span className="relative inline-block align-baseline min-w-[260px] md:min-w-[420px] text-left">
+      <AnimatePresence mode="wait">
+        <motion.span
+          key={ROTATOR[idx]}
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -14 }}
+          transition={{ duration: 0.4 }}
+          className="inline-block bg-gradient-to-r from-emerald-400 to-violet-400 bg-clip-text text-transparent font-semibold"
+        >
+          {ROTATOR[idx]}
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  );
+}
 
-  const handleSlugAccess = () => {
-    const trimmed = slug.trim().toLowerCase();
-    if (!trimmed) { setSlugError("Digite o slug da sua empresa."); return; }
-    setSlugError("");
-    navigate(`/${trimmed}/dashboard`);
-  };
+function Hero() {
+  return (
+    <Section id="hero" className="pt-32 md:pt-40 text-center">
+      <motion.div
+        initial="hidden"
+        animate="visible"
+        variants={stagger}
+        className="flex flex-col items-center gap-8"
+      >
+        <motion.div
+          variants={fadeUp}
+          className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm text-white/70 backdrop-blur-xl"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+          Infraestrutura comercial para mentorias High-Ticket
+        </motion.div>
+
+        <motion.h1
+          variants={fadeUp}
+          className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight text-white leading-[1.05] max-w-5xl"
+        >
+          O lead preencheu seu formulário,
+          <br />
+          <span className="bg-gradient-to-r from-emerald-400 via-cyan-300 to-violet-400 bg-clip-text text-transparent">
+            mas a call de fechamento não aconteceu?
+          </span>
+        </motion.h1>
+
+        <motion.p
+          variants={fadeUp}
+          className="max-w-3xl text-lg md:text-xl text-white/65 leading-relaxed"
+        >
+          O Orbit é a infraestrutura comercial de escala para sua{" "}
+          <WordRotator />.{" "}
+          <span className="text-white/85">
+            Convertemos o interesse do formulário em uma call confirmada — sem que
+            você precise trocar uma única mensagem manual.
+          </span>
+        </motion.p>
+
+        <motion.div
+          variants={fadeUp}
+          className="flex flex-col sm:flex-row items-center gap-3 mt-2"
+        >
+          <a
+            href={WHATSAPP_LP_HREF}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full bg-gradient-to-r from-emerald-500 to-violet-500 text-white font-semibold shadow-2xl shadow-emerald-500/30 hover:scale-105 transition-transform"
+          >
+            Automatizar meu agendamento
+            <ArrowRight className="w-4 h-4" />
+          </a>
+          <a
+            href="/apresentacao/orbit-2026"
+            className="inline-flex items-center gap-2 px-6 py-3.5 rounded-full bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 transition-colors text-sm"
+          >
+            Ver apresentação completa
+          </a>
+        </motion.div>
+
+        <motion.div
+          variants={fadeUp}
+          className="mt-6 flex flex-wrap items-center justify-center gap-2 text-xs text-white/50"
+        >
+          {["resposta em 8s", "24/7/365", "latência sub-segundo"].map((c) => (
+            <span
+              key={c}
+              className="px-3 py-1 rounded-full bg-white/[0.04] border border-white/10 backdrop-blur-xl"
+            >
+              {c}
+            </span>
+          ))}
+        </motion.div>
+      </motion.div>
+    </Section>
+  );
+}
+
+/* ============================================================
+   DORES — Split screen Caos Manual vs Infraestrutura Orbit
+   ============================================================ */
+function ChaosSide() {
+  return (
+    <div className={`${glass} relative overflow-hidden p-7 md:p-9`}>
+      <div className="absolute -top-12 -left-12 w-48 h-48 bg-rose-500/15 blur-3xl rounded-full" />
+      <span className="relative text-rose-300 text-xs uppercase tracking-[0.2em] font-medium">
+        Lado A · O Caos Manual
+      </span>
+      <h3 className="relative mt-3 text-2xl md:text-3xl font-bold text-white">
+        Sua operação hoje
+      </h3>
+
+      {/* Fake spreadsheet */}
+      <div className="relative mt-7 rounded-xl border border-white/10 bg-zinc-950/60 overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-white/10 text-[10px] text-white/40">
+          <FileSpreadsheet className="w-3.5 h-3.5 text-rose-300" />
+          leads-mentoria.xlsx · não salvo
+        </div>
+        <div className="grid grid-cols-4 text-[11px] text-white/40 px-3 py-1.5 border-b border-white/5 bg-white/[0.02]">
+          <span>nome</span>
+          <span>whats</span>
+          <span>origem</span>
+          <span>status</span>
+        </div>
+        {[
+          ["Bruno R.", "(41) 9****", "ig", "?"],
+          ["Marina S.", "(11) 9****", "fb", "?"],
+          ["Carlos T.", "(21) 9****", "ig", "?"],
+          ["Juliana P.", "(31) 9****", "form", "?"],
+          ["Pedro L.", "(47) 9****", "ig", "?"],
+        ].map((row, i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, x: -10 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.15 + i * 0.1 }}
+            className="grid grid-cols-4 text-[11px] text-white/65 px-3 py-1.5 border-b border-white/5 last:border-0"
+          >
+            {row.map((c, j) => (
+              <span key={j} className={j === 3 ? "text-rose-300/80" : ""}>
+                {c}
+              </span>
+            ))}
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Floating icons */}
+      <div className="relative mt-6 flex items-center gap-6">
+        <div className="relative">
+          <MessageCircle className="w-9 h-9 text-rose-300/80" />
+          <motion.span
+            animate={{ scale: [1, 1.15, 1], opacity: [0.85, 1, 0.85] }}
+            transition={{ duration: 1.4, repeat: Infinity }}
+            className="absolute -top-2 -right-3 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-bold tabular-nums"
+          >
+            47
+          </motion.span>
+        </div>
+        <div className="text-[11px] text-white/50 leading-snug">
+          mensagens não respondidas
+          <br />
+          <span className="text-rose-300/80">há mais de 6 horas</span>
+        </div>
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+          className="ml-auto"
+        >
+          <Clock className="w-8 h-8 text-amber-300/70" />
+        </motion.div>
+      </div>
+
+      <p className="relative mt-7 text-white/70 text-base md:text-lg leading-relaxed">
+        Você gasta horas qualificando na mão, esquece do follow-up e o lead{" "}
+        <span className="text-rose-300 font-medium">esfria</span>.
+      </p>
+    </div>
+  );
+}
+
+function OrbitSide() {
+  const nodes = [
+    { icon: Webhook, label: "Webhook" },
+    { icon: Sparkles, label: "IA Qualifica" },
+    { icon: Calendar, label: "Agenda" },
+  ];
+  return (
+    <div className={`${glass} relative overflow-hidden p-7 md:p-9 border-emerald-400/20`}>
+      <div className="absolute -top-12 -right-12 w-48 h-48 bg-emerald-500/20 blur-3xl rounded-full" />
+      <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-violet-500/20 blur-3xl rounded-full" />
+      <span className="relative text-emerald-300 text-xs uppercase tracking-[0.2em] font-medium">
+        Lado B · A Infraestrutura Orbit
+      </span>
+      <h3 className="relative mt-3 text-2xl md:text-3xl font-bold text-white">
+        Sua operação com Orbit
+      </h3>
+
+      {/* Pipeline */}
+      <div className="relative mt-10 rounded-xl border border-white/10 bg-zinc-950/40 p-6">
+        <div className="flex items-center justify-between gap-3">
+          {nodes.map((n, i) => (
+            <div key={i} className="flex flex-col items-center gap-2 z-10">
+              <motion.div
+                initial={{ scale: 0.85, opacity: 0 }}
+                whileInView={{ scale: 1, opacity: 1 }}
+                viewport={{ once: true }}
+                transition={{ delay: 0.2 + i * 0.25 }}
+                className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500/30 to-violet-500/30 border border-white/15 flex items-center justify-center shadow-lg shadow-emerald-500/10"
+              >
+                <n.icon className="w-5 h-5 text-emerald-200" />
+              </motion.div>
+              <span className="text-[10px] uppercase tracking-wider text-white/60">
+                {n.label}
+              </span>
+            </div>
+          ))}
+        </div>
+        {/* Connecting gradient line */}
+        <div className="absolute left-10 right-10 top-12 h-0.5 -translate-y-1/2 overflow-hidden rounded-full bg-white/5">
+          <motion.div
+            initial={{ x: "-100%" }}
+            whileInView={{ x: "100%" }}
+            viewport={{ once: false, amount: 0.4 }}
+            transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+            className="h-full w-1/2 bg-gradient-to-r from-transparent via-emerald-400 to-violet-400"
+          />
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 1.1 }}
+          className="mt-7 flex items-center justify-center gap-2 text-emerald-300 text-sm"
+        >
+          <CheckCircle2 className="w-4 h-4" />
+          Call confirmada na sua agenda
+        </motion.div>
+      </div>
+
+      <p className="relative mt-7 text-white/80 text-base md:text-lg leading-relaxed">
+        O Orbit qualifica, persegue e agenda.{" "}
+        <span className="text-emerald-300 font-medium">
+          A call cai na sua agenda. Dinheiro no bolso.
+        </span>
+      </p>
+    </div>
+  );
+}
+
+function Dores() {
+  const stats = [
+    { v: "73%", l: "dos leads de anúncio nunca são respondidos" },
+    { v: "5 min", l: "é a janela de ouro antes do lead esfriar" },
+    { v: "42h/sem", l: "perdidas em tarefas manuais repetitivas" },
+    { v: "R$ 8.500/mês", l: "custo médio de um SDR júnior com encargos" },
+  ];
 
   return (
-    <div className="min-h-screen bg-background text-foreground noise-bg">
+    <Section id="dores">
+      <motion.div
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: "-80px" }}
+        variants={stagger}
+      >
+        <motion.div variants={fadeUp} className="mb-12 text-center">
+          <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
+            01 · O impacto do processo
+          </span>
+          <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
+            Sua planilha não fecha venda.
+            <br />
+            <span className="text-white/55">A infraestrutura sim.</span>
+          </h2>
+        </motion.div>
 
-      {/* ══════════ HERO ══════════ */}
-      <HeroSection />
+        <motion.div variants={fadeUp} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <ChaosSide />
+          <OrbitSide />
+        </motion.div>
 
-      {/* ══════════ STATS — dor real do mercado ══════════ */}
-      <StatsImpactoSection />
-
-      {/* ══════════ PROBLEMA ══════════ */}
-      <section className="py-20 px-4 relative">
-        <div className="absolute inset-0 bg-secondary/20" />
-        <div className="relative max-w-5xl mx-auto">
-          <AnimatedSection>
-            <SectionLabel>O problema</SectionLabel>
-            <h2 className="text-3xl font-bold text-center mb-4">
-              Sua operação comercial <span className="gradient-text">está travada?</span>
-            </h2>
-            <p className="text-center text-muted-foreground mb-12 max-w-xl mx-auto">
-              Se alguma dessas dores parece familiar, o Orbit foi feito para você.
-            </p>
-          </AnimatedSection>
-
-          <motion.div
-            className="grid sm:grid-cols-3 gap-6"
-            variants={stagger}
-            initial="hidden"
-            whileInView="show"
-            viewport={{ once: true }}
-          >
-            {PROBLEMS.map((p, i) => (
-              <motion.div key={i} variants={fadeUp}>
-                <GlowCard className="h-full" glowColor="0 72% 51%">
-                  <div className="p-6 text-center">
-                    <div className="mx-auto w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                      <p.icon className="w-6 h-6 text-destructive" />
-                    </div>
-                    <h3 className="font-semibold text-base mb-2">{p.title}</h3>
-                    <p className="text-sm text-muted-foreground">{p.desc}</p>
-                  </div>
-                </GlowCard>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ══════════ SOLUÇÃO ══════════ */}
-      <section className="py-20 px-4">
-        <div className="max-w-5xl mx-auto">
-          <AnimatedSection>
-            <SectionLabel>A solução</SectionLabel>
-            <h2 className="text-3xl font-bold text-center mb-4">
-              O Orbit centraliza tudo em <span className="gradient-text">uma plataforma com IA</span>
-            </h2>
-            <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
-              Uma IA que trabalha 24h atendendo, qualificando e organizando seus leads — enquanto sua equipe foca em fechar negócios.
-            </p>
-          </AnimatedSection>
-
-          <motion.div
-            className="grid sm:grid-cols-3 gap-6"
-            variants={stagger}
-            initial="hidden"
-            whileInView="show"
-            viewport={{ once: true }}
-          >
-            {SOLUTION_POINTS.map((s, i) => (
-              <motion.div key={i} variants={fadeUp}>
-                <GlowCard className="h-full">
-                  <div className="p-6 text-center">
-                    <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4 group-hover:rotate-12 group-hover:scale-110 transition-transform">
-                      <s.icon className="w-6 h-6 text-primary" />
-                    </div>
-                    <h3 className="font-semibold text-base mb-2">{s.title}</h3>
-                    <p className="text-sm text-muted-foreground">{s.desc}</p>
-                  </div>
-                </GlowCard>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ══════════ HUMANO vs ORBIT ══════════ */}
-      <HumanoVsOrbitSection />
-
-      {/* ══════════ COMO FUNCIONA (Timeline) ══════════ */}
-      <section id="como-funciona" className="py-20 px-4 relative">
-        <div className="absolute inset-0 bg-secondary/20" />
-        <div className="relative max-w-6xl mx-auto">
-          <AnimatedSection>
-            <SectionLabel>Como funciona</SectionLabel>
-            <h2 className="text-3xl font-bold text-center mb-4">
-              Do primeiro contato ao <span className="gradient-text">fechamento</span>
-            </h2>
-            <p className="text-center text-muted-foreground mb-12 max-w-xl mx-auto">
-              5 passos para transformar leads em clientes — de forma automática.
-            </p>
-          </AnimatedSection>
-
-          {/* Desktop timeline */}
-          <div className="hidden lg:block relative">
-            {/* Connecting line */}
-            <div className="absolute top-16 left-[10%] right-[10%] h-0.5 bg-gradient-to-r from-primary/20 via-primary/50 to-primary/20" />
-
-            <motion.div
-              className="grid grid-cols-5 gap-5"
-              variants={stagger}
-              initial="hidden"
-              whileInView="show"
-              viewport={{ once: true }}
-            >
-              {STEPS.map((step, i) => (
-                <motion.div key={i} variants={fadeUp}>
-                  <GlowCard className="text-center">
-                    <div className="p-5">
-                      <div className="mx-auto w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center mb-3 text-sm font-bold relative z-10 group-hover:scale-110 group-hover:shadow-[0_0_20px_hsl(var(--primary)/0.4)] transition-all">
-                        {i + 1}
-                      </div>
-                      <h3 className="text-sm font-semibold mb-2">{step.title}</h3>
-                      <p className="text-xs text-muted-foreground">{step.desc}</p>
-                    </div>
-                  </GlowCard>
-                </motion.div>
-              ))}
-            </motion.div>
-          </div>
-
-          {/* Mobile timeline */}
-          <div className="lg:hidden space-y-4">
-            {STEPS.map((step, i) => (
-              <AnimatedSection key={i} delay={i * 0.1}>
-                <div className="flex gap-4 items-start">
-                  <div className="flex flex-col items-center shrink-0">
-                    <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
-                      {i + 1}
-                    </div>
-                    {i < STEPS.length - 1 && <div className="w-0.5 h-12 bg-primary/20 mt-2" />}
-                  </div>
-                  <GlowCard className="flex-1">
-                    <div className="p-4">
-                      <h3 className="text-sm font-semibold mb-1">{step.title}</h3>
-                      <p className="text-xs text-muted-foreground">{step.desc}</p>
-                    </div>
-                  </GlowCard>
-                </div>
-              </AnimatedSection>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ══════════ FUNCIONALIDADES ══════════ */}
-      <section id="recursos" className="py-20 px-4">
-        <div className="max-w-6xl mx-auto">
-          <AnimatedSection>
-            <SectionLabel>Funcionalidades</SectionLabel>
-            <h2 className="text-3xl font-bold text-center mb-4">
-              Tudo que você precisa, <span className="gradient-text">em um só lugar</span>
-            </h2>
-            <p className="text-center text-muted-foreground mb-12 max-w-xl mx-auto">
-              Cada recurso foi pensado para eliminar etapas manuais e acelerar suas vendas.
-            </p>
-          </AnimatedSection>
-
-          <motion.div
-            className="grid md:grid-cols-3 gap-6"
-            variants={stagger}
-            initial="hidden"
-            whileInView="show"
-            viewport={{ once: true }}
-          >
-            {FEATURE_GROUPS.map((group) => (
-              <motion.div key={group.title} variants={fadeUp}>
-                <GlowCard className="h-full">
-                  <div className="p-6">
-                    <div className="flex items-center gap-3 mb-5">
-                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:rotate-12 group-hover:scale-110 transition-transform">
-                        <group.icon className="w-5 h-5 text-primary" />
-                      </div>
-                      <h3 className="text-lg font-semibold">{group.title}</h3>
-                    </div>
-                    <ul className="space-y-2.5">
-                      {group.features.map((f) => (
-                        <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
-                          <CheckCircle className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-                          {f}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </GlowCard>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ══════════ MOCK WHATSAPP ══════════ */}
-      <WhatsAppMockSection />
-
-      {/* ══════════ DIFERENCIAIS ══════════ */}
-      <section className="py-20 px-4 relative">
-        <div className="absolute inset-0 bg-secondary/20" />
-        <div className="relative max-w-6xl mx-auto">
-          <AnimatedSection>
-            <SectionLabel>Diferenciais</SectionLabel>
-            <h2 className="text-3xl font-bold text-center mb-4">
-              Por que o Orbit é <span className="gradient-text">diferente</span>
-            </h2>
-            <p className="text-center text-muted-foreground mb-12 max-w-xl mx-auto">
-              Não é mais um CRM genérico. O Orbit foi construído para equipes que vendem pelo WhatsApp e precisam de IA real.
-            </p>
-          </AnimatedSection>
-
-          <motion.div
-            className="grid sm:grid-cols-2 gap-6"
-            variants={stagger}
-            initial="hidden"
-            whileInView="show"
-            viewport={{ once: true }}
-          >
-            {DIFFERENTIALS.map((d, i) => (
-              <motion.div key={i} variants={fadeUp}>
-                <GlowCard className="h-full">
-                  <div className="p-6">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:rotate-12 group-hover:scale-110 transition-transform">
-                        <d.icon className="w-5 h-5 text-primary" />
-                      </div>
-                      <h3 className="font-semibold text-base">{d.title}</h3>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{d.desc}</p>
-                  </div>
-                </GlowCard>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ══════════ PROVA DE VALOR ══════════ */}
-      <section className="py-20 px-4">
-        <div className="max-w-5xl mx-auto">
-          <AnimatedSection>
-            <SectionLabel>Resultados</SectionLabel>
-            <h2 className="text-3xl font-bold text-center mb-12">
-              O que muda quando você <span className="gradient-text">usa o Orbit</span>
-            </h2>
-          </AnimatedSection>
-
-          <motion.div
-            className="grid sm:grid-cols-3 gap-8"
-            variants={stagger}
-            initial="hidden"
-            whileInView="show"
-            viewport={{ once: true }}
-          >
-            {VALUE_PROOFS.map((v, i) => (
-              <motion.div key={i} variants={fadeUp} className="text-center space-y-3">
-                <motion.div
-                  className="mx-auto w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center"
-                  whileHover={{ scale: 1.15, rotate: 5 }}
-                  transition={{ type: "spring", stiffness: 300 }}
-                >
-                  <v.icon className="w-7 h-7 text-primary" />
-                </motion.div>
-                <h3 className="font-bold text-lg">{v.title}</h3>
-                <p className="text-sm text-muted-foreground">{v.desc}</p>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ══════════ PARA QUEM É ══════════ */}
-      <section className="py-20 px-4 relative">
-        <div className="absolute inset-0 bg-secondary/20" />
-        <div className="relative max-w-6xl mx-auto">
-          <AnimatedSection>
-            <SectionLabel>Para quem é</SectionLabel>
-            <h2 className="text-3xl font-bold text-center mb-4">
-              Ideal para quem <span className="gradient-text">vende ativamente</span>
-            </h2>
-            <p className="text-center text-muted-foreground mb-12 max-w-xl mx-auto">
-              Se sua equipe usa WhatsApp e email para vender, o Orbit vai transformar sua operação.
-            </p>
-          </AnimatedSection>
-
-          <motion.div
-            className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5"
-            variants={stagger}
-            initial="hidden"
-            whileInView="show"
-            viewport={{ once: true }}
-          >
-            {AUDIENCES.map((a, i) => (
-              <motion.div key={i} variants={fadeUp}>
-                <GlowCard className="h-full">
-                  <div className="p-5">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:rotate-12 transition-transform">
-                        <a.icon className="w-5 h-5 text-primary" />
-                      </div>
-                      <h3 className="font-semibold text-base">{a.name}</h3>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{a.desc}</p>
-                  </div>
-                </GlowCard>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ══════════ CTA FINAL — WhatsApp ══════════ */}
-      <section className="py-24 px-4 relative overflow-hidden">
-        <div className="absolute inset-0 bg-secondary/20" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-emerald-500/10 blur-[120px] rounded-full" />
-
-        <AnimatedSection className="relative z-10">
-          <div className="max-w-2xl mx-auto text-center space-y-6">
-            <h2 className="text-3xl sm:text-4xl font-extrabold">
-              Pronto pra parar de <span className="gradient-text">perder lead de anúncio?</span>
-            </h2>
-            <p className="text-muted-foreground text-lg">
-              Bora conversar. Em poucos minutos a gente te mostra como o Orbit funciona na sua operação.
-            </p>
-            <Button
-              asChild
-              size="lg"
-              className="gap-2 text-base px-10 h-12 animate-glow-pulse hover:scale-105 transition-transform bg-emerald-600 hover:bg-emerald-500 text-white"
-            >
-              <a href={WHATSAPP_LP_HREF} target="_blank" rel="noopener noreferrer">
-                <MessageCircle className="w-5 h-5" />
-                Falar agora no WhatsApp
-              </a>
-            </Button>
-            <p className="text-xs text-muted-foreground">Resposta em minutos. Sem formulário, sem ligação fria.</p>
-          </div>
-        </AnimatedSection>
-      </section>
-
-
-      {/* ══════════ FAQ ══════════ */}
-      <section id="faq" className="py-20 px-4">
-        <div className="max-w-2xl mx-auto">
-          <AnimatedSection>
-            <SectionLabel>Dúvidas</SectionLabel>
-            <h2 className="text-3xl font-bold text-center mb-10">
-              Perguntas <span className="gradient-text">frequentes</span>
-            </h2>
-          </AnimatedSection>
-
-          <AnimatedSection delay={0.2}>
-            <Accordion type="single" collapsible className="space-y-2">
-              {FAQ_ITEMS.map((item, i) => (
-                <AccordionItem
-                  key={i}
-                  value={`faq-${i}`}
-                  className="bg-card/60 backdrop-blur-xl border border-border/50 px-4 rounded-xl hover:border-primary/30 transition-colors"
-                >
-                  <AccordionTrigger className="text-left text-sm font-medium hover:no-underline">
-                    {item.q}
-                  </AccordionTrigger>
-                  <AccordionContent className="text-sm text-muted-foreground">
-                    {item.a}
-                  </AccordionContent>
-                </AccordionItem>
-              ))}
-            </Accordion>
-          </AnimatedSection>
-        </div>
-      </section>
-
-      {/* ══════════ ACESSO RÁPIDO ══════════ */}
-      <section className="py-16 px-4 relative">
-        <div className="absolute inset-0 bg-secondary/20" />
-        <AnimatedSection className="relative z-10">
-          <div className="max-w-md mx-auto text-center space-y-4">
-            <h2 className="text-2xl font-bold">Já é cliente?</h2>
-            <p className="text-sm text-muted-foreground">
-              Digite o slug da sua empresa para acessar diretamente.
-            </p>
-            <div className="flex gap-2">
-              <Input
-                placeholder="minha-empresa"
-                value={slug}
-                onChange={(e) => { setSlug(e.target.value); setSlugError(""); }}
-                onKeyDown={(e) => e.key === "Enter" && handleSlugAccess()}
-                className="bg-card/60 backdrop-blur-sm border-border/50"
-              />
-              <Button onClick={handleSlugAccess}>Acessar</Button>
+        <motion.div
+          variants={fadeUp}
+          className="mt-10 grid grid-cols-2 md:grid-cols-4 gap-4"
+        >
+          {stats.map((s, i) => (
+            <div key={i} className={`${glass} p-5 text-center`}>
+              <div className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-emerald-300 to-violet-300 bg-clip-text text-transparent tabular-nums">
+                {s.v}
+              </div>
+              <p className="mt-2 text-[11px] md:text-xs text-white/55 leading-snug">
+                {s.l}
+              </p>
             </div>
-            {slugError && <p className="text-sm text-destructive">{slugError}</p>}
-            <p className="text-xs text-muted-foreground">
-              Não sabe seu slug?{" "}
-              <button onClick={() => navigate("/auth")} className="text-primary hover:underline">
-                Faça login normalmente
-              </button>
-            </p>
-          </div>
-        </AnimatedSection>
-      </section>
+          ))}
+        </motion.div>
+      </motion.div>
+    </Section>
+  );
+}
 
-      {/* ══════════ FOOTER ══════════ */}
-      <footer className="border-t border-border/50 py-10 px-4">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
-          <img src={orbitLogo} alt="Orbit" className="h-6" />
-          <div className="flex gap-6">
-            <span className="hover:text-foreground cursor-pointer transition-colors">Termos</span>
-            <span className="hover:text-foreground cursor-pointer transition-colors">Privacidade</span>
-            <span className="hover:text-foreground cursor-pointer transition-colors">Suporte</span>
-          </div>
-          <span>© {new Date().getFullYear()} Fluxrow. Todos os direitos reservados.</span>
+/* ============================================================
+   PILARES — consome PILLARS compartilhado
+   ============================================================ */
+function Pilares() {
+  return (
+    <Section id="infraestrutura">
+      <motion.div
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: "-80px" }}
+        variants={stagger}
+      >
+        <motion.div variants={fadeUp} className="mb-14 text-center">
+          <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
+            02 · Infraestrutura Enterprise
+          </span>
+          <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
+            Cinco pilares que sustentam
+            <br />
+            <span className="bg-gradient-to-r from-emerald-400 to-violet-400 bg-clip-text text-transparent">
+              quem vende sério.
+            </span>
+          </h2>
+          <p className="mt-6 text-lg text-white/60 max-w-2xl mx-auto leading-relaxed">
+            Engenharia de SaaS de produto — na operação do mentor.
+          </p>
+        </motion.div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {PILLARS.map((p, i) => (
+            <motion.div
+              key={i}
+              variants={fadeUp}
+              whileHover={{ y: -6 }}
+              className={`${glass} p-7 hover:border-emerald-400/30 transition-colors group flex flex-col`}
+            >
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500/20 to-violet-500/20 border border-white/10 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
+                <p.icon className="w-5 h-5 text-emerald-300" />
+              </div>
+              <h3 className="text-white text-lg font-semibold mb-2">{p.title}</h3>
+              <p className="text-white/60 text-sm leading-relaxed flex-1">
+                {p.description}
+              </p>
+              <div className="mt-5 flex flex-wrap gap-1.5">
+                {p.stack.map((s) => (
+                  <span
+                    key={s}
+                    className="px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/10 text-[10px] uppercase tracking-wider text-white/60"
+                  >
+                    {s}
+                  </span>
+                ))}
+              </div>
+            </motion.div>
+          ))}
         </div>
-      </footer>
+      </motion.div>
+    </Section>
+  );
+}
 
-      {/* ══════════ WHATSAPP FAB ══════════ */}
+/* ============================================================
+   TIMELINE — 4 etapas
+   ============================================================ */
+function Timeline() {
+  const steps = [
+    {
+      n: "01",
+      t: "Ingestão Multicanal",
+      d: "Typebot, Sheets, formulários e Meta Ads pela mesma porta — com mapeamento visual.",
+    },
+    {
+      n: "02",
+      t: "Qualificação IA",
+      d: "Agente com RAG sobre sua base extrai orçamento, decisão e dor antes do humano entrar.",
+    },
+    {
+      n: "03",
+      t: "Motor de Fluxos",
+      d: "Disparos em tempo real com condições cirúrgicas por origem, UTM e payload.",
+    },
+    {
+      n: "04",
+      t: "Funil + Calendar",
+      d: "Movimentação automática de etapas e agendamento com FreeBusy do Google Calendar.",
+    },
+  ];
+
+  return (
+    <Section id="como-funciona">
+      <motion.div
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: "-80px" }}
+        variants={stagger}
+      >
+        <motion.div variants={fadeUp} className="mb-14 text-center">
+          <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
+            03 · Como funciona
+          </span>
+          <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
+            Do formulário
+            <br />
+            <span className="bg-gradient-to-r from-emerald-400 to-violet-400 bg-clip-text text-transparent">
+              à call confirmada.
+            </span>
+          </h2>
+        </motion.div>
+
+        <div className="relative">
+          {/* connecting line desktop */}
+          <div className="hidden lg:block absolute top-9 left-[8%] right-[8%] h-[2px] bg-gradient-to-r from-emerald-400/30 via-violet-400/40 to-emerald-400/30" />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+            {steps.map((s, i) => (
+              <motion.div
+                key={i}
+                variants={fadeUp}
+                className={`${glass} relative p-6 text-center`}
+              >
+                <div className="mx-auto w-12 h-12 rounded-full bg-gradient-to-br from-emerald-500 to-violet-500 text-white flex items-center justify-center font-bold tabular-nums shadow-xl shadow-emerald-500/20">
+                  {s.n}
+                </div>
+                <h3 className="mt-5 text-white font-semibold text-lg">{s.t}</h3>
+                <p className="mt-2 text-sm text-white/60 leading-relaxed">{s.d}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </motion.div>
+    </Section>
+  );
+}
+
+/* ============================================================
+   DIFERENCIAIS 2x2
+   ============================================================ */
+function Diferenciais() {
+  const items = [
+    {
+      icon: Brain,
+      t: "IA real (não chatbot)",
+      d: "Agente com RAG sobre a base de conhecimento do mentor — entende contexto, objeção e timing. Não é árvore de decisão.",
+    },
+    {
+      icon: Lock,
+      t: "Multi-tenant isolado",
+      d: "RLS por empresa no banco. Dados da sua mentoria nunca cruzam com outra conta — by design, não por configuração.",
+    },
+    {
+      icon: Activity,
+      t: "Observabilidade nativa",
+      d: "KPIs ao vivo, latência das Edge Functions e logs de webhook em sub-segundo. Você opera vendo a saúde, não a saudade.",
+    },
+    {
+      icon: ShieldCheck,
+      t: "Anti-bloqueio WhatsApp",
+      d: "Cadência humanizada, mídia rica (áudio/vídeo/PDF) e validação de número antes do disparo. Protege seu canal.",
+    },
+  ];
+  return (
+    <Section id="diferenciais">
+      <motion.div
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: "-80px" }}
+        variants={stagger}
+      >
+        <motion.div variants={fadeUp} className="mb-14 text-center">
+          <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
+            04 · Diferenciais
+          </span>
+          <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
+            Por que mentores High-Ticket
+            <br />
+            <span className="bg-gradient-to-r from-emerald-400 to-violet-400 bg-clip-text text-transparent">
+              escolhem o Orbit.
+            </span>
+          </h2>
+        </motion.div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {items.map((d, i) => (
+            <motion.div
+              key={i}
+              variants={fadeUp}
+              whileHover={{ y: -4 }}
+              className={`${glass} p-7 hover:border-emerald-400/30 transition-colors`}
+            >
+              <div className="flex items-start gap-4">
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500/20 to-violet-500/20 border border-white/10 flex items-center justify-center shrink-0">
+                  <d.icon className="w-5 h-5 text-emerald-300" />
+                </div>
+                <div>
+                  <h3 className="text-white text-lg font-semibold">{d.t}</h3>
+                  <p className="mt-2 text-white/65 text-sm leading-relaxed">{d.d}</p>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </motion.div>
+    </Section>
+  );
+}
+
+/* ============================================================
+   FAQ Enterprise
+   ============================================================ */
+const FAQ = [
+  {
+    q: "Como o Orbit lida com o webhook do meu Typebot?",
+    a: "Recebemos o payload bruto, normalizamos os campos (WhatsApp, CPF/CNPJ, e-mail) e ainda preservamos qualquer campo extra em JSONB para você filtrar depois — utm_source, utm_campaign, respostas customizadas, tudo continua acessível por condição de fluxo.",
+  },
+  {
+    q: "Como a latência afeta minha taxa de fechamento?",
+    a: "Estudos do MIT mostram queda de até 80% na conversão depois dos 5 minutos. Nossas Edge Functions respondem em sub-segundo, então o lead recebe o primeiro contato enquanto a intenção ainda está quente — o que muda o jogo no High-Ticket.",
+  },
+  {
+    q: "Os dados da minha mentoria ficam isolados de outras contas?",
+    a: "Sim, por arquitetura. Cada empresa tem isolamento via Row-Level Security (RLS) no banco — nenhuma query consegue cruzar fronteira de tenant, mesmo via bug de aplicação. Isolamento é da infraestrutura, não da configuração.",
+  },
+  {
+    q: "Posso usar minha planilha do Google Sheets como fonte de leads?",
+    a: "Sim. Instalamos um Apps Script que envia cada nova linha para o webhook do Orbit em tempo real. Sua planilha vira uma fonte de leads tratada igual a Typebot ou Meta Ads — com mapeamento de colunas e validação automática.",
+  },
+  {
+    q: "O agendamento no Google Calendar é nativo?",
+    a: "Sim. Conectamos via OAuth e consultamos a FreeBusy do mentor antes de oferecer horários ao lead, criando o evento no calendário com convite por e-mail. Sem ferramenta intermediária, sem link genérico de Calendly.",
+  },
+  {
+    q: "Como vocês evitam o bloqueio do meu WhatsApp?",
+    a: "Cadência humanizada com delays aleatórios, controle de volume por hora, validação de número antes do disparo e suporte a mídia rica (áudio, vídeo, PDF) — que reduz padrões de spam. Conectamos via API oficial (Z-API).",
+  },
+  {
+    q: "Consigo enviar PDFs, áudios e vídeos pela automação?",
+    a: "Sim. As ações inteligentes suportam mídia rica como anexo nativo — você sobe o ebook, o áudio na sua voz ou o vídeo de captação e ele entra como passo de fluxo, não como link externo.",
+  },
+  {
+    q: "Como acompanho a saúde técnica da operação?",
+    a: "Tem um painel de observabilidade dentro do Orbit com latência das Edge Functions, taxa de sucesso por automação e log detalhado de cada webhook recebido. Você opera vendo a saúde do sistema, não esperando o lead reclamar.",
+  },
+];
+
+function Faq() {
+  return (
+    <Section id="faq" className="py-24 md:py-28">
+      <motion.div
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: "-80px" }}
+        variants={stagger}
+        className="max-w-3xl mx-auto"
+      >
+        <motion.div variants={fadeUp} className="mb-12 text-center">
+          <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
+            05 · Dúvidas Enterprise
+          </span>
+          <h2 className="mt-3 text-3xl md:text-5xl font-bold text-white leading-tight">
+            As perguntas que mentores sérios
+            <br />
+            <span className="text-white/55">fazem antes de assinar.</span>
+          </h2>
+        </motion.div>
+
+        <motion.div variants={fadeUp}>
+          <Accordion type="single" collapsible className="space-y-2">
+            {FAQ.map((item, i) => (
+              <AccordionItem
+                key={i}
+                value={`faq-${i}`}
+                className={`${glass} px-5 hover:border-emerald-400/30 transition-colors`}
+              >
+                <AccordionTrigger className="text-left text-white font-medium hover:no-underline py-5">
+                  {item.q}
+                </AccordionTrigger>
+                <AccordionContent className="text-white/65 leading-relaxed pb-5">
+                  {item.a}
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        </motion.div>
+      </motion.div>
+    </Section>
+  );
+}
+
+/* ============================================================
+   CTA + ACESSO POR SLUG + FOOTER
+   ============================================================ */
+function CtaWhatsApp() {
+  return (
+    <Section className="text-center">
+      <div className={`${glass} relative overflow-hidden p-12 md:p-16`}>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-emerald-500/15 blur-[120px] rounded-full" />
+        <div className="relative max-w-2xl mx-auto space-y-6">
+          <h2 className="text-3xl md:text-5xl font-bold text-white leading-tight">
+            Pare de operar sua mentoria
+            <br />
+            <span className="bg-gradient-to-r from-emerald-400 to-violet-400 bg-clip-text text-transparent">
+              no improviso.
+            </span>
+          </h2>
+          <p className="text-white/65 text-lg">
+            Em uma conversa rápida no WhatsApp a gente mostra como o Orbit roda na sua operação.
+          </p>
+          <a
+            href={WHATSAPP_LP_HREF}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-8 py-4 rounded-full bg-gradient-to-r from-emerald-500 to-violet-500 text-white font-semibold shadow-2xl shadow-emerald-500/30 hover:scale-105 transition-transform"
+          >
+            <MessageCircle className="w-5 h-5" />
+            Automatizar meu agendamento
+          </a>
+          <p className="text-xs text-white/40">
+            Sem formulário, sem ligação fria. Resposta em minutos.
+          </p>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function AcessoSlug() {
+  const navigate = useNavigate();
+  const [slug, setSlug] = useState("");
+  const [err, setErr] = useState("");
+  const submit = () => {
+    const t = slug.trim().toLowerCase();
+    if (!t) {
+      setErr("Digite o slug da sua empresa.");
+      return;
+    }
+    setErr("");
+    navigate(`/${t}/dashboard`);
+  };
+  return (
+    <Section className="py-16">
+      <div className={`${glass} max-w-lg mx-auto p-8 text-center`}>
+        <h3 className="text-xl font-semibold text-white">Já é cliente?</h3>
+        <p className="mt-2 text-sm text-white/55">
+          Digite o slug da sua empresa para acessar o painel.
+        </p>
+        <div className="mt-5 flex gap-2">
+          <Input
+            value={slug}
+            onChange={(e) => {
+              setSlug(e.target.value);
+              setErr("");
+            }}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            placeholder="minha-empresa"
+            className="bg-white/[0.04] border-white/10 text-white placeholder:text-white/30"
+          />
+          <Button
+            onClick={submit}
+            className="bg-gradient-to-r from-emerald-500 to-violet-500 text-white hover:opacity-90"
+          >
+            Acessar
+          </Button>
+        </div>
+        {err && <p className="mt-2 text-xs text-rose-300">{err}</p>}
+        <p className="mt-4 text-xs text-white/40">
+          Não sabe seu slug?{" "}
+          <button
+            onClick={() => navigate("/auth")}
+            className="text-emerald-300 hover:underline"
+          >
+            Faça login normalmente
+          </button>
+        </p>
+      </div>
+    </Section>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="relative border-t border-white/10 py-10 px-6">
+      <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-white/40">
+        <img src={orbitLogo} alt="Orbit" className="h-6 opacity-80" />
+        <div className="flex gap-6">
+          <span className="hover:text-white/80 cursor-pointer transition-colors">Termos</span>
+          <span className="hover:text-white/80 cursor-pointer transition-colors">Privacidade</span>
+          <span className="hover:text-white/80 cursor-pointer transition-colors">Suporte</span>
+        </div>
+        <span>© {new Date().getFullYear()} Fluxrow. Todos os direitos reservados.</span>
+      </div>
+    </footer>
+  );
+}
+
+/* ============================================================
+   PAGE
+   ============================================================ */
+export default function LandingPage() {
+  useEffect(() => {
+    document.title = "Orbit CRM — Infraestrutura comercial multicanal";
+  }, []);
+
+  // memoize aurora bg so it doesn't re-render
+  const bg = useMemo(() => <AuroraBg />, []);
+
+  return (
+    <div className="relative w-full min-h-screen text-white font-sans overflow-x-hidden">
+      {bg}
+      <Hero />
+      <Dores />
+      <Pilares />
+      <Timeline />
+      <Diferenciais />
+      <Faq />
+      <CtaWhatsApp />
+      <AcessoSlug />
+      <Footer />
       <WhatsAppFab />
     </div>
   );
