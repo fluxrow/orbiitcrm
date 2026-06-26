@@ -27,6 +27,8 @@ import { PipelineConfigTab } from "@/components/orbit/PipelineConfigTab";
 import { FluxosTab } from "@/components/orbit/FluxosTab";
 import { FlowTemplatesManager } from "@/components/orbit/FlowTemplatesManager";
 import { LeadSourcesTab } from "@/components/orbit/LeadSourcesTab";
+import { ImportProspectsWizard } from "@/components/orbit/ImportProspectsWizard";
+import { Wand2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useOrbitAIConfig, useUpdateAIConfig, useOrbitZAPIConfig, useUpdateZAPIConfig, useOrbitResendConfig, useUpdateResendConfig, useTestResendConnection, useWhatsAppSendingConfig, useUpdateWhatsAppSendingConfig, useWhatsAppDailyUsage } from "@/hooks/useOrbitConfig";
@@ -122,6 +124,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
   const [importProgress, setImportProgress] = useState(0);
   const [isImporting, setIsImporting] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [rateForm, setRateForm] = useState({
     min_delay_ms: 1500,
     max_delay_ms: 3500,
@@ -1617,6 +1620,32 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
         {/* Tab Importar CSV */}
         <TabsContent value="import">
           <div className="space-y-6">
+            <Card className="border-primary/40 bg-primary/5">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Wand2 className="h-5 w-5 text-primary" />
+                  <CardTitle>Importador Inteligente (recomendado)</CardTitle>
+                </div>
+                <CardDescription>
+                  Suba qualquer CSV, mapeie as colunas para os campos do Orbit (Nome, Telefone, E-mail, etc.) e processe a inserção em lote em <code>orbit_prospects</code>. Campos extras viram <code>dados_adicionais</code> automaticamente.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button
+                  onClick={() => setWizardOpen(true)}
+                  className="bg-brand text-brand-foreground hover:bg-brand/90"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Abrir wizard de importação
+                </Button>
+              </CardContent>
+            </Card>
+            <ImportProspectsWizard
+              open={wizardOpen}
+              onOpenChange={setWizardOpen}
+              empresaId={empresaId}
+            />
+
             {/* Card: Template */}
             <Card>
               <CardHeader>

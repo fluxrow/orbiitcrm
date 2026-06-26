@@ -13,7 +13,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useOrbitLeadSources } from "@/hooks/useOrbitLeadSources";
 import type { OrbitFlow } from "@/hooks/useOrbitFlows";
 
-type PayloadMatch = { key: string; value: string };
+type PayloadMatch = { uid: string; key: string; value: string };
+
+const newUid = () =>
+  (typeof crypto !== "undefined" && (crypto as any).randomUUID)
+    ? (crypto as any).randomUUID()
+    : `r_${Math.random().toString(36).slice(2)}_${Date.now()}`;
 
 type Conditions = {
   source_id?: string;
@@ -45,6 +50,7 @@ export function FlowConditionsDialog({
     const c = (flow.condicoes ?? {}) as Conditions;
     setCond(c);
     const rows: PayloadMatch[] = Object.entries(c.payload_match ?? {}).map(([key, value]) => ({
+      uid: newUid(),
       key,
       value: Array.isArray(value) ? value.join(", ") : String(value),
     }));
@@ -219,7 +225,7 @@ export function FlowConditionsDialog({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setPayloadRows((r) => [...r, { key: "", value: "" }])}
+                onClick={() => setPayloadRows((r) => [...r, { uid: newUid(), key: "", value: "" }])}
               >
                 <Plus className="h-3.5 w-3.5 mr-1" />
                 Adicionar
@@ -234,7 +240,7 @@ export function FlowConditionsDialog({
             ) : (
               <div className="space-y-2">
                 {payloadRows.map((row, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                  <div key={row.uid} className="grid grid-cols-[1fr_1fr_auto] gap-2">
                     <Input
                       placeholder="raw.utm_source"
                       value={row.key}

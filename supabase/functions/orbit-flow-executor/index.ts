@@ -279,6 +279,7 @@ async function runAction(actionType: string, cfg: Json, run: Json): Promise<Step
     case "change_deal_stage":      return actionChangeDealStage(cfg, run);
     case "send_rich_media":        return actionSendRichMedia(cfg, run);
     case "check_calendar_and_offer": return actionCheckCalendarAndOffer(cfg, run);
+    case "delay_execution":        return { ok: true, output: { delayed: true } };
     default: return { ok: false, error: `action_type desconhecido: ${actionType}` };
   }
 }

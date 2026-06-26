@@ -24,7 +24,8 @@ export type OrbitFlowActionType =
   | "toggle_ai_agent"
   | "notify_vendedor"
   | "send_rich_media"
-  | "check_calendar_and_offer";
+  | "check_calendar_and_offer"
+  | "delay_execution";
 
 export type OrbitFlowAction = {
   id: string;

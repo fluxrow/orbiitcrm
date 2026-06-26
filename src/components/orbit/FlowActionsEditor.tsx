@@ -24,6 +24,7 @@ import {
   BellRing,
   Paperclip,
   CalendarClock,
+  Timer,
   Pencil,
 } from "lucide-react";
 import {
@@ -73,6 +74,13 @@ const ACTION_CATALOG: ActionMeta[] = [
       mensagem: "Posso te oferecer estes horários para conversarmos:",
       rodape: "Responda com o número da opção que preferir. ✅",
     },
+  },
+  {
+    type: "delay_execution",
+    label: "Espera / Atraso temporário",
+    desc: "Pausa o fluxo por X minutos ou horas antes da próxima ação.",
+    icon: Timer,
+    defaultConfig: { wait_value: 10, wait_unit: "minutes" },
   },
   {
     type: "change_deal_stage",
@@ -267,6 +275,7 @@ function summarizeConfig(a: OrbitFlowAction): string {
     case "create_task": return `${c.titulo || "tarefa"} · ${c.prazo_dias ?? 1}d`;
     case "toggle_ai_agent": return c.human_talk ? "modo humano" : "modo IA";
     case "notify_vendedor": return `canal: ${c.canal || "email"}`;
+    case "delay_execution": return `aguarda ${c.wait_value ?? 0} ${c.wait_unit === "hours" ? "h" : "min"}`;
     default: return "";
   }
 }
@@ -528,6 +537,31 @@ function ActionEditDialog({
                 </SelectContent>
               </Select>
             </Field>
+          )}
+
+          {action.action_type === "delay_execution" && (
+            <div className="grid grid-cols-[1fr_140px] gap-2">
+              <Field label="Tempo de espera">
+                <Input
+                  type="number"
+                  min={1}
+                  value={cfg.wait_value ?? 10}
+                  onChange={(e) => setCfg({ ...cfg, wait_value: Math.max(1, Number(e.target.value || 1)) })}
+                />
+              </Field>
+              <Field label="Unidade">
+                <Select
+                  value={cfg.wait_unit ?? "minutes"}
+                  onValueChange={(v) => setCfg({ ...cfg, wait_unit: v })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="minutes">Minutos</SelectItem>
+                    <SelectItem value="hours">Horas</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
           )}
         </div>
         <DialogFooter>
