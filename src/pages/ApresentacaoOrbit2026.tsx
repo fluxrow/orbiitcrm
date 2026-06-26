@@ -669,13 +669,16 @@ function WhatsApp() {
 
         <motion.div variants={fadeUp} className="order-1 lg:order-2">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            06 · WhatsApp em escala
+            06 · WhatsApp
           </span>
           <h2 className="mt-3 text-4xl md:text-5xl font-bold text-white leading-tight">
-            Mil conversas ao mesmo tempo.
+            Seu agendador pessoal
             <br />
-            <span className="text-white/50">Zero conversas esquecidas.</span>
+            <span className="text-white/50">que persegue o lead até a call ser confirmada.</span>
           </h2>
+          <p className="mt-6 text-white/60 leading-relaxed">
+            Manda texto, áudio na sua voz, foto e PDF — no ritmo de gente, sem padrão de robô que bloqueia o número.
+          </p>
 
           <div className="mt-8 grid grid-cols-2 gap-4">
             <div className={`${glass} p-5`}>
