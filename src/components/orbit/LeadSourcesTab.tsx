@@ -199,6 +199,7 @@ export function LeadSourcesTab({ empresaId }: { empresaId: string | null | undef
         onCreated={(s) => setEditing(s)}
       />
       <LeadSourceEditorDialog source={editing} onClose={() => setEditing(null)} />
+      <LeadSourceTutorialDialog kind={tutorial} onClose={() => setTutorial(null)} />
     </div>
   );
 }
