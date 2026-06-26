@@ -46,6 +46,7 @@ export function FluxosTab({ empresaId }: { empresaId: string | null | undefined 
   const [wizardOpen, setWizardOpen] = useState(false);
   const [historyFlow, setHistoryFlow] = useState<OrbitFlow | null>(null);
   const [conditionsFlow, setConditionsFlow] = useState<OrbitFlow | null>(null);
+  const [actionsFlow, setActionsFlow] = useState<OrbitFlow | null>(null);
 
   const { data: flows, isLoading } = useOrbitFlows(empresaId);
   const toggle = useToggleFlow();
