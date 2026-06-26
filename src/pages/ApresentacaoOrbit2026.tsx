@@ -519,12 +519,12 @@ function Qualificacao() {
    ============================================================ */
 function Personalizacao() {
   const cards = [
-    { icon: Brain, t: "Treinada na sua empresa", d: "Base de conhecimento própria. Produtos, preços, objeções, tom de voz — tudo da sua marca." },
-    { icon: Mic, t: "Áudios na sua voz", d: "Biblioteca de áudios pré-gravados. O cliente ouve seu vendedor, não uma IA genérica." },
-    { icon: GitBranch, t: "Fluxos condicionais", d: "Palavras-chave disparam respostas específicas. 'preço', 'agenda', 'cancelar' — cada uma com seu caminho." },
-    { icon: Users, t: "Handoff humano", d: "A IA sabe quando recuar. Passa o bastão pro humano em momentos críticos, sem perder contexto." },
-    { icon: Target, t: "Personas múltiplas", d: "Comporta lead B2B, B2C, suporte e SDR — cada conversa com a personalidade certa." },
-    { icon: Sparkles, t: "Aprende com você", d: "Sugestões de resposta, refino de tom, ajustes finos. A cada semana ela fica mais sua." },
+    { icon: Brain, t: "Treinada na sua mentoria", d: "Sabe seu método, seus preços, suas objeções e o tom da sua marca — fala como se fosse você." },
+    { icon: Mic, t: "Áudios na sua voz", d: "Biblioteca de áudios pré-gravados. O lead ouve você, não uma voz genérica de robô." },
+    { icon: GitBranch, t: "Resposta certa pra cada situação", d: "Lead pergunta preço? Pede agenda? Quer cancelar? Cada situação tem o caminho que você definir." },
+    { icon: Users, t: "Te chama quando precisa", d: "A IA sabe a hora de recuar. Te aciona na hora certa, com todo o contexto da conversa." },
+    { icon: Target, t: "Vários públicos, uma só voz", d: "Atende lead frio, lead aquecido, cliente e dúvida — cada conversa com o tom certo." },
+    { icon: Sparkles, t: "Fica mais sua a cada semana", d: "Sugere respostas, refina o tom, aprende com seu feedback. Mês 3 é melhor que mês 1." },
   ];
 
   return (
@@ -543,7 +543,7 @@ function Personalizacao() {
             Não é um chatbot genérico.
             <br />
             <span className="bg-gradient-to-r from-emerald-400 to-violet-400 bg-clip-text text-transparent">
-              É a sua empresa falando.
+              É a sua mentoria falando.
             </span>
           </h2>
         </motion.div>
