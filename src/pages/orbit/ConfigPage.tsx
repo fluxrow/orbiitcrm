@@ -1856,9 +1856,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
           </TabsContent>
         )}
         <TabsContent value="flow-templates">
-          <SuperAdminOnly fallback={<p className="text-sm text-muted-foreground">Restrito a Super Admin.</p>}>
-            <FlowTemplatesManager />
-          </SuperAdminOnly>
+          <FlowTemplatesManager />
         </TabsContent>
         <TabsContent value="health">
           <SuperAdminOnly fallback={<p className="text-sm text-muted-foreground">Restrito a Super Admin.</p>}>
