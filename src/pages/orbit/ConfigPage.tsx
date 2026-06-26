@@ -124,6 +124,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
   const [importProgress, setImportProgress] = useState(0);
   const [isImporting, setIsImporting] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [rateForm, setRateForm] = useState({
     min_delay_ms: 1500,
     max_delay_ms: 3500,
