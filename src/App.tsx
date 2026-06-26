@@ -171,6 +171,7 @@ const AppRoutes = () => (
   <Routes>
     {/* Public routes with hotsite header */}
     <Route element={<PublicLayout />}>
+      <Route path="/" element={<LandingPage />} />
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/documentacao" element={<DocumentacaoPage />} />
       <Route path="/setup" element={<SetupPage />} />
@@ -182,7 +183,6 @@ const AppRoutes = () => (
       <Route path="/terms" element={<TermsPage />} />
     </Route>
 
-    <Route path="/" element={<LandingPage />} />
     <Route path="/funil" element={<DefaultFunilRedirect />} />
 
     {/* Empresa selector (post-login, when user belongs to >1 empresa) */}
