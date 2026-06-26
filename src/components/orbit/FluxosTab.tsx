@@ -181,7 +181,9 @@ function NewFlowWizard({
                   { empresaId, template: t },
                   {
                     onSuccess: () => {
-                      toast.success(`Fluxo "${t.nome}" criado (inativo)`);
+                      toast.success("Template carregado!", {
+                        description: "O editor de fluxos estará disponível em breve. Seu fluxo foi criado inativo.",
+                      });
                       onOpenChange(false);
                     },
                     onError: (e: any) => toast.error(`Erro: ${e.message}`),
