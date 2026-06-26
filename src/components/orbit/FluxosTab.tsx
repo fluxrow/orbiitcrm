@@ -5,8 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Zap, History, Trash2, Play, AlertCircle, CheckCircle2, Clock, Filter } from "lucide-react";
+import { Plus, Zap, History, Trash2, Play, AlertCircle, CheckCircle2, Clock, Filter, ListChecks } from "lucide-react";
 import { FlowConditionsDialog } from "./FlowConditionsDialog";
+import { FlowActionsEditor } from "./FlowActionsEditor";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -45,6 +46,7 @@ export function FluxosTab({ empresaId }: { empresaId: string | null | undefined 
   const [wizardOpen, setWizardOpen] = useState(false);
   const [historyFlow, setHistoryFlow] = useState<OrbitFlow | null>(null);
   const [conditionsFlow, setConditionsFlow] = useState<OrbitFlow | null>(null);
+  const [actionsFlow, setActionsFlow] = useState<OrbitFlow | null>(null);
 
   const { data: flows, isLoading } = useOrbitFlows(empresaId);
   const toggle = useToggleFlow();
@@ -114,6 +116,9 @@ export function FluxosTab({ empresaId }: { empresaId: string | null | undefined 
                     <Button variant="ghost" size="icon" title="Condições" onClick={() => setConditionsFlow(f)}>
                       <Filter className="h-4 w-4" />
                     </Button>
+                    <Button variant="ghost" size="icon" title="Ações" onClick={() => setActionsFlow(f)}>
+                      <ListChecks className="h-4 w-4" />
+                    </Button>
                     <Button variant="ghost" size="icon" title="Histórico" onClick={() => setHistoryFlow(f)}>
                       <History className="h-4 w-4" />
                     </Button>
@@ -148,6 +153,7 @@ export function FluxosTab({ empresaId }: { empresaId: string | null | undefined 
         empresaId={empresaId}
         onClose={() => setConditionsFlow(null)}
       />
+      <FlowActionsEditor flow={actionsFlow} onClose={() => setActionsFlow(null)} />
     </div>
   );
 }
