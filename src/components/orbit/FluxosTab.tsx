@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Zap, History, Trash2, Play, AlertCircle, CheckCircle2, Clock } from "lucide-react";
+import { Plus, Zap, History, Trash2, Play, AlertCircle, CheckCircle2, Clock, Filter } from "lucide-react";
+import { FlowConditionsDialog } from "./FlowConditionsDialog";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
