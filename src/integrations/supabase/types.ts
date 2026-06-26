@@ -4373,6 +4373,7 @@ export type Database = {
         | "conversa_no_reply"
         | "meeting_reminder_24h"
         | "meeting_reminder_1h"
+        | "lead_recebido"
       orbit_onboarding_status:
         | "rascunho"
         | "enviado"
@@ -4529,6 +4530,7 @@ export const Constants = {
         "conversa_no_reply",
         "meeting_reminder_24h",
         "meeting_reminder_1h",
+        "lead_recebido",
       ],
       orbit_onboarding_status: [
         "rascunho",
