@@ -12,8 +12,6 @@ import {
   ArrowRight,
   Brain,
   ShieldCheck,
-  Activity,
-  Lock,
 } from "lucide-react";
 import {
   Accordion,
