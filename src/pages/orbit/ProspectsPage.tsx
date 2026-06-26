@@ -358,6 +358,15 @@ export default function ProspectsPage() {
                   onAddToFunnel={(pr) => { setFunnelProspects([pr]); setFunnelOpen(true); }}
                   onSchedule={(pr) => { setScheduleProspect(pr); setScheduleOpen(true); }}
                   onViewHistory={(pr) => { setTimelineProspect(pr); setTimelineOpen(true); }}
+                  onDelete={async (pr) => {
+                    try {
+                      await deleteProspect.mutateAsync(pr.id);
+                      toast.success("Prospect excluído");
+                      setSelectedIds((prev) => { const n = new Set(prev); n.delete(pr.id); return n; });
+                    } catch (err: any) {
+                      toast.error("Erro ao excluir prospect", { description: err?.message });
+                    }
+                  }}
                 />
               ))}
             </div>

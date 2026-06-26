@@ -5,7 +5,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useEmpresaVendedores } from "@/hooks/useEmpresaVendedores";
 import { useTenant } from "@/contexts/TenantContext";
 import { MeetingSchedulerDialog } from "./MeetingSchedulerDialog";
-import { CalendarClock } from "lucide-react";
+import { CalendarClock, Trash2 } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -34,7 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useCreateProspect, useUpdateProspect } from "@/hooks/useOrbitProspects";
+import { useCreateProspect, useUpdateProspect, useDeleteProspect } from "@/hooks/useOrbitProspects";
 import { toast } from "sonner";
 import type { Tables } from "@/integrations/supabase/types";
 
@@ -86,9 +90,11 @@ const whatsappStatusLabel: Record<string, { label: string; className: string }> 
 export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogProps) {
   const createProspect = useCreateProspect();
   const updateProspect = useUpdateProspect();
+  const deleteProspect = useDeleteProspect();
   const { data: vendedores } = useEmpresaVendedores();
   const isEditing = !!prospect;
   const [meetingOpen, setMeetingOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // CRITICAL: empresa from URL tenant — not from profiles.empresa_id.
   const { empresaId: tenantEmpresaId } = useTenant();
@@ -463,15 +469,26 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
 
             <div className="flex justify-between gap-2 pt-4">
               {isEditing && prospect ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setMeetingOpen(true)}
-                  className="border-[#f9b217]/50 hover:bg-[#f9b217]/10"
-                >
-                  <CalendarClock className="h-4 w-4 mr-1.5" style={{ color: "#f9b217" }} />
-                  Agendar reunião
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setMeetingOpen(true)}
+                    className="border-[#f9b217]/50 hover:bg-[#f9b217]/10"
+                  >
+                    <CalendarClock className="h-4 w-4 mr-1.5" style={{ color: "#f9b217" }} />
+                    Agendar reunião
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setConfirmDelete(true)}
+                    className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1.5" />
+                    Excluir
+                  </Button>
+                </div>
               ) : (
                 <span />
               )}
@@ -505,6 +522,39 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
             prospectId={prospect.id}
             defaultTitle={`Reunião — ${prospect.nome_fantasia || prospect.nome_razao}`}
           />
+        )}
+
+        {isEditing && prospect && (
+          <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-destructive">Excluir prospect?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Tem certeza que deseja excluir <strong>{prospect.nome_razao}</strong>? Esta ação apagará todo o histórico do lead e <strong>não pode ser desfeita</strong>.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  disabled={deleteProspect.isPending}
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    try {
+                      await deleteProspect.mutateAsync(prospect.id);
+                      toast.success("Prospect excluído");
+                      setConfirmDelete(false);
+                      onOpenChange(false);
+                    } catch (err: any) {
+                      toast.error("Erro ao excluir prospect", { description: err?.message });
+                    }
+                  }}
+                >
+                  {deleteProspect.isPending ? "Excluindo..." : "Excluir permanentemente"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
       </DialogContent>
     </Dialog>
