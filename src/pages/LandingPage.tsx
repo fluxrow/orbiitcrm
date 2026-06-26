@@ -277,8 +277,8 @@ function ChaosSide() {
       </div>
 
       <p className="relative mt-7 text-white/70 text-base md:text-lg leading-relaxed">
-        Você gasta horas qualificando na mão, esquece do follow-up e o lead{" "}
-        <span className="text-rose-300 font-medium">esfria</span>.
+        Você responde 2h depois e o lead já comprou do concorrente. O dinheiro do anúncio{" "}
+        <span className="text-rose-300 font-medium">vira prejuízo</span>.
       </p>
     </div>
   );
