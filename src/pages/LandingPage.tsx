@@ -617,36 +617,36 @@ function Diferenciais() {
    ============================================================ */
 const FAQ = [
   {
-    q: "Como o Orbit lida com o webhook do meu Typebot?",
-    a: "Recebemos o payload bruto, normalizamos os campos (WhatsApp, CPF/CNPJ, e-mail) e ainda preservamos qualquer campo extra em JSONB para você filtrar depois — utm_source, utm_campaign, respostas customizadas, tudo continua acessível por condição de fluxo.",
+    q: "Funciona pra quem vende ticket de R$ 5k a R$ 50k?",
+    a: "Sim — o Orbit foi pensado exatamente pra esse perfil. Mentorias, consultorias e serviços High-Ticket onde cada call de fechamento perdida representa muito dinheiro. Quanto mais alto o ticket, maior o ROI de não deixar lead esfriar.",
   },
   {
-    q: "Como a latência afeta minha taxa de fechamento?",
-    a: "Estudos do MIT mostram queda de até 80% na conversão depois dos 5 minutos. Nossas Edge Functions respondem em sub-segundo, então o lead recebe o primeiro contato enquanto a intenção ainda está quente — o que muda o jogo no High-Ticket.",
+    q: "Preciso saber mexer em tecnologia?",
+    a: "Não. A gente implanta tudo pra você em 15 dias: conecta seu WhatsApp, treina a IA com a sua linguagem, sobe sua base antiga e deixa rodando. Você só precisa atender a call de fechamento quando ela cair na sua agenda.",
   },
   {
-    q: "Os dados da minha mentoria ficam isolados de outras contas?",
-    a: "Sim, por arquitetura. Cada empresa tem isolamento via Row-Level Security (RLS) no banco — nenhuma query consegue cruzar fronteira de tenant, mesmo via bug de aplicação. Isolamento é da infraestrutura, não da configuração.",
+    q: "Em quantos dias minha agenda começa a encher?",
+    a: "A maioria dos clientes vê as primeiras calls confirmadas na primeira semana após o go-live. Em 30 dias, já tem agenda cheia rodando no piloto automático — sem você precisar responder WhatsApp à noite.",
   },
   {
-    q: "Posso usar minha planilha do Google Sheets como fonte de leads?",
-    a: "Sim. Instalamos um Apps Script que envia cada nova linha para o webhook do Orbit em tempo real. Sua planilha vira uma fonte de leads tratada igual a Typebot ou Meta Ads — com mapeamento de colunas e validação automática.",
+    q: "E se o lead não responder à primeira mensagem?",
+    a: "O Orbit não desiste. Faz a perseguição em vários toques (mensagem, áudio, lembrete) com ritmo humano, espaçados ao longo de dias. Recupera muito lead que sua equipe humana já tinha desistido.",
   },
   {
-    q: "O agendamento no Google Calendar é nativo?",
-    a: "Sim. Conectamos via OAuth e consultamos a FreeBusy do mentor antes de oferecer horários ao lead, criando o evento no calendário com convite por e-mail. Sem ferramenta intermediária, sem link genérico de Calendly.",
+    q: "Funciona com meu Google Calendar atual?",
+    a: "Sim, nativo. Conectamos com OAuth, olhamos sua disponibilidade real antes de oferecer horário ao lead e criamos o evento direto no seu calendário com convite por e-mail. Sem Calendly no meio.",
   },
   {
-    q: "Como vocês evitam o bloqueio do meu WhatsApp?",
-    a: "Cadência humanizada com delays aleatórios, controle de volume por hora, validação de número antes do disparo e suporte a mídia rica (áudio, vídeo, PDF) — que reduz padrões de spam. Conectamos via API oficial (Z-API).",
+    q: "Posso importar meus leads antigos?",
+    a: "Sim. Você sobe seu Excel/CSV em 5 minutos, a gente mapeia as colunas e o Orbit começa a trabalhar essa base. Lead antigo que estava esfriando volta a virar oportunidade de venda.",
   },
   {
-    q: "Consigo enviar PDFs, áudios e vídeos pela automação?",
-    a: "Sim. As ações inteligentes suportam mídia rica como anexo nativo — você sobe o ebook, o áudio na sua voz ou o vídeo de captação e ele entra como passo de fluxo, não como link externo.",
+    q: "E se eu já uso outra ferramenta de WhatsApp?",
+    a: "A gente migra. Seu número, seu histórico de conversas e seus contatos vêm com você — sem perder nada. O Orbit assume a operação e a outra ferramenta sai de cena.",
   },
   {
-    q: "Como acompanho a saúde técnica da operação?",
-    a: "Tem um painel de observabilidade dentro do Orbit com latência das Edge Functions, taxa de sucesso por automação e log detalhado de cada webhook recebido. Você opera vendo a saúde do sistema, não esperando o lead reclamar.",
+    q: "Meus dados ficam seguros?",
+    a: "Sim. Cada mentoria tem seus dados completamente isolados — leads, conversas e calls da sua operação nunca cruzam com outra conta. Tudo criptografado, com backups automáticos.",
   },
 ];
 
