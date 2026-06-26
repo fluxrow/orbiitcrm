@@ -365,6 +365,65 @@ function ChatBubble({
   );
 }
 
+/* ============================================================
+   INFRAESTRUTURA ENTERPRISE — 5 pilares
+   ============================================================ */
+function Infraestrutura() {
+  return (
+    <Section id="infraestrutura">
+      <motion.div
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: "-100px" }}
+        variants={stagger}
+      >
+        <motion.div variants={fadeUp} className="mb-14 text-center">
+          <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
+            03 · Infraestrutura Enterprise
+          </span>
+          <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
+            Cinco pilares que sustentam
+            <br />
+            <span className="bg-gradient-to-r from-emerald-400 to-violet-400 bg-clip-text text-transparent">
+              a operação de quem vende sério.
+            </span>
+          </h2>
+          <p className="mt-6 text-lg text-white/60 max-w-2xl mx-auto leading-relaxed">
+            Não é template. É a infraestrutura que faz o lead do anúncio virar call confirmada — com o nível de engenharia de um Stripe ou Twilio.
+          </p>
+        </motion.div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {PILLARS.map((p, i) => (
+            <motion.div
+              key={i}
+              variants={fadeUp}
+              whileHover={{ y: -6 }}
+              className={`${glass} p-7 hover:border-emerald-400/30 transition-colors group flex flex-col`}
+            >
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500/20 to-violet-500/20 border border-white/10 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
+                <p.icon className="w-5 h-5 text-emerald-300" />
+              </div>
+              <h3 className="text-white text-lg font-semibold mb-2">{p.title}</h3>
+              <p className="text-white/60 text-sm leading-relaxed flex-1">{p.description}</p>
+              <div className="mt-5 flex flex-wrap gap-1.5">
+                {p.stack.map((s) => (
+                  <span
+                    key={s}
+                    className="px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/10 text-[10px] uppercase tracking-wider text-white/60"
+                  >
+                    {s}
+                  </span>
+                ))}
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </motion.div>
+    </Section>
+  );
+}
+
 function Qualificacao() {
   const messages = [
     { from: "lead" as const, text: "Oi! Vi o anúncio de vocês no Instagram 👋", delay: 0.2 },
