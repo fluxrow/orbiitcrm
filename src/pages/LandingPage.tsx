@@ -347,7 +347,7 @@ function OrbitSide() {
       <p className="relative mt-7 text-white/80 text-base md:text-lg leading-relaxed">
         O Orbit qualifica, persegue e agenda.{" "}
         <span className="text-emerald-300 font-medium">
-          A call cai na sua agenda. Dinheiro no bolso.
+          A call cai na sua agenda. A venda entra no seu caixa.
         </span>
       </p>
     </div>
