@@ -48,13 +48,14 @@ const whatsappStatusConfig: Record<string, { label: string; className: string }>
 
 export function ProspectActionCard({
   prospect, isConverted, isSelected, onToggleSelect, onEdit,
-  onWhatsApp, onEmail, onAddNote, onCreateTask, onAddToFunnel, onSchedule, onViewHistory,
+  onWhatsApp, onEmail, onAddNote, onCreateTask, onAddToFunnel, onSchedule, onViewHistory, onDelete,
 }: ProspectActionCardProps) {
   const status = statusConfig[prospect.status_qualificacao || ""] || statusConfig.novo;
   const isHot = (prospect.score || 0) > 70;
   const hasAnyPhone = !!(prospect.whatsapp || prospect.telefone);
   const isUnverified = prospect.whatsapp_status !== "valido";
   const wsStatus = whatsappStatusConfig[prospect.whatsapp_status || "nao_verificado"] || whatsappStatusConfig.nao_verificado;
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
     <div data-prospect-id={prospect.id} className="glass-card p-4 hover:border-primary/50 transition-all duration-200 animate-slide-in group relative">
