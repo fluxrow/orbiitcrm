@@ -1023,20 +1023,20 @@ function Fechamento() {
           variants={fadeUp}
           className="text-5xl md:text-7xl lg:text-8xl font-bold text-white leading-[1.05] max-w-5xl mx-auto"
         >
-          Cada dia sem Orbit
+          Operação enterprise,
           <br />
-          <span className="bg-gradient-to-r from-red-400 via-amber-300 to-emerald-400 bg-clip-text text-transparent">
-            é dinheiro de anúncio
+          <span className="bg-gradient-to-r from-emerald-400 via-cyan-300 to-violet-400 bg-clip-text text-transparent">
+            preço de startup.
           </span>
           <br />
-          <span className="text-white/60">indo pro lixo.</span>
+          <span className="text-white/60">Sem improviso, sem planilha.</span>
         </motion.h2>
 
         <motion.p
           variants={fadeUp}
           className="mt-10 text-xl text-white/60 max-w-2xl mx-auto"
         >
-          A boa notícia? Em 15 dias isso pode mudar.
+          Em 15 dias a infraestrutura está rodando — captando, qualificando e agendando sozinha.
         </motion.p>
 
         <motion.div variants={fadeUp} className="mt-16 flex flex-col items-center gap-4">
