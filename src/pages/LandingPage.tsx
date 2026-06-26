@@ -507,10 +507,10 @@ function Timeline() {
             03 · Como funciona
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
-            Do formulário
+            Do anúncio
             <br />
             <span className="bg-gradient-to-r from-emerald-400 to-violet-400 bg-clip-text text-transparent">
-              à call confirmada.
+              à call de fechamento.
             </span>
           </h2>
         </motion.div>
