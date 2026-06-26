@@ -884,12 +884,15 @@ function Investimento() {
             10 · Investimento
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
-            Quanto custa
+            O que você perde por mês
             <br />
             <span className="bg-gradient-to-r from-emerald-400 to-violet-400 bg-clip-text text-transparent">
-              parar de perder vendas?
+              é maior que o Orbit por ano.
             </span>
           </h2>
+          <p className="mt-6 text-lg text-white/60 max-w-2xl mx-auto leading-relaxed">
+            Uma call de fechamento perdida já paga a mensalidade inteira. O Orbit recupera várias por semana.
+          </p>
         </motion.div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
