@@ -935,7 +935,7 @@ function Investimento() {
               <div className="mt-6">
                 <div className="text-xs text-white/40 uppercase tracking-wider">Mensalidade</div>
                 <div className="text-6xl font-bold tabular-nums mt-1 bg-gradient-to-r from-emerald-300 to-violet-300 bg-clip-text text-transparent">
-                  R$ 1.197
+                  R$ 1.200
                 </div>
                 <div className="text-white/50 text-sm mt-2">por mês{"\u00a0"}</div>
               </div>
