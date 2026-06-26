@@ -68,10 +68,10 @@ export function useOrbitFlowTemplates() {
   return useQuery({
     queryKey: ["orbit-flow-templates"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("orbit_flow_templates" as any)
+      const { data, error } = await (supabase
+        .from("orbit_flow_templates" as any) as any)
         .select("*")
-        .eq("ativo" as any, true)
+        .eq("ativo", true)
         .order("nome");
       if (error) throw error;
       return (data ?? []) as unknown as OrbitFlowTemplate[];
