@@ -30,6 +30,7 @@ interface ProspectActionCardProps {
   onAddToFunnel: (prospect: any) => void;
   onSchedule: (prospect: any) => void;
   onViewHistory: (prospect: any) => void;
+  onDelete?: (prospect: any) => void;
 }
 
 const statusConfig: Record<string, { label: string; className: string }> = {
