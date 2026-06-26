@@ -114,21 +114,21 @@ function Hero() {
           className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm text-white/70 backdrop-blur-xl"
         >
           <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-          Orbit CRM{"\u00a0"}
+          Orbit · O agendador das mentorias High-Ticket
         </motion.div>
 
         <motion.h1
           variants={fadeUp}
           className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight text-white leading-[1.05]"
         >
-          Infraestrutura comercial
+          A agenda cheia
           <br />
           <span className="bg-gradient-to-r from-emerald-400 via-cyan-300 to-violet-400 bg-clip-text text-transparent">
-            no nível das maiores.
+            das mentorias que faturam.
           </span>
           <br />
           <span className="text-white/60 text-3xl md:text-5xl lg:text-6xl font-light">
-            Pensada para a sua mentoria.
+            Lead do anúncio → call de fechamento.
           </span>
         </motion.h1>
 
@@ -136,8 +136,8 @@ function Hero() {
           variants={fadeUp}
           className="max-w-2xl text-lg md:text-xl text-white/60 leading-relaxed"
         >
-          Captação multicanal, motor de fluxos em tempo real e observabilidade enterprise —{" "}
-          <span className="text-white/90 font-medium">a confiabilidade de um SaaS de produto, na operação do mentor.</span>
+          O Orbit persegue cada lead que entra no seu anúncio até a call cair no seu Google Calendar.{" "}
+          <span className="text-white/90 font-medium">Você só entra na hora da venda.</span>
         </motion.p>
 
         <motion.div
