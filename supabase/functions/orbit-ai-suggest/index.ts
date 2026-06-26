@@ -24,19 +24,44 @@ serve(async (req) => {
 
     const { conversa_id, prospect_id, ultima_mensagem } = await req.json();
 
-    // Buscar config IA
-    const { data: aiConfig } = await supabase.from("orbit_ai_config").select("*").maybeSingle();
+    // Resolver empresa_id do usuário autenticado
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("empresa_id")
+      .eq("id", claims.user.id)
+      .maybeSingle();
+    const empresaId = profile?.empresa_id;
+    if (!empresaId) {
+      return fail(ErrorCodes.UNAUTHORIZED, "Usuário sem empresa associada", 403);
+    }
 
-    // Buscar prospect
-    const { data: prospect } = await supabase.from("orbit_prospects").select("*").eq("id", prospect_id).maybeSingle();
+    // Buscar config IA (escopo da empresa do usuário)
+    const { data: aiConfig } = await supabase
+      .from("orbit_ai_config")
+      .select("*")
+      .eq("empresa_id", empresaId)
+      .maybeSingle();
 
-    // Buscar histórico
+    // Buscar prospect (validando que pertence à empresa do usuário)
+    const { data: prospect } = await supabase
+      .from("orbit_prospects")
+      .select("*")
+      .eq("id", prospect_id)
+      .eq("empresa_id", empresaId)
+      .maybeSingle();
+    if (!prospect) {
+      return fail(ErrorCodes.NOT_FOUND, "Prospect não encontrado", 404);
+    }
+
+    // Buscar histórico (escopo da empresa do usuário)
     const { data: mensagens } = await supabase
       .from("orbit_mensagens")
       .select("direcao, mensagem, timestamp")
       .eq("conversa_id", conversa_id)
+      .eq("empresa_id", empresaId)
       .order("timestamp", { ascending: false })
       .limit(10);
+
 
     const historicoFormatado = (mensagens || [])
       .reverse()

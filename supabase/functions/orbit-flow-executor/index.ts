@@ -287,9 +287,20 @@ async function runAction(actionType: string, cfg: Json, run: Json): Promise<Step
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  // Internal-only: require service-role bearer token
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (!token || token !== SERVICE_KEY) {
+    return new Response(JSON.stringify({ ok: false, data: null, error: "unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   try {
     const { run_id } = await req.json();
     if (!run_id) throw new Error("run_id obrigatório");
+
 
     const { data: run, error: runErr } = await supabase
       .from("orbit_flow_runs")
