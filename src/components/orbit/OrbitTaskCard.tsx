@@ -49,7 +49,7 @@ export function OrbitTaskCard({ task, onComplete, onEdit, onOpenProspect }: Orbi
       }}
       onDragEnd={() => setIsDragging(false)}
       className={cn(
-      "rounded-lg border p-3 space-y-2 transition-all hover:shadow-md cursor-grab active:cursor-grabbing",
+      "rounded-lg border p-4 space-y-3 transition-all hover:shadow-md cursor-grab active:cursor-grabbing w-full min-w-0 overflow-hidden",
       isDragging && "opacity-50",
       isCompleted && "opacity-60 bg-muted/30",
       isOverdue && "border-destructive/50 bg-destructive/5",
@@ -59,9 +59,16 @@ export function OrbitTaskCard({ task, onComplete, onEdit, onOpenProspect }: Orbi
     )}>
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-sm">{tipoIcons[task.tipo_tarefa] || "✅"}</span>
-          <h4 className={cn("text-sm font-medium truncate", isCompleted && "line-through")}>{task.titulo}</h4>
+        <div className="flex items-start gap-2 min-w-0 flex-1">
+          <span className="text-sm leading-5 shrink-0">{tipoIcons[task.tipo_tarefa] || "✅"}</span>
+          <h4
+            className={cn(
+              "text-sm font-medium leading-snug break-words [overflow-wrap:anywhere] min-w-0 flex-1",
+              isCompleted && "line-through",
+            )}
+          >
+            {task.titulo}
+          </h4>
         </div>
         <Badge variant="outline" className={cn("text-[10px] shrink-0", priorityColors[task.prioridade])}>
           {priorityLabels[task.prioridade] || task.prioridade}
@@ -70,13 +77,13 @@ export function OrbitTaskCard({ task, onComplete, onEdit, onOpenProspect }: Orbi
 
       {/* Prospect */}
       {task.prospect?.nome_razao && (
-        <p className="text-xs text-muted-foreground truncate">
+        <p className="text-xs text-muted-foreground break-words [overflow-wrap:anywhere]">
           👤 {task.prospect.nome_razao}
         </p>
       )}
 
       {/* Meta */}
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+      <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-xs text-muted-foreground">
         {task.due_date && (
           <span className={cn("flex items-center gap-1", isOverdue && "text-destructive font-medium")}>
             <Calendar className="w-3 h-3" />
@@ -87,16 +94,16 @@ export function OrbitTaskCard({ task, onComplete, onEdit, onOpenProspect }: Orbi
           </span>
         )}
         {task.assignee?.nome && (
-          <span className="flex items-center gap-1 truncate">
-            <User className="w-3 h-3" />
-            {task.assignee.nome}
+          <span className="flex items-center gap-1 min-w-0 max-w-full">
+            <User className="w-3 h-3 shrink-0" />
+            <span className="truncate">{task.assignee.nome}</span>
           </span>
         )}
       </div>
 
       {/* Actions */}
       {!isCompleted && (
-        <div className="flex items-center gap-1 pt-1">
+        <div className="flex items-center gap-1 pt-1 flex-wrap">
           <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={() => onComplete(task)}>
             <Check className="w-3 h-3" /> Concluir
           </Button>
