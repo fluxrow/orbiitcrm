@@ -13,7 +13,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useOrbitLeadSources } from "@/hooks/useOrbitLeadSources";
 import type { OrbitFlow } from "@/hooks/useOrbitFlows";
 
-type PayloadMatch = { key: string; value: string };
+type PayloadMatch = { uid: string; key: string; value: string };
+
+const newUid = () =>
+  (typeof crypto !== "undefined" && (crypto as any).randomUUID)
+    ? (crypto as any).randomUUID()
+    : `r_${Math.random().toString(36).slice(2)}_${Date.now()}`;
 
 type Conditions = {
   source_id?: string;
