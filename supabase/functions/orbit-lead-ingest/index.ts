@@ -295,6 +295,41 @@ Deno.serve(async (req) => {
 
   await logWebhook(sourceId, "ok", { prospect_id: prospectId, created });
 
+  // 9) Emite evento `lead_recebido` no motor de fluxos (Etapa B)
+  const eventPayload = {
+    source_id: sourceId,
+    source_tipo: source.tipo,
+    prospect_id: prospectId,
+    created,
+    nome,
+    telefone,
+    email,
+    documento: docFinal,
+    raw: payload,
+  };
+  const dedupeKey = `lead_recebido:${sourceId}:${prospectId}:${created ? "new" : "merge"}:${Date.now()}`;
+  const { error: evErr } = await supabase.from("orbit_flow_events").insert({
+    empresa_id: source.empresa_id,
+    event_type: "lead_recebido",
+    entity_type: "prospect",
+    entity_id: prospectId,
+    payload: eventPayload,
+    dedupe_key: dedupeKey,
+  });
+  if (evErr) {
+    console.error("[lead-ingest] flow event insert error", evErr);
+  } else {
+    // fire-and-forget: aciona o dispatcher para latência baixa (cron cobre em ≤1min)
+    fetch(`${SUPABASE_URL}/functions/v1/orbit-flow-dispatcher`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SERVICE_KEY}`,
+      },
+      body: JSON.stringify({ trigger: "lead-ingest", event_type: "lead_recebido" }),
+    }).catch((e) => console.error("[lead-ingest] dispatcher invoke error", e));
+  }
+
   return ok(
     {
       prospect_id: prospectId,
@@ -302,6 +337,7 @@ Deno.serve(async (req) => {
       source_id: sourceId,
       empresa_id: source.empresa_id,
       normalized: { nome, telefone, email, documento: docFinal, tipo_documento: tipoDoc },
+      flow_event_emitted: !evErr,
     },
     { source_tipo: source.tipo },
     req,

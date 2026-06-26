@@ -20,16 +20,39 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
 type Json = Record<string, unknown>;
 
 function matchesConditions(condicoes: Json, payload: Json, triggerConfig: Json, eventType: string): boolean {
-  if (!condicoes || Object.keys(condicoes).length === 0) {
-    // still check trigger_config restrictions (e.g. to_stage_id for deal_stage_changed)
-  }
   // deal_stage_changed: trigger_config may carry to_stage_id or to_stage_name
   if (eventType === "deal_stage_changed") {
     const toId = triggerConfig?.to_stage_id;
     if (toId && payload?.to_stage_id !== toId) return false;
   }
-  // generic condition filters
-  const c = condicoes ?? {};
+
+  const c = (condicoes ?? {}) as Record<string, any>;
+
+  // lead_recebido: filtros específicos da Etapa B
+  if (eventType === "lead_recebido") {
+    if (c.source_id && payload?.source_id !== c.source_id) return false;
+    if (c.source_tipo && payload?.source_tipo !== c.source_tipo) return false;
+    if (c.only_new === true && payload?.created !== true) return false;
+    if (c.require_telefone === true && !payload?.telefone) return false;
+    if (c.require_email === true && !payload?.email) return false;
+    if (c.require_documento === true && !payload?.documento) return false;
+    // payload_match: { "raw.campo": "valor" } — verifica chaves arbitrárias no payload bruto
+    if (c.payload_match && typeof c.payload_match === "object") {
+      const raw = (payload?.raw ?? {}) as Record<string, any>;
+      for (const [k, v] of Object.entries(c.payload_match)) {
+        // suporta "raw.foo" ou "foo" (assume raw)
+        const key = k.startsWith("raw.") ? k.slice(4) : k;
+        const actual = raw[key];
+        if (Array.isArray(v)) {
+          if (!v.includes(actual)) return false;
+        } else if (String(actual ?? "") !== String(v)) {
+          return false;
+        }
+      }
+    }
+  }
+
+  // generic condition filters (compat com triggers existentes)
   if (c.pipeline_stage_id && payload?.to_stage_id !== c.pipeline_stage_id) return false;
   if (c.origem && payload?.origem !== c.origem) return false;
   if (typeof c.valor_estimado_min === "number" && Number(payload?.valor_estimado ?? 0) < c.valor_estimado_min) return false;

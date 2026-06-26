@@ -12,6 +12,12 @@ export const TRIGGER_CATALOG: Array<{
   entityType: string;
 }> = [
   {
+    type: "lead_recebido" as FlowTriggerType,
+    label: "Lead recebido (ingestão externa)",
+    description: "Disparado quando um lead é ingerido via Typebot, Google Sheets, formulário ou webhook externo. Use condições por source_id, source_tipo ou payload bruto.",
+    entityType: "prospect",
+  },
+  {
     type: "prospect_qualified",
     label: "Lead qualificado",
     description: "Disparado quando o agente IA ou o usuário marca um prospect como qualificado.",
