@@ -52,6 +52,7 @@ export function LeadSourcesTab({ empresaId }: { empresaId: string | null | undef
   const { data: sources, isLoading } = useOrbitLeadSources(empresaId);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<OrbitLeadSource | null>(null);
+  const [tutorial, setTutorial] = useState<TutorialKind | null>(null);
   const toggle = useUpdateLeadSource();
   const del = useDeleteLeadSource();
 
