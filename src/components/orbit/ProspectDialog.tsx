@@ -469,15 +469,26 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
 
             <div className="flex justify-between gap-2 pt-4">
               {isEditing && prospect ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setMeetingOpen(true)}
-                  className="border-[#f9b217]/50 hover:bg-[#f9b217]/10"
-                >
-                  <CalendarClock className="h-4 w-4 mr-1.5" style={{ color: "#f9b217" }} />
-                  Agendar reunião
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setMeetingOpen(true)}
+                    className="border-[#f9b217]/50 hover:bg-[#f9b217]/10"
+                  >
+                    <CalendarClock className="h-4 w-4 mr-1.5" style={{ color: "#f9b217" }} />
+                    Agendar reunião
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setConfirmDelete(true)}
+                    className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1.5" />
+                    Excluir
+                  </Button>
+                </div>
               ) : (
                 <span />
               )}
