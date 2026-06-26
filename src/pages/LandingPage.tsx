@@ -208,10 +208,10 @@ function ChaosSide() {
     <div className={`${glass} relative overflow-hidden p-7 md:p-9`}>
       <div className="absolute -top-12 -left-12 w-48 h-48 bg-rose-500/15 blur-3xl rounded-full" />
       <span className="relative text-rose-300 text-xs uppercase tracking-[0.2em] font-medium">
-        Lado A · O Caos Manual
+        Sua rotina hoje
       </span>
       <h3 className="relative mt-3 text-2xl md:text-3xl font-bold text-white">
-        Sua operação hoje
+        Processo manual, agenda vazia
       </h3>
 
       {/* Fake spreadsheet */}
