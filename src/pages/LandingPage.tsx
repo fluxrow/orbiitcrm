@@ -474,23 +474,23 @@ function Timeline() {
   const steps = [
     {
       n: "01",
-      t: "Ingestão Multicanal",
-      d: "Typebot, Sheets, formulários e Meta Ads pela mesma porta — com mapeamento visual.",
+      t: "Lead entra",
+      d: "Anúncio, formulário, Instagram, indicação — todos os canais entram pela mesma porta, sem cair em planilha.",
     },
     {
       n: "02",
-      t: "Qualificação IA",
-      d: "Agente com RAG sobre sua base extrai orçamento, decisão e dor antes do humano entrar.",
+      t: "IA qualifica",
+      d: "A IA conversa, descobre quem tem dinheiro e fit, e só passa pra você quem vale uma call.",
     },
     {
       n: "03",
-      t: "Motor de Fluxos",
-      d: "Disparos em tempo real com condições cirúrgicas por origem, UTM e payload.",
+      t: "Orbit agenda",
+      d: "Lembrete, confirmação e reagendamento automático. O lead aparece na sua agenda e na call.",
     },
     {
       n: "04",
-      t: "Funil + Calendar",
-      d: "Movimentação automática de etapas e agendamento com FreeBusy do Google Calendar.",
+      t: "Você fecha",
+      d: "Você entra só na hora da venda — com o lead aquecido, qualificado e esperando.",
     },
   ];
 
