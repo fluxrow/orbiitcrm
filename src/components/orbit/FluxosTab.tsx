@@ -143,6 +143,11 @@ export function FluxosTab({ empresaId }: { empresaId: string | null | undefined 
       />
 
       <FlowHistoryDialog flow={historyFlow} onClose={() => setHistoryFlow(null)} />
+      <FlowConditionsDialog
+        flow={conditionsFlow}
+        empresaId={empresaId}
+        onClose={() => setConditionsFlow(null)}
+      />
     </div>
   );
 }
