@@ -152,11 +152,7 @@ function Hero() {
           variants={fadeUp}
           className="max-w-3xl text-lg md:text-xl text-white/65 leading-relaxed"
         >
-          O Orbit persegue cada lead do seu anúncio até a call de fechamento entrar na sua agenda — funciona pra{" "}
-          <WordRotator />.{" "}
-          <span className="text-white/85">
-            Você só entra na hora da venda.
-          </span>
+          O Orbit persegue cada lead do seu anúncio até a call de fechamento entrar na sua agenda. Você só entra na hora da venda.
         </motion.p>
 
         <motion.div
