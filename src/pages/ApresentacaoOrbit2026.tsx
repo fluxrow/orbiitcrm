@@ -977,7 +977,7 @@ function Investimento() {
 
         <motion.div variants={fadeUp} className="mt-14 text-center max-w-4xl mx-auto">
           <div className="text-sm uppercase tracking-[0.2em] text-white/40 mb-3">
-            Comparado a um SDR humano, você economiza
+            Comparado a contratar um assistente de vendas, você economiza
           </div>
           <div className="text-7xl md:text-8xl font-bold bg-gradient-to-r from-emerald-400 via-cyan-300 to-violet-400 bg-clip-text text-transparent tabular-nums leading-none">
             R$ <CountUp to={84636} separator="." duration={2.4} />
