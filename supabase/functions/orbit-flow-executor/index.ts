@@ -283,6 +283,9 @@ async function runAction(actionType: string, cfg: Json, run: Json): Promise<Step
     case "create_task":            return actionCreateTask(cfg, run);
     case "toggle_ai_agent":        return actionToggleAiAgent(cfg, run);
     case "notify_vendedor":        return actionNotifyVendedor(cfg, run);
+    case "change_deal_stage":      return actionChangeDealStage(cfg, run);
+    case "send_rich_media":        return actionSendRichMedia(cfg, run);
+    case "check_calendar_and_offer": return actionCheckCalendarAndOffer(cfg, run);
     default: return { ok: false, error: `action_type desconhecido: ${actionType}` };
   }
 }
