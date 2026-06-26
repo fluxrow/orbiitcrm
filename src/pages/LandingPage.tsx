@@ -420,17 +420,17 @@ function Pilares() {
       >
         <motion.div variants={fadeUp} className="mb-14 text-center">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            02 · Infraestrutura Enterprise
+            02 · O que o Orbit faz pelo seu caixa
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
-            Cinco pilares que sustentam
+            Cinco pilares que enchem
             <br />
             <span className="bg-gradient-to-r from-emerald-400 to-violet-400 bg-clip-text text-transparent">
-              quem vende sério.
+              a agenda do mentor.
             </span>
           </h2>
           <p className="mt-6 text-lg text-white/60 max-w-2xl mx-auto leading-relaxed">
-            Engenharia de SaaS de produto — na operação do mentor.
+            Cada peça existe pra uma coisa só: tirar o lead do anúncio e colocar na sua call de fechamento.
           </p>
         </motion.div>
 
