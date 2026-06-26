@@ -31,6 +31,10 @@ export type OrbitFlowTemplate = {
   descricao: string | null;
   categoria: string | null;
   definicao: any;
+  ativo?: boolean;
+  is_global?: boolean;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type OrbitFlowRun = {
@@ -64,9 +68,10 @@ export function useOrbitFlowTemplates() {
   return useQuery({
     queryKey: ["orbit-flow-templates"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("orbit_flow_templates" as any)
+      const { data, error } = await (supabase
+        .from("orbit_flow_templates" as any) as any)
         .select("*")
+        .eq("ativo", true)
         .order("nome");
       if (error) throw error;
       return (data ?? []) as unknown as OrbitFlowTemplate[];
