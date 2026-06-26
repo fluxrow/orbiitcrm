@@ -212,14 +212,7 @@ async function actionCheckCalendarAndOffer(cfg: Json, run: Json): Promise<StepRe
   return { ok: r.ok, output: { offered: slots.map((s) => s.toISOString()), zapi: r.output }, error: r.error };
 }
 
-  const { error } = await supabase
-    .from("orbit_deals")
-    .update({ etapa_id: cfg.to_stage_id })
-    .eq("id", dealId)
-    .eq("empresa_id", run.empresa_id);
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, output: { deal_id: dealId, to_stage_id: cfg.to_stage_id } };
-}
+
 
 async function actionCreateTask(cfg: Json, run: Json): Promise<StepResult> {
   const prazoDias = Number(cfg.prazo_dias ?? 1);
