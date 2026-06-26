@@ -2159,6 +2159,59 @@ export type Database = {
           },
         ]
       }
+      orbit_lead_sources: {
+        Row: {
+          ativo: boolean
+          config: Json
+          created_at: string
+          empresa_id: string
+          field_mapping: Json
+          id: string
+          last_received_at: string | null
+          nome: string
+          secret_token: string
+          tipo: string
+          total_received: number
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          config?: Json
+          created_at?: string
+          empresa_id: string
+          field_mapping?: Json
+          id?: string
+          last_received_at?: string | null
+          nome: string
+          secret_token?: string
+          tipo: string
+          total_received?: number
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          config?: Json
+          created_at?: string
+          empresa_id?: string
+          field_mapping?: Json
+          id?: string
+          last_received_at?: string | null
+          nome?: string
+          secret_token?: string
+          tipo?: string
+          total_received?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_lead_sources_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_meetings: {
         Row: {
           conversa_id: string | null
