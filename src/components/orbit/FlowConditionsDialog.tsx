@@ -225,7 +225,7 @@ export function FlowConditionsDialog({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setPayloadRows((r) => [...r, { key: "", value: "" }])}
+                onClick={() => setPayloadRows((r) => [...r, { uid: newUid(), key: "", value: "" }])}
               >
                 <Plus className="h-3.5 w-3.5 mr-1" />
                 Adicionar
