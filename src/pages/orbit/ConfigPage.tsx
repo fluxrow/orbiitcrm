@@ -27,6 +27,8 @@ import { PipelineConfigTab } from "@/components/orbit/PipelineConfigTab";
 import { FluxosTab } from "@/components/orbit/FluxosTab";
 import { FlowTemplatesManager } from "@/components/orbit/FlowTemplatesManager";
 import { LeadSourcesTab } from "@/components/orbit/LeadSourcesTab";
+import { ImportProspectsWizard } from "@/components/orbit/ImportProspectsWizard";
+import { Wand2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useOrbitAIConfig, useUpdateAIConfig, useOrbitZAPIConfig, useUpdateZAPIConfig, useOrbitResendConfig, useUpdateResendConfig, useTestResendConnection, useWhatsAppSendingConfig, useUpdateWhatsAppSendingConfig, useWhatsAppDailyUsage } from "@/hooks/useOrbitConfig";
