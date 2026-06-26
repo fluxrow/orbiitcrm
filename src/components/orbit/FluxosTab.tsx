@@ -153,6 +153,7 @@ export function FluxosTab({ empresaId }: { empresaId: string | null | undefined 
         empresaId={empresaId}
         onClose={() => setConditionsFlow(null)}
       />
+      <FlowActionsEditor flow={actionsFlow} onClose={() => setActionsFlow(null)} />
     </div>
   );
 }
