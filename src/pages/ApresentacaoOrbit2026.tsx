@@ -1026,29 +1026,29 @@ function Fechamento() {
           variants={fadeUp}
           className="text-5xl md:text-7xl lg:text-8xl font-bold text-white leading-[1.05] max-w-5xl mx-auto"
         >
-          Operação enterprise,
+          Pare de operar sua mentoria
           <br />
           <span className="bg-gradient-to-r from-emerald-400 via-cyan-300 to-violet-400 bg-clip-text text-transparent">
-            preço de startup.
+            no improviso.
           </span>
           <br />
-          <span className="text-white/60">Sem improviso, sem planilha.</span>
+          <span className="text-white/60">Comece a operar como gente grande.</span>
         </motion.h2>
 
         <motion.p
           variants={fadeUp}
           className="mt-10 text-xl text-white/60 max-w-2xl mx-auto"
         >
-          Em 15 dias a infraestrutura está rodando — captando, qualificando e agendando sozinha.
+          Em 15 dias sua agenda começa a encher sozinha — captando, qualificando e agendando call de fechamento.
         </motion.p>
 
         <motion.div variants={fadeUp} className="mt-16 flex flex-col items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-400 to-violet-400 flex items-center justify-center shadow-2xl shadow-emerald-500/30">
             <span className="text-white font-bold text-xl">O</span>
           </div>
-          <div className="text-white font-semibold text-lg">Orbit CRM</div>
+          <div className="text-white font-semibold text-lg">Orbit</div>
           <div className="text-white/40 text-sm">
-            Seu time de vendas. Em piloto automático.
+            A agenda cheia das mentorias que faturam.
           </div>
         </motion.div>
       </motion.div>
