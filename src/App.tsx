@@ -21,6 +21,7 @@ import ApresentacaoOrbit2026 from "./pages/ApresentacaoOrbit2026";
 import PrivacyPage from "./pages/PrivacyPage";
 import TermsPage from "./pages/TermsPage";
 import PublicLayout from "./layouts/PublicLayout";
+import LandingPage from "./pages/LandingPage";
 
 // Tenant Layout
 import TenantLayout from "./pages/tenant/TenantLayout";
