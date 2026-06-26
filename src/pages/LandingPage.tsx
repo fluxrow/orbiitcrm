@@ -547,23 +547,23 @@ function Diferenciais() {
   const items = [
     {
       icon: Brain,
-      t: "IA real (não chatbot)",
-      d: "Agente com RAG sobre a base de conhecimento do mentor — entende contexto, objeção e timing. Não é árvore de decisão.",
+      t: "IA que conversa como gente",
+      d: "Não é árvore de decisão nem chatbot quadrado. A IA entende contexto, objeção e timing — fala com o lead como um vendedor experiente faria.",
     },
     {
-      icon: Lock,
-      t: "Multi-tenant isolado",
-      d: "RLS por empresa no banco. Dados da sua mentoria nunca cruzam com outra conta — by design, não por configuração.",
+      icon: Calendar,
+      t: "Sua agenda sempre sincronizada",
+      d: "Olha seu Google Calendar antes de oferecer horário ao lead. Zero double-booking, zero call esquecida.",
     },
     {
-      icon: Activity,
-      t: "Observabilidade nativa",
-      d: "KPIs ao vivo, latência das Edge Functions e logs de webhook em sub-segundo. Você opera vendo a saúde, não a saudade.",
+      icon: CheckCircle2,
+      t: "Confirmação automática da call",
+      d: "Lembrete 24h e 1h antes, reagendamento se o lead pedir. Você só fala com quem realmente vai aparecer na call.",
     },
     {
       icon: ShieldCheck,
-      t: "Anti-bloqueio WhatsApp",
-      d: "Cadência humanizada, mídia rica (áudio/vídeo/PDF) e validação de número antes do disparo. Protege seu canal.",
+      t: "Seus dados isolados e seguros",
+      d: "Os leads e conversas da sua mentoria nunca cruzam com outra conta. Proteção do canal de WhatsApp com cadência humana.",
     },
   ];
   return (
