@@ -32,6 +32,7 @@ const SECTIONS = [
   "hero",
   "dores",
   "comparativo",
+  "infraestrutura",
   "qualificacao",
   "personalizacao",
   "whatsapp",
