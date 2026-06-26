@@ -1082,6 +1082,7 @@ export default function ApresentacaoOrbit2026() {
       <Hero />
       <Dores />
       <Comparativo />
+      <Infraestrutura />
       <Qualificacao />
       <Personalizacao />
       <WhatsApp />
