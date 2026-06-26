@@ -83,7 +83,7 @@ export function OrbitTaskCard({ task, onComplete, onEdit, onOpenProspect }: Orbi
       )}
 
       {/* Meta */}
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+      <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-xs text-muted-foreground">
         {task.due_date && (
           <span className={cn("flex items-center gap-1", isOverdue && "text-destructive font-medium")}>
             <Calendar className="w-3 h-3" />
@@ -94,16 +94,16 @@ export function OrbitTaskCard({ task, onComplete, onEdit, onOpenProspect }: Orbi
           </span>
         )}
         {task.assignee?.nome && (
-          <span className="flex items-center gap-1 truncate">
-            <User className="w-3 h-3" />
-            {task.assignee.nome}
+          <span className="flex items-center gap-1 min-w-0 max-w-full">
+            <User className="w-3 h-3 shrink-0" />
+            <span className="truncate">{task.assignee.nome}</span>
           </span>
         )}
       </div>
 
       {/* Actions */}
       {!isCompleted && (
-        <div className="flex items-center gap-1 pt-1">
+        <div className="flex items-center gap-1 pt-1 flex-wrap">
           <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={() => onComplete(task)}>
             <Check className="w-3 h-3" /> Concluir
           </Button>
