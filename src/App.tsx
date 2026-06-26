@@ -182,7 +182,7 @@ const AppRoutes = () => (
       <Route path="/terms" element={<TermsPage />} />
     </Route>
 
-    <Route path="/" element={<DefaultFunilRedirect />} />
+    <Route path="/" element={<LandingPage />} />
     <Route path="/funil" element={<DefaultFunilRedirect />} />
 
     {/* Empresa selector (post-login, when user belongs to >1 empresa) */}
