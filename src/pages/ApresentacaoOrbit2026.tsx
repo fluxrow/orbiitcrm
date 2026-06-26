@@ -204,10 +204,10 @@ function Dores() {
             01 · O problema
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
-            O mercado está
-            <span className="text-red-400"> sangrando</span> dinheiro
+            O custo real de operar
+            <span className="text-red-400"> sem infraestrutura</span>
             <br />
-            <span className="text-white/50">e ninguém fala sobre isso.</span>
+            <span className="text-white/50">aparece todo mês na sua planilha.</span>
           </h2>
         </motion.div>
 
