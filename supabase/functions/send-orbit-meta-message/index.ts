@@ -16,11 +16,44 @@ const handler = async (req: Request): Promise<Response> => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // ── Auth check ──
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return fail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401);
+    }
+    const { data: userResult, error: userErr } = await supabase.auth.getUser(
+      authHeader.replace("Bearer ", "")
+    );
+    if (userErr || !userResult?.user) {
+      return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401);
+    }
+
     const { conversa_id, mensagem, empresa_id }: MetaMessageRequest = await req.json();
 
     if (!conversa_id || !mensagem || !empresa_id) {
       return fail(ErrorCodes.VALIDATION_ERROR, "conversa_id, mensagem e empresa_id são obrigatórios");
     }
+
+    // Verificar que o usuário pertence à empresa solicitada
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("empresa_id")
+      .eq("id", userResult.user.id)
+      .maybeSingle();
+    const { data: membership } = await supabase
+      .from("user_empresa_memberships")
+      .select("empresa_id")
+      .eq("user_id", userResult.user.id)
+      .eq("empresa_id", empresa_id)
+      .maybeSingle();
+    const { data: isSuper } = await supabase.rpc("has_role", {
+      _user_id: userResult.user.id,
+      _role: "super_admin",
+    });
+    if (profile?.empresa_id !== empresa_id && !membership && !isSuper) {
+      return fail(ErrorCodes.UNAUTHORIZED, "Acesso negado", 403);
+    }
+
 
     const { data: conversa } = await supabase
       .from("orbit_conversas")
