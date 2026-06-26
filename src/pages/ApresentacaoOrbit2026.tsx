@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import CountUp from "@/components/apresentacao/CountUp";
 import PresentationControls from "@/components/apresentacao/PresentationControls";
+import { PILLARS } from "@/lib/orbit/pillars";
 
 /* ============================================================
    Apresentação comercial Orbit CRM — rota oculta
@@ -32,6 +33,7 @@ const SECTIONS = [
   "hero",
   "dores",
   "comparativo",
+  "infraestrutura",
   "qualificacao",
   "personalizacao",
   "whatsapp",
@@ -119,14 +121,14 @@ function Hero() {
           variants={fadeUp}
           className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight text-white leading-[1.05]"
         >
-          Seu time de vendas
+          Infraestrutura comercial
           <br />
           <span className="bg-gradient-to-r from-emerald-400 via-cyan-300 to-violet-400 bg-clip-text text-transparent">
-            nunca dorme.
+            no nível das maiores.
           </span>
           <br />
           <span className="text-white/60 text-3xl md:text-5xl lg:text-6xl font-light">
-            O nosso também não.
+            Pensada para a sua mentoria.
           </span>
         </motion.h1>
 
@@ -134,8 +136,8 @@ function Hero() {
           variants={fadeUp}
           className="max-w-2xl text-lg md:text-xl text-white/60 leading-relaxed"
         >
-          Atendimento, qualificação e vendas no piloto automático.{" "}
-          <span className="text-white/90 font-medium">24 horas. 7 dias. 365 dias.</span>
+          Captação multicanal, motor de fluxos em tempo real e observabilidade enterprise —{" "}
+          <span className="text-white/90 font-medium">a confiabilidade de um SaaS de produto, na operação do mentor.</span>
         </motion.p>
 
         <motion.div
@@ -202,10 +204,10 @@ function Dores() {
             01 · O problema
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
-            O mercado está
-            <span className="text-red-400"> sangrando</span> dinheiro
+            O custo real de operar
+            <span className="text-red-400"> sem infraestrutura</span>
             <br />
-            <span className="text-white/50">e ninguém fala sobre isso.</span>
+            <span className="text-white/50">aparece todo mês na sua planilha.</span>
           </h2>
         </motion.div>
 
@@ -251,7 +253,8 @@ function Comparativo() {
     { label: "Tempo de resposta", human: "4 horas em média", orbit: "8 segundos" },
     { label: "Disponibilidade", human: "8h/dia, seg–sex", orbit: "24/7/365" },
     { label: "Leads simultâneos", human: "1 por vez", orbit: "Ilimitado" },
-    
+    { label: "Rastreamento UTM/origem", human: "Não rastreia", orbit: "Campo por campo, em JSONB" },
+    { label: "Latência de webhook", human: "Minutos (quando entrega)", orbit: "Sub-segundo, com log" },
     { label: "Esquece follow-up?", human: "Sempre", orbit: "Nunca" },
     { label: "Tira férias / fica doente", human: "Acontece", orbit: "Não existe" },
     { label: "Mau humor na sexta às 18h", human: "Inevitável", orbit: "Impossível" },
@@ -362,6 +365,65 @@ function ChatBubble({
   );
 }
 
+/* ============================================================
+   INFRAESTRUTURA ENTERPRISE — 5 pilares
+   ============================================================ */
+function Infraestrutura() {
+  return (
+    <Section id="infraestrutura">
+      <motion.div
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: "-100px" }}
+        variants={stagger}
+      >
+        <motion.div variants={fadeUp} className="mb-14 text-center">
+          <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
+            03 · Infraestrutura Enterprise
+          </span>
+          <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
+            Cinco pilares que sustentam
+            <br />
+            <span className="bg-gradient-to-r from-emerald-400 to-violet-400 bg-clip-text text-transparent">
+              a operação de quem vende sério.
+            </span>
+          </h2>
+          <p className="mt-6 text-lg text-white/60 max-w-2xl mx-auto leading-relaxed">
+            Não é template. É a infraestrutura que faz o lead do anúncio virar call confirmada — com o nível de engenharia de um Stripe ou Twilio.
+          </p>
+        </motion.div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {PILLARS.map((p, i) => (
+            <motion.div
+              key={i}
+              variants={fadeUp}
+              whileHover={{ y: -6 }}
+              className={`${glass} p-7 hover:border-emerald-400/30 transition-colors group flex flex-col`}
+            >
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500/20 to-violet-500/20 border border-white/10 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
+                <p.icon className="w-5 h-5 text-emerald-300" />
+              </div>
+              <h3 className="text-white text-lg font-semibold mb-2">{p.title}</h3>
+              <p className="text-white/60 text-sm leading-relaxed flex-1">{p.description}</p>
+              <div className="mt-5 flex flex-wrap gap-1.5">
+                {p.stack.map((s) => (
+                  <span
+                    key={s}
+                    className="px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/10 text-[10px] uppercase tracking-wider text-white/60"
+                  >
+                    {s}
+                  </span>
+                ))}
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </motion.div>
+    </Section>
+  );
+}
+
 function Qualificacao() {
   const messages = [
     { from: "lead" as const, text: "Oi! Vi o anúncio de vocês no Instagram 👋", delay: 0.2 },
@@ -385,7 +447,7 @@ function Qualificacao() {
       >
         <motion.div variants={fadeUp}>
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            03 · Qualificação
+            04 · Qualificação
           </span>
           <h2 className="mt-3 text-4xl md:text-5xl font-bold text-white leading-tight">
             Pare de queimar verba
@@ -476,7 +538,7 @@ function Personalizacao() {
       >
         <motion.div variants={fadeUp} className="mb-14 text-center">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            04 · Personalização
+            05 · Personalização
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
             Não é um chatbot genérico.
@@ -608,7 +670,7 @@ function WhatsApp() {
 
         <motion.div variants={fadeUp} className="order-1 lg:order-2">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            05 · WhatsApp em escala
+            06 · WhatsApp em escala
           </span>
           <h2 className="mt-3 text-4xl md:text-5xl font-bold text-white leading-tight">
             Mil conversas ao mesmo tempo.
@@ -667,7 +729,7 @@ function Email() {
       >
         <motion.div variants={fadeUp}>
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            06 · E-mail
+            07 · E-mail
           </span>
           <h2 className="mt-3 text-4xl md:text-5xl font-bold text-white leading-tight">
             Campanhas de e-mail
@@ -760,7 +822,7 @@ function Funil() {
       >
         <motion.div variants={fadeUp} className="mb-12 text-center">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            07 · Funil + IA
+            08 · Funil + IA
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
             Seu pipeline se organiza
@@ -818,7 +880,7 @@ function Investimento() {
       >
         <motion.div variants={fadeUp} className="mb-12 text-center">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            09 · Investimento
+            10 · Investimento
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
             Quanto custa
@@ -961,20 +1023,20 @@ function Fechamento() {
           variants={fadeUp}
           className="text-5xl md:text-7xl lg:text-8xl font-bold text-white leading-[1.05] max-w-5xl mx-auto"
         >
-          Cada dia sem Orbit
+          Operação enterprise,
           <br />
-          <span className="bg-gradient-to-r from-red-400 via-amber-300 to-emerald-400 bg-clip-text text-transparent">
-            é dinheiro de anúncio
+          <span className="bg-gradient-to-r from-emerald-400 via-cyan-300 to-violet-400 bg-clip-text text-transparent">
+            preço de startup.
           </span>
           <br />
-          <span className="text-white/60">indo pro lixo.</span>
+          <span className="text-white/60">Sem improviso, sem planilha.</span>
         </motion.h2>
 
         <motion.p
           variants={fadeUp}
           className="mt-10 text-xl text-white/60 max-w-2xl mx-auto"
         >
-          A boa notícia? Em 15 dias isso pode mudar.
+          Em 15 dias a infraestrutura está rodando — captando, qualificando e agendando sozinha.
         </motion.p>
 
         <motion.div variants={fadeUp} className="mt-16 flex flex-col items-center gap-4">
@@ -1020,6 +1082,7 @@ export default function ApresentacaoOrbit2026() {
       <Hero />
       <Dores />
       <Comparativo />
+      <Infraestrutura />
       <Qualificacao />
       <Personalizacao />
       <WhatsApp />

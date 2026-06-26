@@ -1,131 +1,142 @@
-# Etapa A — Camada de Ingestão de Leads (somente)
 
-Escopo travado: **só** criar a tabela `orbit_lead_sources` e a edge function `orbit-lead-ingest`. Sem UI, sem trigger novo no Motor de Fluxos, sem atribuição de vendedor.
+## Objetivo
 
----
-
-## 1. Migration — `orbit_lead_sources`
-
-Tabela multi-tenant que guarda cada fonte de ingestão (Typebot, Google Sheets Apps Script, Webhook genérico, Form público futuro).
-
-**Colunas:**
-
-- `id uuid PK default gen_random_uuid()`
-- `empresa_id uuid NOT NULL` → FK `orbit_empresas(id)` ON DELETE CASCADE
-- `tipo text NOT NULL CHECK (tipo IN ('typebot','google_sheets','webhook_generico','form_publico'))`
-- `nome text NOT NULL`
-- `ativo boolean NOT NULL default true`
-- `secret_token text NOT NULL UNIQUE default encode(gen_random_bytes(24),'hex')` — token usado pelo header `x-source-token`
-- `field_mapping jsonb NOT NULL default '{}'::jsonb` — ex.: `{"nome":"full_name","telefone":"phone","email":"email_addr","documento":"cpf"}`
-- `config jsonb NOT NULL default '{}'::jsonb` — espaço para metadados específicos (URL do bot, ID da planilha, etc.)
-- `last_received_at timestamptz`
-- `total_received int NOT NULL default 0`
-- `created_at`, `updated_at` (com trigger `update_updated_at_column` já existente no projeto)
-
-**GRANTs + RLS (padrão do projeto):**
-
-- `GRANT SELECT, INSERT, UPDATE, DELETE ON public.orbit_lead_sources TO authenticated;`
-- `GRANT ALL ON public.orbit_lead_sources TO service_role;` (sem `anon`)
-- Enable RLS
-- Policy `select/insert/update/delete` para `authenticated` usando `public.user_has_empresa_access(empresa_id)` + bypass `is_super_admin(auth.uid())` (mesmos helpers já usados em outras tabelas).
-
-**Índices:** `(empresa_id, ativo)`, `(secret_token)` (UNIQUE já cria).
-
-## 2. Edge function `orbit-lead-ingest`
-
-Rota pública (`verify_jwt = false` em `supabase/config.toml`):
-
-```text
-POST /functions/v1/orbit-lead-ingest/{source_id}
-Headers:  x-source-token: <secret_token>
-          Content-Type: application/json
-Body:     { ...payload bruto do Typebot/Sheets/etc... }
-```
-
-**Fluxo:**
-
-1. CORS via `getCorsHeaders(req)` (já temos em `_shared/cors.ts`) + OPTIONS handler.
-2. Lê `source_id` do path; valida UUID.
-3. Carrega `orbit_lead_sources` por `id`. Se `ativo=false` ou não encontrado → 404.
-4. Compara `x-source-token` com `secret_token` em **tempo constante** (mesmo pattern já usado em `orbit-webhook`). Falha → 401.
-5. Faz `await req.json()` com try/catch → 400 `invalid_json`.
-6. Aplica `field_mapping` no payload:
-  - `nome = payload[mapping.nome] ?? payload.nome ?? payload.name`
-  - `telefone = normalizeBrPhone(payload[mapping.telefone] ?? payload.telefone ?? payload.phone ?? payload.whatsapp)`
-  - `email = (payload[mapping.email] ?? payload.email ?? '').toLowerCase().trim() || null`
-  - `documento = onlyDigits(payload[mapping.documento] ?? payload.documento ?? payload.cpf ?? payload.cnpj)`
-  - `payload_extra =` payload original (mantemos tudo bruto para Etapa B usar como filtro).
-7. Validação mínima (zod inline): exige **pelo menos um** de `telefone`, `email` ou `documento`; senão 400 `validation_error` com mensagem clara.
-8. **Dedupe por empresa** (ordem: documento → telefone → email):
-  - `select id from orbit_prospects where empresa_id = ... and (cnpj_cpf = $doc or whatsapp = $tel or email = $mail) limit 1`
-  - Se existe: `update` mesclando `dados_adicionais = dados_adicionais || payload_extra` e atualizando campos vazios; `created=false`.
-  - Se não existe: `insert` em `orbit_prospects` com `empresa_id`, `nome_razao`, `whatsapp`, `email`, `cnpj_cpf`, `tipo_documento` (PF/PJ por len), `origem = 'lead_source:' || tipo`, `dados_adicionais = payload_extra`; `created=true`.
-9. Update na fonte: `total_received = total_received + 1`, `last_received_at = now()`.
-10. Log em `orbit_webhook_logs` (já existe) com `source='lead_ingest'`, `payload`, `status`.
-11. Resposta padrão envelope (`_shared/responses.ts`): `ok({ prospect_id, created, source_id })`.
-
-**Rate limit ad-hoc:** contagem em `orbit_webhook_logs` últimos 60s por `source_id`; se > 60 req/min → 429 com `Retry-After: 30`. (Sem nova tabela.)
-
-**Anti-loop / segurança extra:** ignora payload se `payload._triggered_by_flow_id` presente (consistente com `orbit-flow-dispatcher`).
-
-**config.toml:** adicionar bloco
-
-```toml
-[functions.orbit-lead-ingest]
-verify_jwt = false
-```
-
-## 3. Smoke test entregue ao final
-
-Após deploy, te entrego:
-
-**Passo 1 — criar fonte de exemplo** (vou rodar via `supabase--insert` na empresa `viver-semijoias` que está aberta agora) e te devolver o `source_id` + `secret_token`.
-
-**Passo 2 — comando curl pronto para colar:**
-
-```bash
-curl -i -X POST \
-  "https://oqsnzwkiwgqwopuaugxj.supabase.co/functions/v1/orbit-lead-ingest/<SOURCE_ID>" \
-  -H "Content-Type: application/json" \
-  -H "x-source-token: <SECRET_TOKEN>" \
-  -d '{
-    "full_name": "Lead Teste Typebot",
-    "phone": "5551999887766",
-    "email_addr": "teste.typebot@example.com",
-    "cpf": "529.982.247-25",
-    "origem_form": "landing-anel-noivado"
-  }'
-```
-
-**Passo 3 — query de verificação** (te entrego pronta):
-
-```sql
-SELECT id, nome_razao, whatsapp, email, cnpj_cpf, origem, dados_adicionais, created_at
-FROM orbit_prospects
-WHERE empresa_id = '<EMPRESA_ID>' AND email = 'teste.typebot@example.com';
-```
-
-Você confirma o resultado e só então liberamos a Etapa B.
+Reposicionar o Orbit como **infraestrutura de agendamento que garante a call de fechamento** para mentores e operações High-Ticket. Unificar narrativa entre `/` (Home) e `/apresentacao/orbit-2026`, mantendo a identidade Aurora (bg fixo, glass cards, gradient emerald→violet, framer-motion). 100% frontend/copy — zero mudança em backend, schema ou fluxos.
 
 ---
 
-## Entregáveis desta etapa
+## Parte 1 — Estrutura compartilhada
 
+### 1.1 Novo arquivo `src/lib/orbit/pillars.ts`
 
-| #   | Item                                                                       |
-| --- | -------------------------------------------------------------------------- |
-| 1   | Migration: tabela `orbit_lead_sources` + GRANTs + RLS + trigger updated_at |
-| 2   | `supabase/functions/orbit-lead-ingest/index.ts`                            |
-| 3   | Bloco `[functions.orbit-lead-ingest]` em `supabase/config.toml`            |
-| 4   | Insert de 1 fonte de teste para `viver-semijoias` (tipo `typebot`)         |
-| 5   | Deploy + curl + SQL de verificação no chat                                 |
+```ts
+import { Webhook, GitBranch, Send, Activity, Upload, type LucideIcon } from "lucide-react";
 
+export type Pillar = {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  stack: string[];
+};
 
-**Fora desta etapa (confirmado):** UI da aba "Fontes de Lead", trigger `lead_recebido` no Motor de Fluxos, conector Google Sheets pull, atribuição de vendedor, templates de fluxo.
+export const PILLARS: Pillar[] = [ /* 5 pilares abaixo */ ];
+```
 
-Aprova para eu entrar em build e disparar a migration?  
-Aprovado. O plano está blindado.  
-Essa estrutura de `orbit_lead_sources` com normalização de dados e deduplicação inteligente (`upsert` via `cnpj_cpf`, `whatsapp` ou `email`) é exatamente o que vai garantir que o seu CRM não vire um "cemitério de leads duplicados".  
-Pode entrar em modo Build e disparar a migration.  
-Estou aguardando o seu sinal de que o deploy subiu. Assim que você me mandar o `source_id`, o `secret_token` e o comando `curl`, eu rodo o teste aqui na minha ponta para validarmos se o lead está caindo exatamente onde deve.  
-Governança ativada: Nada de Etapa B antes de confirmarmos que o dado está na tabela `orbit_prospects` conforme o planejado.
+**Os 5 pilares** (consumidos por Home e Apresentação):
+
+1. **Hub de Ingestão Universal** (`Webhook`) — Typebot, Google Sheets (Apps Script), formulários, Meta Ads. Mapeamento visual de campos, validação CPF/CNPJ, normalização de WhatsApp. Stack: `Webhook · Apps Script · Meta Ads`.
+2. **Motor de Fluxos & Condições** (`GitBranch`) — Disparos em tempo real, filtros por origem, tipo de fonte e chaves do payload (`utm_source=instagram`). Stack: `Realtime · JSONB filters · UTM-aware`.
+3. **Ações Inteligentes de Escalonamento** (`Send`) — Mídia rica (áudio/vídeo/PDF), movimentação automática de etapas, tarefas para SDR, Agendamento via Google Calendar (FreeBusy). Stack: `Rich media · Pipeline auto · Calendar FreeBusy`.
+4. **Painel de Observabilidade** (`Activity`) — Latência das Edge Functions (sub-segundo), taxa de sucesso de automações, logs detalhados de webhooks. Stack: `Sub-second · Run logs · KPIs live`.
+5. **Importador Inteligente & Gestão em Massa** (`Upload`) — CSV com mapeamento de-para, JSONB para campos extras, ações em lote, Soft-Delete. Stack: `CSV mapper · JSONB safe · Soft-delete`.
+
+---
+
+## Parte 2 — Apresentação `/apresentacao/orbit-2026`
+
+Arquivo: `src/pages/ApresentacaoOrbit2026.tsx`.
+
+### 2.1 Copy refinado (tom Infraestrutura Enterprise)
+
+| Seção | Mudança |
+|---|---|
+| **Hero** | Headline: "Infraestrutura comercial / **no nível das maiores.**" Sub: "Captação multicanal, motor de fluxos em tempo real e observabilidade enterprise — sua mentoria operando com a confiabilidade de um SaaS de produto." |
+| **Dores** | Foco em "operação sem infraestrutura": lead que entra no Typebot e morre numa planilha, custo de SDR, horas em tarefas manuais. |
+| **Comparativo** | +2 linhas: "Rastreamento UTM/origem" (humano: "não rastreia" → Orbit: "campo por campo, JSONB"); "Latência de webhook" (humano: "minutos" → Orbit: "sub-segundo"). |
+| **Qualificação** | "Ingestão universal" com Typebot/Sheets/Forms + normalização CPF/CNPJ/WhatsApp. |
+| **Personalização** | Card "Mapeamento visual de campos"; renomeia "Fluxos condicionais" → "Condições cirúrgicas por payload". |
+| **WhatsApp** | "Mídia rica: áudio, vídeo, PDF/ebook"; troca métrica por "Edge Functions sub-segundo". |
+| **Email** | "Deliverability monitorada e logs por envio". |
+| **Funil + IA** | "Movimentação automática entre etapas, tarefas para SDR e Agendamento Inteligente com FreeBusy do Google Calendar". |
+| **Fechamento** | "Operação enterprise, preço de startup." |
+| **Investimento** | Refinamento leve; valores intactos. |
+
+### 2.2 Nova seção "Infraestrutura Enterprise"
+
+Inserida **entre Comparativo e Qualificação**. `id="infraestrutura"`, numeração `03 ·`, demais seções renumeram (+1).
+
+Grid responsivo consumindo `PILLARS` — cards `glass`, ícone Lucide em badge gradient emerald→violet, título, parágrafo enterprise, chips de stack ao pé.
+
+---
+
+## Parte 3 — Home `/` (reconstrução visual)
+
+Arquivo: `src/pages/LandingPage.tsx` — reescrita completa sobre o sistema visual da Apresentação. Helpers replicados localmente: `AuroraBg`, `Section`, classe `glass`. Mantém `WhatsAppFab` e integração com `PublicLayout`/`HotsiteHeader`. SEO: `document.title = "Orbit CRM — Infraestrutura comercial multicanal"`.
+
+### 3.1 Hero (tom implacável)
+
+- **Headline**: "O lead preencheu seu formulário, mas **a call de fechamento não aconteceu?**"
+- **Sub-headline com word rotator**: "O Orbit é a infraestrutura comercial de escala para sua **[rotator]**. Convertemos o interesse do formulário em uma call confirmada, sem que você precise trocar uma única mensagem manual."
+- **Word rotator (framer-motion `AnimatePresence`)** ciclando a cada ~2.2s, gradient emerald→violet:
+  - "mentoria de negócios"
+  - "mentoria para dentistas"
+  - "mentoria para médicos"
+  - "mentoria para advogados"
+  - "mentoria de investimentos"
+- **CTA primário**: "Automatizar meu agendamento →" (verde emerald glow → WhatsApp).
+- **CTA secundário discreto**: "Ver apresentação completa" → `/apresentacao/orbit-2026`.
+- Chips glass abaixo: "resposta em 8s · 24/7 · latência sub-segundo".
+
+### 3.2 Seção Dores — "O Impacto do Processo" (split-screen comparativo)
+
+Layout 2 colunas (`md:grid-cols-2`, colapsa em mobile), separador vertical com glow violet→emerald no meio.
+
+**Lado esquerdo — O Caos Manual** (tom dor, glass com leve tint rose/zinc):
+- Animação CSS/framer pura (sem Lottie, sem nova dep):
+  - "Planilha" — linhas adicionadas sequencialmente com `staggerChildren`, células piscando.
+  - Ícone `MessageCircle` com badge "47" pulsando vermelho (mensagens não respondidas).
+  - Ícone `Clock` com ponteiro girando contínuo.
+- Texto: "Você gasta horas qualificando na mão, esquece do follow-up e o lead esfria."
+
+**Lado direito — A Infraestrutura Orbit** (tom solução, glass emerald→violet):
+- Animação de pipeline horizontal: 3 nós (`Webhook` → `Sparkles` → `Calendar`) com linha animada (gradient travel) conectando-os e checkmark verde ao final.
+- Texto: "O Orbit qualifica, persegue e agenda. A call cai na sua agenda. Dinheiro no bolso."
+
+**Abaixo do split — 4 stats glass** (em grid 2×2 mobile, 4×1 desktop):
+- "73%" — leads não respondidos no mercado
+- "5min" — janela de ouro para contato
+- "42h/sem" — perdidas em tarefas manuais
+- "R$ 8.500/mês" — custo médio de um SDR júnior
+
+### 3.3 Seções restantes da Home
+
+3. **Pilares Enterprise** — consome `PILLARS` (mesmo grid da Apresentação).
+4. **Timeline horizontal de 4 etapas** — numeração massiva: **Ingestão Multicanal → Qualificação IA → Motor de Fluxos → Funil + Calendar**. Linha conectora gradient emerald→violet animada via `whileInView`.
+5. **Diferenciais Enterprise — grid 2×2**:
+   - **IA real (não chatbot)** — agente com RAG sobre base de conhecimento do mentor.
+   - **Multi-tenant isolado** — RLS por empresa, dados nunca cruzam.
+   - **Observabilidade nativa** — KPIs, latência e logs de webhook em tempo real.
+   - **Anti-bloqueio WhatsApp** — cadência humanizada, mídia rica e validação de número.
+6. **FAQ enterprise** (Accordion) — 8 perguntas reescritas:
+   - "Como o Orbit lida com o webhook do meu Typebot?"
+   - "Como a latência afeta minha taxa de fechamento?"
+   - "Os dados da minha mentoria ficam isolados de outras contas?"
+   - "Posso usar minha planilha do Google Sheets como fonte de leads?"
+   - "O agendamento no Google Calendar é nativo?"
+   - "Como vocês evitam o bloqueio do meu WhatsApp?"
+   - "Consigo enviar PDFs, áudios e vídeos pela automação?"
+   - "Como acompanho a saúde técnica da operação?"
+7. **CTA WhatsApp** full-bleed com glow emerald + headline curta: "Pare de operar sua mentoria no improviso."
+8. **Acesso por slug** — input + botão estilo glass (mantém função atual).
+9. **Footer** — mantém.
+
+---
+
+## Detalhes Técnicos
+
+- **Sem novas dependências** — animações 100% via `framer-motion` (já instalado) + Tailwind. Nada de Lottie.
+- **Tokens visuais** — segue padrão atual da Apresentação (classes emerald/violet diretas como exceção visual deliberada do projeto; consistente com a memória do projeto sobre identidade Orbit).
+- **Responsividade** — split-screen colapsa em 1 coluna no mobile; tipografia escala `text-4xl md:text-6xl lg:text-7xl`; timeline vira vertical no mobile.
+- **Performance** — word rotator com `mode="wait"` em `AnimatePresence`; animações de planilha/pipeline param fora do viewport (`whileInView` + `viewport={{ once: false }}` apenas para os blocos pequenos).
+- **Acessibilidade** — `prefers-reduced-motion` respeitado (estado estático nas animações de loop).
+- **SEO Home** — `<title>` "Orbit CRM — Infraestrutura comercial multicanal" via efeito no mount; H1 único na hero.
+
+---
+
+## Arquivos afetados
+
+- `src/lib/orbit/pillars.ts` — **novo**, array compartilhado dos 5 pilares.
+- `src/pages/ApresentacaoOrbit2026.tsx` — copy refinado em todas as seções + nova seção "Infraestrutura Enterprise" + renumeração.
+- `src/pages/LandingPage.tsx` — reescrita completa: hero com word rotator, split-screen Caos vs Orbit, stats de impacto, pilares, timeline, diferenciais 2×2, FAQ enterprise, CTAs.
+
+Nenhum outro arquivo é tocado. Nenhuma rota nova. Nenhuma edge function. Nenhum schema.
