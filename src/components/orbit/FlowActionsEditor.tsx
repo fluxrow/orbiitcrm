@@ -275,6 +275,7 @@ function summarizeConfig(a: OrbitFlowAction): string {
     case "create_task": return `${c.titulo || "tarefa"} · ${c.prazo_dias ?? 1}d`;
     case "toggle_ai_agent": return c.human_talk ? "modo humano" : "modo IA";
     case "notify_vendedor": return `canal: ${c.canal || "email"}`;
+    case "delay_execution": return `aguarda ${c.wait_value ?? 0} ${c.wait_unit === "hours" ? "h" : "min"}`;
     default: return "";
   }
 }
