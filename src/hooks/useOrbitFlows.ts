@@ -71,6 +71,7 @@ export function useOrbitFlowTemplates() {
       const { data, error } = await supabase
         .from("orbit_flow_templates" as any)
         .select("*")
+        .eq("ativo" as any, true)
         .order("nome");
       if (error) throw error;
       return (data ?? []) as unknown as OrbitFlowTemplate[];
