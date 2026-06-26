@@ -20,14 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Layers, Plus, Pencil, Copy, Trash2, Search, AlertCircle, CheckCircle2 } from "lucide-react";
 import {
   useAllFlowTemplates,
@@ -111,114 +103,108 @@ export function FlowTemplatesManager() {
             <p className="text-sm">Nenhum template encontrado.</p>
           </div>
         ) : (
-          <div className="border border-border rounded-md overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Atualizado</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((t) => (
-                  <TableRow key={t.id}>
-                    <TableCell>
-                      <div className="font-medium">{t.nome}</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {filtered.map((t) => {
+              const ativo = t.ativo ?? true;
+              return (
+                <div
+                  key={t.id}
+                  className="group relative rounded-lg border border-border bg-card/40 hover:bg-card/60 transition p-4 flex flex-col gap-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold leading-tight break-words">{t.nome}</div>
                       {t.descricao && (
-                        <div className="text-xs text-muted-foreground line-clamp-1">
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-3 break-words">
                           {t.descricao}
-                        </div>
+                        </p>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      {t.categoria ? (
-                        <Badge variant="outline" className="text-[10px]">
-                          {t.categoria}
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          checked={t.ativo ?? true}
-                          onCheckedChange={(v) =>
-                            toggle.mutate(
-                              { id: t.id, ativo: v },
-                              {
-                                onSuccess: () =>
-                                  toast.success(v ? "Template ativado" : "Template desativado"),
-                                onError: (e: any) => toast.error(e.message),
-                              }
-                            )
-                          }
-                        />
-                        <Badge
-                          className={
-                            t.ativo ?? true
-                              ? "bg-green-500/20 text-green-300"
-                              : "bg-muted text-muted-foreground"
-                          }
-                        >
-                          {t.ativo ?? true ? "Ativo" : "Inativo"}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-xs text-muted-foreground">
-                        {t.updated_at
-                          ? formatDistanceToNow(new Date(t.updated_at), {
-                              addSuffix: true,
-                              locale: ptBR,
-                            })
-                          : "—"}
+                    </div>
+                    <Badge
+                      className={
+                        ativo
+                          ? "bg-green-500/20 text-green-300 shrink-0"
+                          : "bg-muted text-muted-foreground shrink-0"
+                      }
+                    >
+                      {ativo ? "Ativo" : "Inativo"}
+                    </Badge>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {t.categoria && (
+                      <Badge variant="outline" className="text-[10px]">
+                        {t.categoria}
+                      </Badge>
+                    )}
+                    {t.updated_at && (
+                      <span className="text-[10px] text-muted-foreground">
+                        atualizado {formatDistanceToNow(new Date(t.updated_at), {
+                          addSuffix: true,
+                          locale: ptBR,
+                        })}
                       </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="Editar"
-                          onClick={() => setEditor({ open: true, template: t })}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="Duplicar"
-                          onClick={() =>
-                            setEditor({ open: true, template: t, duplicate: true })
-                          }
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title="Excluir"
-                          onClick={() => {
-                            if (confirm(`Excluir o template "${t.nome}"?`)) {
-                              del.mutate(t.id, {
-                                onSuccess: () => toast.success("Template excluído"),
-                                onError: (e: any) => toast.error(e.message),
-                              });
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/60">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={ativo}
+                        onCheckedChange={(v) =>
+                          toggle.mutate(
+                            { id: t.id, ativo: v },
+                            {
+                              onSuccess: () =>
+                                toast.success(v ? "Template ativado" : "Template desativado"),
+                              onError: (e: any) => toast.error(e.message),
                             }
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                          )
+                        }
+                      />
+                      <span className="text-xs text-muted-foreground">
+                        {ativo ? "Disponível no wizard" : "Oculto do wizard"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Editar"
+                        onClick={() => setEditor({ open: true, template: t })}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Duplicar"
+                        onClick={() =>
+                          setEditor({ open: true, template: t, duplicate: true })
+                        }
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Excluir"
+                        onClick={() => {
+                          if (confirm(`Excluir o template "${t.nome}"?`)) {
+                            del.mutate(t.id, {
+                              onSuccess: () => toast.success("Template excluído"),
+                              onError: (e: any) => toast.error(e.message),
+                            });
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </CardContent>
