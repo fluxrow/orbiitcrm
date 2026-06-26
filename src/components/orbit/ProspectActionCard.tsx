@@ -206,12 +206,49 @@ export function ProspectActionCard({
         <div className="mx-1 h-5 w-px bg-border/60" />
         <ProspectQuickActions prospect={prospect} />
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
           <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-muted-foreground" onClick={(e) => { e.stopPropagation(); onViewHistory(prospect); }}>
             <History className="w-3.5 h-3.5 mr-1" />Histórico
           </Button>
+          {onDelete && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Excluir prospect</TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </div>
+
+      {onDelete && (
+        <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+          <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-destructive">Excluir prospect?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tem certeza que deseja excluir <strong>{prospect.nome_razao}</strong>? Esta ação apagará todo o histórico do lead e <strong>não pode ser desfeita</strong>.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => { onDelete(prospect); setConfirmDelete(false); }}
+              >
+                Excluir permanentemente
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 }
