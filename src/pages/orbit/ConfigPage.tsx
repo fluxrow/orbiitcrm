@@ -1842,6 +1842,9 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
         <TabsContent value="fluxos">
           <FluxosTab empresaId={empresaId} />
         </TabsContent>
+        <TabsContent value="lead-sources">
+          <LeadSourcesTab empresaId={empresaId} />
+        </TabsContent>
         <TabsContent value="agenda">
           {empresaId ? <AgendaConfigTab empresaId={empresaId} /> : <div className="text-sm text-muted-foreground">Selecione uma empresa para configurar a agenda.</div>}
         </TabsContent>
