@@ -538,6 +538,31 @@ function ActionEditDialog({
               </Select>
             </Field>
           )}
+
+          {action.action_type === "delay_execution" && (
+            <div className="grid grid-cols-[1fr_140px] gap-2">
+              <Field label="Tempo de espera">
+                <Input
+                  type="number"
+                  min={1}
+                  value={cfg.wait_value ?? 10}
+                  onChange={(e) => setCfg({ ...cfg, wait_value: Math.max(1, Number(e.target.value || 1)) })}
+                />
+              </Field>
+              <Field label="Unidade">
+                <Select
+                  value={cfg.wait_unit ?? "minutes"}
+                  onValueChange={(v) => setCfg({ ...cfg, wait_unit: v })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="minutes">Minutos</SelectItem>
+                    <SelectItem value="hours">Horas</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
