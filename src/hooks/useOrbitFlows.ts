@@ -16,14 +16,66 @@ export type OrbitFlow = {
   updated_at: string;
 };
 
+export type OrbitFlowActionType =
+  | "send_whatsapp_template"
+  | "move_deal_stage"
+  | "change_deal_stage"
+  | "create_task"
+  | "toggle_ai_agent"
+  | "notify_vendedor"
+  | "send_rich_media"
+  | "check_calendar_and_offer";
+
 export type OrbitFlowAction = {
   id: string;
   flow_id: string;
   ordem: number;
-  action_type: "send_whatsapp_template" | "move_deal_stage" | "create_task" | "toggle_ai_agent" | "notify_vendedor";
+  action_type: OrbitFlowActionType;
   action_config: Record<string, any>;
   delay_seconds: number;
 };
+
+export function useUpsertFlowAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (action: {
+      id?: string;
+      flow_id: string;
+      ordem: number;
+      action_type: OrbitFlowActionType;
+      action_config: Record<string, any>;
+      delay_seconds?: number;
+    }) => {
+      const row: any = {
+        flow_id: action.flow_id,
+        ordem: action.ordem,
+        action_type: action.action_type,
+        action_config: action.action_config ?? {},
+        delay_seconds: action.delay_seconds ?? 0,
+      };
+      if (action.id) row.id = action.id;
+      const { data, error } = await (supabase.from("orbit_flow_actions" as any) as any)
+        .upsert(row)
+        .select("*")
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_d, v) => qc.invalidateQueries({ queryKey: ["orbit-flow-actions", v.flow_id] }),
+  });
+}
+
+export function useDeleteFlowAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id }: { id: string; flow_id: string }) => {
+      const { error } = await (supabase.from("orbit_flow_actions" as any) as any).delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, v) => qc.invalidateQueries({ queryKey: ["orbit-flow-actions", v.flow_id] }),
+  });
+}
+
 
 export type OrbitFlowTemplate = {
   id: string;
