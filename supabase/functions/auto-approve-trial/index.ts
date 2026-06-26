@@ -84,7 +84,25 @@ Deno.serve(async (req) => {
     let trialReqId: string;
 
     if (body.trial_id) {
-      // Admin approval flow: skip trial_requests duplicate check, update existing record
+      // Admin approval flow: require super_admin JWT
+      const authHeader = req.headers.get("Authorization") ?? "";
+      if (!authHeader.startsWith("Bearer ")) {
+        return fail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401);
+      }
+      const { data: userRes, error: userErr } = await supabase.auth.getUser(
+        authHeader.replace("Bearer ", "")
+      );
+      if (userErr || !userRes?.user) {
+        return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401);
+      }
+      const { data: isSuper } = await supabase.rpc("has_role", {
+        _user_id: userRes.user.id,
+        _role: "super_admin",
+      });
+      if (!isSuper) {
+        return fail(ErrorCodes.UNAUTHORIZED, "Acesso negado", 403);
+      }
+
       const { error: updErr } = await supabase
         .from("trial_requests")
         .update({ status: "approved" })
@@ -94,6 +112,7 @@ Deno.serve(async (req) => {
         return fail(ErrorCodes.INTERNAL_ERROR, "Erro ao atualizar solicitação", 500);
       }
       trialReqId = body.trial_id;
+
     } else {
       // Public form flow: check duplicates
       const { data: existingTrial } = await supabase

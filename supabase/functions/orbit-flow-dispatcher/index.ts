@@ -133,6 +133,18 @@ async function processEvent(event: any) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  // Internal-only: require service-role bearer token
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (!token || token !== SERVICE_KEY) {
+    return new Response(JSON.stringify({ ok: false, data: null, error: "unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+
+
   try {
     const { data: events, error } = await supabase
       .from("orbit_flow_events")
