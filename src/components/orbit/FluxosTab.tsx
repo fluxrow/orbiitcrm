@@ -171,7 +171,7 @@ function NewFlowWizard({
           <DialogTitle>Criar fluxo</DialogTitle>
           <DialogDescription>Escolha um template ou comece em branco. O fluxo nasce inativo.</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-3 py-2">
+        <div className="grid gap-3 py-2 max-h-[60vh] overflow-y-auto pr-1">
           {(templates ?? []).map((t) => (
             <button
               key={t.id}
@@ -181,7 +181,9 @@ function NewFlowWizard({
                   { empresaId, template: t },
                   {
                     onSuccess: () => {
-                      toast.success(`Fluxo "${t.nome}" criado (inativo)`);
+                      toast.success("Template carregado!", {
+                        description: "O editor de fluxos estará disponível em breve. Seu fluxo foi criado inativo.",
+                      });
                       onOpenChange(false);
                     },
                     onError: (e: any) => toast.error(`Erro: ${e.message}`),
