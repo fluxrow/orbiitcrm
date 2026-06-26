@@ -280,16 +280,16 @@ Deno.serve(async (req) => {
   }
 
   // 8) Atualiza contadores da fonte
-  await supabase.rpc("noop_ignore", {}).catch(() => {});
+  const { data: cur } = await supabase
+    .from("orbit_lead_sources")
+    .select("total_received")
+    .eq("id", sourceId)
+    .maybeSingle();
   await supabase
     .from("orbit_lead_sources")
     .update({
       last_received_at: new Date().toISOString(),
-      total_received: ((await supabase
-        .from("orbit_lead_sources")
-        .select("total_received")
-        .eq("id", sourceId)
-        .maybeSingle()).data?.total_received ?? 0) + 1,
+      total_received: (cur?.total_received ?? 0) + 1,
     })
     .eq("id", sourceId);
 
