@@ -1831,6 +1831,7 @@ export type Database = {
       }
       orbit_flow_templates: {
         Row: {
+          ativo: boolean
           categoria: string | null
           created_at: string
           definicao: Json
@@ -1841,6 +1842,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ativo?: boolean
           categoria?: string | null
           created_at?: string
           definicao?: Json
@@ -1851,6 +1853,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ativo?: boolean
           categoria?: string | null
           created_at?: string
           definicao?: Json
