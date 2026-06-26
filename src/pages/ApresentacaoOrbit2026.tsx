@@ -253,7 +253,8 @@ function Comparativo() {
     { label: "Tempo de resposta", human: "4 horas em média", orbit: "8 segundos" },
     { label: "Disponibilidade", human: "8h/dia, seg–sex", orbit: "24/7/365" },
     { label: "Leads simultâneos", human: "1 por vez", orbit: "Ilimitado" },
-    
+    { label: "Rastreamento UTM/origem", human: "Não rastreia", orbit: "Campo por campo, em JSONB" },
+    { label: "Latência de webhook", human: "Minutos (quando entrega)", orbit: "Sub-segundo, com log" },
     { label: "Esquece follow-up?", human: "Sempre", orbit: "Nunca" },
     { label: "Tira férias / fica doente", human: "Acontece", orbit: "Não existe" },
     { label: "Mau humor na sexta às 18h", human: "Inevitável", orbit: "Impossível" },
