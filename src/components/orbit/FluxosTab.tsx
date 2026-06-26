@@ -111,7 +111,10 @@ export function FluxosTab({ empresaId }: { empresaId: string | null | undefined 
                         )
                       }
                     />
-                    <Button variant="ghost" size="icon" onClick={() => setHistoryFlow(f)}>
+                    <Button variant="ghost" size="icon" title="Condições" onClick={() => setConditionsFlow(f)}>
+                      <Filter className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" title="Histórico" onClick={() => setHistoryFlow(f)}>
                       <History className="h-4 w-4" />
                     </Button>
                     <Button
