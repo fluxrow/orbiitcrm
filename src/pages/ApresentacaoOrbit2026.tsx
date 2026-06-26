@@ -388,7 +388,7 @@ function Qualificacao() {
       >
         <motion.div variants={fadeUp}>
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            03 · Qualificação
+            04 · Qualificação
           </span>
           <h2 className="mt-3 text-4xl md:text-5xl font-bold text-white leading-tight">
             Pare de queimar verba
@@ -479,7 +479,7 @@ function Personalizacao() {
       >
         <motion.div variants={fadeUp} className="mb-14 text-center">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            04 · Personalização
+            05 · Personalização
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
             Não é um chatbot genérico.
@@ -611,7 +611,7 @@ function WhatsApp() {
 
         <motion.div variants={fadeUp} className="order-1 lg:order-2">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            05 · WhatsApp em escala
+            06 · WhatsApp em escala
           </span>
           <h2 className="mt-3 text-4xl md:text-5xl font-bold text-white leading-tight">
             Mil conversas ao mesmo tempo.
@@ -670,7 +670,7 @@ function Email() {
       >
         <motion.div variants={fadeUp}>
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            06 · E-mail
+            07 · E-mail
           </span>
           <h2 className="mt-3 text-4xl md:text-5xl font-bold text-white leading-tight">
             Campanhas de e-mail
@@ -763,7 +763,7 @@ function Funil() {
       >
         <motion.div variants={fadeUp} className="mb-12 text-center">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            07 · Funil + IA
+            08 · Funil + IA
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
             Seu pipeline se organiza
@@ -821,7 +821,7 @@ function Investimento() {
       >
         <motion.div variants={fadeUp} className="mb-12 text-center">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            09 · Investimento
+            10 · Investimento
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
             Quanto custa
