@@ -20,14 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Layers, Plus, Pencil, Copy, Trash2, Search, AlertCircle, CheckCircle2 } from "lucide-react";
 import {
   useAllFlowTemplates,
