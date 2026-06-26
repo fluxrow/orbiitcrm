@@ -73,6 +73,7 @@ const ACTION_CATALOG: ActionMeta[] = [
       max_offers: 3,
       mensagem: "Posso te oferecer estes horários para conversarmos:",
       rodape: "Responda com o número da opção que preferir. ✅",
+    },
   },
   {
     type: "delay_execution",
@@ -80,7 +81,6 @@ const ACTION_CATALOG: ActionMeta[] = [
     desc: "Pausa o fluxo por X minutos ou horas antes da próxima ação.",
     icon: Timer,
     defaultConfig: { wait_value: 10, wait_unit: "minutes" },
-  },
   },
   {
     type: "change_deal_stage",
