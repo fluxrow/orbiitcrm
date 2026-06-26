@@ -1,0 +1,397 @@
+import { useMemo, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Layers, Plus, Pencil, Copy, Trash2, Search, AlertCircle, CheckCircle2 } from "lucide-react";
+import {
+  useAllFlowTemplates,
+  useDeleteFlowTemplate,
+  useToggleFlowTemplate,
+  useUpsertFlowTemplate,
+} from "@/hooks/useFlowTemplatesAdmin";
+import type { OrbitFlowTemplate } from "@/hooks/useOrbitFlows";
+import { toast } from "sonner";
+import { formatDistanceToNow } from "date-fns";
+import { ptBR } from "date-fns/locale";
+
+const EMPTY_DEF = `{
+  "trigger_type": "lead_recebido",
+  "trigger_config": {},
+  "condicoes": {},
+  "actions": []
+}`;
+
+type EditorState = {
+  open: boolean;
+  template: OrbitFlowTemplate | null;
+  duplicate?: boolean;
+};
+
+export function FlowTemplatesManager() {
+  const { data: templates, isLoading } = useAllFlowTemplates();
+  const toggle = useToggleFlowTemplate();
+  const del = useDeleteFlowTemplate();
+  const [search, setSearch] = useState("");
+  const [editor, setEditor] = useState<EditorState>({ open: false, template: null });
+
+  const filtered = useMemo(() => {
+    const s = search.trim().toLowerCase();
+    const list = templates ?? [];
+    if (!s) return list;
+    return list.filter(
+      (t) =>
+        t.nome.toLowerCase().includes(s) ||
+        (t.descricao ?? "").toLowerCase().includes(s) ||
+        (t.categoria ?? "").toLowerCase().includes(s)
+    );
+  }, [templates, search]);
+
+  return (
+    <Card className="glass-card">
+      <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <Layers className="h-5 w-5 text-primary" />
+            Gerenciador de Templates de Fluxo
+          </CardTitle>
+          <CardDescription>
+            CRUD global dos templates disponíveis no wizard "Novo Fluxo".
+          </CardDescription>
+        </div>
+        <Button
+          className="bg-brand text-brand-foreground hover:bg-brand/90"
+          onClick={() => setEditor({ open: true, template: null })}
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Novo template
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="relative max-w-sm">
+          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por nome, descrição ou categoria..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8"
+          />
+        </div>
+
+        {isLoading ? (
+          <div className="text-sm text-muted-foreground">Carregando...</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-10 text-muted-foreground">
+            <Layers className="h-10 w-10 mx-auto mb-2 opacity-40" />
+            <p className="text-sm">Nenhum template encontrado.</p>
+          </div>
+        ) : (
+          <div className="border border-border rounded-md overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Categoria</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Atualizado</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((t) => (
+                  <TableRow key={t.id}>
+                    <TableCell>
+                      <div className="font-medium">{t.nome}</div>
+                      {t.descricao && (
+                        <div className="text-xs text-muted-foreground line-clamp-1">
+                          {t.descricao}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {t.categoria ? (
+                        <Badge variant="outline" className="text-[10px]">
+                          {t.categoria}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={t.ativo ?? true}
+                          onCheckedChange={(v) =>
+                            toggle.mutate(
+                              { id: t.id, ativo: v },
+                              {
+                                onSuccess: () =>
+                                  toast.success(v ? "Template ativado" : "Template desativado"),
+                                onError: (e: any) => toast.error(e.message),
+                              }
+                            )
+                          }
+                        />
+                        <Badge
+                          className={
+                            t.ativo ?? true
+                              ? "bg-green-500/20 text-green-300"
+                              : "bg-muted text-muted-foreground"
+                          }
+                        >
+                          {t.ativo ?? true ? "Ativo" : "Inativo"}
+                        </Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-xs text-muted-foreground">
+                        {t.updated_at
+                          ? formatDistanceToNow(new Date(t.updated_at), {
+                              addSuffix: true,
+                              locale: ptBR,
+                            })
+                          : "—"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Editar"
+                          onClick={() => setEditor({ open: true, template: t })}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Duplicar"
+                          onClick={() =>
+                            setEditor({ open: true, template: t, duplicate: true })
+                          }
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Excluir"
+                          onClick={() => {
+                            if (confirm(`Excluir o template "${t.nome}"?`)) {
+                              del.mutate(t.id, {
+                                onSuccess: () => toast.success("Template excluído"),
+                                onError: (e: any) => toast.error(e.message),
+                              });
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+
+      <TemplateEditorDialog
+        state={editor}
+        onClose={() => setEditor({ open: false, template: null })}
+      />
+    </Card>
+  );
+}
+
+function TemplateEditorDialog({
+  state,
+  onClose,
+}: {
+  state: EditorState;
+  onClose: () => void;
+}) {
+  const upsert = useUpsertFlowTemplate();
+  const isEdit = !!state.template && !state.duplicate;
+
+  const initial = state.template;
+  const [nome, setNome] = useState("");
+  const [descricao, setDescricao] = useState("");
+  const [categoria, setCategoria] = useState("");
+  const [ativo, setAtivo] = useState(true);
+  const [definicaoStr, setDefinicaoStr] = useState(EMPTY_DEF);
+  const [jsonError, setJsonError] = useState<string | null>(null);
+
+  // Reset form when dialog opens
+  const formKey = `${state.open}-${initial?.id ?? "new"}-${state.duplicate ? "dup" : "src"}`;
+  useMemo(() => {
+    if (!state.open) return;
+    setNome(initial ? (state.duplicate ? `${initial.nome} (cópia)` : initial.nome) : "");
+    setDescricao(initial?.descricao ?? "");
+    setCategoria(initial?.categoria ?? "");
+    setAtivo(initial?.ativo ?? true);
+    setDefinicaoStr(
+      initial ? JSON.stringify(initial.definicao ?? {}, null, 2) : EMPTY_DEF
+    );
+    setJsonError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formKey]);
+
+  const validateJson = (txt: string) => {
+    try {
+      JSON.parse(txt);
+      setJsonError(null);
+      return true;
+    } catch (e: any) {
+      setJsonError(e.message);
+      return false;
+    }
+  };
+
+  const onSave = () => {
+    if (!nome.trim()) {
+      toast.error("Informe o nome do template");
+      return;
+    }
+    let parsed: any;
+    try {
+      parsed = JSON.parse(definicaoStr);
+    } catch (e: any) {
+      toast.error(`JSON inválido: ${e.message}`);
+      return;
+    }
+    upsert.mutate(
+      {
+        id: isEdit ? initial!.id : undefined,
+        nome: nome.trim(),
+        descricao: descricao.trim() || null,
+        categoria: categoria.trim() || null,
+        definicao: parsed,
+        ativo,
+        is_global: true,
+      },
+      {
+        onSuccess: () => {
+          toast.success(isEdit ? "Template atualizado" : "Template salvo");
+          onClose();
+        },
+        onError: (e: any) => toast.error(e.message),
+      }
+    );
+  };
+
+  return (
+    <Dialog open={state.open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {isEdit ? "Editar template" : state.duplicate ? "Duplicar template" : "Novo template"}
+          </DialogTitle>
+          <DialogDescription>
+            Templates ativos aparecem no wizard "Novo Fluxo" para todos os tenants.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <Label>Nome *</Label>
+              <Input value={nome} onChange={(e) => setNome(e.target.value)} />
+            </div>
+            <div>
+              <Label>Categoria</Label>
+              <Input
+                value={categoria}
+                onChange={(e) => setCategoria(e.target.value)}
+                placeholder="Ex.: Lead, WhatsApp, Tarefa..."
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label>Descrição</Label>
+            <Textarea
+              value={descricao}
+              onChange={(e) => setDescricao(e.target.value)}
+              rows={2}
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Switch checked={ativo} onCheckedChange={setAtivo} />
+            <span className="text-sm">{ativo ? "Ativo" : "Inativo"}</span>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <Label>Definição (JSON)</Label>
+              {jsonError ? (
+                <span className="text-xs text-red-400 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" /> {jsonError}
+                </span>
+              ) : (
+                <span className="text-xs text-green-400 flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3" /> JSON válido
+                </span>
+              )}
+            </div>
+            <Textarea
+              value={definicaoStr}
+              onChange={(e) => {
+                setDefinicaoStr(e.target.value);
+                validateJson(e.target.value);
+              }}
+              rows={16}
+              className="font-mono text-xs"
+              spellCheck={false}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Estrutura esperada: <code>trigger_type</code>, <code>trigger_config</code>,
+              <code> condicoes</code>, <code>actions[]</code>.
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={onSave}
+            disabled={upsert.isPending || !!jsonError}
+            className="bg-brand text-brand-foreground hover:bg-brand/90"
+          >
+            {upsert.isPending ? "Salvando..." : "Salvar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
