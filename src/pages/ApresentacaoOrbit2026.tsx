@@ -734,15 +734,14 @@ function Email() {
             07 · E-mail
           </span>
           <h2 className="mt-3 text-4xl md:text-5xl font-bold text-white leading-tight">
-            Campanhas de e-mail
+            A esteira que garante
             <br />
             <span className="bg-gradient-to-r from-cyan-300 to-violet-400 bg-clip-text text-transparent">
-              que realmente vendem.
+              que o lead nunca esqueça do seu horário.
             </span>
           </h2>
           <p className="mt-6 text-lg text-white/60 leading-relaxed">
-            Dispare, segmente e meça. Templates prontos, editor visual, variáveis
-            personalizadas e métricas em tempo real. Sem ferramenta extra, sem assinatura paralela.
+            Confirmação imediata, lembrete 24h antes, lembrete 1h antes e reagendamento automático se o lead pedir. Você só fala com quem realmente vai aparecer na call.
           </p>
 
           <div className="mt-8 grid grid-cols-3 gap-4">
