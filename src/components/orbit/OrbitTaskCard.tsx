@@ -49,7 +49,7 @@ export function OrbitTaskCard({ task, onComplete, onEdit, onOpenProspect }: Orbi
       }}
       onDragEnd={() => setIsDragging(false)}
       className={cn(
-      "rounded-lg border p-3 space-y-2 transition-all hover:shadow-md cursor-grab active:cursor-grabbing",
+      "rounded-lg border p-4 space-y-3 transition-all hover:shadow-md cursor-grab active:cursor-grabbing w-full min-w-0 overflow-hidden",
       isDragging && "opacity-50",
       isCompleted && "opacity-60 bg-muted/30",
       isOverdue && "border-destructive/50 bg-destructive/5",
@@ -59,9 +59,16 @@ export function OrbitTaskCard({ task, onComplete, onEdit, onOpenProspect }: Orbi
     )}>
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-sm">{tipoIcons[task.tipo_tarefa] || "✅"}</span>
-          <h4 className={cn("text-sm font-medium truncate", isCompleted && "line-through")}>{task.titulo}</h4>
+        <div className="flex items-start gap-2 min-w-0 flex-1">
+          <span className="text-sm leading-5 shrink-0">{tipoIcons[task.tipo_tarefa] || "✅"}</span>
+          <h4
+            className={cn(
+              "text-sm font-medium leading-snug break-words [overflow-wrap:anywhere] min-w-0 flex-1",
+              isCompleted && "line-through",
+            )}
+          >
+            {task.titulo}
+          </h4>
         </div>
         <Badge variant="outline" className={cn("text-[10px] shrink-0", priorityColors[task.prioridade])}>
           {priorityLabels[task.prioridade] || task.prioridade}
