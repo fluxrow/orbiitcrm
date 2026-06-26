@@ -240,7 +240,7 @@ export function FlowConditionsDialog({
             ) : (
               <div className="space-y-2">
                 {payloadRows.map((row, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                  <div key={row.uid} className="grid grid-cols-[1fr_1fr_auto] gap-2">
                     <Input
                       placeholder="raw.utm_source"
                       value={row.key}
