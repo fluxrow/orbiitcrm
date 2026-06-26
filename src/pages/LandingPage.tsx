@@ -286,19 +286,19 @@ function ChaosSide() {
 
 function OrbitSide() {
   const nodes = [
-    { icon: Webhook, label: "Webhook" },
-    { icon: Sparkles, label: "IA Qualifica" },
-    { icon: Calendar, label: "Agenda" },
+    { icon: Webhook, label: "Lead entra" },
+    { icon: Sparkles, label: "IA qualifica" },
+    { icon: Calendar, label: "Call agendada" },
   ];
   return (
     <div className={`${glass} relative overflow-hidden p-7 md:p-9 border-emerald-400/20`}>
       <div className="absolute -top-12 -right-12 w-48 h-48 bg-emerald-500/20 blur-3xl rounded-full" />
       <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-violet-500/20 blur-3xl rounded-full" />
       <span className="relative text-emerald-300 text-xs uppercase tracking-[0.2em] font-medium">
-        Lado B · A Infraestrutura Orbit
+        Sua rotina com Orbit
       </span>
       <h3 className="relative mt-3 text-2xl md:text-3xl font-bold text-white">
-        Sua operação com Orbit
+        Agenda cheia, venda fechada
       </h3>
 
       {/* Pipeline */}
