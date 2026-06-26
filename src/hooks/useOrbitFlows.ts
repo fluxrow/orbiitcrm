@@ -31,6 +31,10 @@ export type OrbitFlowTemplate = {
   descricao: string | null;
   categoria: string | null;
   definicao: any;
+  ativo?: boolean;
+  is_global?: boolean;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type OrbitFlowRun = {
