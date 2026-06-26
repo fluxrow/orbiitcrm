@@ -77,7 +77,7 @@ export function OrbitTaskCard({ task, onComplete, onEdit, onOpenProspect }: Orbi
 
       {/* Prospect */}
       {task.prospect?.nome_razao && (
-        <p className="text-xs text-muted-foreground truncate">
+        <p className="text-xs text-muted-foreground break-words [overflow-wrap:anywhere]">
           👤 {task.prospect.nome_razao}
         </p>
       )}
