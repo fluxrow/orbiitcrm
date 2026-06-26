@@ -25,6 +25,7 @@ import { AudioLibraryManager } from "@/components/orbit/AudioLibraryManager";
 import { ChatbotFlowManager } from "@/components/orbit/ChatbotFlowManager";
 import { PipelineConfigTab } from "@/components/orbit/PipelineConfigTab";
 import { FluxosTab } from "@/components/orbit/FluxosTab";
+import { FlowTemplatesManager } from "@/components/orbit/FlowTemplatesManager";
 import { LeadSourcesTab } from "@/components/orbit/LeadSourcesTab";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
