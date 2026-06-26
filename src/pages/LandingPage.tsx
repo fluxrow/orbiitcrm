@@ -136,17 +136,17 @@ function Hero() {
           className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm text-white/70 backdrop-blur-xl"
         >
           <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-          Infraestrutura comercial para mentorias High-Ticket
+          O agendador das mentorias High-Ticket
         </motion.div>
 
         <motion.h1
           variants={fadeUp}
           className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight text-white leading-[1.05] max-w-5xl"
         >
-          O lead preencheu seu formulário,
+          A agenda cheia
           <br />
           <span className="bg-gradient-to-r from-emerald-400 via-cyan-300 to-violet-400 bg-clip-text text-transparent">
-            mas a call de fechamento não aconteceu?
+            das mentorias que faturam.
           </span>
         </motion.h1>
 
@@ -154,11 +154,10 @@ function Hero() {
           variants={fadeUp}
           className="max-w-3xl text-lg md:text-xl text-white/65 leading-relaxed"
         >
-          O Orbit é a infraestrutura comercial de escala para sua{" "}
+          O Orbit persegue cada lead do seu anúncio até a call de fechamento entrar na sua agenda — funciona pra{" "}
           <WordRotator />.{" "}
           <span className="text-white/85">
-            Convertemos o interesse do formulário em uma call confirmada — sem que
-            você precise trocar uma única mensagem manual.
+            Você só entra na hora da venda.
           </span>
         </motion.p>
 
@@ -172,7 +171,7 @@ function Hero() {
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full bg-gradient-to-r from-emerald-500 to-violet-500 text-white font-semibold shadow-2xl shadow-emerald-500/30 hover:scale-105 transition-transform"
           >
-            Automatizar meu agendamento
+            Quero minha agenda cheia
             <ArrowRight className="w-4 h-4" />
           </a>
           <a
@@ -187,7 +186,7 @@ function Hero() {
           variants={fadeUp}
           className="mt-6 flex flex-wrap items-center justify-center gap-2 text-xs text-white/50"
         >
-          {["resposta em 8s", "24/7/365", "latência sub-segundo"].map((c) => (
+          {["resposta em 8s", "funciona 24/7", "sem perder lead"].map((c) => (
             <span
               key={c}
               className="px-3 py-1 rounded-full bg-white/[0.04] border border-white/10 backdrop-blur-xl"
