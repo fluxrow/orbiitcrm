@@ -823,12 +823,12 @@ function Funil() {
       >
         <motion.div variants={fadeUp} className="mb-12 text-center">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            08 · Funil + IA
+            08 · Funil
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
-            Seu pipeline se organiza
+            O mapa do seu dinheiro.
             <br />
-            <span className="text-white/50">enquanto você dorme.</span>
+            <span className="text-white/50">Quantas calls estão prontas pra fechar agora.</span>
           </h2>
         </motion.div>
 
