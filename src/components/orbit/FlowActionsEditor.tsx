@@ -322,15 +322,12 @@ function ActionEditDialog({
   const [cfg, setCfg] = useState<Record<string, any>>({});
   const [delay, setDelay] = useState<number>(0);
 
-  // reset when action changes
-  useState(() => {});
-  if (action && Object.keys(cfg).length === 0 && action.action_config) {
-    // initialize on first render of a new action
-    setTimeout(() => {
+  useEffect(() => {
+    if (action) {
       setCfg(action.action_config ?? {});
       setDelay(action.delay_seconds ?? 0);
-    }, 0);
-  }
+    }
+  }, [action?.id]);
 
   if (!action) return null;
   const meta = META_BY_TYPE[action.action_type];
