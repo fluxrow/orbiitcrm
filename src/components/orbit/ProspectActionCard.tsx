@@ -1,13 +1,18 @@
+import { useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   MessageCircle, Mail, StickyNote, CalendarPlus, GitBranch,
-  Phone, PhoneOff, MailX, Flame, History, CheckSquare, CalendarClock,
+  Phone, PhoneOff, MailX, Flame, History, CheckSquare, CalendarClock, Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ProspectRaioX } from "./ProspectRaioX";
 import { LeadHighlightTags } from "./LeadHighlightTags";
 import { ProspectQuickActions } from "./ProspectQuickActions";
