@@ -952,21 +952,20 @@ function Investimento() {
             Por que a implementação?
           </h4>
           <p className="text-white/60 text-sm leading-relaxed mb-6">
-            São <span className="text-white">2 semanas de trabalho dedicado</span> para entregar a
-            operação rodando sozinha no dia 15. Não é "configure você mesmo" — é a gente fazendo
-            tudo com você, do zero ao primeiro lead atendido pela IA.
+            São <span className="text-white">2 semanas de trabalho dedicado</span> pra deixar sua agenda enchendo sozinha a partir do dia 15.
+            Não é "configure você mesmo" — é a gente fazendo tudo com você, do zero ao primeiro lead virando call confirmada.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm text-white/70">
             {[
-              "Setup do número WhatsApp Business",
-              "Treinamento da IA na sua base de conhecimento",
-              "Configuração dos fluxos condicionais",
-              "Integração com Meta Ads / Google Ads",
-              "Criação dos templates iniciais",
-              "Gravação da biblioteca de áudios",
-              "Configuração do funil e etapas",
-              "Handoff humano + notificações",
-              "Treinamento da sua equipe",
+              "Conexão do seu WhatsApp",
+              "Treinamento da IA na sua mentoria",
+              "Montagem dos caminhos de conversa",
+              "Conexão com seus anúncios e formulários",
+              "Mensagens e templates iniciais",
+              "Áudios na sua voz gravados e testados",
+              "Funil organizado por etapa de venda",
+              "Avisos pra você quando a call estiver pronta",
+              "Treinamento do seu time",
             ].map((item, i) => (
               <div key={i} className="flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
