@@ -24,6 +24,7 @@ import {
   BellRing,
   Paperclip,
   CalendarClock,
+  Timer,
   Pencil,
 } from "lucide-react";
 import {
