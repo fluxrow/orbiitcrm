@@ -20,7 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Bot, MessageSquare, Mail, Save, Loader2, Copy, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Send, Upload, Download, FileText, X, Settings2, Info, Link2, ClipboardList, Clock, Music2, Volume2, Mic, GitBranch, Workflow } from "lucide-react";
+import { Bot, MessageSquare, Mail, Save, Loader2, Copy, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, Send, Upload, Download, FileText, X, Settings2, Info, Link2, ClipboardList, Clock, Music2, Volume2, Mic, GitBranch, Workflow, Webhook } from "lucide-react";
 import { AudioLibraryManager } from "@/components/orbit/AudioLibraryManager";
 import { ChatbotFlowManager } from "@/components/orbit/ChatbotFlowManager";
 import { PipelineConfigTab } from "@/components/orbit/PipelineConfigTab";
