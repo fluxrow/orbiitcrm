@@ -50,6 +50,7 @@ export function FlowConditionsDialog({
     const c = (flow.condicoes ?? {}) as Conditions;
     setCond(c);
     const rows: PayloadMatch[] = Object.entries(c.payload_match ?? {}).map(([key, value]) => ({
+      uid: newUid(),
       key,
       value: Array.isArray(value) ? value.join(", ") : String(value),
     }));
