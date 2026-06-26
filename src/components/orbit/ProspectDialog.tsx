@@ -523,6 +523,39 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
             defaultTitle={`Reunião — ${prospect.nome_fantasia || prospect.nome_razao}`}
           />
         )}
+
+        {isEditing && prospect && (
+          <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-destructive">Excluir prospect?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Tem certeza que deseja excluir <strong>{prospect.nome_razao}</strong>? Esta ação apagará todo o histórico do lead e <strong>não pode ser desfeita</strong>.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  disabled={deleteProspect.isPending}
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    try {
+                      await deleteProspect.mutateAsync(prospect.id);
+                      toast.success("Prospect excluído");
+                      setConfirmDelete(false);
+                      onOpenChange(false);
+                    } catch (err: any) {
+                      toast.error("Erro ao excluir prospect", { description: err?.message });
+                    }
+                  }}
+                >
+                  {deleteProspect.isPending ? "Excluindo..." : "Excluir permanentemente"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
       </DialogContent>
     </Dialog>
   );
