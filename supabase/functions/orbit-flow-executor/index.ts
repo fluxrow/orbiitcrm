@@ -12,6 +12,9 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const FUNCTIONS_BASE = `${SUPABASE_URL}/functions/v1`;
 
+import { getOrbitZapiRuntimeConfig } from "../_shared/orbit-zapi.ts";
+import { getTokenForEmpresa, ensureFreshAccessToken, checkAvailability } from "../_shared/google-calendar.ts";
+
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
