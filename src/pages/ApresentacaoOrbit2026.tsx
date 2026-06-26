@@ -940,7 +940,7 @@ function Investimento() {
                 <div className="text-white/50 text-sm mt-2">por mês{"\u00a0"}</div>
               </div>
               <div className="mt-6 pt-6 border-t border-white/10 text-sm text-white/60">
-                Inclui: IA ilimitada, WhatsApp, e-mail, funil, suporte e atualizações.
+                Inclui: IA ilimitada, WhatsApp, e-mail, funil, agendamento e suporte.
               </div>
             </div>
           </motion.div>
