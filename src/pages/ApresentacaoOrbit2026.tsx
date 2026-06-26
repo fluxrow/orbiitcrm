@@ -160,14 +160,14 @@ function Dores() {
     {
       icon: XCircle,
       value: <CountUp to={73} suffix="%" />,
-      label: "dos leads de anúncio nunca são respondidos",
+      label: "dos leads do seu anúncio nunca são respondidos a tempo",
       source: "Harvard Business Review",
       color: "text-red-400",
     },
     {
       icon: Clock,
       value: <CountUp to={5} suffix=" min" />,
-      label: "é a janela de ouro. Depois disso, conversão cai 80%",
+      label: "é a janela de ouro — depois disso o lead já comprou de outro",
       source: "MIT Lead Response Study",
       color: "text-amber-400",
     },
@@ -178,15 +178,15 @@ function Dores() {
           R$ <CountUp to={8500} separator="." />
         </>
       ),
-      label: "custo mensal médio de 1 SDR júnior com encargos",
+      label: "é o custo mensal de um assistente de vendas com encargos",
       source: "Catho · Glassdoor",
       color: "text-rose-400",
     },
     {
       icon: TrendingDown,
       value: <CountUp to={42} suffix="h" />,
-      label: "por semana um SDR gasta em tarefas repetitivas",
-      source: "InsideSales Report",
+      label: "por semana você gasta no WhatsApp em vez de fechar venda",
+      source: "Pesquisa de campo",
       color: "text-orange-400",
     },
   ];
@@ -204,10 +204,10 @@ function Dores() {
             01 · O problema
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
-            O custo real de operar
-            <span className="text-red-400"> sem infraestrutura</span>
+            Seu tráfego está rodando.
+            <span className="text-red-400"> Sua agenda, vazia.</span>
             <br />
-            <span className="text-white/50">aparece todo mês na sua planilha.</span>
+            <span className="text-white/50">O dinheiro do anúncio virou prejuízo.</span>
           </h2>
         </motion.div>
 
@@ -234,10 +234,10 @@ function Dores() {
           variants={fadeUp}
           className="mt-16 text-2xl md:text-3xl font-light text-white/80 text-center max-w-3xl mx-auto"
         >
-          Você não tem um problema de venda.
+          O lead preencheu o form, mas você não conseguiu falar com ele a tempo.
           <br />
           <span className="text-white font-medium">
-            Você tem um problema de resposta.
+            Não é problema de produto. É problema de velocidade de agendamento.
           </span>
         </motion.p>
       </motion.div>
