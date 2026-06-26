@@ -114,21 +114,21 @@ function Hero() {
           className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm text-white/70 backdrop-blur-xl"
         >
           <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-          Orbit CRM{"\u00a0"}
+          Orbit · O agendador das mentorias High-Ticket
         </motion.div>
 
         <motion.h1
           variants={fadeUp}
           className="text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight text-white leading-[1.05]"
         >
-          Infraestrutura comercial
+          A agenda cheia
           <br />
           <span className="bg-gradient-to-r from-emerald-400 via-cyan-300 to-violet-400 bg-clip-text text-transparent">
-            no nível das maiores.
+            das mentorias que faturam.
           </span>
           <br />
           <span className="text-white/60 text-3xl md:text-5xl lg:text-6xl font-light">
-            Pensada para a sua mentoria.
+            Lead do anúncio → call de fechamento.
           </span>
         </motion.h1>
 
@@ -136,8 +136,8 @@ function Hero() {
           variants={fadeUp}
           className="max-w-2xl text-lg md:text-xl text-white/60 leading-relaxed"
         >
-          Captação multicanal, motor de fluxos em tempo real e observabilidade enterprise —{" "}
-          <span className="text-white/90 font-medium">a confiabilidade de um SaaS de produto, na operação do mentor.</span>
+          O Orbit persegue cada lead que entra no seu anúncio até a call cair no seu Google Calendar.{" "}
+          <span className="text-white/90 font-medium">Você só entra na hora da venda.</span>
         </motion.p>
 
         <motion.div
@@ -160,14 +160,14 @@ function Dores() {
     {
       icon: XCircle,
       value: <CountUp to={73} suffix="%" />,
-      label: "dos leads de anúncio nunca são respondidos",
+      label: "dos leads do seu anúncio nunca são respondidos a tempo",
       source: "Harvard Business Review",
       color: "text-red-400",
     },
     {
       icon: Clock,
       value: <CountUp to={5} suffix=" min" />,
-      label: "é a janela de ouro. Depois disso, conversão cai 80%",
+      label: "é a janela de ouro — depois disso o lead já comprou de outro",
       source: "MIT Lead Response Study",
       color: "text-amber-400",
     },
@@ -178,15 +178,15 @@ function Dores() {
           R$ <CountUp to={8500} separator="." />
         </>
       ),
-      label: "custo mensal médio de 1 SDR júnior com encargos",
+      label: "é o custo mensal de um assistente de vendas com encargos",
       source: "Catho · Glassdoor",
       color: "text-rose-400",
     },
     {
       icon: TrendingDown,
       value: <CountUp to={42} suffix="h" />,
-      label: "por semana um SDR gasta em tarefas repetitivas",
-      source: "InsideSales Report",
+      label: "por semana você gasta no WhatsApp em vez de fechar venda",
+      source: "Pesquisa de campo",
       color: "text-orange-400",
     },
   ];
@@ -204,10 +204,10 @@ function Dores() {
             01 · O problema
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
-            O custo real de operar
-            <span className="text-red-400"> sem infraestrutura</span>
+            Seu tráfego está rodando.
+            <span className="text-red-400"> Sua agenda, vazia.</span>
             <br />
-            <span className="text-white/50">aparece todo mês na sua planilha.</span>
+            <span className="text-white/50">O dinheiro do anúncio virou prejuízo.</span>
           </h2>
         </motion.div>
 
@@ -234,10 +234,10 @@ function Dores() {
           variants={fadeUp}
           className="mt-16 text-2xl md:text-3xl font-light text-white/80 text-center max-w-3xl mx-auto"
         >
-          Você não tem um problema de venda.
+          O lead preencheu o form, mas você não conseguiu falar com ele a tempo.
           <br />
           <span className="text-white font-medium">
-            Você tem um problema de resposta.
+            Não é problema de produto. É problema de velocidade de agendamento.
           </span>
         </motion.p>
       </motion.div>
@@ -250,15 +250,15 @@ function Dores() {
    ============================================================ */
 function Comparativo() {
   const rows = [
-    { label: "Tempo de resposta", human: "4 horas em média", orbit: "8 segundos" },
+    { label: "Velocidade de agendamento", human: "horas (quando responde)", orbit: "segundos" },
     { label: "Disponibilidade", human: "8h/dia, seg–sex", orbit: "24/7/365" },
-    { label: "Leads simultâneos", human: "1 por vez", orbit: "Ilimitado" },
-    { label: "Rastreamento UTM/origem", human: "Não rastreia", orbit: "Campo por campo, em JSONB" },
-    { label: "Latência de webhook", human: "Minutos (quando entrega)", orbit: "Sub-segundo, com log" },
-    { label: "Esquece follow-up?", human: "Sempre", orbit: "Nunca" },
+    { label: "Leads atendidos ao mesmo tempo", human: "1 por vez", orbit: "Ilimitado" },
+    { label: "Visibilidade do ROI do anúncio", human: "Não sabe de onde veio", orbit: "Cada lead, cada origem" },
+    { label: "Follow-up garantido até agendar", human: "Esquece sempre", orbit: "Nunca desiste" },
+    { label: "Confirmação e lembrete da call", human: "Manual ou nenhum", orbit: "Automático, 24h e 1h antes" },
     { label: "Tira férias / fica doente", human: "Acontece", orbit: "Não existe" },
-    { label: "Mau humor na sexta às 18h", human: "Inevitável", orbit: "Impossível" },
-    { label: "Onboarding", human: "3 meses + treinamento", orbit: "15 dias chave-na-mão" },
+    { label: "Custo mensal real", human: "R$ 8.500+ com encargos", orbit: "Fração disso" },
+    { label: "Tempo até começar a faturar", human: "3 meses + treinamento", orbit: "15 dias chave-na-mão" },
   ];
 
   return (
@@ -274,7 +274,7 @@ function Comparativo() {
             02 · A comparação
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
-            Humano vs.{" "}
+            Processo Manual vs.{" "}
             <span className="bg-gradient-to-r from-emerald-400 to-violet-400 bg-clip-text text-transparent">
               Orbit
             </span>
@@ -290,7 +290,7 @@ function Comparativo() {
             <div className="p-5 text-center border-l border-white/10">
               <div className="flex items-center justify-center gap-2 text-white/70">
                 <Users className="w-4 h-4" />
-                <span className="font-medium">SDR Humano</span>
+                <span className="font-medium">Processo Manual</span>
               </div>
             </div>
             <div className="p-5 text-center border-l border-white/10 bg-gradient-to-b from-emerald-500/10 to-transparent">
@@ -379,17 +379,17 @@ function Infraestrutura() {
       >
         <motion.div variants={fadeUp} className="mb-14 text-center">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            03 · Infraestrutura Enterprise
+            03 · O que o Orbit faz pelo seu caixa
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
-            Cinco pilares que sustentam
+            Cinco pilares que enchem
             <br />
             <span className="bg-gradient-to-r from-emerald-400 to-violet-400 bg-clip-text text-transparent">
-              a operação de quem vende sério.
+              a agenda do mentor.
             </span>
           </h2>
           <p className="mt-6 text-lg text-white/60 max-w-2xl mx-auto leading-relaxed">
-            Não é template. É a infraestrutura que faz o lead do anúncio virar call confirmada — com o nível de engenharia de um Stripe ou Twilio.
+            Cada peça existe pra uma coisa só: tirar o lead do anúncio e colocar na sua call de fechamento — sem você levantar o dedo.
           </p>
         </motion.div>
 
@@ -450,21 +450,20 @@ function Qualificacao() {
             04 · Qualificação
           </span>
           <h2 className="mt-3 text-4xl md:text-5xl font-bold text-white leading-tight">
-            Pare de queimar verba
+            A IA que separa
             <br />
-            <span className="text-red-400">com lead que ninguém atende.</span>
+            <span className="text-red-400">o curioso do comprador.</span>
           </h2>
           <p className="mt-6 text-lg text-white/60 leading-relaxed">
-            Leads vindos de Meta Ads, Google Ads, Instagram — todos respondidos em segundos. A IA puxa{" "}
-            <span className="text-emerald-300">orçamento, prazo e poder de decisão</span>, classifica como
-            quente / morno / frio e só passa pro humano quando vale a pena.
+            Cada lead que entra pelo anúncio é recebido em segundos. A IA conversa, descobre{" "}
+            <span className="text-emerald-300">se tem dinheiro, fit e urgência</span> e só coloca na sua agenda quem realmente vale uma call de fechamento.
           </p>
 
           <div className="mt-8 space-y-3">
             {[
-              { icon: Flame, t: "Lead quente → notifica vendedor instantâneo" },
-              { icon: Filter, t: "Lead morno → entra em nutrição automática" },
-              { icon: Brain, t: "Lead frio → descartado sem custo de tempo" },
+              { icon: Flame, t: "Lead pronto → vai direto pra sua agenda" },
+              { icon: Filter, t: "Lead morno → entra em perseguição automática" },
+              { icon: Brain, t: "Lead fora do perfil → descartado sem te tomar tempo" },
             ].map((it, i) => (
               <div key={i} className="flex items-center gap-3 text-white/80">
                 <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
@@ -520,12 +519,12 @@ function Qualificacao() {
    ============================================================ */
 function Personalizacao() {
   const cards = [
-    { icon: Brain, t: "Treinada na sua empresa", d: "Base de conhecimento própria. Produtos, preços, objeções, tom de voz — tudo da sua marca." },
-    { icon: Mic, t: "Áudios na sua voz", d: "Biblioteca de áudios pré-gravados. O cliente ouve seu vendedor, não uma IA genérica." },
-    { icon: GitBranch, t: "Fluxos condicionais", d: "Palavras-chave disparam respostas específicas. 'preço', 'agenda', 'cancelar' — cada uma com seu caminho." },
-    { icon: Users, t: "Handoff humano", d: "A IA sabe quando recuar. Passa o bastão pro humano em momentos críticos, sem perder contexto." },
-    { icon: Target, t: "Personas múltiplas", d: "Comporta lead B2B, B2C, suporte e SDR — cada conversa com a personalidade certa." },
-    { icon: Sparkles, t: "Aprende com você", d: "Sugestões de resposta, refino de tom, ajustes finos. A cada semana ela fica mais sua." },
+    { icon: Brain, t: "Treinada na sua mentoria", d: "Sabe seu método, seus preços, suas objeções e o tom da sua marca — fala como se fosse você." },
+    { icon: Mic, t: "Áudios na sua voz", d: "Biblioteca de áudios pré-gravados. O lead ouve você, não uma voz genérica de robô." },
+    { icon: GitBranch, t: "Resposta certa pra cada situação", d: "Lead pergunta preço? Pede agenda? Quer cancelar? Cada situação tem o caminho que você definir." },
+    { icon: Users, t: "Te chama quando precisa", d: "A IA sabe a hora de recuar. Te aciona na hora certa, com todo o contexto da conversa." },
+    { icon: Target, t: "Vários públicos, uma só voz", d: "Atende lead frio, lead aquecido, cliente e dúvida — cada conversa com o tom certo." },
+    { icon: Sparkles, t: "Fica mais sua a cada semana", d: "Sugere respostas, refina o tom, aprende com seu feedback. Mês 3 é melhor que mês 1." },
   ];
 
   return (
@@ -544,7 +543,7 @@ function Personalizacao() {
             Não é um chatbot genérico.
             <br />
             <span className="bg-gradient-to-r from-emerald-400 to-violet-400 bg-clip-text text-transparent">
-              É a sua empresa falando.
+              É a sua mentoria falando.
             </span>
           </h2>
         </motion.div>
@@ -670,13 +669,16 @@ function WhatsApp() {
 
         <motion.div variants={fadeUp} className="order-1 lg:order-2">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            06 · WhatsApp em escala
+            06 · WhatsApp
           </span>
           <h2 className="mt-3 text-4xl md:text-5xl font-bold text-white leading-tight">
-            Mil conversas ao mesmo tempo.
+            Seu agendador pessoal
             <br />
-            <span className="text-white/50">Zero conversas esquecidas.</span>
+            <span className="text-white/50">que persegue o lead até a call ser confirmada.</span>
           </h2>
+          <p className="mt-6 text-white/60 leading-relaxed">
+            Manda texto, áudio na sua voz, foto e PDF — no ritmo de gente, sem padrão de robô que bloqueia o número.
+          </p>
 
           <div className="mt-8 grid grid-cols-2 gap-4">
             <div className={`${glass} p-5`}>
@@ -732,15 +734,14 @@ function Email() {
             07 · E-mail
           </span>
           <h2 className="mt-3 text-4xl md:text-5xl font-bold text-white leading-tight">
-            Campanhas de e-mail
+            A esteira que garante
             <br />
             <span className="bg-gradient-to-r from-cyan-300 to-violet-400 bg-clip-text text-transparent">
-              que realmente vendem.
+              que o lead nunca esqueça do seu horário.
             </span>
           </h2>
           <p className="mt-6 text-lg text-white/60 leading-relaxed">
-            Dispare, segmente e meça. Templates prontos, editor visual, variáveis
-            personalizadas e métricas em tempo real. Sem ferramenta extra, sem assinatura paralela.
+            Confirmação imediata, lembrete 24h antes, lembrete 1h antes e reagendamento automático se o lead pedir. Você só fala com quem realmente vai aparecer na call.
           </p>
 
           <div className="mt-8 grid grid-cols-3 gap-4">
@@ -822,12 +823,12 @@ function Funil() {
       >
         <motion.div variants={fadeUp} className="mb-12 text-center">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            08 · Funil + IA
+            08 · Funil
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
-            Seu pipeline se organiza
+            O mapa do seu dinheiro.
             <br />
-            <span className="text-white/50">enquanto você dorme.</span>
+            <span className="text-white/50">Quantas calls estão prontas pra fechar agora.</span>
           </h2>
         </motion.div>
 
@@ -883,12 +884,15 @@ function Investimento() {
             10 · Investimento
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
-            Quanto custa
+            O que você perde por mês
             <br />
             <span className="bg-gradient-to-r from-emerald-400 to-violet-400 bg-clip-text text-transparent">
-              parar de perder vendas?
+              é maior que o Orbit por ano.
             </span>
           </h2>
+          <p className="mt-6 text-lg text-white/60 max-w-2xl mx-auto leading-relaxed">
+            Uma call de fechamento perdida já paga a mensalidade inteira. O Orbit recupera várias por semana.
+          </p>
         </motion.div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
@@ -936,7 +940,7 @@ function Investimento() {
                 <div className="text-white/50 text-sm mt-2">por mês{"\u00a0"}</div>
               </div>
               <div className="mt-6 pt-6 border-t border-white/10 text-sm text-white/60">
-                Inclui: IA ilimitada, WhatsApp, e-mail, funil, suporte e atualizações.
+                Inclui: IA ilimitada, WhatsApp, e-mail, funil, agendamento e suporte.
               </div>
             </div>
           </motion.div>
@@ -948,21 +952,20 @@ function Investimento() {
             Por que a implementação?
           </h4>
           <p className="text-white/60 text-sm leading-relaxed mb-6">
-            São <span className="text-white">2 semanas de trabalho dedicado</span> para entregar a
-            operação rodando sozinha no dia 15. Não é "configure você mesmo" — é a gente fazendo
-            tudo com você, do zero ao primeiro lead atendido pela IA.
+            São <span className="text-white">2 semanas de trabalho dedicado</span> pra deixar sua agenda enchendo sozinha a partir do dia 15.
+            Não é "configure você mesmo" — é a gente fazendo tudo com você, do zero ao primeiro lead virando call confirmada.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm text-white/70">
             {[
-              "Setup do número WhatsApp Business",
-              "Treinamento da IA na sua base de conhecimento",
-              "Configuração dos fluxos condicionais",
-              "Integração com Meta Ads / Google Ads",
-              "Criação dos templates iniciais",
-              "Gravação da biblioteca de áudios",
-              "Configuração do funil e etapas",
-              "Handoff humano + notificações",
-              "Treinamento da sua equipe",
+              "Conexão do seu WhatsApp",
+              "Treinamento da IA na sua mentoria",
+              "Montagem dos caminhos de conversa",
+              "Conexão com seus anúncios e formulários",
+              "Mensagens e templates iniciais",
+              "Áudios na sua voz gravados e testados",
+              "Funil organizado por etapa de venda",
+              "Avisos pra você quando a call estiver pronta",
+              "Treinamento do seu time",
             ].map((item, i) => (
               <div key={i} className="flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
@@ -974,7 +977,7 @@ function Investimento() {
 
         <motion.div variants={fadeUp} className="mt-14 text-center max-w-4xl mx-auto">
           <div className="text-sm uppercase tracking-[0.2em] text-white/40 mb-3">
-            Comparado a um SDR humano, você economiza
+            Comparado a contratar um assistente de vendas, você economiza
           </div>
           <div className="text-7xl md:text-8xl font-bold bg-gradient-to-r from-emerald-400 via-cyan-300 to-violet-400 bg-clip-text text-transparent tabular-nums leading-none">
             R$ <CountUp to={84636} separator="." duration={2.4} />
@@ -1023,29 +1026,29 @@ function Fechamento() {
           variants={fadeUp}
           className="text-5xl md:text-7xl lg:text-8xl font-bold text-white leading-[1.05] max-w-5xl mx-auto"
         >
-          Operação enterprise,
+          Pare de operar sua mentoria
           <br />
           <span className="bg-gradient-to-r from-emerald-400 via-cyan-300 to-violet-400 bg-clip-text text-transparent">
-            preço de startup.
+            no improviso.
           </span>
           <br />
-          <span className="text-white/60">Sem improviso, sem planilha.</span>
+          <span className="text-white/60">Comece a operar como gente grande.</span>
         </motion.h2>
 
         <motion.p
           variants={fadeUp}
           className="mt-10 text-xl text-white/60 max-w-2xl mx-auto"
         >
-          Em 15 dias a infraestrutura está rodando — captando, qualificando e agendando sozinha.
+          Em 15 dias sua agenda começa a encher sozinha — captando, qualificando e agendando call de fechamento.
         </motion.p>
 
         <motion.div variants={fadeUp} className="mt-16 flex flex-col items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-400 to-violet-400 flex items-center justify-center shadow-2xl shadow-emerald-500/30">
             <span className="text-white font-bold text-xl">O</span>
           </div>
-          <div className="text-white font-semibold text-lg">Orbit CRM</div>
+          <div className="text-white font-semibold text-lg">Orbit</div>
           <div className="text-white/40 text-sm">
-            Seu time de vendas. Em piloto automático.
+            A agenda cheia das mentorias que faturam.
           </div>
         </motion.div>
       </motion.div>

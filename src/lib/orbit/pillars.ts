@@ -1,4 +1,4 @@
-import { Webhook, GitBranch, Send, Activity, Upload, type LucideIcon } from "lucide-react";
+import { Inbox, Target, CalendarCheck, LineChart, Upload, type LucideIcon } from "lucide-react";
 
 export type Pillar = {
   icon: LucideIcon;
@@ -9,38 +9,38 @@ export type Pillar = {
 
 export const PILLARS: Pillar[] = [
   {
-    icon: Webhook,
-    title: "Hub de Ingestão Universal",
+    icon: Inbox,
+    title: "Captura de leads de qualquer canal",
     description:
-      "Typebot, Google Sheets (Apps Script), formulários e Meta Ads entram pela mesma porta. Mapeamento visual de campos, validação de CPF/CNPJ e normalização de WhatsApp acontecem antes do lead tocar no seu funil.",
-    stack: ["Webhook", "Apps Script", "Meta Ads"],
+      "Recebe leads do seu anúncio, do Instagram, do formulário do site ou da indicação — todos na mesma esteira. Nada cai no esquecimento, nada vira linha esquecida em planilha.",
+    stack: ["Anúncios", "Formulários", "Indicação"],
   },
   {
-    icon: GitBranch,
-    title: "Motor de Fluxos & Condições",
+    icon: Target,
+    title: "Perseguição automática até agendar",
     description:
-      "Disparos em tempo real com filtros cirúrgicos por origem, tipo de fonte e qualquer chave do payload — inclusive utm_source, utm_campaign e campos custom do seu formulário.",
-    stack: ["Realtime", "JSONB filters", "UTM-aware"],
+      "O Orbit não desiste do lead. Manda mensagem, áudio e lembrete no ritmo certo, sem parecer robô, até a call de fechamento cair na sua agenda.",
+    stack: ["Cadência humana", "Multi-toque", "Sem desistência"],
   },
   {
-    icon: Send,
-    title: "Ações Inteligentes de Escalonamento",
+    icon: CalendarCheck,
+    title: "Confirmação e lembrete da call",
     description:
-      "Mídia rica (áudio, vídeo, PDF), movimentação automática entre etapas, tarefas para o SDR e agendamento via Google Calendar respeitando FreeBusy do mentor.",
-    stack: ["Rich media", "Pipeline auto", "Calendar FreeBusy"],
+      "Dispara confirmação imediata, lembrete 24h e 1h antes da call e reagendamento automático quando o lead pede. Você fala só com quem realmente vai aparecer.",
+    stack: ["Confirmação", "Lembrete", "Reagendamento"],
   },
   {
-    icon: Activity,
-    title: "Painel de Observabilidade",
+    icon: LineChart,
+    title: "Painel do seu caixa em tempo real",
     description:
-      "Latência das Edge Functions em sub-segundo, taxa de sucesso por automação e log detalhado de cada webhook recebido. Você vê a saúde da operação como quem opera um SaaS de produto.",
-    stack: ["Sub-second", "Run logs", "KPIs live"],
+      "Quantas calls foram marcadas hoje, quantas confirmaram, quanto entrou. Você opera sua mentoria olhando o dinheiro, não a caixa de WhatsApp.",
+    stack: ["Calls marcadas", "Confirmadas", "Faturamento"],
   },
   {
     icon: Upload,
-    title: "Importador Inteligente & Gestão em Massa",
+    title: "Sobe sua base antiga em 5 minutos",
     description:
-      "Upload de bases legadas via CSV com mapeamento de-para visual, campos extras preservados em JSONB, ações em lote (tags, movimentação, exclusão) e Soft-Delete para nunca perder histórico.",
-    stack: ["CSV mapper", "JSONB safe", "Soft-delete"],
+      "Importa seus leads antigos do Excel, separa quem ainda tem fit e começa a faturar em cima da base que já estava parada — sem perder histórico e sem retrabalho.",
+    stack: ["Importação", "Base antiga", "Faturamento extra"],
   },
 ];

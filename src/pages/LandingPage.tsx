@@ -12,8 +12,6 @@ import {
   ArrowRight,
   Brain,
   ShieldCheck,
-  Activity,
-  Lock,
 } from "lucide-react";
 import {
   Accordion,
@@ -136,17 +134,17 @@ function Hero() {
           className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm text-white/70 backdrop-blur-xl"
         >
           <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-          Infraestrutura comercial para mentorias High-Ticket
+          O agendador das mentorias High-Ticket
         </motion.div>
 
         <motion.h1
           variants={fadeUp}
           className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight text-white leading-[1.05] max-w-5xl"
         >
-          O lead preencheu seu formulário,
+          A agenda cheia
           <br />
           <span className="bg-gradient-to-r from-emerald-400 via-cyan-300 to-violet-400 bg-clip-text text-transparent">
-            mas a call de fechamento não aconteceu?
+            das mentorias que faturam.
           </span>
         </motion.h1>
 
@@ -154,11 +152,10 @@ function Hero() {
           variants={fadeUp}
           className="max-w-3xl text-lg md:text-xl text-white/65 leading-relaxed"
         >
-          O Orbit é a infraestrutura comercial de escala para sua{" "}
+          O Orbit persegue cada lead do seu anúncio até a call de fechamento entrar na sua agenda — funciona pra{" "}
           <WordRotator />.{" "}
           <span className="text-white/85">
-            Convertemos o interesse do formulário em uma call confirmada — sem que
-            você precise trocar uma única mensagem manual.
+            Você só entra na hora da venda.
           </span>
         </motion.p>
 
@@ -172,7 +169,7 @@ function Hero() {
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full bg-gradient-to-r from-emerald-500 to-violet-500 text-white font-semibold shadow-2xl shadow-emerald-500/30 hover:scale-105 transition-transform"
           >
-            Automatizar meu agendamento
+            Quero minha agenda cheia
             <ArrowRight className="w-4 h-4" />
           </a>
           <a
@@ -187,7 +184,7 @@ function Hero() {
           variants={fadeUp}
           className="mt-6 flex flex-wrap items-center justify-center gap-2 text-xs text-white/50"
         >
-          {["resposta em 8s", "24/7/365", "latência sub-segundo"].map((c) => (
+          {["resposta em 8s", "funciona 24/7", "sem perder lead"].map((c) => (
             <span
               key={c}
               className="px-3 py-1 rounded-full bg-white/[0.04] border border-white/10 backdrop-blur-xl"
@@ -209,10 +206,10 @@ function ChaosSide() {
     <div className={`${glass} relative overflow-hidden p-7 md:p-9`}>
       <div className="absolute -top-12 -left-12 w-48 h-48 bg-rose-500/15 blur-3xl rounded-full" />
       <span className="relative text-rose-300 text-xs uppercase tracking-[0.2em] font-medium">
-        Lado A · O Caos Manual
+        Sua rotina hoje
       </span>
       <h3 className="relative mt-3 text-2xl md:text-3xl font-bold text-white">
-        Sua operação hoje
+        Processo manual, agenda vazia
       </h3>
 
       {/* Fake spreadsheet */}
@@ -278,8 +275,8 @@ function ChaosSide() {
       </div>
 
       <p className="relative mt-7 text-white/70 text-base md:text-lg leading-relaxed">
-        Você gasta horas qualificando na mão, esquece do follow-up e o lead{" "}
-        <span className="text-rose-300 font-medium">esfria</span>.
+        Você responde 2h depois e o lead já comprou do concorrente. O dinheiro do anúncio{" "}
+        <span className="text-rose-300 font-medium">vira prejuízo</span>.
       </p>
     </div>
   );
@@ -287,19 +284,19 @@ function ChaosSide() {
 
 function OrbitSide() {
   const nodes = [
-    { icon: Webhook, label: "Webhook" },
-    { icon: Sparkles, label: "IA Qualifica" },
-    { icon: Calendar, label: "Agenda" },
+    { icon: Webhook, label: "Lead entra" },
+    { icon: Sparkles, label: "IA qualifica" },
+    { icon: Calendar, label: "Call agendada" },
   ];
   return (
     <div className={`${glass} relative overflow-hidden p-7 md:p-9 border-emerald-400/20`}>
       <div className="absolute -top-12 -right-12 w-48 h-48 bg-emerald-500/20 blur-3xl rounded-full" />
       <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-violet-500/20 blur-3xl rounded-full" />
       <span className="relative text-emerald-300 text-xs uppercase tracking-[0.2em] font-medium">
-        Lado B · A Infraestrutura Orbit
+        Sua rotina com Orbit
       </span>
       <h3 className="relative mt-3 text-2xl md:text-3xl font-bold text-white">
-        Sua operação com Orbit
+        Agenda cheia, venda fechada
       </h3>
 
       {/* Pipeline */}
@@ -348,7 +345,7 @@ function OrbitSide() {
       <p className="relative mt-7 text-white/80 text-base md:text-lg leading-relaxed">
         O Orbit qualifica, persegue e agenda.{" "}
         <span className="text-emerald-300 font-medium">
-          A call cai na sua agenda. Dinheiro no bolso.
+          A call cai na sua agenda. A venda entra no seu caixa.
         </span>
       </p>
     </div>
@@ -357,10 +354,10 @@ function OrbitSide() {
 
 function Dores() {
   const stats = [
-    { v: "73%", l: "dos leads de anúncio nunca são respondidos" },
-    { v: "5 min", l: "é a janela de ouro antes do lead esfriar" },
-    { v: "42h/sem", l: "perdidas em tarefas manuais repetitivas" },
-    { v: "R$ 8.500/mês", l: "custo médio de um SDR júnior com encargos" },
+    { v: "73%", l: "dos leads do seu anúncio nunca são respondidos a tempo" },
+    { v: "5 min", l: "é a janela de ouro antes do lead comprar do concorrente" },
+    { v: "42h/sem", l: "que você gasta no WhatsApp em vez de fechar venda" },
+    { v: "R$ 8.500/mês", l: "custo de um assistente de vendas com encargos" },
   ];
 
   return (
@@ -373,12 +370,12 @@ function Dores() {
       >
         <motion.div variants={fadeUp} className="mb-12 text-center">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            01 · O impacto do processo
+            01 · O custo de operar no improviso
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
             Sua planilha não fecha venda.
             <br />
-            <span className="text-white/55">A infraestrutura sim.</span>
+            <span className="text-white/55">O Orbit fecha.</span>
           </h2>
         </motion.div>
 
@@ -421,17 +418,17 @@ function Pilares() {
       >
         <motion.div variants={fadeUp} className="mb-14 text-center">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            02 · Infraestrutura Enterprise
+            02 · O que o Orbit faz pelo seu caixa
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
-            Cinco pilares que sustentam
+            Cinco pilares que enchem
             <br />
             <span className="bg-gradient-to-r from-emerald-400 to-violet-400 bg-clip-text text-transparent">
-              quem vende sério.
+              a agenda do mentor.
             </span>
           </h2>
           <p className="mt-6 text-lg text-white/60 max-w-2xl mx-auto leading-relaxed">
-            Engenharia de SaaS de produto — na operação do mentor.
+            Cada peça existe pra uma coisa só: tirar o lead do anúncio e colocar na sua call de fechamento.
           </p>
         </motion.div>
 
@@ -475,23 +472,23 @@ function Timeline() {
   const steps = [
     {
       n: "01",
-      t: "Ingestão Multicanal",
-      d: "Typebot, Sheets, formulários e Meta Ads pela mesma porta — com mapeamento visual.",
+      t: "Lead entra",
+      d: "Anúncio, formulário, Instagram, indicação — todos os canais entram pela mesma porta, sem cair em planilha.",
     },
     {
       n: "02",
-      t: "Qualificação IA",
-      d: "Agente com RAG sobre sua base extrai orçamento, decisão e dor antes do humano entrar.",
+      t: "IA qualifica",
+      d: "A IA conversa, descobre quem tem dinheiro e fit, e só passa pra você quem vale uma call.",
     },
     {
       n: "03",
-      t: "Motor de Fluxos",
-      d: "Disparos em tempo real com condições cirúrgicas por origem, UTM e payload.",
+      t: "Orbit agenda",
+      d: "Lembrete, confirmação e reagendamento automático. O lead aparece na sua agenda e na call.",
     },
     {
       n: "04",
-      t: "Funil + Calendar",
-      d: "Movimentação automática de etapas e agendamento com FreeBusy do Google Calendar.",
+      t: "Você fecha",
+      d: "Você entra só na hora da venda — com o lead aquecido, qualificado e esperando.",
     },
   ];
 
@@ -508,10 +505,10 @@ function Timeline() {
             03 · Como funciona
           </span>
           <h2 className="mt-3 text-4xl md:text-6xl font-bold text-white leading-tight">
-            Do formulário
+            Do anúncio
             <br />
             <span className="bg-gradient-to-r from-emerald-400 to-violet-400 bg-clip-text text-transparent">
-              à call confirmada.
+              à call de fechamento.
             </span>
           </h2>
         </motion.div>
@@ -548,23 +545,23 @@ function Diferenciais() {
   const items = [
     {
       icon: Brain,
-      t: "IA real (não chatbot)",
-      d: "Agente com RAG sobre a base de conhecimento do mentor — entende contexto, objeção e timing. Não é árvore de decisão.",
+      t: "IA que conversa como gente",
+      d: "Não é árvore de decisão nem chatbot quadrado. A IA entende contexto, objeção e timing — fala com o lead como um vendedor experiente faria.",
     },
     {
-      icon: Lock,
-      t: "Multi-tenant isolado",
-      d: "RLS por empresa no banco. Dados da sua mentoria nunca cruzam com outra conta — by design, não por configuração.",
+      icon: Calendar,
+      t: "Sua agenda sempre sincronizada",
+      d: "Olha seu Google Calendar antes de oferecer horário ao lead. Zero double-booking, zero call esquecida.",
     },
     {
-      icon: Activity,
-      t: "Observabilidade nativa",
-      d: "KPIs ao vivo, latência das Edge Functions e logs de webhook em sub-segundo. Você opera vendo a saúde, não a saudade.",
+      icon: CheckCircle2,
+      t: "Confirmação automática da call",
+      d: "Lembrete 24h e 1h antes, reagendamento se o lead pedir. Você só fala com quem realmente vai aparecer na call.",
     },
     {
       icon: ShieldCheck,
-      t: "Anti-bloqueio WhatsApp",
-      d: "Cadência humanizada, mídia rica (áudio/vídeo/PDF) e validação de número antes do disparo. Protege seu canal.",
+      t: "Seus dados isolados e seguros",
+      d: "Os leads e conversas da sua mentoria nunca cruzam com outra conta. Proteção do canal de WhatsApp com cadência humana.",
     },
   ];
   return (
@@ -618,36 +615,36 @@ function Diferenciais() {
    ============================================================ */
 const FAQ = [
   {
-    q: "Como o Orbit lida com o webhook do meu Typebot?",
-    a: "Recebemos o payload bruto, normalizamos os campos (WhatsApp, CPF/CNPJ, e-mail) e ainda preservamos qualquer campo extra em JSONB para você filtrar depois — utm_source, utm_campaign, respostas customizadas, tudo continua acessível por condição de fluxo.",
+    q: "Funciona pra quem vende ticket de R$ 5k a R$ 50k?",
+    a: "Sim — o Orbit foi pensado exatamente pra esse perfil. Mentorias, consultorias e serviços High-Ticket onde cada call de fechamento perdida representa muito dinheiro. Quanto mais alto o ticket, maior o ROI de não deixar lead esfriar.",
   },
   {
-    q: "Como a latência afeta minha taxa de fechamento?",
-    a: "Estudos do MIT mostram queda de até 80% na conversão depois dos 5 minutos. Nossas Edge Functions respondem em sub-segundo, então o lead recebe o primeiro contato enquanto a intenção ainda está quente — o que muda o jogo no High-Ticket.",
+    q: "Preciso saber mexer em tecnologia?",
+    a: "Não. A gente implanta tudo pra você em 15 dias: conecta seu WhatsApp, treina a IA com a sua linguagem, sobe sua base antiga e deixa rodando. Você só precisa atender a call de fechamento quando ela cair na sua agenda.",
   },
   {
-    q: "Os dados da minha mentoria ficam isolados de outras contas?",
-    a: "Sim, por arquitetura. Cada empresa tem isolamento via Row-Level Security (RLS) no banco — nenhuma query consegue cruzar fronteira de tenant, mesmo via bug de aplicação. Isolamento é da infraestrutura, não da configuração.",
+    q: "Em quantos dias minha agenda começa a encher?",
+    a: "A maioria dos clientes vê as primeiras calls confirmadas na primeira semana após o go-live. Em 30 dias, já tem agenda cheia rodando no piloto automático — sem você precisar responder WhatsApp à noite.",
   },
   {
-    q: "Posso usar minha planilha do Google Sheets como fonte de leads?",
-    a: "Sim. Instalamos um Apps Script que envia cada nova linha para o webhook do Orbit em tempo real. Sua planilha vira uma fonte de leads tratada igual a Typebot ou Meta Ads — com mapeamento de colunas e validação automática.",
+    q: "E se o lead não responder à primeira mensagem?",
+    a: "O Orbit não desiste. Faz a perseguição em vários toques (mensagem, áudio, lembrete) com ritmo humano, espaçados ao longo de dias. Recupera muito lead que sua equipe humana já tinha desistido.",
   },
   {
-    q: "O agendamento no Google Calendar é nativo?",
-    a: "Sim. Conectamos via OAuth e consultamos a FreeBusy do mentor antes de oferecer horários ao lead, criando o evento no calendário com convite por e-mail. Sem ferramenta intermediária, sem link genérico de Calendly.",
+    q: "Funciona com meu Google Calendar atual?",
+    a: "Sim, nativo. Conectamos com OAuth, olhamos sua disponibilidade real antes de oferecer horário ao lead e criamos o evento direto no seu calendário com convite por e-mail. Sem Calendly no meio.",
   },
   {
-    q: "Como vocês evitam o bloqueio do meu WhatsApp?",
-    a: "Cadência humanizada com delays aleatórios, controle de volume por hora, validação de número antes do disparo e suporte a mídia rica (áudio, vídeo, PDF) — que reduz padrões de spam. Conectamos via API oficial (Z-API).",
+    q: "Posso importar meus leads antigos?",
+    a: "Sim. Você sobe seu Excel/CSV em 5 minutos, a gente mapeia as colunas e o Orbit começa a trabalhar essa base. Lead antigo que estava esfriando volta a virar oportunidade de venda.",
   },
   {
-    q: "Consigo enviar PDFs, áudios e vídeos pela automação?",
-    a: "Sim. As ações inteligentes suportam mídia rica como anexo nativo — você sobe o ebook, o áudio na sua voz ou o vídeo de captação e ele entra como passo de fluxo, não como link externo.",
+    q: "E se eu já uso outra ferramenta de WhatsApp?",
+    a: "A gente migra. Seu número, seu histórico de conversas e seus contatos vêm com você — sem perder nada. O Orbit assume a operação e a outra ferramenta sai de cena.",
   },
   {
-    q: "Como acompanho a saúde técnica da operação?",
-    a: "Tem um painel de observabilidade dentro do Orbit com latência das Edge Functions, taxa de sucesso por automação e log detalhado de cada webhook recebido. Você opera vendo a saúde do sistema, não esperando o lead reclamar.",
+    q: "Meus dados ficam seguros?",
+    a: "Sim. Cada mentoria tem seus dados completamente isolados — leads, conversas e calls da sua operação nunca cruzam com outra conta. Tudo criptografado, com backups automáticos.",
   },
 ];
 
@@ -663,7 +660,7 @@ function Faq() {
       >
         <motion.div variants={fadeUp} className="mb-12 text-center">
           <span className="text-emerald-400 text-sm uppercase tracking-[0.2em] font-medium">
-            05 · Dúvidas Enterprise
+            05 · Dúvidas que mentores fazem
           </span>
           <h2 className="mt-3 text-3xl md:text-5xl font-bold text-white leading-tight">
             As perguntas que mentores sérios
@@ -712,7 +709,7 @@ function CtaWhatsApp() {
             </span>
           </h2>
           <p className="text-white/65 text-lg">
-            Em uma conversa rápida no WhatsApp a gente mostra como o Orbit roda na sua operação.
+            Em uma conversa rápida no WhatsApp a gente te mostra como ter agenda cheia de calls de fechamento todo mês.
           </p>
           <a
             href={WHATSAPP_LP_HREF}
@@ -721,7 +718,7 @@ function CtaWhatsApp() {
             className="inline-flex items-center gap-2 px-8 py-4 rounded-full bg-gradient-to-r from-emerald-500 to-violet-500 text-white font-semibold shadow-2xl shadow-emerald-500/30 hover:scale-105 transition-transform"
           >
             <MessageCircle className="w-5 h-5" />
-            Automatizar meu agendamento
+            Quero minha agenda cheia
           </a>
           <p className="text-xs text-white/40">
             Sem formulário, sem ligação fria. Resposta em minutos.
