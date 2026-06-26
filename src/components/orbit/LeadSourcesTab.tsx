@@ -79,23 +79,17 @@ export function LeadSourcesTab({ empresaId }: { empresaId: string | null | undef
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" asChild>
-            <a href="/orbit/docs/lead-sources/typebot" target="_blank" rel="noreferrer">
-              <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-              Tutorial Typebot
-            </a>
+          <Button variant="outline" size="sm" onClick={() => setTutorial("typebot")}>
+            <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+            Tutorial Typebot
           </Button>
-          <Button variant="outline" size="sm" asChild>
-            <a href="/orbit/docs/lead-sources/google-sheets" target="_blank" rel="noreferrer">
-              <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-              Tutorial Google Sheets
-            </a>
+          <Button variant="outline" size="sm" onClick={() => setTutorial("google-sheets")}>
+            <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+            Tutorial Google Sheets
           </Button>
-          <Button variant="outline" size="sm" asChild>
-            <a href="/orbit/docs/lead-sources/webhook" target="_blank" rel="noreferrer">
-              <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-              Webhook genérico
-            </a>
+          <Button variant="outline" size="sm" onClick={() => setTutorial("webhook")}>
+            <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+            Webhook genérico
           </Button>
         </CardContent>
       </Card>
