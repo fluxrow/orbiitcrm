@@ -18,6 +18,7 @@ export function useOrbitTemplates(filters?: TemplateFilters) {
   return useQuery({
     queryKey: ["orbit_templates", empresaId, filters],
     enabled: !!empresaId,
+    select: (data) => data.filter((template) => template.empresa_id === empresaId),
     queryFn: async () => {
       let query = supabase
         .from("orbit_message_templates")
