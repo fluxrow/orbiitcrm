@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 import { orbitProspectKeys } from "@/lib/query-keys";
 import { useTenant } from "@/contexts/TenantContext";
+import { pickUpdate } from "@/lib/supabase-update";
 
 
 type Prospect = Tables<"orbit_prospects">;
