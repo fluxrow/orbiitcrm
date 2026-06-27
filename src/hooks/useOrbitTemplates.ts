@@ -87,11 +87,17 @@ export function useDeleteTemplate() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error, data, count } = await supabase
         .from("orbit_message_templates")
-        .delete()
-        .eq("id", id);
+        .delete({ count: "exact" })
+        .eq("id", id)
+        .select("id");
       if (error) throw error;
+      if (!data?.length && !count) {
+        throw new Error(
+          "Você não tem permissão para excluir este template (pertence a outro tenant)."
+        );
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orbit_templates"] });
