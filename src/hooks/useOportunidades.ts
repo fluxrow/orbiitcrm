@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { usePeAuth } from "./usePeAuth";
 import { toast } from "sonner";
+import { pickUpdate, type TableUpdate } from "@/lib/supabase-update";
 
 export interface OportunidadeFilters {
   etapa_id?: string;
