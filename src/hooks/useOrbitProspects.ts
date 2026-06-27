@@ -458,7 +458,7 @@ export function useImportProspectsCSV() {
         if (Object.keys(patch).length === 0) { mergedUntouched++; continue; }
         const { error } = await supabase
           .from("orbit_prospects")
-          .update(patch as any)
+          .update(pickUpdate("orbit_prospects", patch))
           .eq("id", existing.id)
           .eq("empresa_id", empresaId);
         if (error) errors.push(`Merge ${existing.id}: ${error.message}`);
