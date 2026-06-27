@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./useAuth";
 import { usePeAuth } from "./usePeAuth";
 import { toast } from "sonner";
+import { pickUpdate, type TableUpdate } from "@/lib/supabase-update";
 
 export interface OportunidadeFilters {
   etapa_id?: string;
@@ -102,9 +103,10 @@ export function useUpdateOportunidade() {
   const { user } = useAuth();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: string; [key: string]: any }) => {
+    mutationFn: async ({ id, ...rawUpdates }: { id: string } & Partial<TableUpdate<"oportunidades">> & Record<string, unknown>) => {
+      const updates = pickUpdate("oportunidades", rawUpdates);
       const { data: before } = await supabase.from("oportunidades").select("*").eq("id", id).single();
-      const { data, error } = await supabase.from("oportunidades").update(updates as any).eq("id", id).select().single();
+      const { data, error } = await supabase.from("oportunidades").update(updates).eq("id", id).select().single();
       if (error) throw error;
 
       if (before) {

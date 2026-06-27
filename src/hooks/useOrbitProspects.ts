@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 import { orbitProspectKeys } from "@/lib/query-keys";
 import { useTenant } from "@/contexts/TenantContext";
+import { pickUpdate } from "@/lib/supabase-update";
 
 
 type Prospect = Tables<"orbit_prospects">;
@@ -457,7 +458,7 @@ export function useImportProspectsCSV() {
         if (Object.keys(patch).length === 0) { mergedUntouched++; continue; }
         const { error } = await supabase
           .from("orbit_prospects")
-          .update(patch as any)
+          .update(pickUpdate("orbit_prospects", patch))
           .eq("id", existing.id)
           .eq("empresa_id", empresaId);
         if (error) errors.push(`Merge ${existing.id}: ${error.message}`);
