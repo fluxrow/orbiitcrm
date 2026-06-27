@@ -104,7 +104,7 @@ export function useUpdateOportunidade() {
   return useMutation({
     mutationFn: async ({ id, ...updates }: { id: string; [key: string]: any }) => {
       const { data: before } = await supabase.from("oportunidades").select("*").eq("id", id).single();
-      const { data, error } = await supabase.from("oportunidades").update(updates).eq("id", id).select().single();
+      const { data, error } = await supabase.from("oportunidades").update(updates as any).eq("id", id).select().single();
       if (error) throw error;
 
       if (before) {
