@@ -248,7 +248,25 @@ export default function TemplatesPage() {
                     <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(t.corpo_texto || ""); toast.success("Copiado!"); }}>
                       <Copy className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="sm" className="text-destructive" onClick={() => deleteTemplate.mutateAsync(t.id)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive"
+                      disabled={deleteTemplate.isPending}
+                      onClick={async () => {
+                        if (!confirm(`Excluir o template "${t.nome}"?`)) return;
+                        if (tenantEmpresaId && t.empresa_id && t.empresa_id !== tenantEmpresaId) {
+                          toast.error("Este template pertence a outro tenant e não pode ser excluído aqui.");
+                          return;
+                        }
+                        try {
+                          await deleteTemplate.mutateAsync(t.id);
+                          toast.success("Template excluído");
+                        } catch (e: any) {
+                          toast.error(e.message || "Erro ao excluir template");
+                        }
+                      }}
+                    >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
