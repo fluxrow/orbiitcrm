@@ -18,10 +18,12 @@ export function useOrbitTemplates(filters?: TemplateFilters) {
   return useQuery({
     queryKey: ["orbit_templates", empresaId, filters],
     enabled: !!empresaId,
+    select: (data) => data.filter((template) => template.empresa_id === empresaId),
     queryFn: async () => {
       let query = supabase
         .from("orbit_message_templates")
         .select("*")
+        .eq("empresa_id", empresaId!)
         .order("created_at", { ascending: false });
 
       if (filters?.canal && filters.canal !== "all") {
@@ -38,19 +40,22 @@ export function useOrbitTemplates(filters?: TemplateFilters) {
 
       const { data, error } = await query;
       if (error) throw error;
-      return data;
+      return data?.filter((template) => template.empresa_id === empresaId) ?? [];
     },
   });
 }
 
 export function useCreateTemplate() {
   const queryClient = useQueryClient();
+  const { empresaId } = useTenant();
 
   return useMutation({
     mutationFn: async (template: TemplateInsert) => {
+      if (!empresaId) throw new Error("Empresa não encontrada");
+
       const { data, error } = await supabase
         .from("orbit_message_templates")
-        .insert(template)
+        .insert({ ...template, empresa_id: empresaId })
         .select()
         .single();
       if (error) throw error;
@@ -64,13 +69,17 @@ export function useCreateTemplate() {
 
 export function useUpdateTemplate() {
   const queryClient = useQueryClient();
+  const { empresaId } = useTenant();
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: TemplateUpdate & { id: string }) => {
+      if (!empresaId) throw new Error("Empresa não encontrada");
+
       const { data, error } = await supabase
         .from("orbit_message_templates")
         .update(updates)
         .eq("id", id)
+        .eq("empresa_id", empresaId)
         .select()
         .single();
       if (error) throw error;
@@ -84,13 +93,17 @@ export function useUpdateTemplate() {
 
 export function useDeleteTemplate() {
   const queryClient = useQueryClient();
+  const { empresaId } = useTenant();
 
   return useMutation({
     mutationFn: async (id: string) => {
+      if (!empresaId) throw new Error("Empresa não encontrada");
+
       const { error, data, count } = await supabase
         .from("orbit_message_templates")
         .delete({ count: "exact" })
         .eq("id", id)
+        .eq("empresa_id", empresaId)
         .select("id");
       if (error) throw error;
       if (!data?.length && !count) {

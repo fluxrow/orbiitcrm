@@ -1,0 +1,1 @@
+DROP POLICY IF EXISTS "Super admin manage all templates" ON public.orbit_message_templates;
