@@ -12,6 +12,7 @@ import {
   ArrowRight,
   Brain,
   ShieldCheck,
+  TestTube,
 } from "lucide-react";
 import {
   Accordion,
@@ -550,14 +551,14 @@ function Diferenciais() {
       d: "Olha seu Google Calendar antes de oferecer horário ao lead. Zero double-booking, zero call esquecida.",
     },
     {
+      icon: TestTube,
+      t: "Simulador de Abordagem Seguro",
+      d: "Teste o comportamento do assistente e refine o roteiro na sua tela, antes mesmo de conectar o seu WhatsApp oficial. Simule a entrada de leads e só libere a automação quando tiver certeza de que a abordagem está perfeita para o seu negócio.",
+    },
+    {
       icon: CheckCircle2,
       t: "Confirmação automática da call",
       d: "Lembrete 24h e 1h antes, reagendamento se o lead pedir. Você só fala com quem realmente vai aparecer na call.",
-    },
-    {
-      icon: ShieldCheck,
-      t: "Seus dados isolados e seguros",
-      d: "Os leads e conversas da sua mentoria nunca cruzam com outra conta. Proteção do canal de WhatsApp com cadência humana.",
     },
   ];
   return (

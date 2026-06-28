@@ -20,6 +20,7 @@ import {
   CheckCircle2,
   XCircle,
   GitBranch,
+  TestTube,
 } from "lucide-react";
 import CountUp from "@/components/apresentacao/CountUp";
 import PresentationControls from "@/components/apresentacao/PresentationControls";
@@ -524,7 +525,7 @@ function Personalizacao() {
     { icon: GitBranch, t: "Resposta certa pra cada situação", d: "Lead pergunta preço? Pede agenda? Quer cancelar? Cada situação tem o caminho que você definir." },
     { icon: Users, t: "Te chama quando precisa", d: "A IA sabe a hora de recuar. Te aciona na hora certa, com todo o contexto da conversa." },
     { icon: Target, t: "Vários públicos, uma só voz", d: "Atende lead frio, lead aquecido, cliente e dúvida — cada conversa com o tom certo." },
-    { icon: Sparkles, t: "Fica mais sua a cada semana", d: "Sugere respostas, refina o tom, aprende com seu feedback. Mês 3 é melhor que mês 1." },
+    { icon: TestTube, t: "Simulador de Abordagem Seguro", d: "Teste o comportamento do assistente e refine o roteiro na sua tela, antes mesmo de conectar o seu WhatsApp oficial. Simule a entrada de leads e só libere a automação quando tiver certeza de que a abordagem está perfeita para o seu negócio." },
   ];
 
   return (
