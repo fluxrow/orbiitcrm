@@ -40,7 +40,8 @@ import { ptBR } from "date-fns/locale";
 import { ZapiConnectionAlert } from "@/components/orbit/ZapiConnectionAlert";
 import { QualificationFieldsBuilder } from "@/components/orbit/QualificationFieldsBuilder";
 import { KnowledgeBaseManager } from "@/components/orbit/KnowledgeBaseManager";
-import { Database } from "lucide-react";
+import { Database, Sparkles } from "lucide-react";
+import { AgentSandbox } from "@/components/orbit/AgentSandbox";
 
 interface ParsedProspect {
   nome_razao: string;
@@ -125,6 +126,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
   const [isImporting, setIsImporting] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [sandboxOpen, setSandboxOpen] = useState(false);
   const [rateForm, setRateForm] = useState({
     min_delay_ms: 1500,
     max_delay_ms: 3500,
@@ -408,18 +410,30 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
               {/* Card 1: Configuração de IA */}
               <Card>
                 <CardHeader>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                       <Bot className="h-5 w-5 text-primary" />
                       <CardTitle>Configuração de IA</CardTitle>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor="ia-ativa" className="text-sm">IA Ativa</Label>
-                      <Switch 
-                        id="ia-ativa"
-                        checked={aiForm.modo_automatico} 
-                        onCheckedChange={(v) => setAiForm({ ...aiForm, modo_automatico: v })} 
-                      />
+                    <div className="flex items-center gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSandboxOpen(true)}
+                        className="gap-2"
+                      >
+                        <Sparkles className="h-4 w-4 text-primary" />
+                        Testar Agente
+                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="ia-ativa" className="text-sm">IA Ativa</Label>
+                        <Switch 
+                          id="ia-ativa"
+                          checked={aiForm.modo_automatico} 
+                          onCheckedChange={(v) => setAiForm({ ...aiForm, modo_automatico: v })} 
+                        />
+                      </div>
                     </div>
                   </div>
                   <CardDescription>Configure o treinamento da IA para geração de mensagens</CardDescription>
@@ -1893,6 +1907,19 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
           </SuperAdminOnly>
         </TabsContent>
       </Tabs>
+      <AgentSandbox
+        open={sandboxOpen}
+        onOpenChange={setSandboxOpen}
+        aiConfig={{
+          prompt_identidade: aiForm.prompt_identidade,
+          prompt_roteiro: aiForm.prompt_roteiro,
+          prompt_regras: aiForm.prompt_regras,
+          tom_conversa: aiForm.tom_conversa,
+          idioma: aiForm.idioma,
+          max_tokens: aiForm.max_tokens,
+          campos_qualificacao: aiForm.campos_qualificacao as Array<{ label?: string; key?: string; required?: boolean }>,
+        }}
+      />
     </OrbitLayout>
   );
 }
