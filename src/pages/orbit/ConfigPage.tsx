@@ -409,18 +409,30 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
               {/* Card 1: Configuração de IA */}
               <Card>
                 <CardHeader>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                       <Bot className="h-5 w-5 text-primary" />
                       <CardTitle>Configuração de IA</CardTitle>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor="ia-ativa" className="text-sm">IA Ativa</Label>
-                      <Switch 
-                        id="ia-ativa"
-                        checked={aiForm.modo_automatico} 
-                        onCheckedChange={(v) => setAiForm({ ...aiForm, modo_automatico: v })} 
-                      />
+                    <div className="flex items-center gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSandboxOpen(true)}
+                        className="gap-2"
+                      >
+                        <Sparkles className="h-4 w-4 text-primary" />
+                        Testar Agente
+                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="ia-ativa" className="text-sm">IA Ativa</Label>
+                        <Switch 
+                          id="ia-ativa"
+                          checked={aiForm.modo_automatico} 
+                          onCheckedChange={(v) => setAiForm({ ...aiForm, modo_automatico: v })} 
+                        />
+                      </div>
                     </div>
                   </div>
                   <CardDescription>Configure o treinamento da IA para geração de mensagens</CardDescription>
