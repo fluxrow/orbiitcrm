@@ -40,7 +40,8 @@ import { ptBR } from "date-fns/locale";
 import { ZapiConnectionAlert } from "@/components/orbit/ZapiConnectionAlert";
 import { QualificationFieldsBuilder } from "@/components/orbit/QualificationFieldsBuilder";
 import { KnowledgeBaseManager } from "@/components/orbit/KnowledgeBaseManager";
-import { Database } from "lucide-react";
+import { Database, Sparkles } from "lucide-react";
+import { AgentSandbox } from "@/components/orbit/AgentSandbox";
 
 interface ParsedProspect {
   nome_razao: string;
