@@ -908,13 +908,13 @@ function Investimento() {
             <div className="mt-6 space-y-4">
               <div>
                 <div className="text-xs text-white/40 uppercase tracking-wider">À vista</div>
-                <div className="text-5xl font-bold text-white tabular-nums mt-1">R$ 3.000</div>
+                <div className="text-5xl font-bold text-white tabular-nums mt-1">R$ 4.000</div>
               </div>
               <div className="text-white/30 text-sm">ou</div>
               <div>
                 <div className="text-xs text-white/40 uppercase tracking-wider">Parcelado</div>
                 <div className="text-3xl font-bold text-white tabular-nums mt-1">
-                  12× <span className="text-emerald-400">R$ 397</span>
+                  12× <span className="text-emerald-400">R$ 497</span>
                 </div>
               </div>
             </div>
@@ -936,7 +936,7 @@ function Investimento() {
               <div className="mt-6">
                 <div className="text-xs text-white/40 uppercase tracking-wider">Mensalidade</div>
                 <div className="text-6xl font-bold tabular-nums mt-1 bg-gradient-to-r from-emerald-300 to-violet-300 bg-clip-text text-transparent">
-                  R$ 1.200
+                  R$ 1.500
                 </div>
                 <div className="text-white/50 text-sm mt-2">por mês{"\u00a0"}</div>
               </div>
