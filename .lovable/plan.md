@@ -1,81 +1,99 @@
-## Parte 1 — Corrigir header sumido na home (`/`)
 
-**Causa:** A rota `/` está fora do `<Route element={<PublicLayout />}>`, então a `LandingPage` perdeu o `HotsiteHeader` (onde mora o botão **Entrar**).
+# Manual Mestre de Implementação — Source of Truth
 
-**Correção em `src/App.tsx`:** mover `<Route path="/" element={<LandingPage />} />` para dentro do grupo `PublicLayout`. O `HotsiteHeader` volta com Produto/Recursos/FAQ + WhatsApp + **Entrar** + theme toggle. `LandingPage` herda `pt-16` do layout.
+## Entregável
 
-Sem mudanças no componente `HotsiteHeader.tsx` (botão Entrar já funciona).
+Criar **um único arquivo**: `docs/MANUAL_IMPLEMENTACAO.md`
 
----
+É um documento estático de referência (não código executável). Serve como guia ponta-a-ponta para a equipe técnica e de suporte configurar uma conta nova do zero até o pleno funcionamento.
 
-## Parte 2 — Refatoração de copy "Linguagem de Dinheiro"
+## Estrutura do documento
 
-Aplicada nas **3 superfícies** que compõem a narrativa: `ApresentacaoOrbit2026.tsx`, `LandingPage.tsx` e o array compartilhado `src/lib/orbit/pillars.ts`.
+O manual segue ordem cronológica de implementação. Cada etapa lista a **Ação de negócio** + **Entidades técnicas** (tabela, RPC, edge function, rota, componente).
 
-### Regras de ouro (globais)
+```text
+1. Provisionamento do Tenant
+   1.1  Criação da empresa (orbit_empresas + slug)
+   1.2  Plano SaaS (saas_empresa, saas_plans)
+   1.3  Usuário Admin + roles (profiles, user_roles, user_empresa_memberships)
+   1.4  Mapeamento PE (pe_tenant_map, pe_users, pe_roles)
+   1.5  Trial e auto-aprovação (trial_requests, auto-approve-trial)
+   1.6  Wizard público de onboarding (orbit_client_onboardings, submit_onboarding,
+        rota /onboarding-cliente/:token)
 
-- **Banir tecniquês:** Edge Functions, JSONB, Webhook, Latência sub-segundo, Pipeline, SDR, Inside Sales, Multi-tenant, RLS, Typebot, Apps Script, FreeBusy, UTM, payload.
-- **Falar linguagem de dinheiro:** Agendamento confirmado, Call de fechamento, ROI do anúncio, Agenda cheia, Venda realizada, Assistente de vendas, Velocidade de agendamento, Processo manual, Custo de oportunidade.
-- **Manter 100% da identidade visual:** Aurora bg, glass cards, gradientes emerald→violet, framer-motion, tipografia massiva, animações, estrutura/ordem das seções, todos os mockups e componentes (`StatsImpactoSection`, `HumanoVsOrbitSection`, etc.).
-- **Manter números de impacto:** R$ 8.500/mês, 42h, 73%, 5min, 4h — eles dão lastro financeiro pro cara high-ticket.
-- **Tom:** parceiro de receita, não fornecedor de TI. Empatia com o mentor que tem tráfego rodando mas caixa parado.
+2. Integrações Core
+   2.1  Z-API / WhatsApp (orbit_zapi_config, orbit-webhook, orbit-send-message,
+        orbit-validate-whatsapp, orbit_whatsapp_sending_config, daily_limits/usage)
+   2.2  Resend / Email (orbit_resend_config, orbit-send-email, orbit-email-track,
+        orbit-resend-webhook)
+   2.3  Google Calendar (orbit_google_tokens, oauth_states, orbit-google-auth/callback/
+        status/disconnect/calendar, orbit-meeting-scheduler)
+   2.4  Meta WhatsApp Business (orbit_meta_config, orbit-meta-webhook,
+        send-orbit-meta-message)
+   2.5  Integrações genéricas e CNPJ (orbit_integrations_config, fetch-cnpj)
 
-### 2.1 — `src/lib/orbit/pillars.ts` (consumido pelas duas páginas)
+3. Cérebro da IA
+   3.1  Configuração de prompts e regras (orbit_ai_config: identidade/roteiro/regras,
+        campos_qualificacao, horários, idioma, max_tokens)
+   3.2  Base de conhecimento RAG (orbit_ai_knowledge, match_orbit_knowledge,
+        orbit-knowledge-ingest, pgvector + gemini-embedding-001)
+   3.3  Agente em produção (orbit-ai-agent, orbit-ai-suggest,
+        orbit-ai-generate-template)
+   3.4  TTS e biblioteca de áudios (orbit_audio_library, tts_* em orbit_ai_config)
+   3.5  Isolamento e validação (RLS por empresa_id, Zod, REVOKE de credenciais)
 
-Re-escrever as 5 entradas mantendo a interface `Pillar` (icon, title, description, stack). O campo `stack` deixa de ser tech stack e vira **resultados-chave** (3 chips por card, linguagem de negócio):
+4. Testes Seguros — Agent Sandbox
+   4.1  Componente AgentSandbox (src/components/orbit/AgentSandbox.tsx)
+   4.2  Edge function stateless orbit-ai-sandbox (sem DB)
+   4.3  MOCK_LEAD fixo, histórico memory-only, trigger inbound_webhook/manual
+   4.4  Botão "Testar Agente" na ConfigPage tab "ai"
 
-| # | Title | Description (resumo) | Chips |
-|---|---|---|---|
-| 1 | Captura de Leads de Qualquer Canal | "Recebe leads do seu Instagram, formulário, indicação ou anúncio. Nada cai no esquecimento, nada vira linha esquecida em planilha." | Anúncios · Formulários · Indicação |
-| 2 | Perseguição Automática até Agendar | "O Orbit não desiste do lead. Manda mensagem, áudio, lembrete — no ritmo certo, sem parecer robô — até a call cair na sua agenda." | Cadência humana · Multi-toque · Sem desistência |
-| 3 | Confirmação e Lembrete da Call | "Dispara confirmações, lembretes 24h e 1h antes da call e reagendamento automático. O lead nunca esquece do seu horário." | Confirmação · Lembrete · Reagendamento |
-| 4 | Painel do Seu Caixa em Tempo Real | "Quantas calls foram marcadas hoje, quantas confirmaram, quanto entrou. Você opera sua mentoria olhando o dinheiro, não a caixa de WhatsApp." | Calls marcadas · Confirmadas · Faturamento |
-| 5 | Sobe Sua Base Antiga em 5 Minutos | "Importa seus leads antigos do Excel, separa quem ainda tem fit e começa a faturar em cima da base que já tava parada." | Importação · Base antiga · Faturamento extra |
+5. Máquina de CRM e Funil
+   5.1  Pipeline (orbit_pipeline_stages, orbit_pipeline_templates,
+        orbit_first_stage_id, orbit_auto_create_deal_for_prospect)
+   5.2  Prospects, deals, tarefas, atividades (orbit_prospects, orbit_deals,
+        orbit_tasks, orbit_activities, prospect_events)
+   5.3  Fontes de lead (orbit_lead_sources, orbit-lead-ingest, secret_token)
+   5.4  Templates e campanhas (orbit_message_templates, orbit_campaigns,
+        orbit_campaign_recipients, orbit_campaign_approvals, orbit_send_groups,
+        send-orbit-campaign, request-campaign-approval)
+   5.5  Distribuição round-robin (orbit_distribuicao_config)
+   5.6  Fluxos de automação (orbit_flows, orbit_flow_actions, orbit_flow_events,
+        orbit_flow_runs, orbit_flow_templates, orbit-flow-dispatcher,
+        orbit-flow-executor, triggers orbit_emit_*)
+   5.7  Chatbot visual (orbit_chatbot_flows, branches)
 
-Ícones (Lucide) mantidos do arquivo atual: `Webhook → Inbox`, `GitBranch → Target`, `Send → CalendarCheck`, `Activity → LineChart`, `Upload → Upload`. Pequeno ajuste de ícones para combinar com a nova narrativa.
+6. Handoff e Conversas
+   6.1  Conversas e mensagens (orbit_conversas, orbit_mensagens)
+   6.2  Handoff humano (orbit_handoffs, orbit_transferencias,
+        send-vendedor-notification)
+   6.3  Painel de conversa (ConversasPage)
 
-### 2.2 — `src/pages/ApresentacaoOrbit2026.tsx`
+7. Observabilidade e Logs
+   7.1  Auditoria (orbit_audit_log, pe_audit_log)
+   7.2  Webhook logs (orbit_webhook_logs)
+   7.3  Email events (orbit_email_events)
+   7.4  KPIs de saúde (get_system_health_kpis, get_system_health_recent_logs,
+        SystemHealthTab — super_admin)
+   7.5  Analytics (AnalyticsPage)
 
-Substituir o texto de cada seção. Zero mudança visual.
+8. Helpers Recentes (referência cronológica)
+   - user_has_empresa_access, orbit_zapi_connection_status, validate_documento,
+     submit_onboarding, REVOKE de credenciais sensíveis, expurgo Apollo/LeadFinder
 
-| Seção | Nova narrativa |
-|---|---|
-| **Hero** | H1: "A agenda cheia / **das mentorias que faturam.**" Sub: "O Orbit persegue cada lead do seu anúncio até a call de fechamento entrar no seu Google Calendar — sem você levantar o dedo." Chips: "Resposta em 8s · Funciona 24/7 · Sem perder lead". |
-| **Dores** | 4 cards: (1) "O lead preencheu o form e sumiu" — você responde 2h depois, ele já comprou do concorrente. (2) "Seu tráfego está virando prejuízo" — leads esfriando enquanto o anúncio queima dinheiro. (3) "Sua agenda está vazia mesmo com leads chegando" — processo manual não escala. (4) "Você virou refém do WhatsApp" — 14h/dia respondendo, sem fechar venda. |
-| **Comparativo** | Renomear colunas: **"Processo Manual"** vs **"Orbit"**. Critérios trocados para resultado: Velocidade de agendamento · Leads que viram call · Follow-up garantido · Visibilidade do ROI do anúncio · Custo mensal real. Remover linhas de latência/UTM/JSONB. |
-| **"O que o Orbit faz pelo seu caixa"** (antes "Infraestrutura Enterprise") | Mantém grid 5 cards consumindo `PILLARS` atualizado. Numeração `03·` preservada. |
-| **Qualificação IA** | "A IA que separa o curioso do comprador" — conversa, qualifica e só coloca na sua agenda quem tem dinheiro e fit. |
-| **Personalização** | "Cada lead recebe a mensagem certa, no canal certo, na hora certa — como se você tivesse 10 assistentes trabalhando." |
-| **WhatsApp** | "Seu agendador pessoal que persegue o lead até a call ser confirmada" — manda áudio/foto/PDF, segue cadência humana, sem bloqueio. |
-| **Email** | "A esteira que garante que o lead nunca esqueça do seu horário" — confirmação imediata, lembrete 24h antes, lembrete 1h antes, reagendamento automático. |
-| **Funil** | "O mapa do seu dinheiro" — veja em uma tela quantos leads estão prontos para a call de fechamento agora. |
-| **Investimento** | Headline: "O que você perde por mês esperando é maior que o investimento no Orbit por ano." Sub: "1 call de fechamento perdida ≈ mensalidade inteira do Orbit." Valores intactos, tom de custo de oportunidade. |
-| **Fechamento** | "Pare de operar sua mentoria no improviso. **Comece a operar como gente grande.**" |
-| **FAQ** | 6-8 perguntas no idioma do mentor: "Funciona pra quem vende ticket de R$ 5k a R$ 50k?" · "Preciso saber mexer em tecnologia?" · "Em quantos dias minha agenda começa a encher?" · "E se o lead não responder à primeira mensagem?" · "Funciona com meu Google Calendar atual?" · "Posso importar meus leads antigos?" · "E se eu já uso outra ferramenta de WhatsApp?" · "Meus dados ficam seguros?". Zero menção a webhooks/JSON/RLS. |
+9. Apêndices
+   A. Catálogo completo de Edge Functions (uma linha cada)
+   B. Catálogo de rotas frontend (/[slug]/*, públicas, /pe-admin/*)
+   C. RPCs e triggers do banco
+```
 
-### 2.3 — `src/pages/LandingPage.tsx`
+## Como o conteúdo será montado
 
-Mesmo tratamento de copy, estrutura visual intacta:
-
-- **Hero** (mantém word rotator framer-motion): H1 "A agenda cheia / **das [mentorias de negócios / advogados / coaches / dentistas / médicos] que faturam.**" Sub: "O Orbit persegue cada lead do seu tráfego até a call de fechamento entrar na sua agenda." CTA primário: "Quero minha agenda cheia →". CTA secundário: "Ver apresentação completa".
-- **Mini-stats hero**: 73% dos leads abandonados · 5min de janela de ouro · R$ 8.500/mês substituídos.
-- **Split-screen "Caos vs Orbit"** (`HumanoVsOrbitSection`): rótulos das etapas re-escritos: "Lead chegou → Foi qualificado → Agendou call → Confirmou presença → Compareceu". Lado esquerdo "Sua rotina hoje" (planilha + WhatsApp esquecido), lado direito "Sua rotina com Orbit" (call marcada + lembrete + venda fechada).
-- **Stats de impacto** (`StatsImpactoSection`): copy dos 4 cards re-escrito sem "SDR júnior" — virar "assistente de vendas".
-- **Pilares**: consome `PILLARS` atualizado.
-- **Timeline 4 etapas**: "Lead entra → IA qualifica → Orbit agenda → Você fecha". Sem termos técnicos.
-- **Diferenciais 2×2**: "IA que conversa como humano" · "Sua agenda sincronizada" · "Confirmação automática da call" · "Seus dados protegidos".
-- **FAQ**: mesmas perguntas da Apresentação.
-- **CTA WhatsApp** + acesso por slug preservados (apenas copy).
-
----
-
-## Arquivos afetados
-
-- `src/App.tsx` — mover rota `/` para dentro do `PublicLayout`.
-- `src/lib/orbit/pillars.ts` — re-escrever as 5 entradas com linguagem de negócio (mesma interface).
-- `src/pages/ApresentacaoOrbit2026.tsx` — substituição completa de copy, zero mudança visual/estrutural.
-- `src/pages/LandingPage.tsx` — substituição completa de copy + ajuste de rótulos nos componentes filhos consumidos.
+Toda a base já está mapeada (varredura completa do agente sub-task): 11 seções, todas as tabelas, RPCs, triggers, edge functions, rotas, componentes e migrations recentes estão catalogados com referência ao arquivo/migração de origem. O arquivo será escrito em uma única passagem.
 
 ## Fora de escopo
 
-Zero backend, zero schema, zero hooks, zero novas dependências, zero mudança de layout/cores/animações/ordem de seções.
+- Não altera código.
+- Não cria componentes nem migrations.
+- Não modifica RLS, edge functions ou frontend.
+- Apenas escreve a documentação consolidada.
