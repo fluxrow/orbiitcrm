@@ -51,10 +51,27 @@ export function KnowledgeBaseManager({ empresaId }: Props) {
     if (fileRef.current) fileRef.current.value = "";
   };
 
+  const normalizeUrl = (raw: string): string | null => {
+    let v = raw.trim();
+    if (!v) return null;
+    if (!/^https?:\/\//i.test(v)) v = `https://${v}`;
+    try {
+      const u = new URL(v);
+      if (!/^https?:$/.test(u.protocol)) return null;
+      if (!u.hostname.includes(".")) return null;
+      return u.toString();
+    } catch {
+      return null;
+    }
+  };
+
   const onAddUrl = async () => {
     if (!empresaId) return;
-    const url = urlValue.trim();
-    if (!url) return;
+    const url = normalizeUrl(urlValue);
+    if (!url) {
+      toast.error("URL inválida. Use o formato https://exemplo.com");
+      return;
+    }
     try {
       await ingestUrl.mutateAsync({ empresa_id: empresaId, source_url: url });
       toast.success("URL adicionada. Processamento iniciado.");
