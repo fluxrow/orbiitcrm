@@ -7,30 +7,69 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { FileDown, BookOpen, Database, Layers, Shield, Globe, Cpu, Route, Gauge, ShieldCheck } from "lucide-react";
+import {
+  FileDown, BookOpen, Building2, Plug, BrainCircuit, FlaskConical,
+  GitBranch, Users2, Activity, Wrench, Cpu, Route, ListTree,
+} from "lucide-react";
 
 const sections = [
-  { id: "visao-geral", label: "1. Visão Geral", icon: BookOpen },
-  { id: "modulos", label: "2. Módulos do Sistema", icon: Layers },
-  { id: "banco-de-dados", label: "3. Banco de Dados", icon: Database },
-  { id: "integracoes", label: "4. Integrações", icon: Globe },
-  { id: "edge-functions", label: "5. Edge Functions", icon: Cpu },
-  { id: "autenticacao", label: "6. Autenticação e Acesso", icon: Shield },
-  { id: "rotas", label: "7. Rotas da Aplicação", icon: Route },
-  { id: "indices", label: "8. Índices e Otimizações", icon: Gauge },
-  { id: "integridade-dados", label: "9. Integridade de Dados (PE)", icon: ShieldCheck },
+  { id: "intro", label: "Introdução", icon: BookOpen },
+  { id: "tenant", label: "1. Provisionamento do Tenant", icon: Building2 },
+  { id: "integracoes", label: "2. Integrações Core", icon: Plug },
+  { id: "ia", label: "3. Cérebro da IA", icon: BrainCircuit },
+  { id: "sandbox", label: "4. Agent Sandbox", icon: FlaskConical },
+  { id: "crm", label: "5. Máquina de CRM e Funil", icon: GitBranch },
+  { id: "handoff", label: "6. Handoff e Conversas", icon: Users2 },
+  { id: "observabilidade", label: "7. Observabilidade e Logs", icon: Activity },
+  { id: "helpers", label: "8. Helpers Recentes", icon: Wrench },
+  { id: "edge-functions", label: "A. Edge Functions", icon: Cpu },
+  { id: "rotas", label: "B. Rotas Frontend", icon: Route },
+  { id: "rpcs", label: "C. RPCs e Triggers", icon: ListTree },
 ];
 
+type Row = (string | React.ReactNode)[];
+
+function EntityTable({ headers, rows }: { headers: string[]; rows: Row[] }) {
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>{headers.map(h => <TableHead key={h}>{h}</TableHead>)}</TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((r, i) => (
+          <TableRow key={i}>
+            {r.map((c, j) => (
+              <TableCell key={j} className={j === 0 ? "font-mono text-xs whitespace-nowrap" : "text-muted-foreground"}>
+                {c}
+              </TableCell>
+            ))}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+function Step({ title, action, children }: { title: string; action: string; children: React.ReactNode }) {
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-lg">{title}</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-muted-foreground leading-relaxed"><strong className="text-foreground">Ação:</strong> {action}</p>
+        <div className="space-y-2">{children}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function DocumentacaoPage() {
-  const [activeSection, setActiveSection] = useState("visao-geral");
+  const [activeSection, setActiveSection] = useState("intro");
 
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setActiveSection(entry.target.id);
-          }
+          if (entry.isIntersecting) setActiveSection(entry.target.id);
         }
       },
       { rootMargin: "-80px 0px -60% 0px", threshold: 0.1 }
@@ -44,7 +83,6 @@ export default function DocumentacaoPage() {
 
   return (
     <>
-      {/* Print styles */}
       <style>{`
         @media print {
           .doc-header, .doc-toc, .no-print { display: none !important; }
@@ -57,12 +95,11 @@ export default function DocumentacaoPage() {
         }
       `}</style>
 
-      {/* Fixed Header */}
       <header className="doc-header sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur px-6 py-4 flex items-center justify-between print:hidden">
         <div className="flex items-center gap-3">
           <BookOpen className="h-6 w-6 text-primary" />
-          <h1 className="text-xl font-bold text-foreground">Documentação do Sistema ORBIT</h1>
-          <Badge variant="secondary">v1.1</Badge>
+          <h1 className="text-xl font-bold text-foreground">Manual Mestre de Implementação — Orbit CRM</h1>
+          <Badge variant="secondary">Source of Truth</Badge>
         </div>
         <Button onClick={() => window.print()} className="no-print gap-2">
           <FileDown className="h-4 w-4" /> Exportar PDF
@@ -70,10 +107,9 @@ export default function DocumentacaoPage() {
       </header>
 
       <div className="flex min-h-screen">
-        {/* TOC Sidebar */}
-        <aside className="doc-toc hidden lg:block w-64 shrink-0 border-r border-border sticky top-[65px] h-[calc(100vh-65px)] print:hidden">
+        <aside className="doc-toc hidden lg:block w-72 shrink-0 border-r border-border sticky top-[65px] h-[calc(100vh-65px)] print:hidden">
           <ScrollArea className="h-full py-6 px-4">
-            <p className="text-xs font-semibold uppercase text-muted-foreground mb-4 tracking-wider">Índice</p>
+            <p className="text-xs font-semibold uppercase text-muted-foreground mb-4 tracking-wider">Índice cronológico</p>
             <nav className="flex flex-col gap-1">
               {sections.map(({ id, label, icon: Icon }) => (
                 <a
@@ -87,395 +123,463 @@ export default function DocumentacaoPage() {
                   }`}
                 >
                   <Icon className="h-4 w-4 shrink-0" />
-                  {label}
+                  <span>{label}</span>
                 </a>
               ))}
             </nav>
           </ScrollArea>
         </aside>
 
-        {/* Main Content */}
-        <main className="doc-main flex-1 max-w-4xl mx-auto px-6 py-10 space-y-12">
+        <main className="doc-main flex-1 max-w-5xl mx-auto px-6 py-10 space-y-14">
 
-          {/* 1. Visão Geral */}
-          <section id="visao-geral" className="doc-section space-y-4">
-            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><BookOpen className="h-5 w-5 text-primary" /> 1. Visão Geral</h2>
+          {/* Introdução */}
+          <section id="intro" className="doc-section space-y-4">
+            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><BookOpen className="h-5 w-5 text-primary" /> Introdução</h2>
             <Separator />
-            <Card><CardContent className="pt-6 space-y-4">
-              <div>
-                <h3 className="font-semibold text-foreground mb-2">Descrição</h3>
-                <p className="text-muted-foreground leading-relaxed">O ORBIT é uma plataforma multi-tenant e white-label de prospecção B2B e CRM. Combina dois módulos principais — <strong>Orbit CRM</strong> (gestão de prospects, conversas, funil de vendas, campanhas e IA) e <strong>Prospecting Engine (PE)</strong> (gestão de clientes, contatos, oportunidades e tarefas) — ambos isolados por tenant (empresa_id / organization_id).</p>
-              </div>
-              <div>
-                <h3 className="font-semibold text-foreground mb-2">Stack Tecnológico</h3>
-                <div className="flex flex-wrap gap-2">
-                  {["React 18", "Vite", "TypeScript", "Tailwind CSS", "shadcn/ui", "Lovable Cloud", "Edge Functions (Deno)", "TanStack Query"].map(t => (
-                    <Badge key={t} variant="outline">{t}</Badge>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <h3 className="font-semibold text-foreground mb-2">Arquitetura</h3>
-                <p className="text-muted-foreground leading-relaxed">Frontend SPA (Single Page Application) com backend serverless. Autenticação, banco de dados PostgreSQL, storage e edge functions gerenciados via Lovable Cloud. Toda comunicação frontend→backend é feita via SDK client-side e chamadas a Edge Functions.</p>
-              </div>
+            <Card><CardContent className="pt-6 space-y-3 text-muted-foreground leading-relaxed">
+              <p><strong className="text-foreground">Source of Truth</strong> para configurar uma conta nova do zero até o pleno funcionamento. Cada etapa lista a <strong className="text-foreground">Ação de negócio</strong> + as <strong className="text-foreground">Entidades técnicas</strong> envolvidas (tabela, RPC, edge function, rota, componente).</p>
+              <p>Ordem cronológica de onboarding — siga de cima para baixo. Toda nova feature ou tabela deve ser incorporada às seções abaixo na ordem em que aparece no fluxo.</p>
             </CardContent></Card>
           </section>
 
-          {/* 2. Módulos */}
-          <section id="modulos" className="doc-section space-y-4">
-            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><Layers className="h-5 w-5 text-primary" /> 2. Módulos do Sistema</h2>
+          {/* 1. Tenant */}
+          <section id="tenant" className="doc-section space-y-4">
+            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><Building2 className="h-5 w-5 text-primary" /> 1. Provisionamento do Tenant</h2>
             <Separator />
 
-            <Card><CardHeader><CardTitle className="text-lg">Orbit CRM</CardTitle></CardHeader><CardContent>
-              <Table><TableHeader><TableRow><TableHead>Módulo</TableHead><TableHead>Descrição</TableHead></TableRow></TableHeader><TableBody>
-                {[
-                  ["Prospects", "Cadastro e gestão de prospects com campos de qualificação, tags e score"],
-                  ["Conversas", "Chat multicanal (WhatsApp, Instagram, Email) com suporte a IA e human takeover"],
-                  ["Funil de Vendas", "Pipeline visual (kanban) com etapas configuráveis e deals"],
-                  ["Campanhas", "Disparos em massa por WhatsApp ou Email com aprovação obrigatória"],
-                  ["Templates", "Modelos de mensagem por canal com variáveis dinâmicas"],
-                  ["Lead Finder", "Busca de leads via Apollo.io com enriquecimento de dados"],
-                  ["Analytics", "Dashboard com métricas de conversão, atividades e performance"],
-                ].map(([m, d]) => <TableRow key={m}><TableCell className="font-medium">{m}</TableCell><TableCell className="text-muted-foreground">{d}</TableCell></TableRow>)}
-              </TableBody></Table>
-            </CardContent></Card>
+            <Step title="1.1 Criar a empresa (tenant raiz)" action="Provisionar nova empresa no Orbit, com slug único de acesso (/{slug}/...).">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_empresas", "Tabela — id, nome, slug, slug_created_at, ativo, plano, max_usuarios, data_expiracao, cnpj, email_contato, telefone"],
+                ["normalize_slug(p)", "RPC — lowercase, sem acentos, hífens"],
+                ["generate_unique_slug(p_nome)", "RPC — gera slug único contra orbit_empresas.slug"],
+                ["get_empresa_by_slug(p_slug)", "RPC — resolução por slug nas rotas; bloqueia 'demo'"],
+                ["create-empresa", "Edge Function — provisiona empresa + admin + email de boas-vindas"],
+              ]} />
+            </Step>
 
-            <Card><CardHeader><CardTitle className="text-lg">Prospecting Engine (PE)</CardTitle></CardHeader><CardContent>
-              <Table><TableHeader><TableRow><TableHead>Módulo</TableHead><TableHead>Descrição</TableHead></TableRow></TableHeader><TableBody>
-                {[
-                  ["Organizations", "Gestão multi-tenant de organizações"],
-                  ["Users & Roles", "Usuários com roles dinâmicos por organização via pe_roles"],
-                  ["Clientes", "Empresas prospectadas com CNPJ, segmento, porte e domínio"],
-                  ["Contatos", "Pessoas vinculadas a clientes com cargo, decisor e nível de influência"],
-                  ["Segmentos", "Classificação de clientes por setor de atuação"],
-                  ["Origens", "Rastreamento de origem dos clientes (lista, campanha, etc.)"],
-                  ["Produtos", "Catálogo de produtos/serviços para cotações"],
-                  ["Funil de Etapas", "Etapas configuráveis do processo de vendas"],
-                  ["Oportunidades", "Negócios vinculados a clientes com valor, destino e probabilidade"],
-                  ["Tarefas", "Follow-ups e atividades com prazo e prioridade"],
-                  ["Interações", "Registro de contatos (reunião, ligação, email) com histórico"],
-                ].map(([m, d]) => <TableRow key={m}><TableCell className="font-medium">{m}</TableCell><TableCell className="text-muted-foreground">{d}</TableCell></TableRow>)}
-              </TableBody></Table>
-            </CardContent></Card>
+            <Step title="1.2 Vincular plano SaaS" action="Associar empresa a um plano (Stripe) e definir limites/expiração.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["saas_empresa", "Tabela — stripe_customer_id, stripe_subscription_id, stripe_status, plan_code, trial_ends_at"],
+                ["saas_plans", "Catálogo — code, name, max_usuarios, features jsonb, stripe_price_id"],
+                ["saas_usage_monthly", "Uso mensal por empresa"],
+                ["Edge Functions Stripe", "stripe-checkout, stripe-portal, stripe-change-plan, stripe-subscription-status, stripe-webhook"],
+              ]} />
+            </Step>
 
-            <Card><CardHeader><CardTitle className="text-lg">Super Admin</CardTitle></CardHeader><CardContent>
-              <p className="text-muted-foreground">Painel administrativo global para gestão de empresas (tenants), usuários globais e configurações do sistema. Acesso restrito ao role <Badge>super_admin</Badge>.</p>
-            </CardContent></Card>
+            <Step title="1.3 Usuário Admin e papéis" action="Criar usuário administrador da empresa, atribuir role e vínculo de membership.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["profiles", "id (FK auth.users), full_name, avatar_url, empresa_id"],
+                ["user_roles", "Enum app_role — super_admin / admin / vendedor / viewer"],
+                ["user_empresa_memberships", "user_id, empresa_id, role, ativo"],
+                ["user_has_empresa_access(_empresa_id)", "RPC — helper RLS multi-tenant"],
+                ["Edge Functions", "add-empresa-user, create-empresa-invite, accept-empresa-invite, admin-set-password, validate-invite, create-master-user (one-time)"],
+              ]} />
+            </Step>
+
+            <Step title="1.4 Mapeamento PE (Plataforma)" action="Vincular o tenant Orbit à organização PE (camada de plataforma).">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["pe_tenant_map, pe_users, pe_roles, organizations, pe_invitations, pe_audit_log", "Tabelas — token de pe_invitations só lido via service_role"],
+                ["Edge Functions", "add-org-user, invite-org-user, accept-invitation"],
+              ]} />
+            </Step>
+
+            <Step title="1.5 Trial e auto-aprovação" action="Capturar solicitações de trial e provisionar automaticamente.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["trial_requests", "nome, empresa, email, telefone, plan_code, status"],
+                ["auto-approve-trial", "Edge Function — cria empresa + admin sem revisão manual"],
+              ]} />
+            </Step>
+
+            <Step title="1.6 Wizard público de onboarding do cliente" action="Enviar link público para o cliente preencher dados do negócio (responsável, IA, integrações).">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_client_onboardings", "public_token (SHA-256 hash), status, responses jsonb, implementation_checklist jsonb, empresa_id"],
+                ["submit_onboarding(p_token, p_responses)", "RPC SECURITY DEFINER"],
+                ["Edge Functions", "orbit-onboarding-create, orbit-onboarding-submit"],
+                ["/onboarding-cliente/:token", "Rota pública → ClientOnboardingPage.tsx"],
+                ["/{slug}/onboarding", "Painel super_admin → OnboardingPage.tsx"],
+                ["src/lib/onboarding-sections.ts", "Definição das seções"],
+              ]} />
+            </Step>
           </section>
 
-          {/* 3. Banco de Dados */}
-          <section id="banco-de-dados" className="doc-section space-y-4">
-            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><Database className="h-5 w-5 text-primary" /> 3. Estrutura do Banco de Dados</h2>
-            <Separator />
-
-            <Card><CardHeader><CardTitle className="text-lg">Tabelas PE (multi-tenant por organization_id)</CardTitle></CardHeader><CardContent>
-              <Table><TableHeader><TableRow><TableHead>Tabela</TableHead><TableHead>Descrição</TableHead><TableHead>Tenant Key</TableHead><TableHead>RLS</TableHead></TableRow></TableHeader><TableBody>
-                {[
-                  ["organizations", "Organizações/tenants do PE", "id (self)", "✅"],
-                  ["pe_users", "Usuários vinculados a organizações", "organization_id", "✅"],
-                  ["pe_roles", "Roles dinâmicos por organização", "organization_id", "✅"],
-                  ["pe_invitations", "Convites pendentes para usuários", "organization_id", "✅"],
-                  ["pe_audit_log", "Log de auditoria do PE (before/after JSON)", "organization_id", "✅"],
-                  ["clientes", "Empresas prospectadas", "organization_id", "✅"],
-                  ["contatos", "Contatos vinculados a clientes", "organization_id", "✅"],
-                  ["origens", "Fontes de origem de clientes (soft-delete: is_active)", "organization_id", "✅"],
-                  ["cliente_origem", "Relação N:N cliente↔origem", "organization_id", "✅"],
-                  ["segmentos", "Segmentos de mercado (soft-delete: is_active)", "organization_id", "✅"],
-                  ["funil_etapas", "Etapas do funil de vendas (soft-delete: is_active)", "organization_id", "✅"],
-                  ["oportunidades", "Negócios/oportunidades — inclui etapa_nome_snapshot", "organization_id", "✅"],
-                  ["oportunidade_itens", "Itens/produtos de oportunidade — inclui produto_nome_snapshot", "organization_id", "✅"],
-                  ["interacoes", "Registro de interações com clientes", "organization_id", "✅"],
-                  ["tarefas", "Tarefas e follow-ups", "organization_id", "✅"],
-                  ["produtos", "Catálogo de produtos/serviços (soft-delete: is_active)", "organization_id", "✅"],
-                ].map(([t, d, k, r]) => <TableRow key={t}><TableCell className="font-mono text-xs">{t}</TableCell><TableCell className="text-muted-foreground">{d}</TableCell><TableCell><Badge variant="outline">{k}</Badge></TableCell><TableCell>{r}</TableCell></TableRow>)}
-              </TableBody></Table>
-            </CardContent></Card>
-
-            <Card><CardHeader><CardTitle className="text-lg">Tabelas Orbit (multi-tenant por empresa_id)</CardTitle></CardHeader><CardContent>
-              <Table><TableHeader><TableRow><TableHead>Tabela</TableHead><TableHead>Descrição</TableHead><TableHead>RLS</TableHead></TableRow></TableHeader><TableBody>
-                {[
-                  ["orbit_empresas", "Empresas/tenants do Orbit CRM", "✅"],
-                  ["profiles", "Perfis de usuários (auth-linked)", "✅"],
-                  ["user_roles", "Roles legacy (super_admin, admin, vendedor)", "✅"],
-                  ["orbit_prospects", "Prospects/leads do CRM", "✅"],
-                  ["orbit_conversas", "Conversas multicanal", "✅"],
-                  ["orbit_mensagens", "Mensagens individuais por conversa", "✅"],
-                  ["orbit_deals", "Deals/negócios no funil", "✅"],
-                  ["orbit_pipeline_stages", "Etapas do pipeline de vendas", "✅"],
-                  ["orbit_activities", "Atividades (ligações, reuniões, etc.)", "✅"],
-                  ["orbit_campaigns", "Campanhas de marketing", "✅"],
-                  ["orbit_campaign_recipients", "Destinatários de campanhas", "✅"],
-                  ["orbit_campaign_approvals", "Aprovações de campanhas", "✅"],
-                  ["orbit_message_templates", "Templates de mensagem por canal", "✅"],
-                  ["orbit_lead_sources", "Fontes de leads (Apollo, manual)", "✅"],
-                  ["orbit_lead_searches", "Buscas salvas no Lead Finder", "✅"],
-                  ["orbit_leads", "Leads encontrados nas buscas", "✅"],
-                  ["orbit_icps", "Perfis de Cliente Ideal", "✅"],
-                  ["orbit_enrichment_jobs", "Jobs de enriquecimento em lote", "✅"],
-                  ["orbit_enrichment_queue", "Fila de enriquecimento por lead", "✅"],
-                  ["orbit_enrichment_credits", "Créditos diários de enriquecimento", "✅"],
-                  ["orbit_enrichment_policy", "Políticas de enriquecimento", "✅"],
-                  ["orbit_ai_config", "Configuração do agente IA", "✅"],
-                  ["orbit_zapi_config", "Configuração Z-API (WhatsApp)", "✅"],
-                  ["orbit_meta_config", "Configuração Meta (Instagram/FB)", "✅"],
-                  ["orbit_resend_config", "Configuração Resend (Email)", "✅"],
-                  ["orbit_distribuicao_config", "Config de distribuição round-robin", "✅"],
-                  ["orbit_integrations_config", "Configurações genéricas de integrações", "✅"],
-                  ["orbit_transferencias", "Transferências de prospects entre vendedores", "✅"],
-                  ["orbit_import_history", "Histórico de importações CSV", "✅"],
-                  ["orbit_whatsapp_daily_limits", "Limites diários de envio WhatsApp", "✅"],
-                  ["orbit_audit_log", "Log de auditoria do Orbit", "✅"],
-                ].map(([t, d, r]) => <TableRow key={t}><TableCell className="font-mono text-xs">{t}</TableCell><TableCell className="text-muted-foreground">{d}</TableCell><TableCell>{r}</TableCell></TableRow>)}
-              </TableBody></Table>
-            </CardContent></Card>
-          </section>
-
-          {/* 4. Integrações */}
+          {/* 2. Integrações Core */}
           <section id="integracoes" className="doc-section space-y-4">
-            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><Globe className="h-5 w-5 text-primary" /> 4. Integrações</h2>
+            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><Plug className="h-5 w-5 text-primary" /> 2. Integrações Core</h2>
             <Separator />
-            {[
-              { name: "WhatsApp (Z-API)", desc: "Envio e recebimento de mensagens via Z-API. Configuração por tenant em orbit_zapi_config. Webhooks recebidos via orbit-webhook. Suporte a templates, mídia e status de entrega.", tables: ["orbit_zapi_config", "orbit_conversas", "orbit_mensagens", "orbit_whatsapp_daily_limits"] },
-              { name: "Email (Resend)", desc: "Envio de emails transacionais e campanhas via Resend. Configuração em orbit_resend_config. Edge function orbit-send-email para envio individual e send-orbit-campaign para disparos em massa.", tables: ["orbit_resend_config", "orbit_campaigns", "orbit_campaign_recipients"] },
-              { name: "Meta (Instagram/Facebook)", desc: "Recebimento de mensagens do Instagram e Facebook via webhooks Meta. Configuração em orbit_meta_config. Mensagens processadas via orbit-meta-webhook e enviadas via send-orbit-meta-message.", tables: ["orbit_meta_config", "orbit_conversas", "orbit_mensagens"] },
-              { name: "Lead Finder (Apollo.io)", desc: "Busca de leads por cargo, empresa, localização e setor via API Apollo.io. Resultados armazenados em orbit_leads com enriquecimento via fila assíncrona.", tables: ["orbit_lead_sources", "orbit_lead_searches", "orbit_leads", "orbit_enrichment_queue"] },
-              { name: "IA (Lovable AI)", desc: "Agente de IA para atendimento automático via WhatsApp. Configuração de prompts, tom de conversa e horários em orbit_ai_config. Qualificação automática de leads e sugestões de resposta via orbit-ai-agent e orbit-ai-suggest.", tables: ["orbit_ai_config"] },
-            ].map(i => (
-              <Card key={i.name}><CardHeader><CardTitle className="text-lg">{i.name}</CardTitle></CardHeader><CardContent className="space-y-3">
-                <p className="text-muted-foreground leading-relaxed">{i.desc}</p>
-                <div className="flex flex-wrap gap-2">{i.tables.map(t => <Badge key={t} variant="outline" className="font-mono text-xs">{t}</Badge>)}</div>
-              </CardContent></Card>
-            ))}
+
+            <Step title="2.1 Z-API (WhatsApp)" action="Conectar a instância Z-API da empresa, configurar limites e ativar webhook.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_zapi_config", "instance_id, token, client_token, nome_instancia, numero_origem, ativo, notificar_enviadas_por_mim — colunas sensíveis com REVOKE"],
+                ["orbit_whatsapp_sending_config", "warm_up_enabled, warmup_day, daily_limit_override"],
+                ["orbit_whatsapp_daily_limits / _daily_usage", "Limites diários"],
+                ["orbit_zapi_connection_status(_empresa_id)", "RPC — status em tempo real"],
+                ["Edge Functions", "orbit-send-message, orbit-webhook (entrada), orbit-validate-whatsapp, orbit-migrate-phones"],
+                ["_shared/orbit-zapi.ts", "Helper getOrbitZapiRuntimeConfig"],
+                ["ConfigPage → tab zapi", "Frontend"],
+              ]} />
+            </Step>
+
+            <Step title="2.2 Resend (email transacional)" action="Configurar remetente, API key e ativar tracking.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_resend_config", "api_key (REVOKE authenticated), from_email, from_name, ativo"],
+                ["Edge Functions", "orbit-send-email, orbit-email-track (pixel 1×1), orbit-resend-webhook (bounce/open/click)"],
+                ["_shared/system-email.ts", "Credenciais de sistema"],
+                ["ConfigPage → tab email", "Frontend"],
+              ]} />
+            </Step>
+
+            <Step title="2.3 Google Calendar" action="Conectar conta Google via OAuth2 para agendar reuniões.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_google_tokens, orbit_google_oauth_states", "Tabelas"],
+                ["Edge Functions", "orbit-google-auth, orbit-google-callback, orbit-google-status, orbit-google-disconnect, orbit-google-calendar, orbit-meeting-scheduler"],
+                ["_shared/google-calendar.ts", "getTokenForEmpresa, ensureFreshAccessToken, checkAvailability, createCalendarEvent, listUpcomingEvents"],
+                ["orbit_meetings", "Tabela de reuniões"],
+                ["ConfigPage → tab agenda", "AgendaConfigTab"],
+              ]} />
+            </Step>
+
+            <Step title="2.4 Meta WhatsApp Business" action="Configurar Meta Cloud API como canal alternativo.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_meta_config", "phone_number_id, waba_id, access_token, ativo"],
+                ["Edge Functions", "orbit-meta-webhook, send-orbit-meta-message"],
+              ]} />
+            </Step>
+
+            <Step title="2.5 Integrações genéricas e consulta de CNPJ" action="Outras integrações e helpers de dados públicos.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_integrations_config", "type, config jsonb, ativo — SELECT restrito a admins"],
+                ["fetch-cnpj", "Edge Function — proxy BrasilAPI"],
+              ]} />
+            </Step>
           </section>
 
-          {/* 5. Edge Functions */}
+          {/* 3. IA */}
+          <section id="ia" className="doc-section space-y-4">
+            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><BrainCircuit className="h-5 w-5 text-primary" /> 3. Cérebro da IA</h2>
+            <Separator />
+
+            <Step title="3.1 Configuração de prompts e regras" action="Definir identidade, roteiro, regras, campos de qualificação, horários e idioma do agente.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_ai_config", "modo_automatico, tom_conversa, prompt_identidade, prompt_roteiro, prompt_regras, campos_qualificacao jsonb, knowledge_base_enabled, horario_inicio/fim, responder_fora_horario, mensagem_fora_horario, idioma, max_tokens, tempo_espera, tts_ativo, tts_api_key, tts_voice_id, tts_modo"],
+                ["RLS", "SELECT restrito a admins da empresa"],
+              ]} />
+            </Step>
+
+            <Step title="3.2 Base de conhecimento RAG (pgvector)" action="Ingerir documentos, URLs ou texto livre para o agente consultar contextualmente.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_ai_knowledge", "tipo (documento/url/texto), titulo, conteudo_texto, embedding vector(3072), model_version (gemini-embedding-001), status, chunk_index"],
+                ["match_orbit_knowledge(...)", "RPC — cosine similarity por empresa"],
+                ["orbit-knowledge-ingest", "Edge Function — chunking (1200/150 overlap) + embeddings via Lovable AI Gateway"],
+              ]} />
+            </Step>
+
+            <Step title="3.3 Agente em produção" action="Operar o agente em conversas reais com classificação de intenção, RAG e máquina de estados.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit-ai-agent", "Estados novo/aguardando_resposta/qualificando/qualificado/handoff/encerrado; classifica human_probable/auto_reply/uncertain; mapeia intenção → áudio (INTENCAO_TO_AUDIO_CONTEXTO)"],
+                ["orbit-ai-suggest", "Sugestão de resposta para vendedor humano"],
+                ["orbit-ai-generate-template", "Gera templates via IA"],
+              ]} />
+            </Step>
+
+            <Step title="3.4 TTS e biblioteca de áudios" action="Gerenciar acervo de áudios prontos e configurações TTS.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_audio_library", "nome, storage_path, contexto, duracao_seg, ativo"],
+                ["ConfigPage → tab audios", "Frontend"],
+              ]} />
+            </Step>
+
+            <Step title="3.5 Isolamento e validação" action="Regras de segurança aplicadas a toda a camada de IA.">
+              <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
+                <li>RLS por <code className="font-mono text-xs">empresa_id</code> em todas as tabelas de IA</li>
+                <li>Validação Zod nos payloads das edge functions</li>
+                <li><code className="font-mono text-xs">REVOKE</code> de colunas sensíveis (<code className="font-mono text-xs">api_key</code>, <code className="font-mono text-xs">token</code>, <code className="font-mono text-xs">client_token</code>)</li>
+              </ul>
+            </Step>
+          </section>
+
+          {/* 4. Sandbox */}
+          <section id="sandbox" className="doc-section space-y-4">
+            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><FlaskConical className="h-5 w-5 text-primary" /> 4. Testes Seguros — Agent Sandbox</h2>
+            <Separator />
+            <Step title="Simulador de Abordagem Seguro" action="Validar prompts e roteiro antes de conectar o WhatsApp oficial.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["AgentSandbox", "Componente → src/components/orbit/AgentSandbox.tsx (Sheet lateral, histórico em memória)"],
+                ["MOCK_LEAD", "Mock fixo (São Paulo / Tecnologia)"],
+                ["Triggers", "inbound_webhook, manual"],
+                ["orbit-ai-sandbox", "Edge Function stateless (sem DB); recebe aiConfig, mockLead, trigger, messages[]"],
+                ["Testar Agente", "Botão na ConfigPage tab ai"],
+              ]} />
+            </Step>
+          </section>
+
+          {/* 5. CRM */}
+          <section id="crm" className="doc-section space-y-4">
+            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><GitBranch className="h-5 w-5 text-primary" /> 5. Máquina de CRM e Funil</h2>
+            <Separator />
+
+            <Step title="5.1 Pipeline" action="Estrutura de etapas configuráveis e templates globais.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_pipeline_stages", "entrada/qualificação/negociação/fechamento"],
+                ["orbit_pipeline_templates", "is_global"],
+                ["orbit_first_stage_id(p_empresa_id)", "RPC"],
+                ["orbit_auto_create_deal_for_prospect()", "Trigger — cria deal ao qualificar prospect"],
+                ["orbit_emit_deal_stage_changed()", "Trigger — emite orbit_flow_events"],
+              ]} />
+            </Step>
+
+            <Step title="5.2 Prospects, deals, tarefas, atividades" action="Núcleo operacional do CRM.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_prospects", "nome_razao, email_principal, whatsapp, telefone, cidade, segmento, tipo, origem, status, assignee_id, qualificado"],
+                ["orbit_deals", "prospect_id, stage_id, valor, status, assignee_id, closed_at"],
+                ["orbit_tasks, orbit_activities, prospect_events", "Atividades e eventos"],
+                ["validate_documento(p_doc)", "RPC — CPF/CNPJ"],
+                ["orbit_emit_prospect_qualified()", "Trigger"],
+              ]} />
+            </Step>
+
+            <Step title="5.3 Fontes de lead (ingestão externa)" action="Receber leads de Typebot, Google Sheets, webhooks genéricos e forms públicos.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_lead_sources", "tipo, nome, secret_token, field_mapping jsonb, config jsonb — SELECT restrito a admins"],
+                ["orbit-lead-ingest", "Edge Function — webhook por secret_token"],
+                ["orbit_import_history", "Histórico de importações"],
+                ["ConfigPage → tab lead-sources", "LeadSourcesTab"],
+              ]} />
+            </Step>
+
+            <Step title="5.4 Templates e campanhas (disparos globais)" action="Criar templates, campanhas e disparos em massa com warmup e aprovação.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_message_templates", "nome, conteudo, tipo (whatsapp/email/sms), tags[], variaveis[]"],
+                ["orbit_campaigns, _campaign_approvals, _campaign_recipients, _send_groups", "Tabelas de campanha"],
+                ["send-orbit-campaign", "Warmup [50,80,120,200,300,500], cache de validação 7 dias, CTA buttons"],
+                ["request-campaign-approval", "Notifica aprovadores"],
+                ["_shared/whatsapp-cta.ts", "Helper CTA"],
+                ["Frontend", "CampanhasPage, NovaCampanhaPage, TemplatesPage, EmailTemplateEditorPage"],
+                ["campaign-images", "Storage bucket (RLS de delete por empresa)"],
+              ]} />
+            </Step>
+
+            <Step title="5.5 Distribuição (round-robin)" action="Distribuir leads automaticamente entre vendedores.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_distribuicao_config", "modo (round_robin/manual), vendedores_ids[], ultimo_index"],
+              ]} />
+            </Step>
+
+            <Step title="5.6 Fluxos de automação (Flow Engine)" action="Automatizar reações a eventos (lead recebido, deal mudou de stage, etc.).">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_flows, _flow_actions, _flow_events, _flow_runs, _flow_run_steps, _flow_templates", "is_global, escrita só super_admin"],
+                ["Triggers", "lead_recebido, deal_stage_changed, prospect_qualified, etc."],
+                ["orbit-flow-dispatcher", "Cron 1 min — eventos pendentes → flow runs"],
+                ["orbit-flow-executor", "Executa ações em ordem; suporta actionSendWhatsappTemplate + Calendar"],
+                ["ConfigPage", "tabs fluxos (FluxosTab) e flow-templates"],
+              ]} />
+            </Step>
+
+            <Step title="5.7 Chatbot visual" action="Construção visual de fluxos de chatbot.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_chatbot_flows", "nodes jsonb, edges jsonb"],
+                ["orbit_chatbot_flow_branches", "Ramificações"],
+              ]} />
+            </Step>
+          </section>
+
+          {/* 6. Handoff */}
+          <section id="handoff" className="doc-section space-y-4">
+            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><Users2 className="h-5 w-5 text-primary" /> 6. Handoff e Conversas</h2>
+            <Separator />
+
+            <Step title="6.1 Conversas e mensagens (canal WhatsApp/Meta)" action="Receber e centralizar mensagens dos canais oficiais.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_conversas", "instance_id, channel (whatsapp/meta), status (aberta/fechada/bot/human), assignee_id, last_message_at"],
+                ["orbit_mensagens", "remote_id, direcao, tipo (text/image/audio/document/video), conteudo, midia_url, lida, enviada_por"],
+                ["orbit-webhook", "Entry point — cria/atualiza conversa, mensagem, logs e dispara orbit-ai-agent"],
+                ["ConversasPage", "Frontend"],
+              ]} />
+            </Step>
+
+            <Step title="6.2 Regras de passagem de bastão" action="Transferir conversas/leads para humanos com notificação.">
+              <EntityTable headers={["Entidade", "Detalhes"]} rows={[
+                ["orbit_handoffs", "de_user_id, para_user_id, motivo, status"],
+                ["orbit_transferencias", "de_vendedor_id, para_vendedor_id, motivo, criado_por"],
+                ["send-vendedor-notification", "Edge Function — tipos atribuicao ou transferencia via Z-API"],
+              ]} />
+            </Step>
+          </section>
+
+          {/* 7. Observabilidade */}
+          <section id="observabilidade" className="doc-section space-y-4">
+            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><Activity className="h-5 w-5 text-primary" /> 7. Observabilidade e Logs</h2>
+            <Separator />
+            <Card><CardContent className="pt-6">
+              <EntityTable headers={["Camada", "Entidade"]} rows={[
+                ["Auditoria de usuário", "orbit_audit_log (acao, tabela, registro_id, antes/depois jsonb, ip)"],
+                ["Auditoria PE", "pe_audit_log"],
+                ["Webhooks Z-API/Meta", "orbit_webhook_logs (instance_id, event_type, phone, status, error_message)"],
+                ["Email", "orbit_email_events (open/click/bounce)"],
+                ["Prospect", "prospect_events"],
+                ["KPIs (super_admin)", "RPC get_system_health_kpis(p_hours) — webhooks (total/errors/4xx/5xx/success_rate), flow_events, flow_runs (success/failed/avg_latency_ms)"],
+                ["Logs recentes (super_admin)", "RPC get_system_health_recent_logs(p_limit)"],
+                ["Frontend saúde", "ConfigPage → tab health + SystemHealthTab"],
+                ["Frontend analytics", "AnalyticsPage"],
+              ]} />
+            </CardContent></Card>
+          </section>
+
+          {/* 8. Helpers */}
+          <section id="helpers" className="doc-section space-y-4">
+            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><Wrench className="h-5 w-5 text-primary" /> 8. Helpers Recentes</h2>
+            <Separator />
+            <Card><CardContent className="pt-6">
+              <EntityTable headers={["Helper", "Propósito"]} rows={[
+                ["user_has_empresa_access(_empresa_id)", "RLS multi-tenant"],
+                ["orbit_first_stage_id(p_empresa_id)", "Primeiro stage do pipeline"],
+                ["orbit_auto_create_deal_for_prospect()", "Trigger — auto-deal ao qualificar"],
+                ["orbit_emit_deal_stage_changed()", "Trigger — evento de mudança de stage"],
+                ["orbit_emit_prospect_qualified()", "Trigger — evento prospect_qualified/lead_recebido"],
+                ["orbit_zapi_connection_status(_empresa_id)", "Status real-time Z-API"],
+                ["validate_documento(p_doc)", "Valida CPF/CNPJ"],
+                ["submit_onboarding(p_token, p_responses)", "SECURITY DEFINER — finaliza wizard público"],
+                ["get_system_health_kpis / _recent_logs", "Painel saúde (super_admin)"],
+                ["match_orbit_knowledge(...)", "Busca vetorial RAG por empresa"],
+                ["update_updated_at_column()", "Trigger genérico"],
+                ["REVOKE em api_key/token/client_token", "Credenciais nunca expostas a authenticated/anon"],
+                ["Drop Apollo/LeadFinder", "Expurgo de orbit_enrichment_*, orbit_leads, orbit_icps"],
+                ["orbit_flow_templates write", "Apenas super_admin (curadoria global)"],
+              ]} />
+            </CardContent></Card>
+          </section>
+
+          {/* Apêndice A — Edge Functions */}
           <section id="edge-functions" className="doc-section space-y-4">
-            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><Cpu className="h-5 w-5 text-primary" /> 5. Edge Functions (Backend)</h2>
+            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><Cpu className="h-5 w-5 text-primary" /> Apêndice A — Catálogo completo de Edge Functions</h2>
             <Separator />
             <Card><CardContent className="pt-6">
-              <Table><TableHeader><TableRow><TableHead>Função</TableHead><TableHead>Descrição</TableHead><TableHead>Categoria</TableHead></TableRow></TableHeader><TableBody>
-                {[
-                  ["accept-empresa-invite", "Aceita convite de empresa SaaS e vincula usuário", "Auth"],
-                  ["accept-invitation", "Aceita convite de organização PE e vincula o usuário", "Auth"],
-                  ["add-empresa-user", "Adiciona usuário a uma empresa Orbit", "Auth"],
-                  ["create-empresa", "Cria nova empresa/tenant no Orbit", "Admin"],
-                  ["create-empresa-invite", "Cria convite para nova empresa SaaS com token seguro", "Admin"],
-                  ["create-master-user", "Cria usuário master (super_admin)", "Admin"],
-                  ["fetch-cnpj", "Consulta dados de CNPJ via BrasilAPI", "Admin"],
-                  ["invite-org-user", "Envia convite para nova organização PE", "Auth"],
-                  ["orbit-ai-agent", "Processa mensagens com agente IA e gera respostas", "IA"],
-                  ["orbit-ai-suggest", "Sugere respostas baseadas no contexto da conversa", "IA"],
-                  ["orbit-meta-webhook", "Recebe webhooks do Meta (Instagram/Facebook)", "Webhook"],
-                  ["orbit-send-message", "Envia mensagem individual via WhatsApp (Z-API)", "Messaging"],
-                  ["orbit-send-email", "Envia email individual via Resend", "Messaging"],
-                  ["send-orbit-meta-message", "Envia mensagem via Meta (Instagram/Facebook)", "Messaging"],
-                  ["orbit-search-leads", "Busca leads na API Apollo.io", "Lead Finder"],
-                  ["orbit-webhook", "Recebe webhooks do Z-API (WhatsApp)", "Webhook"],
-                  ["request-campaign-approval", "Solicita aprovação de campanha ao admin", "Campaigns"],
-                  ["send-orbit-campaign", "Executa disparo de campanha aprovada", "Campaigns"],
-                  ["send-vendedor-notification", "Notifica vendedor sobre nova atribuição", "Notifications"],
-                  ["validate-invite", "Valida token de convite SaaS e retorna dados da empresa", "Auth"],
-                ].map(([f, d, c]) => <TableRow key={f}><TableCell className="font-mono text-xs">{f}</TableCell><TableCell className="text-muted-foreground">{d}</TableCell><TableCell><Badge variant="secondary">{c}</Badge></TableCell></TableRow>)}
-              </TableBody></Table>
+              <EntityTable headers={["Função", "Propósito"]} rows={[
+                ["accept-empresa-invite", "Aceita convite de empresa, ativa usuário, envia welcome"],
+                ["accept-invitation", "Aceita convite PE, cria/atualiza usuário com role"],
+                ["add-empresa-user", "Adiciona usuário existente a uma empresa"],
+                ["add-org-user", "Adiciona usuário a uma org PE"],
+                ["admin-set-password", "Admin redefine senha de outro usuário"],
+                ["auto-approve-trial", "Cria empresa + admin a partir de trial_requests"],
+                ["create-empresa", "Provisiona empresa + admin + email"],
+                ["create-empresa-invite", "Convite com token hasheado"],
+                ["create-master-user", "Cria o primeiro super_admin (one-time)"],
+                ["fetch-cnpj", "Proxy BrasilAPI"],
+                ["invite-org-user", "Convite para org PE com role"],
+                ["orbit-ai-agent", "Agente IA principal (estado, RAG, TTS)"],
+                ["orbit-ai-generate-template", "Geração de templates via IA"],
+                ["orbit-ai-sandbox", "Sandbox stateless de testes"],
+                ["orbit-ai-suggest", "Sugestão contextual para vendedor"],
+                ["orbit-email-track", "Pixel de tracking de email"],
+                ["orbit-flow-dispatcher", "Cron — eventos pendentes → flow runs"],
+                ["orbit-flow-executor", "Executa ações de um flow run"],
+                ["orbit-google-auth", "Inicia OAuth2 Google"],
+                ["orbit-google-calendar", "CRUD eventos Calendar"],
+                ["orbit-google-callback", "Callback OAuth2"],
+                ["orbit-google-disconnect", "Remove tokens Google"],
+                ["orbit-google-status", "Valida token Google"],
+                ["orbit-knowledge-ingest", "Chunking + embeddings RAG"],
+                ["orbit-lead-ingest", "Webhook genérico de leads"],
+                ["orbit-meeting-scheduler", "Agenda reunião checando disponibilidade"],
+                ["orbit-meta-webhook", "Recebe eventos Meta WhatsApp"],
+                ["orbit-migrate-phones", "Normaliza telefones em massa"],
+                ["orbit-onboarding-create", "Cria onboarding + envia link"],
+                ["orbit-onboarding-submit", "Processa submissão do wizard"],
+                ["orbit-resend-webhook", "Eventos Resend (bounce/open/click)"],
+                ["orbit-send-email", "Envia email via Resend"],
+                ["orbit-send-message", "Envia WhatsApp via Z-API"],
+                ["orbit-validate-whatsapp", "Valida lista de números com cache"],
+                ["orbit-webhook", "Webhook Z-API inbound (principal)"],
+                ["request-campaign-approval", "Notifica aprovadores"],
+                ["send-orbit-campaign", "Disparo em massa com warmup"],
+                ["send-orbit-meta-message", "Envia via Meta Graph API"],
+                ["send-vendedor-notification", "Notifica vendedor em atribuição/transferência"],
+                ["stripe-change-plan", "Upgrade/downgrade Stripe"],
+                ["stripe-checkout", "Sessão de checkout"],
+                ["stripe-portal", "Portal de gerenciamento"],
+                ["stripe-subscription-status", "Status atual da subscription"],
+                ["stripe-webhook", "Eventos Stripe → atualiza saas_empresa"],
+                ["validate-invite", "Valida token sem consumir"],
+              ]} />
             </CardContent></Card>
           </section>
 
-          {/* 6. Autenticação */}
-          <section id="autenticacao" className="doc-section space-y-4">
-            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><Shield className="h-5 w-5 text-primary" /> 6. Autenticação e Controle de Acesso</h2>
-            <Separator />
-
-            <Card><CardHeader><CardTitle className="text-lg">Modelo Dual de Roles</CardTitle></CardHeader><CardContent className="space-y-4">
-              <div>
-                <h4 className="font-semibold text-foreground mb-2">Orbit (Legacy)</h4>
-                <p className="text-muted-foreground mb-2">Tabela <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">user_roles</code> com roles fixos:</p>
-                <div className="flex gap-2 flex-wrap">
-                  {["super_admin", "admin", "vendedor", "visualizador"].map(r => <Badge key={r} variant="outline">{r}</Badge>)}
-                </div>
-              </div>
-              <Separator />
-              <div>
-                <h4 className="font-semibold text-foreground mb-2">Prospecting Engine</h4>
-                <p className="text-muted-foreground mb-2">Tabela <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">pe_users</code> com roles dinâmicos via <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">pe_roles</code>. Cada organização define seus próprios roles e permissões.</p>
-              </div>
-            </CardContent></Card>
-
-            <Card><CardHeader><CardTitle className="text-lg">Funções Helper (Database)</CardTitle></CardHeader><CardContent>
-              <Table><TableHeader><TableRow><TableHead>Função</TableHead><TableHead>Retorno</TableHead><TableHead>Uso</TableHead></TableRow></TableHeader><TableBody>
-                {[
-                  ["get_user_empresa_id()", "UUID", "Retorna empresa_id do usuário autenticado (Orbit)"],
-                  ["has_role(role)", "BOOLEAN", "Verifica se o usuário possui um role específico (Orbit)"],
-                  ["pe_get_user_org_id()", "UUID", "Retorna organization_id do usuário (PE)"],
-                  ["pe_is_super_admin()", "BOOLEAN", "Verifica se o usuário é super_admin global"],
-                  ["pe_user_can_write(org_id)", "BOOLEAN", "Verifica permissão de escrita na organização"],
-                  ["pe_user_is_org_admin(org_id)", "BOOLEAN", "Verifica se é admin da organização"],
-                  ["pe_user_is_sales_or_sdr(org_id)", "BOOLEAN", "Verifica se o usuário tem role vendedor ou SDR na organização"],
-                ].map(([f, r, u]) => <TableRow key={f}><TableCell className="font-mono text-xs">{f}</TableCell><TableCell><Badge variant="outline">{r}</Badge></TableCell><TableCell className="text-muted-foreground">{u}</TableCell></TableRow>)}
-              </TableBody></Table>
-            </CardContent></Card>
-
-            <Card><CardHeader><CardTitle className="text-lg">Row Level Security (RLS)</CardTitle></CardHeader><CardContent>
-              <p className="text-muted-foreground leading-relaxed">Todas as tabelas possuem RLS habilitado. Policies garantem isolamento multi-tenant: usuários só acessam dados da sua empresa_id (Orbit) ou organization_id (PE). Funções helper são usadas nas policies para resolver o tenant do usuário autenticado.</p>
-            </CardContent></Card>
-          </section>
-
-          {/* 7. Rotas */}
+          {/* Apêndice B — Rotas */}
           <section id="rotas" className="doc-section space-y-4">
-            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><Route className="h-5 w-5 text-primary" /> 7. Rotas da Aplicação</h2>
+            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><Route className="h-5 w-5 text-primary" /> Apêndice B — Catálogo de rotas frontend</h2>
             <Separator />
-            <Card><CardContent className="pt-6">
-              <Table><TableHeader><TableRow><TableHead>Rota</TableHead><TableHead>Descrição</TableHead><TableHead>Proteção</TableHead></TableRow></TableHeader><TableBody>
-                {[
-                  ["/auth", "Login e cadastro", "Pública"],
-                  ["/setup", "Configuração inicial", "Pública"],
-                  ["/invite/:token", "Aceitar convite", "Pública"],
-                  ["/documentacao", "Documentação do sistema", "Pública"],
-                  ["/:slug/dashboard", "Dashboard do CRM (por empresa)", "Autenticado"],
-                  ["/:slug/prospects", "Lista de prospects", "Autenticado"],
-                  ["/:slug/conversas", "Chat multicanal", "Autenticado"],
-                  ["/:slug/funil", "Pipeline de vendas", "Autenticado"],
-                  ["/:slug/campanhas", "Gestão de campanhas", "Autenticado"],
-                  ["/:slug/templates", "Templates de mensagem", "Autenticado"],
-                  ["/:slug/lead-finder", "Busca de leads", "Autenticado"],
-                  ["/:slug/analytics", "Relatórios e métricas", "Autenticado"],
-                  ["/:slug/config", "Configurações", "Autenticado"],
-                  ["/:slug/usuarios", "Gestão de usuários da empresa", "Autenticado"],
-                  ["/:slug/onboarding", "Onboarding de clientes", "Super Admin"],
-                  ["/pe-admin/*", "Admin do Prospecting Engine", "Super Admin"],
-                ].map(([r, d, p]) => <TableRow key={r}><TableCell className="font-mono text-xs">{r}</TableCell><TableCell className="text-muted-foreground">{d}</TableCell><TableCell><Badge variant={p === "Pública" ? "outline" : p === "Super Admin" ? "destructive" : "secondary"}>{p}</Badge></TableCell></TableRow>)}
 
-              </TableBody></Table>
+            <Card><CardHeader><CardTitle className="text-lg">Tenant (/{`{slug}`}/...)</CardTitle></CardHeader><CardContent>
+              <EntityTable headers={["Rota", "Componente"]} rows={[
+                ["/{slug}/funil", "FunilPage"],
+                ["/{slug}/prospects (+ /:id)", "ProspectsPage"],
+                ["/{slug}/conversas", "ConversasPage"],
+                ["/{slug}/campanhas", "CampanhasPage"],
+                ["/{slug}/campanhas/nova", "NovaCampanhaPage"],
+                ["/{slug}/campanhas/:id/editar", "NovaCampanhaPage"],
+                ["/{slug}/templates", "TemplatesPage"],
+                ["/{slug}/templates/email/new", "EmailTemplateEditorPage"],
+                ["/{slug}/templates/email/:id/edit", "EmailTemplateEditorPage"],
+                ["/{slug}/config", "ConfigPage"],
+                ["/{slug}/analytics", "AnalyticsPage"],
+                ["/{slug}/tarefas", "TarefasPage"],
+                ["/{slug}/onboarding (super_admin)", "OnboardingPage"],
+                ["/{slug}/meu-plano", "MeuPlanoPage"],
+                ["/{slug}/usuarios", "UsuariosEmpresaPage"],
+              ]} />
+            </CardContent></Card>
+
+            <Card><CardHeader><CardTitle className="text-lg">Públicas</CardTitle></CardHeader><CardContent>
+              <EntityTable headers={["Rota", "Componente"]} rows={[
+                ["/", "LandingPage"],
+                ["/auth", "AuthPage"],
+                ["/setup", "SetupPage"],
+                ["/onboarding-cliente/:token", "ClientOnboardingPage"],
+                ["/invite/:token", "AcceptInvitePage"],
+                ["/accept-invite-pe/:token", "AcceptInvitePage"],
+                ["/accept-invite", "AcceptInviteSaasPage"],
+                ["/reset-password", "ResetPasswordPage"],
+                ["/select-empresa", "SelectEmpresaPage"],
+              ]} />
+            </CardContent></Card>
+
+            <Card><CardHeader><CardTitle className="text-lg">PE Admin (/pe-admin/...)</CardTitle></CardHeader><CardContent>
+              <EntityTable headers={["Rota", "Componente"]} rows={[
+                ["/pe-admin/cadastros", "CadastrosPage"],
+                ["/pe-admin/organizations/:id/users", "PeOrgUsersPage"],
+                ["/pe-admin/users", "PeGlobalUsersPage"],
+                ["/pe-admin/planos", "PlanosPage"],
+                ["/pe-admin/tenants", "TenantMapPage"],
+                ["/pe-admin/audit", "PeAuditLogPage"],
+                ["/pe-admin/documentacao", "PeAdminDocPage"],
+              ]} />
             </CardContent></Card>
           </section>
 
-          {/* 8. Índices */}
-          <section id="indices" className="doc-section space-y-4">
-            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><Gauge className="h-5 w-5 text-primary" /> 8. Índices e Otimizações</h2>
+          {/* Apêndice C */}
+          <section id="rpcs" className="doc-section space-y-4">
+            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><ListTree className="h-5 w-5 text-primary" /> Apêndice C — RPCs e Triggers principais</h2>
             <Separator />
-            <Card><CardContent className="pt-6 space-y-4">
-              <div>
-                <h3 className="font-semibold text-foreground mb-2">Índices Multi-Tenant (organization_id)</h3>
-                <Table><TableHeader><TableRow><TableHead>Índice</TableHead><TableHead>Tabela</TableHead><TableHead>Colunas</TableHead></TableRow></TableHeader><TableBody>
-                  {[
-                    ["idx_clientes_org", "clientes", "organization_id"],
-                    ["idx_contatos_org", "contatos", "organization_id"],
-                    ["idx_oportunidades_org", "oportunidades", "organization_id"],
-                    ["idx_oportunidade_itens_org", "oportunidade_itens", "organization_id"],
-                    ["idx_tarefas_org", "tarefas", "organization_id"],
-                    ["idx_interacoes_org", "interacoes", "organization_id"],
-                    ["idx_produtos_org", "produtos", "organization_id"],
-                    ["idx_segmentos_org", "segmentos", "organization_id"],
-                    ["idx_origens_org", "origens", "organization_id"],
-                    ["idx_funil_etapas_org", "funil_etapas", "organization_id"],
-                    ["idx_cliente_origem_org", "cliente_origem", "organization_id"],
-                    ["idx_pe_users_org", "pe_users", "organization_id"],
-                    ["idx_pe_audit_log_org", "pe_audit_log", "organization_id"],
-                  ].map(([i, t, c]) => <TableRow key={i}><TableCell className="font-mono text-xs">{i}</TableCell><TableCell className="font-mono text-xs">{t}</TableCell><TableCell className="text-muted-foreground">{c}</TableCell></TableRow>)}
-                </TableBody></Table>
-              </div>
-              <Separator />
-              <div>
-                <h3 className="font-semibold text-foreground mb-2">Índices Compostos e Únicos</h3>
-                <Table><TableHeader><TableRow><TableHead>Índice</TableHead><TableHead>Tabela</TableHead><TableHead>Colunas</TableHead></TableRow></TableHeader><TableBody>
-                  {[
-                    ["idx_tarefas_org_status_due", "tarefas", "organization_id, status, due_date"],
-                    ["idx_oportunidades_org_etapa", "oportunidades", "organization_id, etapa_id"],
-                    ["idx_contatos_org_cliente", "contatos", "organization_id, cliente_id"],
-                    ["idx_interacoes_org_cliente", "interacoes", "organization_id, cliente_id"],
-                    ["idx_cliente_origem_unique", "cliente_origem", "cliente_id, origem_id (UNIQUE)"],
-                    ["idx_clientes_razao_normalizada", "clientes", "organization_id, razao_social_normalizada"],
-                    ["idx_contatos_email_normalizado", "contatos", "organization_id, email_normalizado"],
-                  ].map(([i, t, c]) => <TableRow key={i}><TableCell className="font-mono text-xs">{i}</TableCell><TableCell className="font-mono text-xs">{t}</TableCell><TableCell className="text-muted-foreground">{c}</TableCell></TableRow>)}
-                </TableBody></Table>
-              </div>
-              <Separator />
-              <div>
-                <h3 className="font-semibold text-foreground mb-2">Otimizações Implementadas</h3>
-                <ul className="list-disc list-inside text-muted-foreground space-y-1">
-                  <li>Paginação server-side em interações (limite configurável)</li>
-                  <li>Normalização de razão social para deduplicação de clientes</li>
-                  <li>Normalização de email para deduplicação de contatos</li>
-                  <li>Créditos de enriquecimento com controle diário</li>
-                  <li>Limites diários de envio WhatsApp por empresa</li>
-                  <li>Fila assíncrona para enriquecimento em lote</li>
-                  <li>Soft-delete para entidades de configuração (produtos, segmentos, origens, etapas)</li>
-                </ul>
-              </div>
+            <Card><CardHeader><CardTitle className="text-lg">RPCs</CardTitle></CardHeader><CardContent>
+              <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1 font-mono">
+                <li>normalize_slug, generate_unique_slug, get_empresa_by_slug</li>
+                <li>user_has_empresa_access, has_role</li>
+                <li>orbit_first_stage_id, orbit_zapi_connection_status, validate_documento</li>
+                <li>submit_onboarding</li>
+                <li>match_orbit_knowledge</li>
+                <li>get_system_health_kpis, get_system_health_recent_logs</li>
+              </ul>
             </CardContent></Card>
+            <Card><CardHeader><CardTitle className="text-lg">Triggers</CardTitle></CardHeader><CardContent>
+              <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1 font-mono">
+                <li>update_updated_at_column (genérico)</li>
+                <li>orbit_auto_create_deal_for_prospect</li>
+                <li>orbit_emit_deal_stage_changed</li>
+                <li>orbit_emit_prospect_qualified</li>
+              </ul>
+            </CardContent></Card>
+            <p className="text-center text-muted-foreground italic pt-4">Fim do Manual — toda nova feature deve ser incorporada às seções acima na ordem cronológica do onboarding.</p>
           </section>
 
-          {/* 9. Integridade de Dados (PE) */}
-          <section id="integridade-dados" className="doc-section space-y-4">
-            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-primary" /> 9. Integridade de Dados (PE)</h2>
-            <Separator />
-
-            <Card><CardHeader><CardTitle className="text-lg">Política de Soft-Delete</CardTitle></CardHeader><CardContent className="space-y-3">
-              <p className="text-muted-foreground leading-relaxed">Entidades de configuração utilizam exclusão lógica (<code className="text-xs bg-secondary px-1.5 py-0.5 rounded">is_active = false</code>) em vez de DELETE físico, preservando integridade referencial e histórico.</p>
-              <Table><TableHeader><TableRow><TableHead>Tabela</TableHead><TableHead>Coluna</TableHead><TableHead>Comportamento</TableHead></TableRow></TableHeader><TableBody>
-                {[
-                  ["produtos", "is_active", "Desativação impede seleção em novos itens; itens existentes mantêm referência"],
-                  ["segmentos", "is_active", "Desativação impede seleção em novos clientes; clientes existentes mantêm vínculo"],
-                  ["origens", "is_active", "Desativação impede novas vinculações; relações cliente_origem existentes mantidas"],
-                  ["funil_etapas", "is_active", "Desativação remove do Kanban; oportunidades existentes mantêm etapa com snapshot"],
-                ].map(([t, c, b]) => <TableRow key={t}><TableCell className="font-mono text-xs">{t}</TableCell><TableCell className="font-mono text-xs">{c}</TableCell><TableCell className="text-muted-foreground">{b}</TableCell></TableRow>)}
-              </TableBody></Table>
-              <p className="text-sm text-muted-foreground">Todas as listagens e selects filtram <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">is_active = true</code> por padrão.</p>
-            </CardContent></Card>
-
-            <Card><CardHeader><CardTitle className="text-lg">Cobertura do Audit Log (pe_audit_log)</CardTitle></CardHeader><CardContent>
-              <p className="text-muted-foreground mb-3">Cada ação grava <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">actor_user_id</code>, <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">entity_type</code>, <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">entity_id</code> e <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">metadata</code> (JSON com before/after quando aplicável).</p>
-              <Table><TableHeader><TableRow><TableHead>Action Code</TableHead><TableHead>Entidade</TableHead><TableHead>Operação</TableHead><TableHead>Before/After</TableHead></TableRow></TableHeader><TableBody>
-                {[
-                  ["CLIENTE_CREATED", "cliente", "Criação", "—"],
-                  ["CLIENTE_UPDATED", "cliente", "Atualização", "✅ before + after"],
-                  ["CONTATO_CREATED", "contato", "Criação", "—"],
-                  ["CONTATO_UPDATED", "contato", "Atualização", "✅ before + after"],
-                  ["CONTATO_DELETED", "contato", "Exclusão", "✅ before"],
-                  ["CLIENTE_ORIGEM_LINKED", "cliente_origem", "Vínculo criado", "—"],
-                  ["CLIENTE_ORIGEM_UNLINKED", "cliente_origem", "Vínculo removido", "✅ before"],
-                  ["PRODUTO_CREATED", "produto", "Criação", "—"],
-                  ["PRODUTO_UPDATED", "produto", "Atualização", "✅ before + after"],
-                  ["PRODUTO_DEACTIVATED", "produto", "Desativação (soft-delete)", "✅ before"],
-                  ["SEGMENTO_CREATED", "segmento", "Criação", "—"],
-                  ["SEGMENTO_UPDATED", "segmento", "Atualização", "✅ before + after"],
-                  ["SEGMENTO_DEACTIVATED", "segmento", "Desativação (soft-delete)", "✅ before"],
-                  ["ORIGEM_CREATED", "origem", "Criação", "—"],
-                  ["ORIGEM_UPDATED", "origem", "Atualização", "✅ before + after"],
-                  ["ORIGEM_DEACTIVATED", "origem", "Desativação (soft-delete)", "✅ before"],
-                  ["FUNIL_ETAPA_CREATED", "funil_etapa", "Criação", "—"],
-                  ["FUNIL_ETAPA_UPDATED", "funil_etapa", "Atualização", "✅ before + after"],
-                  ["FUNIL_ETAPA_DEACTIVATED", "funil_etapa", "Desativação (soft-delete)", "✅ before"],
-                  ["OPORTUNIDADE_CREATED", "oportunidade", "Criação", "—"],
-                  ["OPORTUNIDADE_UPDATED", "oportunidade", "Atualização", "✅ before + after"],
-                  ["OPORTUNIDADE_MOVED", "oportunidade", "Mudança de etapa", "✅ etapa_id + status"],
-                  ["ITEM_CREATED", "oportunidade_item", "Criação", "—"],
-                  ["ITEM_UPDATED", "oportunidade_item", "Atualização", "✅ before + after"],
-                  ["ITEM_DELETED", "oportunidade_item", "Exclusão", "✅ before"],
-                  ["TAREFA_CREATED", "tarefa", "Criação", "—"],
-                  ["TAREFA_UPDATED", "tarefa", "Atualização", "✅ before + after"],
-                  ["TAREFA_DONE", "tarefa", "Conclusão", "—"],
-                  ["INTERACAO_CREATED", "interacao", "Criação", "—"],
-                ].map(([a, e, o, b]) => <TableRow key={a}><TableCell className="font-mono text-xs">{a}</TableCell><TableCell className="text-muted-foreground">{e}</TableCell><TableCell className="text-muted-foreground">{o}</TableCell><TableCell>{b}</TableCell></TableRow>)}
-              </TableBody></Table>
-            </CardContent></Card>
-
-            <Card><CardHeader><CardTitle className="text-lg">Snapshots Históricos</CardTitle></CardHeader><CardContent className="space-y-3">
-              <p className="text-muted-foreground leading-relaxed">Triggers de banco de dados capturam o nome de entidades-mestre no momento da criação/atualização, garantindo que renomeações futuras não alterem registros históricos.</p>
-              <Table><TableHeader><TableRow><TableHead>Coluna Snapshot</TableHead><TableHead>Tabela</TableHead><TableHead>Trigger</TableHead><TableHead>Quando Atualiza</TableHead></TableRow></TableHeader><TableBody>
-                {[
-                  ["produto_nome_snapshot", "oportunidade_itens", "trg_snapshot_produto_nome", "INSERT e UPDATE de produto_id"],
-                  ["etapa_nome_snapshot", "oportunidades", "trg_snapshot_etapa_nome", "INSERT e UPDATE de etapa_id"],
-                ].map(([c, t, tr, q]) => <TableRow key={c}><TableCell className="font-mono text-xs">{c}</TableCell><TableCell className="font-mono text-xs">{t}</TableCell><TableCell className="font-mono text-xs">{tr}</TableCell><TableCell className="text-muted-foreground">{q}</TableCell></TableRow>)}
-              </TableBody></Table>
-              <p className="text-sm text-muted-foreground">A UI exibe o snapshot (nome histórico) em vez do join com a tabela-mestre quando aplicável, garantindo fidelidade ao estado no momento do registro.</p>
-            </CardContent></Card>
-          </section>
-
-          {/* Footer */}
-          <div className="text-center text-sm text-muted-foreground pt-8 pb-16 no-print">
-            <Separator className="mb-8" />
-            Documentação gerada automaticamente — ORBIT CRM v1.1
-          </div>
         </main>
       </div>
     </>
