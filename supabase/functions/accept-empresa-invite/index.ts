@@ -77,11 +77,11 @@ Deno.serve(async (req) => {
     const body: AcceptRequest = await req.json();
 
     if (!body.token || !body.password || !body.full_name?.trim()) {
-      return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios faltando", 400, undefined, req);
+      return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios faltando", 200, undefined, req);
     }
 
     if (body.password.length < 6) {
-      return fail(ErrorCodes.VALIDATION_ERROR, "Senha deve ter pelo menos 6 caracteres", 400, undefined, req);
+      return fail(ErrorCodes.VALIDATION_ERROR, "Senha deve ter pelo menos 6 caracteres", 200, undefined, req);
     }
 
     const tokenHash = await hashToken(body.token);
@@ -92,9 +92,9 @@ Deno.serve(async (req) => {
       .eq("token_hash", tokenHash)
       .maybeSingle();
 
-    if (invErr || !invite) return fail(ErrorCodes.INVITE_INVALID, "Convite não encontrado ou token inválido", 404, undefined, req);
-    if (invite.used_at) return fail(ErrorCodes.INVITE_USED, "Este convite já foi utilizado", 410, undefined, req);
-    if (new Date(invite.expires_at) < new Date()) return fail(ErrorCodes.INVITE_EXPIRED, "Este convite expirou", 410, undefined, req);
+    if (invErr || !invite) return fail(ErrorCodes.INVITE_INVALID, "Convite não encontrado ou token inválido", 200, undefined, req);
+    if (invite.used_at) return fail(ErrorCodes.INVITE_USED, "Este convite já foi utilizado", 200, undefined, req);
+    if (new Date(invite.expires_at) < new Date()) return fail(ErrorCodes.INVITE_EXPIRED, "Este convite expirou", 200, undefined, req);
 
     const { data: saasEmpresa } = await supabase
       .from("saas_empresa")
@@ -114,10 +114,10 @@ Deno.serve(async (req) => {
     let tipoPessoa: "PF" | "PJ" | null = null;
     if (!isDemo) {
       const raw = (body.documento ?? body.cnpj ?? "").replace(/[^0-9]/g, "");
-      if (!raw) return fail(ErrorCodes.VALIDATION_ERROR, "Documento (CPF ou CNPJ) é obrigatório", 400, undefined, req);
+      if (!raw) return fail(ErrorCodes.VALIDATION_ERROR, "Documento (CPF ou CNPJ) é obrigatório", 200, undefined, req);
 
       if (raw.length === 11) {
-        if (!validateCpfDv(raw)) return fail(ErrorCodes.VALIDATION_ERROR, "CPF inválido", 400, undefined, req);
+        if (!validateCpfDv(raw)) return fail(ErrorCodes.VALIDATION_ERROR, "CPF inválido", 200, undefined, req);
         tipoPessoa = "PF";
         cpfNormalized = raw;
       } else if (raw.length === 14) {
@@ -125,13 +125,19 @@ Deno.serve(async (req) => {
         cnpjNormalized = raw;
         const { data: existing } = await supabase
           .from("orbit_empresas")
-          .select("id")
+          .select("id, nome")
           .eq("cnpj_normalized", cnpjNormalized)
           .neq("id", invite.empresa_id)
           .maybeSingle();
-        if (existing) return fail(ErrorCodes.CNPJ_ALREADY_EXISTS, "CNPJ já cadastrado em outra empresa", 409, undefined, req);
+        if (existing) return fail(
+          ErrorCodes.CNPJ_ALREADY_EXISTS,
+          `Este CNPJ já está cadastrado em outra empresa (${(existing as any).nome}). Use o CNPJ correto desta empresa ou um CPF.`,
+          200,
+          undefined,
+          req,
+        );
       } else {
-        return fail(ErrorCodes.VALIDATION_ERROR, "Documento deve ter 11 (CPF) ou 14 (CNPJ) dígitos", 400, undefined, req);
+        return fail(ErrorCodes.VALIDATION_ERROR, "Documento deve ter 11 (CPF) ou 14 (CNPJ) dígitos", 200, undefined, req);
       }
     }
 
