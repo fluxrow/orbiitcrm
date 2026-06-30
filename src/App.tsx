@@ -29,6 +29,7 @@ import TenantLayout from "./pages/tenant/TenantLayout";
 // Orbit CRM Pages
 import ProspectsPage from "./pages/orbit/ProspectsPage";
 import ConversasPage from "./pages/orbit/ConversasPage";
+import OrbitDashboard from "./pages/orbit/OrbitDashboard";
 import FunilPage from "./pages/orbit/FunilPage";
 import CampanhasPage from "./pages/orbit/CampanhasPage";
 import TemplatesPage from "./pages/orbit/TemplatesPage";
@@ -145,7 +146,7 @@ function OrbitRoutes() {
   return (
     <Routes>
       <Route index element={<Navigate to="funil" replace />} />
-      <Route path="dashboard" element={<Navigate to="funil" replace />} />
+      <Route path="dashboard" element={<OrbitDashboard />} />
       <Route path="prospects" element={<ProspectsPage />} />
       <Route path="prospects/:id" element={<ProspectsPage />} />
       <Route path="conversas" element={<ConversasPage />} />
