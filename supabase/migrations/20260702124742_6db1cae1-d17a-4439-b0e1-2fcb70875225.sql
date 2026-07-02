@@ -1,0 +1,2 @@
+ALTER TABLE public.orbit_ai_config ADD COLUMN IF NOT EXISTS modelo_ia text;
+COMMENT ON COLUMN public.orbit_ai_config.modelo_ia IS 'Modelo Anthropic escolhido (ex: claude-sonnet-4-5). NULL = padrão do backend. Fallback automático em 404.';
