@@ -749,49 +749,41 @@ IMPORTANTE: Responda em JSON com esta estrutura:
 Inclua em "dados_adicionais" SOMENTE chaves listadas em PERGUNTAS DE QUALIFICAÇÃO DINÂMICAS, e apenas as que a mensagem do cliente realmente responde. Não invente valores.
 ${regrasBlock}`;
 
-    // Chamar Lovable AI
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { 
-            role: "user", 
-            content: `Histórico da conversa:\n${historicoFormatado}\n\n---\nMensagens pendentes do cliente: "${mensagemAgregada}"\n\nContexto:\n- Estado: ${leadContext.conversation.state}\n- Primeira interação: ${primeiraInteracao}\n- Em coleta de dados: ${emColetaOrcamento}\n- Cadastro completo: ${cadastroCompleto}\n- Campos faltantes: ${camposFaltantes.join(", ") || "nenhum"}` 
-          },
-        ],
-        temperature: 0.7,
-        max_tokens: maxTokens,
-      }),
+    // Chamar Anthropic Claude (chave mestra SaaS via ANTHROPIC_API_KEY)
+    const userTurn = `Histórico da conversa:\n${historicoFormatado}\n\n---\nMensagens pendentes do cliente: "${mensagemAgregada}"\n\nContexto:\n- Estado: ${leadContext.conversation.state}\n- Primeira interação: ${primeiraInteracao}\n- Em coleta de dados: ${emColetaOrcamento}\n- Cadastro completo: ${cadastroCompleto}\n- Campos faltantes: ${camposFaltantes.join(", ") || "nenhum"}`;
+
+    const aiResult = await callAnthropic({
+      model: ANTHROPIC_DEFAULT_MODEL,
+      system: systemPrompt,
+      messages: toAnthropicMessages([{ role: "user", content: userTurn }]),
+      temperature: 0.7,
+      max_tokens: maxTokens,
     });
 
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error("[orbit-ai-agent] AI Gateway error:", aiResponse.status, errorText);
-      
-      if (aiResponse.status === 429) {
+    if (!aiResult.ok) {
+      console.error("[orbit-ai-agent] Anthropic error:", aiResult.status, aiResult.error);
+      if (aiResult.code === "rate_limit") {
         return new Response(JSON.stringify({ error: "Rate limit exceeded, please try again later." }), {
           status: 429,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (aiResponse.status === 402) {
-        return new Response(JSON.stringify({ error: "Payment required, please add funds to your Lovable AI workspace." }), {
+      if (aiResult.code === "credits") {
+        return new Response(JSON.stringify({ error: "Payment required — verifique o saldo/uso da conta Anthropic." }), {
           status: 402,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      
-      throw new Error(`AI Gateway error: ${aiResponse.status}`);
+      if (aiResult.code === "missing_key" || aiResult.code === "auth") {
+        return new Response(JSON.stringify({ error: aiResult.error }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(aiResult.error);
     }
 
-    const aiData = await aiResponse.json();
-    const content = aiData.choices?.[0]?.message?.content || "";
+    const content = aiResult.text || "";
 
     let parsed: any;
     try {
