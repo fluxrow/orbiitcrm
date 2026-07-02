@@ -1948,6 +1948,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
           tom_conversa: aiForm.tom_conversa,
           idioma: aiForm.idioma,
           max_tokens: aiForm.max_tokens,
+          modelo_ia: aiForm.modelo_ia || null,
           campos_qualificacao: aiForm.campos_qualificacao as Array<{ label?: string; key?: string; required?: boolean }>,
         }}
       />
