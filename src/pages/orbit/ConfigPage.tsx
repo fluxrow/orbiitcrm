@@ -95,6 +95,7 @@ export default function ConfigPage() {
     idioma: "pt-BR",
     max_tokens: 500,
     tempo_espera: 10,
+    modelo_ia: "" as string,
     tts_ativo: false,
     tts_api_key: "",
     tts_voice_id: "EXAVITQu4vr4xnSDxMaL",
