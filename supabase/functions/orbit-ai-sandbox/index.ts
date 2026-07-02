@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { getCorsHeaders, corsOptionsResponse } from "../_shared/cors.ts";
+import { callAnthropic, toAnthropicMessages, ANTHROPIC_DEFAULT_MODEL } from "../_shared/anthropic.ts";
 
 interface SandboxMessage {
   role: "user" | "assistant" | "system";
