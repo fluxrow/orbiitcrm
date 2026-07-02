@@ -4,9 +4,24 @@
 //
 // Docs: https://docs.anthropic.com/en/api/messages
 
-export const ANTHROPIC_DEFAULT_MODEL = "claude-3-5-sonnet-latest";
+// Prefer the current first-party Claude Sonnet API ID. Older Claude 3.5 IDs and
+// aliases can disappear from individual Anthropic workspaces, so `callAnthropic`
+// falls back to the Models API on 404 and retries with an available Sonnet model.
+export const ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-5";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+const ANTHROPIC_MODELS_URL = "https://api.anthropic.com/v1/models?limit=1000";
 const ANTHROPIC_VERSION = "2023-06-01";
+
+const FALLBACK_MODEL_CANDIDATES = [
+  ANTHROPIC_DEFAULT_MODEL,
+  "claude-opus-4-8",
+  "claude-haiku-4-5-20251001",
+  "claude-haiku-4-5",
+  "claude-3-5-sonnet-20241022",
+  "claude-3-5-sonnet-20240620",
+];
+
+let cachedAvailableModel: string | null = null;
 
 export interface AnthropicMessage {
   role: "user" | "assistant";
@@ -32,6 +47,69 @@ export interface AnthropicCallError {
   status: number;
   error: string;
   code: "missing_key" | "rate_limit" | "credits" | "auth" | "server" | "unknown";
+}
+
+function classifyAnthropicError(status: number): AnthropicCallError["code"] {
+  if (status === 429) return "rate_limit";
+  if (status === 402) return "credits";
+  if (status === 401 || status === 403) return "auth";
+  if (status >= 500) return "server";
+  return "unknown";
+}
+
+function isModelNotFound(status: number, errText: string): boolean {
+  return status === 404 && /not_found_error|model:/i.test(errText);
+}
+
+async function listAvailableAnthropicModels(key: string): Promise<string[]> {
+  try {
+    const resp = await fetch(ANTHROPIC_MODELS_URL, {
+      method: "GET",
+      headers: {
+        "x-api-key": key,
+        "anthropic-version": ANTHROPIC_VERSION,
+      },
+    });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    const models = Array.isArray(data?.data) ? data.data : [];
+    return models
+      .map((m: any) => (typeof m?.id === "string" ? m.id : null))
+      .filter((id: string | null): id is string => Boolean(id));
+  } catch (_error) {
+    return [];
+  }
+}
+
+async function resolveFallbackModel(key: string, attemptedModel: string): Promise<string | null> {
+  if (cachedAvailableModel && cachedAvailableModel !== attemptedModel) return cachedAvailableModel;
+
+  const availableModels = await listAvailableAnthropicModels(key);
+  const availableSet = new Set(availableModels);
+  const preferredFromCatalog = [
+    ...FALLBACK_MODEL_CANDIDATES,
+    ...availableModels.filter((id) => /sonnet/i.test(id)),
+    ...availableModels,
+  ];
+
+  const model = preferredFromCatalog.find((candidate) => candidate !== attemptedModel && (
+    availableSet.size === 0 || availableSet.has(candidate)
+  ));
+
+  cachedAvailableModel = model ?? null;
+  return cachedAvailableModel;
+}
+
+async function postAnthropicMessage(key: string, body: Record<string, unknown>): Promise<Response> {
+  return await fetch(ANTHROPIC_URL, {
+    method: "POST",
+    headers: {
+      "x-api-key": key,
+      "anthropic-version": ANTHROPIC_VERSION,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
 }
 
 /**
@@ -85,15 +163,7 @@ export async function callAnthropic(
 
   let resp: Response;
   try {
-    resp = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: {
-        "x-api-key": key,
-        "anthropic-version": ANTHROPIC_VERSION,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
+    resp = await postAnthropicMessage(key, body);
   } catch (e) {
     return {
       ok: false,
@@ -105,11 +175,35 @@ export async function callAnthropic(
 
   if (!resp.ok) {
     const errText = await resp.text().catch(() => "");
-    let code: AnthropicCallError["code"] = "unknown";
-    if (resp.status === 429) code = "rate_limit";
-    else if (resp.status === 402) code = "credits";
-    else if (resp.status === 401 || resp.status === 403) code = "auth";
-    else if (resp.status >= 500) code = "server";
+
+    if (isModelNotFound(resp.status, errText)) {
+      const fallbackModel = await resolveFallbackModel(key, String(body.model));
+      if (fallbackModel) {
+        const retryBody = { ...body, model: fallbackModel };
+        const retryResp = await postAnthropicMessage(key, retryBody);
+        if (retryResp.ok) {
+          const data = await retryResp.json();
+          const parts = Array.isArray(data?.content) ? data.content : [];
+          const text = parts
+            .filter((p: any) => p?.type === "text" && typeof p.text === "string")
+            .map((p: any) => p.text)
+            .join("")
+            .trim();
+
+          return { ok: true, text, raw: data };
+        }
+
+        const retryErrText = await retryResp.text().catch(() => "");
+        return {
+          ok: false,
+          status: retryResp.status,
+          error: `Anthropic ${retryResp.status}: ${retryErrText.slice(0, 500)}`,
+          code: classifyAnthropicError(retryResp.status),
+        };
+      }
+    }
+
+    const code = classifyAnthropicError(resp.status);
     return {
       ok: false,
       status: resp.status,
