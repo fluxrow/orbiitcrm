@@ -753,7 +753,7 @@ ${regrasBlock}`;
     const userTurn = `Histórico da conversa:\n${historicoFormatado}\n\n---\nMensagens pendentes do cliente: "${mensagemAgregada}"\n\nContexto:\n- Estado: ${leadContext.conversation.state}\n- Primeira interação: ${primeiraInteracao}\n- Em coleta de dados: ${emColetaOrcamento}\n- Cadastro completo: ${cadastroCompleto}\n- Campos faltantes: ${camposFaltantes.join(", ") || "nenhum"}`;
 
     const aiResult = await callAnthropic({
-      model: ANTHROPIC_DEFAULT_MODEL,
+      model: ((aiConfig as any).modelo_ia && String((aiConfig as any).modelo_ia).trim()) || ANTHROPIC_DEFAULT_MODEL,
       system: systemPrompt,
       messages: toAnthropicMessages([{ role: "user", content: userTurn }]),
       temperature: 0.7,
