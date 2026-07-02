@@ -7,18 +7,18 @@
 // Prefer the current first-party Claude Sonnet API ID. Older Claude 3.5 IDs and
 // aliases can disappear from individual Anthropic workspaces, so `callAnthropic`
 // falls back to the Models API on 404 and retries with an available Sonnet model.
-export const ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-5";
+export const ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-4-5";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_MODELS_URL = "https://api.anthropic.com/v1/models?limit=1000";
 const ANTHROPIC_VERSION = "2023-06-01";
 
 const FALLBACK_MODEL_CANDIDATES = [
   ANTHROPIC_DEFAULT_MODEL,
-  "claude-opus-4-8",
-  "claude-haiku-4-5-20251001",
+  "claude-sonnet-4-5-20250929",
+  "claude-opus-4-1",
+  "claude-opus-4-1-20250805",
+  "claude-sonnet-4-0",
   "claude-haiku-4-5",
-  "claude-3-5-sonnet-20241022",
-  "claude-3-5-sonnet-20240620",
 ];
 
 let cachedAvailableModel: string | null = null;
