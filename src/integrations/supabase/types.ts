@@ -594,6 +594,7 @@ export type Database = {
           max_tokens: number | null
           mensagem_boas_vindas: string | null
           mensagem_fora_horario: string | null
+          modelo_ia: string | null
           modo_automatico: boolean | null
           prompt_identidade: string | null
           prompt_regras: string | null
@@ -620,6 +621,7 @@ export type Database = {
           max_tokens?: number | null
           mensagem_boas_vindas?: string | null
           mensagem_fora_horario?: string | null
+          modelo_ia?: string | null
           modo_automatico?: boolean | null
           prompt_identidade?: string | null
           prompt_regras?: string | null
@@ -646,6 +648,7 @@ export type Database = {
           max_tokens?: number | null
           mensagem_boas_vindas?: string | null
           mensagem_fora_horario?: string | null
+          modelo_ia?: string | null
           modo_automatico?: boolean | null
           prompt_identidade?: string | null
           prompt_regras?: string | null

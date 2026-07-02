@@ -30,6 +30,7 @@ import { LeadSourcesTab } from "@/components/orbit/LeadSourcesTab";
 import { ImportProspectsWizard } from "@/components/orbit/ImportProspectsWizard";
 import { Wand2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ANTHROPIC_MODEL_OPTIONS } from "@/lib/anthropicModels";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useOrbitAIConfig, useUpdateAIConfig, useOrbitZAPIConfig, useUpdateZAPIConfig, useOrbitResendConfig, useUpdateResendConfig, useTestResendConnection, useWhatsAppSendingConfig, useUpdateWhatsAppSendingConfig, useWhatsAppDailyUsage } from "@/hooks/useOrbitConfig";
 import { parseCSV, generateCSVTemplate, useImportProspects, useImportHistory } from "@/hooks/useImportProspects";
@@ -95,6 +96,7 @@ export default function ConfigPage() {
     idioma: "pt-BR",
     max_tokens: 500,
     tempo_espera: 10,
+    modelo_ia: "" as string,
     tts_ativo: false,
     tts_api_key: "",
     tts_voice_id: "EXAVITQu4vr4xnSDxMaL",
@@ -158,6 +160,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
       idioma: (aiConfig as any).idioma || "pt-BR",
       max_tokens: (aiConfig as any).max_tokens || 500,
       tempo_espera: (aiConfig as any).tempo_espera || 10,
+      modelo_ia: (aiConfig as any).modelo_ia || "",
       tts_ativo: (aiConfig as any).tts_ativo ?? false,
       tts_api_key: (aiConfig as any).tts_api_key || "",
       tts_voice_id: (aiConfig as any).tts_voice_id || "EXAVITQu4vr4xnSDxMaL",
@@ -523,6 +526,34 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                       <p className="text-xs text-muted-foreground">Limite de tamanho da resposta</p>
                     </div>
                   </div>
+
+                  {/* Modelo de IA (Anthropic) */}
+                  <div className="space-y-2">
+                    <Label>Modelo de IA (Anthropic)</Label>
+                    <Select
+                      value={aiForm.modelo_ia || "__default__"}
+                      onValueChange={(v) => setAiForm({ ...aiForm, modelo_ia: v === "__default__" ? "" : v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o modelo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__default__">Padrão do sistema (recomendado)</SelectItem>
+                        {ANTHROPIC_MODEL_OPTIONS.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      {aiForm.modelo_ia
+                        ? ANTHROPIC_MODEL_OPTIONS.find((m) => m.id === aiForm.modelo_ia)?.description
+                          || "Modelo personalizado. Fallback automático se indisponível."
+                        : "Sem seleção usa o modelo padrão do backend. Fallback automático em caso de indisponibilidade."}
+                    </p>
+                  </div>
+
 
                   {/* Tempo de Espera */}
                   <div className="space-y-2">
@@ -1917,6 +1948,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
           tom_conversa: aiForm.tom_conversa,
           idioma: aiForm.idioma,
           max_tokens: aiForm.max_tokens,
+          modelo_ia: aiForm.modelo_ia || null,
           campos_qualificacao: aiForm.campos_qualificacao as Array<{ label?: string; key?: string; required?: boolean }>,
         }}
       />

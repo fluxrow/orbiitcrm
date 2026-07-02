@@ -14,6 +14,7 @@ interface SandboxAIConfig {
   tom_conversa?: string;
   idioma?: string;
   max_tokens?: number;
+  modelo_ia?: string | null;
   campos_qualificacao?: Array<{ label?: string; key?: string; required?: boolean }>;
 }
 
@@ -99,7 +100,7 @@ serve(async (req) => {
     }
 
     const result = await callAnthropic({
-      model: ANTHROPIC_DEFAULT_MODEL,
+      model: (aiConfig.modelo_ia && aiConfig.modelo_ia.trim()) || ANTHROPIC_DEFAULT_MODEL,
       system: systemPrompt,
       messages: toAnthropicMessages(turns),
       temperature: 0.7,

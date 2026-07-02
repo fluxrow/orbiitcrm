@@ -16,6 +16,7 @@ export interface AgentSandboxAIConfig {
   tom_conversa?: string;
   idioma?: string;
   max_tokens?: number;
+  modelo_ia?: string | null;
   campos_qualificacao?: Array<{ label?: string; key?: string; required?: boolean }>;
 }
 
