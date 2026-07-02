@@ -527,6 +527,34 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                     </div>
                   </div>
 
+                  {/* Modelo de IA (Anthropic) */}
+                  <div className="space-y-2">
+                    <Label>Modelo de IA (Anthropic)</Label>
+                    <Select
+                      value={aiForm.modelo_ia || "__default__"}
+                      onValueChange={(v) => setAiForm({ ...aiForm, modelo_ia: v === "__default__" ? "" : v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o modelo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__default__">Padrão do sistema (recomendado)</SelectItem>
+                        {ANTHROPIC_MODEL_OPTIONS.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      {aiForm.modelo_ia
+                        ? ANTHROPIC_MODEL_OPTIONS.find((m) => m.id === aiForm.modelo_ia)?.description
+                          || "Modelo personalizado. Fallback automático se indisponível."
+                        : "Sem seleção usa o modelo padrão do backend. Fallback automático em caso de indisponibilidade."}
+                    </p>
+                  </div>
+
+
                   {/* Tempo de Espera */}
                   <div className="space-y-2">
                     <Label>Tempo de Espera (segundos)</Label>
