@@ -91,40 +91,26 @@ function validateExtractedData(dados: Record<string, any>): Record<string, any> 
 // ── Classificar mensagem como humana, automática ou incerta ──
 async function classifyMessage(mensagem: string): Promise<{ classification: MessageClassification; confidence: number }> {
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [
-          {
-            role: "system",
-            content: `Classifique esta mensagem de WhatsApp recebida em resposta a uma campanha comercial.
+    const result = await callAnthropic({
+      model: ANTHROPIC_DEFAULT_MODEL,
+      max_tokens: 100,
+      temperature: 0.1,
+      system: `Classifique esta mensagem de WhatsApp recebida em resposta a uma campanha comercial.
 Categorias:
 - auto_reply: mensagem automática, institucional, menu de opções, horário de atendimento, "mensagem automática", "assistente virtual", "em instantes responderemos", "seja bem-vindo à empresa X", "digite 1, 2, 3", recepção automática
 - human_probable: saudação real (oi, olá, bom dia), pergunta contextual (quem fala, do que se trata), resposta natural (sim, sou eu, pode falar, eu cuido), demonstração de atenção/interesse
 - uncertain: muito vaga, sem evidência suficiente (ok, ?, ., alô)
 
-Responda APENAS com JSON: {"classification": "...", "confidence": 0.0-1.0}`
-          },
-          { role: "user", content: `Mensagem: "${mensagem}"` }
-        ],
-        temperature: 0.1,
-        max_tokens: 50,
-      }),
+Responda APENAS com JSON: {"classification": "...", "confidence": 0.0-1.0}`,
+      messages: [{ role: "user", content: `Mensagem: "${mensagem}"` }],
     });
 
-    if (!response.ok) {
-      console.error("[orbit-ai-agent] Erro na classificação:", response.status);
+    if (!result.ok) {
+      console.error("[orbit-ai-agent] Erro na classificação:", result.status, result.error);
       return { classification: "uncertain", confidence: 0.5 };
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       const cls = parsed.classification;
