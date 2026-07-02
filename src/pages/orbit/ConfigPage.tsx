@@ -30,6 +30,7 @@ import { LeadSourcesTab } from "@/components/orbit/LeadSourcesTab";
 import { ImportProspectsWizard } from "@/components/orbit/ImportProspectsWizard";
 import { Wand2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ANTHROPIC_MODEL_OPTIONS } from "@/lib/anthropicModels";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useOrbitAIConfig, useUpdateAIConfig, useOrbitZAPIConfig, useUpdateZAPIConfig, useOrbitResendConfig, useUpdateResendConfig, useTestResendConnection, useWhatsAppSendingConfig, useUpdateWhatsAppSendingConfig, useWhatsAppDailyUsage } from "@/hooks/useOrbitConfig";
 import { parseCSV, generateCSVTemplate, useImportProspects, useImportHistory } from "@/hooks/useImportProspects";
