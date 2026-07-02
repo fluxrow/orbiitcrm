@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { getOrbitZapiRuntimeConfig } from "../_shared/orbit-zapi.ts";
+import { callAnthropic, toAnthropicMessages, ANTHROPIC_DEFAULT_MODEL } from "../_shared/anthropic.ts";
 
 // ── Estado da conversa (máquina de estados) ──
 type ConversationState = "novo" | "aguardando_resposta" | "auto_reply_detected" | "human_detected" | "qualificando" | "qualificado" | "handoff" | "encerrado";
@@ -90,40 +91,26 @@ function validateExtractedData(dados: Record<string, any>): Record<string, any> 
 // ── Classificar mensagem como humana, automática ou incerta ──
 async function classifyMessage(mensagem: string): Promise<{ classification: MessageClassification; confidence: number }> {
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [
-          {
-            role: "system",
-            content: `Classifique esta mensagem de WhatsApp recebida em resposta a uma campanha comercial.
+    const result = await callAnthropic({
+      model: ANTHROPIC_DEFAULT_MODEL,
+      max_tokens: 100,
+      temperature: 0.1,
+      system: `Classifique esta mensagem de WhatsApp recebida em resposta a uma campanha comercial.
 Categorias:
 - auto_reply: mensagem automática, institucional, menu de opções, horário de atendimento, "mensagem automática", "assistente virtual", "em instantes responderemos", "seja bem-vindo à empresa X", "digite 1, 2, 3", recepção automática
 - human_probable: saudação real (oi, olá, bom dia), pergunta contextual (quem fala, do que se trata), resposta natural (sim, sou eu, pode falar, eu cuido), demonstração de atenção/interesse
 - uncertain: muito vaga, sem evidência suficiente (ok, ?, ., alô)
 
-Responda APENAS com JSON: {"classification": "...", "confidence": 0.0-1.0}`
-          },
-          { role: "user", content: `Mensagem: "${mensagem}"` }
-        ],
-        temperature: 0.1,
-        max_tokens: 50,
-      }),
+Responda APENAS com JSON: {"classification": "...", "confidence": 0.0-1.0}`,
+      messages: [{ role: "user", content: `Mensagem: "${mensagem}"` }],
     });
 
-    if (!response.ok) {
-      console.error("[orbit-ai-agent] Erro na classificação:", response.status);
+    if (!result.ok) {
+      console.error("[orbit-ai-agent] Erro na classificação:", result.status, result.error);
       return { classification: "uncertain", confidence: 0.5 };
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       const cls = parsed.classification;
@@ -762,49 +749,41 @@ IMPORTANTE: Responda em JSON com esta estrutura:
 Inclua em "dados_adicionais" SOMENTE chaves listadas em PERGUNTAS DE QUALIFICAÇÃO DINÂMICAS, e apenas as que a mensagem do cliente realmente responde. Não invente valores.
 ${regrasBlock}`;
 
-    // Chamar Lovable AI
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { 
-            role: "user", 
-            content: `Histórico da conversa:\n${historicoFormatado}\n\n---\nMensagens pendentes do cliente: "${mensagemAgregada}"\n\nContexto:\n- Estado: ${leadContext.conversation.state}\n- Primeira interação: ${primeiraInteracao}\n- Em coleta de dados: ${emColetaOrcamento}\n- Cadastro completo: ${cadastroCompleto}\n- Campos faltantes: ${camposFaltantes.join(", ") || "nenhum"}` 
-          },
-        ],
-        temperature: 0.7,
-        max_tokens: maxTokens,
-      }),
+    // Chamar Anthropic Claude (chave mestra SaaS via ANTHROPIC_API_KEY)
+    const userTurn = `Histórico da conversa:\n${historicoFormatado}\n\n---\nMensagens pendentes do cliente: "${mensagemAgregada}"\n\nContexto:\n- Estado: ${leadContext.conversation.state}\n- Primeira interação: ${primeiraInteracao}\n- Em coleta de dados: ${emColetaOrcamento}\n- Cadastro completo: ${cadastroCompleto}\n- Campos faltantes: ${camposFaltantes.join(", ") || "nenhum"}`;
+
+    const aiResult = await callAnthropic({
+      model: ANTHROPIC_DEFAULT_MODEL,
+      system: systemPrompt,
+      messages: toAnthropicMessages([{ role: "user", content: userTurn }]),
+      temperature: 0.7,
+      max_tokens: maxTokens,
     });
 
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error("[orbit-ai-agent] AI Gateway error:", aiResponse.status, errorText);
-      
-      if (aiResponse.status === 429) {
+    if (!aiResult.ok) {
+      console.error("[orbit-ai-agent] Anthropic error:", aiResult.status, aiResult.error);
+      if (aiResult.code === "rate_limit") {
         return new Response(JSON.stringify({ error: "Rate limit exceeded, please try again later." }), {
           status: 429,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (aiResponse.status === 402) {
-        return new Response(JSON.stringify({ error: "Payment required, please add funds to your Lovable AI workspace." }), {
+      if (aiResult.code === "credits") {
+        return new Response(JSON.stringify({ error: "Payment required — verifique o saldo/uso da conta Anthropic." }), {
           status: 402,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      
-      throw new Error(`AI Gateway error: ${aiResponse.status}`);
+      if (aiResult.code === "missing_key" || aiResult.code === "auth") {
+        return new Response(JSON.stringify({ error: aiResult.error }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(aiResult.error);
     }
 
-    const aiData = await aiResponse.json();
-    const content = aiData.choices?.[0]?.message?.content || "";
+    const content = aiResult.text || "";
 
     let parsed: any;
     try {

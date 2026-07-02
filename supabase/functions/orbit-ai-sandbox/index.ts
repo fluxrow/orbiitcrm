@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { getCorsHeaders, corsOptionsResponse } from "../_shared/cors.ts";
+import { callAnthropic, toAnthropicMessages, ANTHROPIC_DEFAULT_MODEL } from "../_shared/anthropic.ts";
 
 interface SandboxMessage {
   role: "user" | "assistant" | "system";
@@ -79,13 +80,6 @@ serve(async (req) => {
   const cors = getCorsHeaders(req);
 
   try {
-    const apiKey = Deno.env.get("LOVABLE_API_KEY");
-    if (!apiKey) {
-      return new Response(JSON.stringify({ ok: false, error: "LOVABLE_API_KEY ausente" }), {
-        status: 500, headers: { ...cors, "Content-Type": "application/json" },
-      });
-    }
-
     const body = (await req.json()) as SandboxRequest;
     const aiConfig = body.aiConfig ?? {};
     const inMessages = Array.isArray(body.messages) ? body.messages : [];
@@ -94,52 +88,42 @@ serve(async (req) => {
 
     const systemPrompt = buildSystemPrompt(aiConfig, mockLead, trigger);
 
-    // Se for gatilho inbound e ainda não há mensagens, peça outreach inicial.
-    const messagesForModel: SandboxMessage[] = [
-      { role: "system", content: systemPrompt },
-      ...inMessages,
-    ];
+    // Turnos do usuário/assistente que vão no campo messages da Anthropic.
+    const turns: Array<{ role: string; content: string }> = [...inMessages];
 
     if (trigger === "inbound_webhook" && inMessages.length === 0) {
-      messagesForModel.push({
+      turns.push({
         role: "user",
         content: "[SISTEMA] Gere agora a PRIMEIRA mensagem de abordagem ao lead recém-chegado, usando os dados do contexto. Apenas a mensagem final, sem comentários.",
       });
     }
 
-    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: messagesForModel,
-        temperature: 0.7,
-        max_tokens: aiConfig.max_tokens || 500,
-      }),
+    const result = await callAnthropic({
+      model: ANTHROPIC_DEFAULT_MODEL,
+      system: systemPrompt,
+      messages: toAnthropicMessages(turns),
+      temperature: 0.7,
+      max_tokens: aiConfig.max_tokens || 500,
     });
 
-    if (!aiResp.ok) {
-      const errText = await aiResp.text().catch(() => "");
-      if (aiResp.status === 429) {
+    if (!result.ok) {
+      if (result.code === "rate_limit") {
         return new Response(JSON.stringify({ ok: false, error: "Limite de taxa excedido. Tente novamente em instantes." }), {
           status: 429, headers: { ...cors, "Content-Type": "application/json" },
         });
       }
-      if (aiResp.status === 402) {
-        return new Response(JSON.stringify({ ok: false, error: "Créditos de IA insuficientes." }), {
+      if (result.code === "credits") {
+        return new Response(JSON.stringify({ ok: false, error: "Saldo/uso da conta Anthropic insuficiente." }), {
           status: 402, headers: { ...cors, "Content-Type": "application/json" },
         });
       }
-      return new Response(JSON.stringify({ ok: false, error: `AI Gateway ${aiResp.status}: ${errText}` }), {
-        status: 500, headers: { ...cors, "Content-Type": "application/json" },
+      return new Response(JSON.stringify({ ok: false, error: result.error }), {
+        status: result.code === "missing_key" || result.code === "auth" ? 500 : 502,
+        headers: { ...cors, "Content-Type": "application/json" },
       });
     }
 
-    const aiData = await aiResp.json();
-    const message: string = aiData.choices?.[0]?.message?.content?.trim() || "(sem resposta)";
+    const message: string = result.text || "(sem resposta)";
 
     return new Response(JSON.stringify({ ok: true, data: { message } }), {
       status: 200, headers: { ...cors, "Content-Type": "application/json" },
