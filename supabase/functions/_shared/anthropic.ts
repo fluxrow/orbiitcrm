@@ -153,10 +153,9 @@ export async function callAnthropic(
     };
   }
 
-  const body = {
+  const body: Record<string, unknown> = {
     model: input.model || ANTHROPIC_DEFAULT_MODEL,
     max_tokens: input.max_tokens ?? 1024,
-    temperature: input.temperature ?? 0.7,
     system: input.system,
     messages: input.messages,
   };
