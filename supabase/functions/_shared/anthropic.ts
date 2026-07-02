@@ -4,7 +4,7 @@
 //
 // Docs: https://docs.anthropic.com/en/api/messages
 
-export const ANTHROPIC_DEFAULT_MODEL = "claude-3-5-sonnet-20241022";
+export const ANTHROPIC_DEFAULT_MODEL = "claude-3-5-sonnet-latest";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
 
