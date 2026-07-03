@@ -247,8 +247,8 @@ export default function AdvisorScanStatusPage() {
                 <TableRow><TableCell colSpan={10} className="text-center py-6 text-muted-foreground">Nenhuma execução registrada.</TableCell></TableRow>
               ) : (
                 runs.map((r) => (
-                  <>
-                    <TableRow key={r.id}>
+                  <Fragment key={r.id}>
+                    <TableRow>
                       <TableCell className="whitespace-nowrap text-muted-foreground text-xs">
                         {format(new Date(r.started_at), "dd/MM/yyyy HH:mm:ss")}
                       </TableCell>
