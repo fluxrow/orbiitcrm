@@ -148,10 +148,13 @@ export function FlowActionsEditor({
   onClose: () => void;
 }) {
   const { data: actions = [], isLoading } = useOrbitFlowActions(flow?.id);
+  const { data: stages = [] } = usePipelineStages();
+  const stagesById = Object.fromEntries((stages ?? []).map((s) => [s.id, s])) as Record<string, PipelineStage>;
   const upsert = useUpsertFlowAction();
   const del = useDeleteFlowAction();
   const [picking, setPicking] = useState(false);
   const [editing, setEditing] = useState<OrbitFlowAction | null>(null);
+  const [ifElseEditing, setIfElseEditing] = useState<OrbitFlowAction | null>(null);
 
   if (!flow) return null;
 
