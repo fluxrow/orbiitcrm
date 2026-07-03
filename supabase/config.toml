@@ -95,3 +95,6 @@ verify_jwt = false
 
 [functions.orbit-google-callback]
 verify_jwt = false
+
+[functions.orbit-advisor-scan]
+verify_jwt = false
