@@ -323,8 +323,24 @@ function TemplateQuickCreateDialog({
               placeholder="Olá {{prospect.nome}}, tudo bem?"
             />
             <div className="text-[11px] text-muted-foreground">
-              Variáveis suportadas: <code>{"{{prospect.nome}}"}</code>, <code>{"{{prospect.email}}"}</code>, <code>{"{{deal.valor}}"}</code>, <code>{"{{deal.titulo}}"}</code>.
+              Variáveis suportadas: <code>{"{{prospect.nome}}"}</code>, <code>{"{{prospect.email}}"}</code>, <code>{"{{deal.valor}}"}</code>, <code>{"{{empresa.nome}}"}</code>, <code>{"{{link_agendamento}}"}</code>.
             </div>
+            {placeholderCheck.unknown.length > 0 && (
+              <div className="flex items-start gap-2 text-[11px] text-amber-400 rounded border border-amber-500/30 bg-amber-500/5 p-2">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <div>
+                  Placeholders desconhecidos: {placeholderCheck.unknown.map((p) => (
+                    <code key={p} className="mx-0.5 bg-amber-500/10 px-1 rounded">{`{{${p}}}`}</code>
+                  ))}
+                  <div className="text-muted-foreground mt-1">Não serão substituídos em runtime.</div>
+                </div>
+              </div>
+            )}
+            {placeholderCheck.known.length > 0 && (
+              <div className="text-[11px] text-emerald-400/90">
+                {placeholderCheck.known.length} placeholder(s) reconhecido(s).
+              </div>
+            )}
           </div>
         </div>
         <DialogFooter>
