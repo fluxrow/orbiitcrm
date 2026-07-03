@@ -101,12 +101,13 @@ function inHours(h: number): string {
 // ------------------------------------------------------------------
 const detectFlowErrorSpike: Detector = {
   name: "flow_error_spike",
-  run(empresaId, snapshot) {
+  run(empresaId, snapshot, t) {
+    const cfg = t.flow_error_spike;
     const out: Suggestion[] = [];
     for (const f of snapshot.flows ?? []) {
       const erros = Number(f.erros_24h ?? 0);
       const runs = Number(f.runs_24h ?? 0);
-      if (erros >= 3 || (runs > 0 && erros / runs >= 0.2)) {
+      if (erros >= cfg.min_errors || (runs > 0 && erros / runs >= cfg.error_ratio)) {
         out.push({
           empresa_id: empresaId,
           tipo: "flow_error_spike",
@@ -114,11 +115,11 @@ const detectFlowErrorSpike: Detector = {
           racional:
             `O fluxo executou ${runs}x nas últimas 24h e falhou ${erros}x.` +
             (f.ultimo_erro ? ` Último erro: ${String(f.ultimo_erro).slice(0, 200)}` : ""),
-          risco: erros >= 10 ? "alto" : "medio",
+          risco: erros >= cfg.hi_errors ? "alto" : "medio",
           action: {
-            kind: "flow_inspect",
+            kind: "flow_pause",
             target_id: f.id,
-            hint: "Revisar orbit_flow_run_steps para o erro raiz antes de propor variação.",
+            hint: "Pausar o fluxo enquanto o erro raiz é investigado.",
           },
           dedupe_key: `flow_error_spike:${f.id}`,
           expires_at: inHours(6),
@@ -130,6 +131,7 @@ const detectFlowErrorSpike: Detector = {
     return out;
   },
 };
+
 
 const detectLatencyRegression: Detector = {
   name: "flow_latency_regression",
