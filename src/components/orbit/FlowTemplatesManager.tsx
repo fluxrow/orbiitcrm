@@ -127,13 +127,34 @@ export function FlowTemplatesManager() {
             CRUD global dos templates disponíveis no wizard "Novo Fluxo".
           </CardDescription>
         </div>
-        <Button
-          className="bg-brand text-brand-foreground hover:bg-brand/90"
-          onClick={() => setEditor({ open: true, template: null })}
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Novo template
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleImport(f);
+              e.target.value = "";
+            }}
+          />
+          <Button
+            variant="outline"
+            onClick={() => importInputRef.current?.click()}
+            title="Importar template .flow.json"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Importar
+          </Button>
+          <Button
+            className="bg-brand text-brand-foreground hover:bg-brand/90"
+            onClick={() => setEditor({ open: true, template: null })}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Novo template
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="relative max-w-sm">
