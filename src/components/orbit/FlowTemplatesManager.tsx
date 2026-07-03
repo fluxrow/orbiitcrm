@@ -185,7 +185,14 @@ export function FlowTemplatesManager() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <div className="font-semibold leading-tight break-words">{t.nome}</div>
+                      <div className="font-semibold leading-tight break-words flex items-center gap-2 flex-wrap">
+                        {t.nome}
+                        {(t as any).is_official && (
+                          <Badge className="bg-brand/20 text-brand text-[10px] gap-1">
+                            <ShieldCheck className="h-3 w-3" /> Oficial
+                          </Badge>
+                        )}
+                      </div>
                       {t.descricao && (
                         <p className="text-xs text-muted-foreground mt-1 line-clamp-3 break-words">
                           {t.descricao}
