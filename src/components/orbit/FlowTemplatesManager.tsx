@@ -20,7 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Layers, Plus, Pencil, Copy, Trash2, Search, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Layers, Plus, Pencil, Copy, Trash2, Search, AlertCircle, CheckCircle2, Download, Upload, ShieldCheck } from "lucide-react";
 import {
   useAllFlowTemplates,
   useDeleteFlowTemplate,
@@ -31,6 +31,8 @@ import type { OrbitFlowTemplate } from "@/hooks/useOrbitFlows";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { buildTemplateExport, parseTemplateImport } from "@/lib/flowTemplateSchema";
+import { useRef } from "react";
 
 const EMPTY_DEF = `{
   "trigger_type": "lead_recebido",
