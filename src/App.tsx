@@ -54,6 +54,7 @@ import TenantMapPage from "./pages/pe-admin/TenantMapPage";
 import PeAdminDocPage from "./pages/pe-admin/PeAdminDocPage";
 import CadastrosPage from "./pages/pe-admin/CadastrosPage";
 import PlanosPage from "./pages/pe-admin/PlanosPage";
+import AdvisorScanStatusPage from "./pages/pe-admin/AdvisorScanStatusPage";
 
 const queryClient = new QueryClient();
 
