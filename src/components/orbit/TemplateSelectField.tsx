@@ -33,7 +33,7 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { Badge } from "@/components/ui/badge";
-import { Check, ChevronsUpDown, Plus, Pencil } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, Pencil, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -41,6 +41,7 @@ import {
   useCreateTemplate,
   useUpdateTemplate,
 } from "@/hooks/useOrbitTemplates";
+import { MessageTemplateFormSchema, validatePlaceholders } from "@/lib/flowTemplateSchema";
 
 type TemplateLike = {
   id: string;
