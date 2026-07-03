@@ -242,14 +242,31 @@ async function scanEmpresa(empresaId: string) {
     };
   });
 
-  // Upsert idempotente por (empresa_id, dedupe_key) apenas onde status='pending'.
-  // Fazemos INSERT ... ON CONFLICT DO NOTHING para não sobrescrever sugestões já geradas.
+  // Filtrar sugestões que já existem como pending (dedupe manual —
+  // o índice único é parcial, então não dá para usar ON CONFLICT do PostgREST).
+  const dedupeKeys = rows.map((r) => r.dedupe_key);
+  const { data: existing } = await admin
+    .from("orbit_advisor_suggestions")
+    .select("dedupe_key")
+    .eq("empresa_id", empresaId)
+    .eq("status", "pending")
+    .in("dedupe_key", dedupeKeys);
+  const existingSet = new Set((existing ?? []).map((r: any) => r.dedupe_key));
+  const toInsert = rows.filter((r) => !existingSet.has(r.dedupe_key));
+
+  if (toInsert.length === 0) {
+    return {
+      empresa_id: empresaId,
+      snapshot_saved: true,
+      suggestions_evaluated: rows.length,
+      suggestions_created: 0,
+      note: "all_deduped",
+    };
+  }
+
   const { data: inserted, error: insErr } = await admin
     .from("orbit_advisor_suggestions")
-    .upsert(rows, {
-      onConflict: "empresa_id,dedupe_key",
-      ignoreDuplicates: true,
-    })
+    .insert(toInsert)
     .select("id");
 
   if (insErr) {
