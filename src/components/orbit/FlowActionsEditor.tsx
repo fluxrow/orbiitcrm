@@ -171,7 +171,10 @@ export function FlowActionsEditor({
       {
         onSuccess: (created: any) => {
           setPicking(false);
-          if (created) setEditing(created as OrbitFlowAction);
+          if (created) {
+            if (meta.type === "if_else") setIfElseEditing(created as OrbitFlowAction);
+            else setEditing(created as OrbitFlowAction);
+          }
           toast.success("Ação adicionada");
         },
         onError: (e: any) => toast.error(`Erro: ${e.message}`),
