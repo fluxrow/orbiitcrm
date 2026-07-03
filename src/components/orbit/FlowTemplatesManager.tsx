@@ -20,7 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Layers, Plus, Pencil, Copy, Trash2, Search, AlertCircle, CheckCircle2, Download, Upload, ShieldCheck } from "lucide-react";
+import { Layers, Plus, Pencil, Copy, Trash2, Search, AlertCircle, CheckCircle2, Download, Upload, ShieldCheck, Settings2, Lock } from "lucide-react";
 import {
   useAllFlowTemplates,
   useDeleteFlowTemplate,
@@ -31,8 +31,17 @@ import type { OrbitFlowTemplate } from "@/hooks/useOrbitFlows";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { buildTemplateExport, parseTemplateImport } from "@/lib/flowTemplateSchema";
-import { useRef } from "react";
+import {
+  buildTemplateExport,
+  parseTemplateImport,
+  type FlowTemplateExport,
+} from "@/lib/flowTemplateSchema";
+import { useEffect, useRef } from "react";
+import { ImportPreviewDialog } from "./ImportPreviewDialog";
+import { OfficialTemplateVariationsDialog } from "./OfficialTemplateVariationsDialog";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const EMPTY_DEF = `{
   "trigger_type": "lead_recebido",
