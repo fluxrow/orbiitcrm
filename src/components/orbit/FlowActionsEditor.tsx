@@ -26,6 +26,8 @@ import {
   CalendarClock,
   Timer,
   Pencil,
+  GitBranch,
+  ExternalLink,
 } from "lucide-react";
 import {
   useOrbitFlowActions,
@@ -35,6 +37,8 @@ import {
   type OrbitFlowAction,
   type OrbitFlowActionType,
 } from "@/hooks/useOrbitFlows";
+import { usePipelineStages, type PipelineStage } from "@/hooks/useOrbitPipelineConfig";
+import { FlowIfElseEditor } from "./FlowIfElseEditor";
 import { toast } from "sonner";
 
 type ActionMeta = {
