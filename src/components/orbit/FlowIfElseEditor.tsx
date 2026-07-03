@@ -204,12 +204,20 @@ export function ConditionBuilder({
   const canNest = depth < MAX_CONDITION_DEPTH;
   const borderColors = ["border-l-primary/70", "border-l-amber-500/70", "border-l-purple-500/70"];
   const borderClass = depth === 1 ? "" : `border-l-2 pl-3 ${borderColors[(depth - 2) % 3]}`;
+  const logicLabel = g.logic === "AND" ? "TODAS as regras (E)" : "QUALQUER regra (OU)";
+  const logicPillClass =
+    g.logic === "AND"
+      ? "bg-primary/15 text-primary border-primary/30"
+      : "bg-amber-500/15 text-amber-400 border-amber-500/30";
 
   return (
     <div className={`rounded-md ${depth === 1 ? "border border-border p-3" : borderClass} space-y-2`}>
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
-          <Label className="text-xs">{depth === 1 ? "Regras" : `Grupo (nível ${depth})`}</Label>
+          <Label className="text-xs">{depth === 1 ? "Regras" : `Grupo · nível ${depth}/${MAX_CONDITION_DEPTH}`}</Label>
+          <Badge variant="outline" className={`text-[10px] ${logicPillClass}`}>
+            {logicLabel}
+          </Badge>
           <Select value={g.logic} onValueChange={(v) => setLogic(v as "AND" | "OR")}>
             <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
