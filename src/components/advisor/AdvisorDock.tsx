@@ -23,9 +23,12 @@ export function AdvisorDock() {
   const { empresaId, isBlocked, notFound } = useTenant();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
+  const [applyTarget, setApplyTarget] = useState<AdvisorSuggestion | null>(null);
   const { messages, isStreaming, send, reset } = useAdvisorChat();
+  const { data: suggestions = [], isLoading: sugLoading } = useAdvisorSuggestions();
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
 
   useEffect(() => {
     if (scrollRef.current) {
