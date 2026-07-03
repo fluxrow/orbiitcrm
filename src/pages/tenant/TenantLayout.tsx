@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { TenantProvider, useTenant } from "@/contexts/TenantContext";
 import TenantNotFound from "./TenantNotFound";
 import TenantBlocked from "./TenantBlocked";
+import { AdvisorDock } from "@/components/advisor/AdvisorDock";
 
 function TenantContent() {
   const { user, loading: authLoading } = useAuth();
