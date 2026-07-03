@@ -300,7 +300,7 @@ export default function AdvisorScanStatusPage() {
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
+                  </Fragment>
                 ))
               )}
             </TableBody>
