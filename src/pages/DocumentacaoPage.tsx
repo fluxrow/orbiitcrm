@@ -144,8 +144,112 @@ export default function DocumentacaoPage() {
             </CardContent></Card>
           </section>
 
-          {/* 1. Tenant */}
-          <section id="tenant" className="doc-section space-y-4">
+          {/* ★ Orbit Core Flow */}
+          <section id="core-flow" className="doc-section space-y-4">
+            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-brand" /> ★ Orbit Core Flow
+              <Badge className="bg-brand/20 text-brand ml-1">Oficial</Badge>
+            </h2>
+            <Separator />
+            <Card><CardContent className="pt-6 space-y-4 text-muted-foreground leading-relaxed">
+              <p>
+                <strong className="text-foreground">O que é:</strong> template mestre que toda conta nova recebe.
+                Espinha dorsal universal que atende ~90% dos mentores/consultores. Não customize a estrutura — customize apenas
+                os <strong>templates de mensagem <code>[CORE]</code></strong> e o <strong>prompt de identidade da IA</strong>.
+              </p>
+              <div>
+                <p className="text-foreground font-semibold mb-2">Estrutura:</p>
+                <pre className="text-xs bg-secondary/40 p-3 rounded overflow-x-auto whitespace-pre font-mono">{`Trigger: orbit_lead_recebido
+│
+├─ 1. SWITCH prospect.origem
+│    ├─ instagram|meta|ads    → tag ORIGEM_ADS
+│    ├─ site|typebot|landing  → tag ORIGEM_SITE
+│    └─ default               → tag ORIGEM_MANUAL
+│
+├─ 2. AI Agent → prompt "CORE_QUALIFICACAO_INICIAL"
+│
+├─ 3. IF prospect.qualificado == true
+│    ├─ THEN: create_task + notify_vendedor
+│    └─ ELSE:
+│         └─ IF prospect.renda_baixa == true
+│              ├─ THEN: send_template [CORE] OFFER_LOW_TICKET
+│              └─ ELSE: send_template [CORE] NURTURING_GENERICO
+│
+├─ 4. delay 3h
+├─ 5. AI Agent → prompt "CORE_FOLLOWUP"
+│
+├─ 6. SWITCH conversa.status
+│    ├─ aberta    → delay 24h (re-check)
+│    └─ encerrada → end
+│
+└─ 7. IF conversa.status == handoff
+      └─ notify_vendedor(responsavel) + create_task urgente`}</pre>
+              </div>
+              <div>
+                <p className="text-foreground font-semibold mb-2">Templates <code>[CORE]</code> esperados na aba WhatsApp → Templates:</p>
+                <EntityTable
+                  headers={["Slug", "Uso", "Placeholders"]}
+                  rows={[
+                    ["[CORE] Abordagem Inicial", "Primeira mensagem", "{{prospect.nome}}, {{empresa.nome}}"],
+                    ["[CORE] Quebra de Objeção", "Resposta a objeções", "{{prospect.nome}}, {{link_agendamento}}"],
+                    ["[CORE] OFFER_LOW_TICKET", "Downsell", "{{prospect.nome}}, {{link_pagamento}}"],
+                    ["[CORE] NURTURING_GENERICO", "Conteúdo/consciência", "{{prospect.nome}}"],
+                    ["[CORE] Novo Deal Qualificado", "Notificação interna", "{{prospect.nome}}, {{prospect.telefone}}"],
+                    ["[CORE] Handoff Ouro", "Notificação vendedor", "{{prospect.nome}}, {{vendedor.nome}}"],
+                  ]}
+                />
+              </div>
+              <div>
+                <p className="text-foreground font-semibold mb-2">Prompts IA esperados (aba Cérebro da IA):</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li><code>CORE_QUALIFICACAO_INICIAL</code> — classifica <code>qualificado</code> e <code>renda_baixa</code>.</li>
+                  <li><code>CORE_FOLLOWUP</code> — lê histórico e propõe próximo passo.</li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-foreground font-semibold mb-2">FAQ</p>
+                <ul className="space-y-2">
+                  <li><strong className="text-foreground">Posso apagar uma ação?</strong> Sim, mas prefira duplicar o template.</li>
+                  <li><strong className="text-foreground">Voltar ao padrão?</strong> Delete o fluxo instanciado e recrie a partir do template <code>[CORE] Orbit Core Flow</code>.</li>
+                  <li><strong className="text-foreground">Portar entre contas?</strong> Use <em>Exportar</em>/<em>Importar</em> (.flow.json) no Gerenciador de Templates.</li>
+                </ul>
+              </div>
+            </CardContent></Card>
+          </section>
+
+          {/* ★ Guia de Configuração 5 min */}
+          <section id="setup-guide" className="doc-section space-y-4">
+            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
+              <Rocket className="h-5 w-5 text-brand" /> ★ Guia de Configuração (5 min)
+            </h2>
+            <Separator />
+            <Card><CardContent className="pt-6 space-y-3 text-muted-foreground leading-relaxed">
+              <p>Checklist para onboarders — configura uma conta nova ponta a ponta usando o Core Flow.</p>
+            </CardContent></Card>
+
+            <Step title="Passo 1 · Conectar WhatsApp (Z-API)" action="Vá em Configurações → Integrações → Z-API e informe instance/token. Aguarde o QR e conecte.">
+              <p className="text-xs text-muted-foreground">Sem WhatsApp conectado, ações <code>send_whatsapp_template</code> e <code>notify_vendedor</code> falharão silenciosamente.</p>
+            </Step>
+
+            <Step title="Passo 2 · Configurar identidade da IA" action="Aba Cérebro da IA → edite o prompt de identidade (nome da mentoria, tom, USP).">
+              <p className="text-xs text-muted-foreground">Crie os prompts <code>CORE_QUALIFICACAO_INICIAL</code> e <code>CORE_FOLLOWUP</code> nos slugs correspondentes.</p>
+            </Step>
+
+            <Step title="Passo 3 · Criar/revisar templates [CORE]" action="Aba WhatsApp → Templates. Crie os 6 slugs listados na seção Core Flow, ajustando corpo com nome da mentoria e links.">
+              <p className="text-xs text-muted-foreground">Use variáveis <code>{"{{prospect.nome}}"}</code>, <code>{"{{empresa.nome}}"}</code>, <code>{"{{link_agendamento}}"}</code>. Placeholders desconhecidos ficam com aviso amarelo.</p>
+            </Step>
+
+            <Step title="Passo 4 · Instanciar o Core Flow" action="Configurações → Fluxos → Novo Fluxo. Selecione [CORE] Orbit Core Flow (badge Oficial). Ajuste os template_slug de cada ação para os templates recém-criados. Salve e ative.">
+              <p className="text-xs text-muted-foreground">O TemplateSelectField mostra a lista da conta — nenhuma digitação manual.</p>
+            </Step>
+
+            <Step title="Passo 5 · Enviar lead de teste" action="Use o webhook orbit_lead_recebido (Integrações → Ingestão) ou crie um prospect manual. Acompanhe execução em Fluxos → Runs.">
+              <p className="text-xs text-muted-foreground">Verifique se as tags de origem foram setadas, se a IA classificou <code>qualificado</code>, e se o handoff dispara notificação.</p>
+            </Step>
+          </section>
+
+          {/* placeholder anchor kept */}
+          <section id="tenant-anchor-marker" className="hidden" aria-hidden="true" />
             <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><Building2 className="h-5 w-5 text-primary" /> 1. Provisionamento do Tenant</h2>
             <Separator />
 
