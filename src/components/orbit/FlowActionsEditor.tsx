@@ -14,7 +14,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  GripVertical,
   Plus,
   Trash2,
   MessageSquare,
@@ -28,6 +27,7 @@ import {
   Pencil,
   GitBranch,
   ExternalLink,
+  Split,
 } from "lucide-react";
 import {
   useOrbitFlowActions,
@@ -37,8 +37,13 @@ import {
   type OrbitFlowAction,
   type OrbitFlowActionType,
 } from "@/hooks/useOrbitFlows";
+import { useReorderFlowActions } from "@/hooks/useReorderFlowActions";
 import { usePipelineStages, type PipelineStage } from "@/hooks/useOrbitPipelineConfig";
 import { FlowIfElseEditor } from "./FlowIfElseEditor";
+import { FlowSwitchEditor } from "./FlowSwitchEditor";
+import { SortableList } from "./SortableList";
+import { TemplateSelectField } from "./TemplateSelectField";
+import { countRules } from "@/lib/flowConditionFields";
 import { toast } from "sonner";
 
 type ActionMeta = {
@@ -127,9 +132,20 @@ const ACTION_CATALOG: ActionMeta[] = [
     desc: "Executa um bloco de ações se a condição for verdadeira, outro se for falsa.",
     icon: GitBranch,
     defaultConfig: {
-      condition: { logic: "AND", rules: [] },
+      condition: { logic: "AND", children: [] },
       then: [],
       else: [],
+    },
+  },
+  {
+    type: "switch",
+    label: "Roteamento (múltiplos caminhos)",
+    desc: "Avalia um campo e escolhe entre N caminhos + padrão.",
+    icon: Split,
+    defaultConfig: {
+      field: "prospect.origem",
+      cases: [],
+      default: { actions: [] },
     },
   },
 ];
@@ -152,11 +168,19 @@ export function FlowActionsEditor({
   const stagesById = Object.fromEntries((stages ?? []).map((s) => [s.id, s])) as Record<string, PipelineStage>;
   const upsert = useUpsertFlowAction();
   const del = useDeleteFlowAction();
+  const reorder = useReorderFlowActions();
   const [picking, setPicking] = useState(false);
   const [editing, setEditing] = useState<OrbitFlowAction | null>(null);
   const [ifElseEditing, setIfElseEditing] = useState<OrbitFlowAction | null>(null);
+  const [switchEditing, setSwitchEditing] = useState<OrbitFlowAction | null>(null);
 
   if (!flow) return null;
+
+  const openEditor = (a: OrbitFlowAction) => {
+    if (a.action_type === "if_else") setIfElseEditing(a);
+    else if (a.action_type === "switch") setSwitchEditing(a);
+    else setEditing(a);
+  };
 
   const handleAdd = (meta: ActionMeta) => {
     const nextOrdem = (actions[actions.length - 1]?.ordem ?? -1) + 1;
@@ -171,10 +195,7 @@ export function FlowActionsEditor({
       {
         onSuccess: (created: any) => {
           setPicking(false);
-          if (created) {
-            if (meta.type === "if_else") setIfElseEditing(created as OrbitFlowAction);
-            else setEditing(created as OrbitFlowAction);
-          }
+          if (created) openEditor(created as OrbitFlowAction);
           toast.success("Ação adicionada");
         },
         onError: (e: any) => toast.error(`Erro: ${e.message}`),
@@ -189,7 +210,7 @@ export function FlowActionsEditor({
           <DialogHeader>
             <DialogTitle>Ações do fluxo · {flow.nome}</DialogTitle>
             <DialogDescription>
-              Sequência de ações executadas quando o gatilho dispara. Ordem importa.
+              Sequência de ações executadas quando o gatilho dispara. Arraste para reordenar.
             </DialogDescription>
           </DialogHeader>
 
@@ -201,56 +222,52 @@ export function FlowActionsEditor({
                 Nenhuma ação configurada. Clique em "Adicionar ação" para começar.
               </div>
             ) : (
-              actions.map((a, idx) => {
-                const meta = META_BY_TYPE[a.action_type] ?? {
-                  type: a.action_type,
-                  label: a.action_type,
-                  desc: "Ação personalizada",
-                  icon: ListChecks,
-                  defaultConfig: {},
-                };
-                const Icon = meta.icon;
-                return (
-                  <div
-                    key={a.id}
-                    className="flex items-center gap-3 p-3 rounded-md border border-border bg-card/50"
-                  >
-                    <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <Badge variant="outline" className="text-[10px]">{idx + 1}</Badge>
-                    <Icon className="h-4 w-4 text-primary shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate">{meta.label}</div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {a.delay_seconds ? `Após ${a.delay_seconds}s · ` : ""}
-                        {summarizeConfig(a, stagesById)}
+              <SortableList
+                items={actions}
+                onReorder={(next) => reorder.mutate({ flow_id: flow.id, ordered: next, previous: actions })}
+                className="space-y-2"
+                renderItem={(a, handle, idx) => {
+                  const meta = META_BY_TYPE[a.action_type] ?? {
+                    type: a.action_type,
+                    label: a.action_type,
+                    desc: "Ação personalizada",
+                    icon: ListChecks,
+                    defaultConfig: {},
+                  };
+                  const Icon = meta.icon;
+                  return (
+                    <div className="flex items-center gap-3 p-3 rounded-md border border-border bg-card/50">
+                      {handle}
+                      <Badge variant="outline" className="text-[10px]">{idx + 1}</Badge>
+                      <Icon className="h-4 w-4 text-primary shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">{meta.label}</div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {a.delay_seconds ? `Após ${a.delay_seconds}s · ` : ""}
+                          {summarizeConfig(a, stagesById)}
+                        </div>
                       </div>
+                      <Button variant="ghost" size="icon" onClick={() => openEditor(a)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          if (confirm("Excluir esta ação?")) {
+                            del.mutate(
+                              { id: a.id, flow_id: flow.id },
+                              { onSuccess: () => toast.success("Ação removida") },
+                            );
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() =>
-                        a.action_type === "if_else" ? setIfElseEditing(a) : setEditing(a)
-                      }
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        if (confirm("Excluir esta ação?")) {
-                          del.mutate(
-                            { id: a.id, flow_id: flow.id },
-                            { onSuccess: () => toast.success("Ação removida") },
-                          );
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                );
-              })
+                  );
+                }}
+              />
             )}
           </div>
 
@@ -313,6 +330,31 @@ export function FlowActionsEditor({
           );
         }}
       />
+      <FlowSwitchEditor
+        action={switchEditing}
+        stages={stages}
+        onClose={() => setSwitchEditing(null)}
+        onSave={(patch) => {
+          if (!switchEditing) return;
+          upsert.mutate(
+            {
+              id: switchEditing.id,
+              flow_id: switchEditing.flow_id,
+              ordem: switchEditing.ordem,
+              action_type: switchEditing.action_type,
+              action_config: patch.action_config,
+              delay_seconds: patch.delay_seconds,
+            },
+            {
+              onSuccess: () => {
+                toast.success("Ação atualizada");
+                setSwitchEditing(null);
+              },
+              onError: (e: any) => toast.error(`Erro: ${e.message}`),
+            },
+          );
+        }}
+      />
     </>
   );
 }
@@ -336,10 +378,15 @@ function summarizeConfig(a: OrbitFlowAction, stagesById?: Record<string, Pipelin
     case "notify_vendedor": return `canal: ${c.canal || "email"}`;
     case "delay_execution": return `aguarda ${c.wait_value ?? 0} ${c.wait_unit === "hours" ? "h" : "min"}`;
     case "if_else": {
-      const rules = c?.condition?.rules?.length ?? 0;
+      const rules = countRules(c?.condition);
       const thenN = Array.isArray(c?.then) ? c.then.length : 0;
       const elseN = Array.isArray(c?.else) ? c.else.length : 0;
       return `Se ${rules} regra(s) · Então ${thenN} · Senão ${elseN}`;
+    }
+    case "switch": {
+      const casesN = Array.isArray(c?.cases) ? c.cases.length : 0;
+      const defN = Array.isArray(c?.default?.actions) ? c.default.actions.length : 0;
+      return `${c?.field ?? "?"} · ${casesN} caso(s) + padrão(${defN})`;
     }
     default: return "";
   }
@@ -433,13 +480,14 @@ function ActionEditDialog({
           </Field>
 
           {action.action_type === "send_whatsapp_template" && (
-            <Field label="Slug ou nome do template">
-              <Input
-                value={cfg.template_slug ?? ""}
-                onChange={(e) => setCfg({ ...cfg, template_slug: e.target.value })}
-                placeholder="ex.: boas-vindas-lead"
-              />
-            </Field>
+            <TemplateSelectField
+              value={cfg.template_slug ?? ""}
+              canal="whatsapp"
+              label="Template de WhatsApp"
+              onChange={({ template_slug, template_id }) =>
+                setCfg({ ...cfg, template_slug, template_id })
+              }
+            />
           )}
 
           {action.action_type === "send_rich_media" && (

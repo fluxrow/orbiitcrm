@@ -11,20 +11,47 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Trash2, Pencil, GitBranch, CheckCircle2, XCircle } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Plus,
+  Trash2,
+  Pencil,
+  GitBranch,
+  CheckCircle2,
+  XCircle,
+  FolderPlus,
+} from "lucide-react";
 import type { OrbitFlowAction, OrbitFlowActionType } from "@/hooks/useOrbitFlows";
 import type { PipelineStage } from "@/hooks/useOrbitPipelineConfig";
 import {
   FLOW_CONDITION_FIELDS,
   OP_LABELS,
   OPS_NEEDING_VALUE,
+  MAX_CONDITION_DEPTH,
+  isGroup,
+  normalizeGroup,
   type ConditionOp,
   type ConditionRule,
   type ConditionGroup,
+  type ConditionNode,
 } from "@/lib/flowConditionFields";
 import { ACTION_CATALOG, ActionEditDialog, ActionPickerDialog, META_BY_TYPE } from "./FlowActionsEditor";
+import { SortableList } from "./SortableList";
 
 type SubAction = {
   action_type: OrbitFlowActionType;
@@ -39,7 +66,7 @@ type IfElseCfg = {
 };
 
 function emptyCfg(): IfElseCfg {
-  return { condition: { logic: "AND", rules: [] }, then: [], else: [] };
+  return { condition: { logic: "AND", children: [] }, then: [], else: [] };
 }
 
 export function FlowIfElseEditor({
@@ -60,7 +87,7 @@ export function FlowIfElseEditor({
     if (!action) return;
     const raw = (action.action_config ?? {}) as any;
     setCfg({
-      condition: raw?.condition ?? { logic: "AND", rules: [] },
+      condition: normalizeGroup(raw?.condition),
       then: Array.isArray(raw?.then) ? raw.then : [],
       else: Array.isArray(raw?.else) ? raw.else : [],
     });
@@ -68,12 +95,6 @@ export function FlowIfElseEditor({
   }, [action?.id]);
 
   if (!action) return null;
-
-  const setRules = (rules: ConditionRule[]) =>
-    setCfg((c) => ({ ...c, condition: { ...c.condition, rules } }));
-
-  const setLogic = (logic: "AND" | "OR") =>
-    setCfg((c) => ({ ...c, condition: { ...c.condition, logic } }));
 
   return (
     <Dialog open={!!action} onOpenChange={(v) => !v && onClose()}>
@@ -84,56 +105,15 @@ export function FlowIfElseEditor({
             Condição · Se / Senão
           </DialogTitle>
           <DialogDescription>
-            Se as regras forem verdadeiras, executa o bloco <b>Então</b>. Caso contrário, executa <b>Senão</b>.
+            Se as regras forem verdadeiras, executa <b>Então</b>. Caso contrário, executa <b>Senão</b>.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="rounded-md border border-border p-3 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <Label className="text-sm">Regras</Label>
-              <div className="flex items-center gap-2">
-                <Select value={cfg.condition.logic} onValueChange={(v) => setLogic(v as "AND" | "OR")}>
-                  <SelectTrigger className="h-8 w-[130px]"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="AND">Todas (E)</SelectItem>
-                    <SelectItem value="OR">Qualquer (OU)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() =>
-                    setRules([
-                      ...cfg.condition.rules,
-                      { field: "prospect.documento_tipo", op: "equals", value: "" },
-                    ])
-                  }
-                >
-                  <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar regra
-                </Button>
-              </div>
-            </div>
-
-            {cfg.condition.rules.length === 0 ? (
-              <div className="text-xs text-muted-foreground py-2">
-                Sem regras — a condição sempre será verdadeira (bloco "Então" sempre executa).
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {cfg.condition.rules.map((r, i) => (
-                  <RuleRow
-                    key={i}
-                    rule={r}
-                    onChange={(next) =>
-                      setRules(cfg.condition.rules.map((rr, j) => (j === i ? next : rr)))
-                    }
-                    onDelete={() => setRules(cfg.condition.rules.filter((_, j) => j !== i))}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+          <ConditionBuilder
+            group={cfg.condition}
+            onChange={(g) => setCfg((c) => ({ ...c, condition: g }))}
+          />
 
           <Tabs defaultValue="then" className="w-full">
             <TabsList className="grid grid-cols-2 w-full">
@@ -147,7 +127,7 @@ export function FlowIfElseEditor({
               </TabsTrigger>
             </TabsList>
             <TabsContent value="then">
-              <SubActionList
+              <SortableActionList
                 items={cfg.then}
                 stages={stages}
                 onChange={(items) => setCfg((c) => ({ ...c, then: items }))}
@@ -155,11 +135,11 @@ export function FlowIfElseEditor({
               />
             </TabsContent>
             <TabsContent value="else">
-              <SubActionList
+              <SortableActionList
                 items={cfg.else}
                 stages={stages}
                 onChange={(items) => setCfg((c) => ({ ...c, else: items }))}
-                emptyLabel="Sem ações no bloco 'Senão' — se a condição falhar, o fluxo apenas segue."
+                emptyLabel="Sem ações no bloco 'Senão' — se falhar, o fluxo apenas segue."
               />
             </TabsContent>
           </Tabs>
@@ -188,6 +168,121 @@ export function FlowIfElseEditor({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Editor de condição recursivo (grupos aninhados) ─────────────────
+
+export function ConditionBuilder({
+  group,
+  onChange,
+  depth = 1,
+  onRemove,
+}: {
+  group: ConditionGroup;
+  onChange: (g: ConditionGroup) => void;
+  depth?: number;
+  onRemove?: () => void;
+}) {
+  const g = normalizeGroup(group);
+  const children = g.children ?? [];
+
+  const setChildren = (next: ConditionNode[]) =>
+    onChange({ logic: g.logic, children: next });
+
+  const setLogic = (logic: "AND" | "OR") => onChange({ ...g, logic });
+
+  const addRule = () =>
+    setChildren([
+      ...children,
+      { field: "prospect.documento_tipo", op: "equals", value: "" } as ConditionRule,
+    ]);
+
+  const addGroup = () =>
+    setChildren([...children, { logic: "AND", children: [] } as ConditionGroup]);
+
+  const canNest = depth < MAX_CONDITION_DEPTH;
+  const borderColors = ["border-l-primary/70", "border-l-amber-500/70", "border-l-purple-500/70"];
+  const borderClass = depth === 1 ? "" : `border-l-2 pl-3 ${borderColors[(depth - 2) % 3]}`;
+
+  return (
+    <div className={`rounded-md ${depth === 1 ? "border border-border p-3" : borderClass} space-y-2`}>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Label className="text-xs">{depth === 1 ? "Regras" : `Grupo (nível ${depth})`}</Label>
+          <Select value={g.logic} onValueChange={(v) => setLogic(v as "AND" | "OR")}>
+            <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="AND">Todas (E)</SelectItem>
+              <SelectItem value="OR">Qualquer (OU)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button size="sm" variant="ghost" onClick={addRule} className="h-8">
+            <Plus className="h-3.5 w-3.5 mr-1" /> Regra
+          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={addGroup}
+                    disabled={!canNest}
+                    className="h-8"
+                  >
+                    <FolderPlus className="h-3.5 w-3.5 mr-1" /> Grupo
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {!canNest && (
+                <TooltipContent>Máx. {MAX_CONDITION_DEPTH} níveis</TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
+          {onRemove && (
+            <Button size="icon" variant="ghost" onClick={onRemove} className="h-8 w-8">
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {children.length === 0 ? (
+        <div className="text-xs text-muted-foreground py-1">
+          Sem regras — sempre verdadeiro.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {children.map((child, i) => {
+            const update = (next: ConditionNode) =>
+              setChildren(children.map((c, j) => (j === i ? next : c)));
+            const remove = () => setChildren(children.filter((_, j) => j !== i));
+            if (isGroup(child)) {
+              return (
+                <ConditionBuilder
+                  key={i}
+                  group={child}
+                  depth={depth + 1}
+                  onChange={(next) => update(next)}
+                  onRemove={remove}
+                />
+              );
+            }
+            return (
+              <RuleRow
+                key={i}
+                rule={child}
+                onChange={(next) => update(next)}
+                onDelete={remove}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -240,22 +335,31 @@ function RuleRow({
   );
 }
 
-function SubActionList({
+// ── Lista de sub-ações com drag-and-drop ────────────────────────────
+
+export function SortableActionList({
   items,
   stages,
   onChange,
   emptyLabel,
+  disallowNested,
 }: {
   items: SubAction[];
   stages: PipelineStage[];
   onChange: (items: SubAction[]) => void;
   emptyLabel: string;
+  disallowNested?: boolean;
 }) {
   const [picking, setPicking] = useState(false);
   const [editIdx, setEditIdx] = useState<number | null>(null);
   const stagesById = useMemo(
     () => Object.fromEntries((stages ?? []).map((s) => [s.id, s])) as Record<string, PipelineStage>,
     [stages],
+  );
+
+  const withIds = useMemo(
+    () => items.map((it, i) => ({ ...it, __id: `sub-${i}` })),
+    [items],
   );
 
   const editingAction: OrbitFlowAction | null =
@@ -275,34 +379,41 @@ function SubActionList({
       {items.length === 0 ? (
         <div className="text-xs text-muted-foreground py-2 text-center">{emptyLabel}</div>
       ) : (
-        items.map((sub, i) => {
-          const meta = META_BY_TYPE[sub.action_type];
-          if (!meta) return null;
-          const Icon = meta.icon;
-          return (
-            <div key={i} className="flex items-center gap-2 p-2 rounded-md border border-border bg-card/40">
-              <Badge variant="outline" className="text-[10px]">{i + 1}</Badge>
-              <Icon className="h-4 w-4 text-primary shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="text-sm truncate">{meta.label}</div>
-                <div className="text-[11px] text-muted-foreground truncate">
-                  {sub.delay_seconds ? `Após ${sub.delay_seconds}s · ` : ""}
-                  {shortSummary(sub, stagesById)}
+        <SortableList
+          items={withIds.map((it, i) => ({ id: it.__id, idx: i, sub: items[i] }))}
+          onReorder={(next) => onChange(next.map((n) => n.sub))}
+          className="space-y-2"
+          renderItem={(row, handle, i) => {
+            const sub = row.sub;
+            const meta = META_BY_TYPE[sub.action_type];
+            if (!meta) return null;
+            const Icon = meta.icon;
+            return (
+              <div className="flex items-center gap-2 p-2 rounded-md border border-border bg-card/40">
+                {handle}
+                <Badge variant="outline" className="text-[10px]">{i + 1}</Badge>
+                <Icon className="h-4 w-4 text-primary shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm truncate">{meta.label}</div>
+                  <div className="text-[11px] text-muted-foreground truncate">
+                    {sub.delay_seconds ? `Após ${sub.delay_seconds}s · ` : ""}
+                    {shortSummary(sub, stagesById)}
+                  </div>
                 </div>
+                <Button variant="ghost" size="icon" onClick={() => setEditIdx(row.idx)}>
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onChange(items.filter((_, j) => j !== row.idx))}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </div>
-              <Button variant="ghost" size="icon" onClick={() => setEditIdx(i)}>
-                <Pencil className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => onChange(items.filter((_, j) => j !== i))}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          );
-        })
+            );
+          }}
+        />
       )}
 
       <Button size="sm" variant="ghost" onClick={() => setPicking(true)}>
@@ -313,8 +424,7 @@ function SubActionList({
         open={picking}
         onClose={() => setPicking(false)}
         onPick={(meta) => {
-          if (meta.type === "if_else") {
-            // v1: não permite if_else aninhado — mantém UI simples
+          if (disallowNested && (meta.type === "if_else" || meta.type === "switch")) {
             setPicking(false);
             return;
           }
@@ -363,6 +473,8 @@ function shortSummary(sub: SubAction, stagesById: Record<string, PipelineStage>)
     case "notify_vendedor": return `canal: ${c.canal || "email"}`;
     case "delay_execution": return `aguarda ${c.wait_value ?? 0} ${c.wait_unit === "hours" ? "h" : "min"}`;
     case "check_calendar_and_offer": return `${c.max_offers ?? 3} horários`;
+    case "if_else": return "condição aninhada";
+    case "switch": return `roteamento (${c.cases?.length ?? 0} casos)`;
     default: return "";
   }
 }

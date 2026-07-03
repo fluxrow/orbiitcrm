@@ -1,120 +1,124 @@
+# Construtor de Fluxos V2 — 4 melhorias
 
-# Prioridade 1: Dropdown de Etapas + Ramificação If/Else
-
-Foco 100% no construtor de fluxos (`/orbit/config → Fluxos`). Duas entregas independentes que resolvem os travamentos operacionais atuais.
-
----
-
-## Parte A — Dropdown de Etapas do Pipeline
-
-**Problema hoje:** em "Mover no funil" o usuário precisa colar UUID ou digitar slug manualmente.
-
-**O que muda:**
-- Na edição da ação `change_deal_stage` / `move_deal_stage` (arquivo `FlowActionsEditor.tsx`), substituir os dois `Input` de UUID/slug por um único `<Select>` que lista as etapas ativas do pipeline da empresa atual.
-- Cada item mostra: cor (bolinha) + `nome` + badge se for `is_won`/`is_lost`, ordenado por `ordem`.
-- Ao selecionar, salvamos **os dois campos** no `action_config`:
-  - `to_stage_id` = `stage.id`
-  - `to_stage_slug` = `stage.slug` (fallback do executor)
-- Um link "Gerenciar etapas" abaixo do dropdown abre `/orbit/config` na aba Pipeline em nova aba.
-- Se o pipeline ainda não tiver etapas, mostrar mensagem "Nenhuma etapa cadastrada — crie no Pipeline primeiro."
-
-**Onde os dados vêm:** hook já existente `usePipelineStages()` de `useOrbitPipelineConfig.ts` (retorna `PipelineStage[]` filtrado por `empresa_id` e não arquivadas).
-
-**Compatibilidade:** flows já criados com `to_stage_id` UUID continuam funcionando — o dropdown pré-seleciona pelo id salvo. Executor (`orbit-flow-executor`) já suporta ambos os campos, então **não precisa mexer no backend**.
-
-**Resumo do card na lista de ações:** trocar `"→ slug"` por `"→ Nome da Etapa"` (lookup pelo id).
+Objetivo: reduzir cliques e idas ao banco para configurar fluxos. Cada item é independente e pode ser mergeado sozinho na ordem abaixo (do menor risco ao maior).
 
 ---
 
-## Parte B — Ação If/Else (Ramificação Condicional)
+## 1) Drag-and-drop para reordenar ações
 
-**Problema hoje:** a sequência de ações é linear. Não dá para dizer "se lead tem CNPJ, envia template A; senão, template B".
+**Hoje:** o `GripVertical` é decorativo; reordenar exige apagar/recriar.
 
-**Abordagem escolhida — "Ação condicional inline":** adicionar um novo `action_type = "if_else"` que agrupa dois blocos de ações filhas (then/else). Isso mantém a estrutura tabular atual (`orbit_flow_actions` com `ordem`) sem exigir refactor de grafo.
+**Entrega:**
 
-### Modelo de dados
+- Adicionar `@dnd-kit/core` + `@dnd-kit/sortable` (padrão do ecossistema shadcn, sem dependência de HTML5 nativo).
+- Em `FlowActionsEditor.tsx`, envolver a lista de ações com `DndContext` + `SortableContext`. Cada card vira `useSortable` e o `GripVertical` recebe `listeners`/`attributes` como handle.
+- Ao soltar (`onDragEnd`), calcular nova ordem local (otimista) e persistir com um único update em lote: iterar `actions` reordenadas e chamar `upsertFlowAction` só nas linhas cuja `ordem` mudou. Se houver ≥ 5 mudanças, criar um helper `useReorderFlowActions` que faz update em massa via `.upsert()` com array (mesmo endpoint, uma request).
+- Feedback visual: card ganha `opacity-70` durante o drag; cursor muda para `grab/grabbing`.
+- Dentro do `FlowIfElseEditor` (listas Then/Else), aplicar o mesmo padrão — extrair `SortableActionList` como componente reutilizável para não duplicar código.
 
-Reusar `orbit_flow_actions.action_config` (JSONB) sem migration nova:
+**Fora do escopo:** arrastar uma ação de fora do if/else para dentro (só reordena dentro do próprio container).
 
-```json
-{
-  "condition": {
-    "logic": "AND",
-    "rules": [
-      { "field": "prospect.documento_tipo", "op": "equals", "value": "CNPJ" },
-      { "field": "deal.valor", "op": "gte", "value": 5000 }
-    ]
-  },
-  "then": [
-    { "action_type": "send_whatsapp_template", "action_config": {...}, "delay_seconds": 0 },
-    { "action_type": "notify_vendedor", "action_config": {...}, "delay_seconds": 0 }
-  ],
-  "else": [
-    { "action_type": "create_task", "action_config": {...}, "delay_seconds": 0 }
-  ]
-}
-```
+---
 
-**Campos disponíveis para condição** (populados pelo executor a partir de `run.context` + lookups já existentes):
-- `prospect.*` — `nome`, `email`, `telefone`, `documento`, `documento_tipo`, `origem`, `tags`, qualquer coluna de `orbit_prospects`
-- `deal.*` — `valor`, `etapa_id`, `etapa_slug`, `moved_at`, qualquer coluna de `orbit_deals`
-- `payload.*` — payload cru do trigger (útil para `lead_recebido` via webhook, ex.: `payload.utm_source`)
+## 2) Grupos aninhados de condições (AND/OR encadeados)
 
-**Operadores:** `equals`, `not_equals`, `contains`, `not_contains`, `gt`, `gte`, `lt`, `lte`, `is_empty`, `is_not_empty`, `in` (valor separado por vírgula).
+**Hoje:** `ConditionGroup = { logic, rules[] }` — só um nível.
 
-**Lógica de agrupamento:** `AND` ou `OR` entre as regras (v1 sem grupos aninhados — mantém UI simples).
+**Entrega:**
 
-### UI no construtor
+- Estender o tipo em `flowConditionFields.ts`:
+  ```ts
+  type ConditionNode = ConditionRule | ConditionGroup;
+  type ConditionGroup = { logic: "AND" | "OR"; children: ConditionNode[] };
+  ```
+  Discriminador: presença de `children` = grupo; presença de `field` = regra.
+- Migração transparente: `evaluateCondition` aceita ambos os formatos (`rules` legado vira `children`). Nenhum flow existente quebra.
+- UI (`FlowIfElseEditor` + `FlowConditionsDialog`): grupo renderizado como card indentado com borda esquerda colorida. Botões no topo de cada grupo: `+ Regra`, `+ Grupo`, toggle `AND/OR`, botão remover grupo (exceto raiz).
+- Limite: profundidade máxima 3 níveis (evita UI ilegível) — botão `+ Grupo` fica disabled no nível 3 com tooltip "Máx. 3 níveis".
+- Backend (`orbit-flow-executor/index.ts`): reescrever `evaluateCondition` como recursivo — se nó tem `children`, avalia cada um e combina com `logic`; senão avalia como regra. Um único caminho para os dois formatos.
 
-1. Novo card no `ActionPickerDialog`: **"Condição (Se / Senão)"** com ícone `GitBranch`.
-2. Ao adicionar, abre editor dedicado com 3 seções:
-   - **Se:** botão "Adicionar regra" gera linha `[campo] [operador] [valor]`. `campo` é um `<Select>` agrupado (Prospect / Deal / Payload) — os campos vêm de uma constante `FLOW_CONDITION_FIELDS` alimentada pelas colunas conhecidas + `payload.*` livre. Toggle AND/OR no topo.
-   - **Então (verdadeiro):** lista visual de sub-ações usando os mesmos componentes do editor principal (mesmo picker, mesma edição). Reordenáveis por ordem.
-   - **Senão (falso):** idêntico ao "Então". Opcional — pode ficar vazio.
-3. Na lista principal do fluxo, o card if/else mostra: `Se {N} regra(s) · Então {X} ação(ões) · Senão {Y} ação(ões)`.
+**Compat:** flows salvos com `rules[]` continuam válidos — helper `normalizeCondition()` converte on-read.
 
-### Execução no backend
+---
 
-Adicionar em `supabase/functions/orbit-flow-executor/index.ts`:
-- Novo case `if_else` no `runAction`:
-  1. Carrega prospect/deal (se ainda não estiverem em `run.context`) — cache local por run.
-  2. Avalia `condition` com um `evaluateCondition(ctx, condition)` puro (função nova).
-  3. Executa recursivamente o array `then` ou `else` chamando `runAction` para cada item, respeitando `delay_seconds` de cada sub-ação (com o mesmo cap de 30s por delay que já existe).
-  4. Retorna `{ ok, output: { branch: "then"|"else", steps: N } }`; se qualquer sub-ação falhar, retorna erro e para o fluxo (mesmo comportamento do loop principal).
-- Sub-ações **não** criam linhas em `orbit_flow_run_steps` na v1 — o passo pai já registra o branch escolhido no `output`. (Pode virar melhoria futura.)
+## 3) Edição inline de templates de mensagem
 
-### Compatibilidade
+**Hoje:** ação `send_whatsapp_template` exige `template_slug` digitado; usuário sai do fluxo para `/orbit/templates`, cria, volta e cola o slug.
 
-- Flows existentes: nenhum impacto — `if_else` é um tipo novo.
-- Tipagem: adicionar `"if_else"` em `OrbitFlowActionType` (`useOrbitFlows.ts`).
-- Sem migration de schema (`action_config` já é JSONB livre).
+**Entrega:**
+
+- Substituir o `Input` de `template_slug` em `FlowActionsEditor.tsx` por um `TemplateSelectField` (novo componente):
+  - `Combobox` (shadcn `Command` + `Popover`) listando `useOrbitTemplates({ canal: 'whatsapp', ativo: true })`.
+  - Cada item mostra `nome` + preview de 1 linha do `corpo` truncado.
+  - Item fixo no topo: **"+ Criar novo template"** → abre `TemplateQuickCreateDialog` (novo).
+  - Item fixo abaixo do selecionado: **"✎ Editar este template"** → abre o mesmo dialog em modo edição.
+- `TemplateQuickCreateDialog`: formulário mínimo — `nome`, `canal` (default `whatsapp`, mas configurável), `categoria`, `corpo` (textarea com contador de caracteres e hint de variáveis `{{prospect.nome}}`, `{{deal.valor}}`). Ao salvar, usa `useCreateTemplate`/`useUpdateTemplate` (já existentes em `useOrbitTemplates.ts`), invalida a query e auto-seleciona o template recém-criado na ação.
+- Preview inline abaixo do select: mostra o corpo do template com variáveis destacadas (badge `{{...}}`). Se o template tem mídia (áudio/imagem), badge indicando.
+- Persistência do vínculo: continua salvando `template_slug` no `action_config` (não muda backend), mas também `template_id` como referência secundária (útil se o slug mudar).
+
+**Escopo estendido opcional:** ação `send_rich_media` recebe o mesmo tratamento — Combobox de templates filtrado por `canal in ('whatsapp','email')` conforme o subtipo.
+
+---
+
+## 4) Switch/case — ramificações com N saídas
+
+**Hoje:** só `if_else` (2 saídas). Cenários como "encaminhar por origem do lead" viram cadeia aninhada de if/else, ilegível.
+
+**Entrega:**
+
+- Novo `action_type = "switch"` em `useOrbitFlows.ts` (`OrbitFlowActionType`).
+- Estrutura em `action_config` (JSONB, sem migration):
+  ```json
+  {
+    "field": "prospect.origem",
+    "cases": [
+      { "id": "c1", "label": "Instagram", "match": { "op": "equals", "value": "instagram" }, "actions": [...] },
+      { "id": "c2", "label": "Site (form)", "match": { "op": "in", "value": "site,form,landing" }, "actions": [...] }
+    ],
+    "default": { "actions": [...] }
+  }
+  ```
+  Reusa os mesmos `ConditionOp` do if/else — cada `case` é uma regra única contra o `field` comum. Isso mantém a UI simples (sem duplicar catálogo de operadores).
+- Editor (`FlowSwitchEditor.tsx`, novo): 
+  - Topo: dropdown com o `field` avaliado (usa `FLOW_CONDITION_FIELDS`).
+  - Lista vertical de casos, cada um em card colapsável: label editável, operador + valor, sublista de ações (reusa `SortableActionList` do item 1). Botão `+ Adicionar caso`, drag para reordenar prioridade.
+  - Caso `default` fixo no fim (não removível).
+- Avaliação backend (`orbit-flow-executor/index.ts`): case `switch` — avalia `cases` em ordem, executa o primeiro match; se nenhum, executa `default`. Retorna `{ case_id, steps }` no output do step.
+- Picker: adicionar card "Roteamento (múltiplos caminhos)" no `ActionPickerDialog` com ícone `Split`.
+- Resumo na lista: `Se {field}: {N} caminhos + padrão`.
 
 ---
 
 ## Detalhes técnicos
 
 **Arquivos tocados:**
-- `src/components/orbit/FlowActionsEditor.tsx` — dropdown de etapas + entrada do novo tipo no picker + card resumo do if/else.
-- `src/components/orbit/FlowIfElseEditor.tsx` **(novo)** — editor completo do if/else, reutilizando `ActionPickerDialog` e `ActionEditDialog` para as sub-ações.
-- `src/lib/flowConditionFields.ts` **(novo)** — catálogo de campos + operadores + labels PT-BR + helper `evaluateCondition` compartilhável (só usado no cliente para preview; backend tem cópia própria em Deno).
-- `src/hooks/useOrbitFlows.ts` — adicionar `"if_else"` no union `OrbitFlowActionType`.
-- `supabase/functions/orbit-flow-executor/index.ts` — case `if_else` + `evaluateCondition` + carregamento de contexto (prospect/deal).
 
-**Não altera:** tabela `orbit_flow_actions` (schema), condições do gatilho (`FlowConditionsDialog`), templates, dispatcher.
 
-**Ordem de implementação sugerida** (uma feature por vez, testável isoladamente):
-1. Dropdown de etapas (baixo risco, ganho imediato).
-2. Tipagem + picker + editor do if/else no front (salva no banco, ainda não executa).
-3. Executor: `evaluateCondition` + recursão de sub-ações.
-4. Ajuste no `FlowHelpPanel` já existente com nova seção "Ramificações condicionais".
+| Item        | Novos                                                      | Editados                                                                                                     |
+| ----------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 1 DnD       | `SortableActionList.tsx`, `useReorderFlowActions.ts`       | `FlowActionsEditor.tsx`, `FlowIfElseEditor.tsx`, `package.json` (`@dnd-kit/*`)                               |
+| 2 Aninhado  | —                                                          | `flowConditionFields.ts`, `FlowIfElseEditor.tsx`, `FlowConditionsDialog.tsx`, `orbit-flow-executor/index.ts` |
+| 3 Templates | `TemplateSelectField.tsx`, `TemplateQuickCreateDialog.tsx` | `FlowActionsEditor.tsx`                                                                                      |
+| 4 Switch    | `FlowSwitchEditor.tsx`                                     | `FlowActionsEditor.tsx`, `useOrbitFlows.ts`, `orbit-flow-executor/index.ts`                                  |
+
+
+**Sem migration de schema** em nenhum item — tudo cabe em `action_config` JSONB.
+
+**Ordem de merge (baixo → alto risco):**
+
+1. DnD (só front, ganho imediato)
+2. Edição inline de templates (front + reuso de hooks existentes)
+3. Grupos aninhados (front + 1 função no executor, com fallback compat)
+4. Switch/case (novo action_type, front + executor)
+
+Cada item é testável isoladamente com um fluxo real no `/orbit/config → Fluxos`.  
+Lovable adicione um log de erro detalhado no `orbit-flow-executor`. Se uma condição falhar, você precisa saber *exatamente* qual regra não bateu, senão você vai ficar caçando erro no escuro.
 
 ---
 
-## Fora do escopo desta rodada
+## Fora do escopo
 
-- Drag-and-drop para reordenar ações (o `GripVertical` continua decorativo).
-- Grupos aninhados de condições (só AND/OR plano na v1).
-- Edição inline de templates de mensagem.
-- Ramificações com mais de 2 saídas (switch/case).
-
-Se quiser, na próxima rodada atacamos drag-and-drop + editor de templates.
+- Simulador visual do fluxo (grafo tipo n8n) — grande refactor, fica para V3.
+- Versionamento/histórico de edições do fluxo.
+- Templates de fluxo com placeholders parametrizados.
+- Testes A/B nativos (rodar 50% em cada branch).
