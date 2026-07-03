@@ -51,8 +51,57 @@ export function FlowTemplatesManager() {
   const { data: templates, isLoading } = useAllFlowTemplates();
   const toggle = useToggleFlowTemplate();
   const del = useDeleteFlowTemplate();
+  const upsert = useUpsertFlowTemplate();
   const [search, setSearch] = useState("");
   const [editor, setEditor] = useState<EditorState>({ open: false, template: null });
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleExport = (t: OrbitFlowTemplate) => {
+    const payload = buildTemplateExport(t);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safeName = t.nome.replace(/[^\w.-]+/g, "_");
+    a.href = url;
+    a.download = `${safeName}.flow.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exportado: ${a.download}`);
+  };
+
+  const handleImport = async (file: File) => {
+    try {
+      const txt = await file.text();
+      const parsed = parseTemplateImport(txt);
+      if (!parsed.ok) {
+        toast.error(`Import falhou: ${parsed.error}`);
+        return;
+      }
+      const existing = (templates ?? []).find((t) => t.nome === parsed.data.nome);
+      const shouldUpdate = existing
+        ? confirm(
+            `Template "${parsed.data.nome}" já existe.\n\nOK = atualizar existente\nCancelar = criar cópia`
+          )
+        : false;
+      upsert.mutate(
+        {
+          id: shouldUpdate ? existing!.id : undefined,
+          nome: shouldUpdate ? parsed.data.nome : existing ? `${parsed.data.nome} (import)` : parsed.data.nome,
+          descricao: parsed.data.descricao ?? null,
+          categoria: parsed.data.categoria ?? null,
+          definicao: parsed.data.definicao,
+          ativo: true,
+          is_global: true,
+        },
+        {
+          onSuccess: () => toast.success(shouldUpdate ? "Template atualizado" : "Template importado"),
+          onError: (e: any) => toast.error(e.message),
+        },
+      );
+    } catch (e: any) {
+      toast.error(`Falha ao ler arquivo: ${e.message}`);
+    }
+  };
 
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
