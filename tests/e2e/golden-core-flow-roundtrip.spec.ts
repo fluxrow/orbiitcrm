@@ -1,12 +1,13 @@
 /**
  * E2E — Golden Path: [CORE] Orbit Core Flow — round-trip export/import na UI
  *
- * Objetivo: provar que exportar o template oficial via UI e reimportá-lo
- * mantém a definição byte-a-byte idêntica — incluindo placeholders
- * reconhecidos e prompts da IA — e que a duplicata atualiza in-place em vez
- * de criar cópia.
+ * ⚠️  LOCAL-ONLY. Este spec depende de sessão Supabase mintada pelo sandbox
+ *     Lovable (LOVABLE_BROWSER_SUPABASE_*) e de um tenant real — por isso não
+ *     roda no CI do GitHub. A cobertura equivalente no CI é feita pelo Vitest
+ *     em `src/test/core-flow-roundtrip.test.ts` (round-trip puro, sem browser).
  *
- * Falha imediata (retries: 0) — divergência = regressão do Core Flow.
+ * Rode manualmente quando quiser validar a UI:
+ *   bunx playwright test tests/e2e/golden-core-flow-roundtrip.spec.ts
  */
 import { test, expect, type Page, type Download } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
