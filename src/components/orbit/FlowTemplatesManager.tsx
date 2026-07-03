@@ -63,7 +63,31 @@ export function FlowTemplatesManager() {
   const upsert = useUpsertFlowTemplate();
   const [search, setSearch] = useState("");
   const [editor, setEditor] = useState<EditorState>({ open: false, template: null });
+  const [variationsFor, setVariationsFor] = useState<OrbitFlowTemplate | null>(null);
+  const [importPreview, setImportPreview] = useState<FlowTemplateExport | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Referências disponíveis (globalmente visíveis para o admin) para o preview de import.
+  const { data: availableTemplates = [] } = useQuery({
+    queryKey: ["flow-import-templates"],
+    queryFn: async () => {
+      const { data } = await (supabase.from("orbit_message_templates" as any) as any)
+        .select("id, nome")
+        .limit(1000);
+      return (data ?? []) as { id: string; nome: string }[];
+    },
+  });
+  const { data: availableAgents = [] } = useQuery({
+    queryKey: ["flow-import-agents"],
+    queryFn: async () => {
+      const { data } = await (supabase.from("orbit_ai_config" as any) as any)
+        .select("agent_slug, nome_agente")
+        .limit(1000);
+      return ((data ?? []) as any[])
+        .filter((r) => r.agent_slug)
+        .map((r) => ({ slug: r.agent_slug as string, nome: r.nome_agente as string | null }));
+    },
+  });
 
   const handleExport = (t: OrbitFlowTemplate) => {
     const payload = buildTemplateExport(t);
