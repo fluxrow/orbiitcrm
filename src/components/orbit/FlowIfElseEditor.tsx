@@ -69,6 +69,19 @@ function emptyCfg(): IfElseCfg {
   return { condition: { logic: "AND", children: [] }, then: [], else: [] };
 }
 
+function hasInvalidRule(group: ConditionGroup): boolean {
+  const g = normalizeGroup(group);
+  for (const c of g.children ?? []) {
+    if (isGroup(c)) {
+      if (hasInvalidRule(c)) return true;
+    } else {
+      if (!c.field) return true;
+      if (OPS_NEEDING_VALUE.includes(c.op) && !String(c.value ?? "").trim()) return true;
+    }
+  }
+  return false;
+}
+
 export function FlowIfElseEditor({
   action,
   stages,
