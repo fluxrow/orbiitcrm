@@ -2,7 +2,13 @@
 // Runs deterministic detectors over each tenant's snapshot and enqueues
 // suggestions in orbit_advisor_suggestions. Idempotent via dedupe_key.
 //
-// Invocation:
+// Observabilidade (nesta versão):
+//   - Logs estruturados JSON com run_id/empresa_id/detector/tempo/contagens.
+//   - Persistência de cada execução em orbit_advisor_scan_runs, com métricas
+//     agregadas por detector, motivos de bloqueio (advisor_locked_paths) e
+//     resultados por tenant.
+//
+// Invocação:
 //   POST /functions/v1/orbit-advisor-scan            → varre todos os tenants ativos
 //   POST /functions/v1/orbit-advisor-scan            body { empresa_id } → apenas 1 tenant
 //
@@ -31,6 +37,16 @@ const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
 });
 
 // ------------------------------------------------------------------
+// Structured logging
+// ------------------------------------------------------------------
+function slog(level: "info" | "warn" | "error", event: string, fields: Record<string, unknown> = {}) {
+  const line = JSON.stringify({ ts: new Date().toISOString(), level, event, ...fields });
+  if (level === "error") console.error(line);
+  else if (level === "warn") console.warn(line);
+  else console.log(line);
+}
+
+// ------------------------------------------------------------------
 // Detector types
 // ------------------------------------------------------------------
 type Suggestion = {
@@ -41,9 +57,14 @@ type Suggestion = {
   risco: "baixo" | "medio" | "alto";
   action: Record<string, unknown>;
   dedupe_key: string;
-  expires_at: string; // iso
+  expires_at: string;
   criada_por: "scan";
   status: "pending";
+};
+
+type Detector = {
+  name: string;
+  run: (empresaId: string, snapshot: any) => Suggestion[];
 };
 
 function inHours(h: number): string {
@@ -53,143 +74,155 @@ function inHours(h: number): string {
 // ------------------------------------------------------------------
 // Deterministic detectors — cheap, no LLM
 // ------------------------------------------------------------------
-function detectFlowErrorSpike(empresaId: string, snapshot: any): Suggestion[] {
-  const out: Suggestion[] = [];
-  for (const f of snapshot.flows ?? []) {
-    const erros = Number(f.erros_24h ?? 0);
-    const runs = Number(f.runs_24h ?? 0);
-    if (erros >= 3 || (runs > 0 && erros / runs >= 0.2)) {
-      out.push({
-        empresa_id: empresaId,
-        tipo: "flow_error_spike",
-        titulo: `Fluxo "${f.nome}" acumulou ${erros} erro(s) em 24h`,
-        racional:
-          `O fluxo executou ${runs}x nas últimas 24h e falhou ${erros}x.` +
-          (f.ultimo_erro ? ` Último erro: ${String(f.ultimo_erro).slice(0, 200)}` : ""),
-        risco: erros >= 10 ? "alto" : "medio",
-        action: {
-          kind: "flow_inspect",
-          target_id: f.id,
-          hint: "Revisar orbit_flow_run_steps para o erro raiz antes de propor variação.",
-        },
-        dedupe_key: `flow_error_spike:${f.id}`,
-        expires_at: inHours(6),
-        criada_por: "scan",
-        status: "pending",
-      });
+const detectFlowErrorSpike: Detector = {
+  name: "flow_error_spike",
+  run(empresaId, snapshot) {
+    const out: Suggestion[] = [];
+    for (const f of snapshot.flows ?? []) {
+      const erros = Number(f.erros_24h ?? 0);
+      const runs = Number(f.runs_24h ?? 0);
+      if (erros >= 3 || (runs > 0 && erros / runs >= 0.2)) {
+        out.push({
+          empresa_id: empresaId,
+          tipo: "flow_error_spike",
+          titulo: `Fluxo "${f.nome}" acumulou ${erros} erro(s) em 24h`,
+          racional:
+            `O fluxo executou ${runs}x nas últimas 24h e falhou ${erros}x.` +
+            (f.ultimo_erro ? ` Último erro: ${String(f.ultimo_erro).slice(0, 200)}` : ""),
+          risco: erros >= 10 ? "alto" : "medio",
+          action: {
+            kind: "flow_inspect",
+            target_id: f.id,
+            hint: "Revisar orbit_flow_run_steps para o erro raiz antes de propor variação.",
+          },
+          dedupe_key: `flow_error_spike:${f.id}`,
+          expires_at: inHours(6),
+          criada_por: "scan",
+          status: "pending",
+        });
+      }
     }
-  }
-  return out;
-}
+    return out;
+  },
+};
 
-function detectLatencyRegression(empresaId: string, snapshot: any): Suggestion[] {
-  const out: Suggestion[] = [];
-  for (const f of snapshot.flows ?? []) {
-    const p95 = Number(f.latencia_p95_s ?? 0);
-    if (p95 >= 60) {
+const detectLatencyRegression: Detector = {
+  name: "flow_latency_regression",
+  run(empresaId, snapshot) {
+    const out: Suggestion[] = [];
+    for (const f of snapshot.flows ?? []) {
+      const p95 = Number(f.latencia_p95_s ?? 0);
+      if (p95 >= 60) {
+        out.push({
+          empresa_id: empresaId,
+          tipo: "flow_latency_regression",
+          titulo: `Fluxo "${f.nome}" com p95 de ${p95.toFixed(1)}s`,
+          racional:
+            `Latência p95 nas últimas 24h ultrapassou 60s (${p95.toFixed(1)}s). ` +
+            `Provável gargalo em waits/HTTP externo — considerar reduzir espera ou paralelizar.`,
+          risco: p95 >= 180 ? "alto" : "medio",
+          action: { kind: "flow_inspect", target_id: f.id, hint: "Rever waits e chamadas externas." },
+          dedupe_key: `flow_latency:${f.id}`,
+          expires_at: inHours(12),
+          criada_por: "scan",
+          status: "pending",
+        });
+      }
+    }
+    return out;
+  },
+};
+
+const detectStageStagnation: Detector = {
+  name: "stage_stagnation",
+  run(empresaId, snapshot) {
+    const out: Suggestion[] = [];
+    for (const s of snapshot.pipeline ?? []) {
+      if (s.is_won || s.is_lost) continue;
+      const ativos = Number(s.leads_ativos ?? 0);
+      const mov7 = Number(s.mov_7d ?? 0);
+      if (ativos >= 15 && mov7 === 0) {
+        out.push({
+          empresa_id: empresaId,
+          tipo: "stage_stagnation",
+          titulo: `Etapa "${s.nome}" com ${ativos} leads parados há 7+ dias`,
+          racional:
+            `Nenhum lead se moveu de "${s.nome}" nos últimos 7 dias, e há ${ativos} ativos. ` +
+            `Sugere revisão do critério de avanço ou de um follow-up automático.`,
+          risco: "medio",
+          action: {
+            kind: "stage_inspect",
+            target_id: s.id,
+            hint: "Considerar variação de fluxo com follow-up para essa etapa.",
+          },
+          dedupe_key: `stage_stag:${s.id}`,
+          expires_at: inHours(24),
+          criada_por: "scan",
+          status: "pending",
+        });
+      }
+    }
+    return out;
+  },
+};
+
+const detectOverloadedKpis: Detector = {
+  name: "overloaded_kpis",
+  run(empresaId, snapshot) {
+    const out: Suggestion[] = [];
+    const k = snapshot.kpis ?? {};
+    const tasks = Number(k.tasks_atrasadas ?? 0);
+    const handoffs = Number(k.handoffs_pendentes ?? 0);
+    const conversas = Number(k.conversas_abertas ?? 0);
+
+    if (tasks >= 10) {
       out.push({
         empresa_id: empresaId,
-        tipo: "flow_latency_regression",
-        titulo: `Fluxo "${f.nome}" com p95 de ${p95.toFixed(1)}s`,
-        racional:
-          `Latência p95 nas últimas 24h ultrapassou 60s (${p95.toFixed(1)}s). ` +
-          `Provável gargalo em waits/HTTP externo — considerar reduzir espera ou paralelizar.`,
-        risco: p95 >= 180 ? "alto" : "medio",
-        action: { kind: "flow_inspect", target_id: f.id, hint: "Rever waits e chamadas externas." },
-        dedupe_key: `flow_latency:${f.id}`,
+        tipo: "tasks_backlog",
+        titulo: `${tasks} tarefas em atraso`,
+        racional: `Tarefas com prazo vencido acumuladas: ${tasks}. Recomenda-se redistribuir ou renegociar prazos.`,
+        risco: tasks >= 50 ? "alto" : "medio",
+        action: { kind: "tasks_inspect", hint: "Abrir Tarefas e filtrar por atrasadas." },
+        dedupe_key: "tasks_backlog",
         expires_at: inHours(12),
         criada_por: "scan",
         status: "pending",
       });
     }
-  }
-  return out;
-}
-
-function detectStageStagnation(empresaId: string, snapshot: any): Suggestion[] {
-  const out: Suggestion[] = [];
-  for (const s of snapshot.pipeline ?? []) {
-    if (s.is_won || s.is_lost) continue;
-    const ativos = Number(s.leads_ativos ?? 0);
-    const mov7 = Number(s.mov_7d ?? 0);
-    if (ativos >= 15 && mov7 === 0) {
+    if (handoffs >= 5) {
       out.push({
         empresa_id: empresaId,
-        tipo: "stage_stagnation",
-        titulo: `Etapa "${s.nome}" com ${ativos} leads parados há 7+ dias`,
-        racional:
-          `Nenhum lead se moveu de "${s.nome}" nos últimos 7 dias, e há ${ativos} ativos. ` +
-          `Sugere revisão do critério de avanço ou de um follow-up automático.`,
+        tipo: "handoff_queue",
+        titulo: `${handoffs} handoffs aguardando humano`,
+        racional: `Existem ${handoffs} conversas transferidas para humano ainda pendentes.`,
         risco: "medio",
-        action: {
-          kind: "stage_inspect",
-          target_id: s.id,
-          hint: "Considerar variação de fluxo com follow-up para essa etapa.",
-        },
-        dedupe_key: `stage_stag:${s.id}`,
-        expires_at: inHours(24),
+        action: { kind: "handoff_inspect" },
+        dedupe_key: "handoff_queue",
+        expires_at: inHours(6),
         criada_por: "scan",
         status: "pending",
       });
     }
-  }
-  return out;
-}
+    if (conversas >= 50) {
+      out.push({
+        empresa_id: empresaId,
+        tipo: "conversas_overflow",
+        titulo: `${conversas} conversas abertas simultaneamente`,
+        racional:
+          `Volume alto de conversas abertas (${conversas}). Considerar automação de encerramento ou reforço no atendimento.`,
+        risco: "baixo",
+        action: { kind: "conversas_inspect" },
+        dedupe_key: "conversas_overflow",
+        expires_at: inHours(12),
+        criada_por: "scan",
+        status: "pending",
+      });
+    }
+    return out;
+  },
+};
 
-function detectOverloadedKpis(empresaId: string, snapshot: any): Suggestion[] {
-  const out: Suggestion[] = [];
-  const k = snapshot.kpis ?? {};
-  const tasks = Number(k.tasks_atrasadas ?? 0);
-  const handoffs = Number(k.handoffs_pendentes ?? 0);
-  const conversas = Number(k.conversas_abertas ?? 0);
-
-  if (tasks >= 10) {
-    out.push({
-      empresa_id: empresaId,
-      tipo: "tasks_backlog",
-      titulo: `${tasks} tarefas em atraso`,
-      racional: `Tarefas com prazo vencido acumuladas: ${tasks}. Recomenda-se redistribuir ou renegociar prazos.`,
-      risco: tasks >= 50 ? "alto" : "medio",
-      action: { kind: "tasks_inspect", hint: "Abrir Tarefas e filtrar por atrasadas." },
-      dedupe_key: "tasks_backlog",
-      expires_at: inHours(12),
-      criada_por: "scan",
-      status: "pending",
-    });
-  }
-  if (handoffs >= 5) {
-    out.push({
-      empresa_id: empresaId,
-      tipo: "handoff_queue",
-      titulo: `${handoffs} handoffs aguardando humano`,
-      racional: `Existem ${handoffs} conversas transferidas para humano ainda pendentes.`,
-      risco: "medio",
-      action: { kind: "handoff_inspect" },
-      dedupe_key: "handoff_queue",
-      expires_at: inHours(6),
-      criada_por: "scan",
-      status: "pending",
-    });
-  }
-  if (conversas >= 50) {
-    out.push({
-      empresa_id: empresaId,
-      tipo: "conversas_overflow",
-      titulo: `${conversas} conversas abertas simultaneamente`,
-      racional:
-        `Volume alto de conversas abertas (${conversas}). Considerar automação de encerramento ou reforço no atendimento.`,
-      risco: "baixo",
-      action: { kind: "conversas_inspect" },
-      dedupe_key: "conversas_overflow",
-      expires_at: inHours(12),
-      criada_por: "scan",
-      status: "pending",
-    });
-  }
-  return out;
-}
-
-const DETECTORS = [
+const DETECTORS: Detector[] = [
   detectFlowErrorSpike,
   detectLatencyRegression,
   detectStageStagnation,
@@ -197,44 +230,141 @@ const DETECTORS = [
 ];
 
 // ------------------------------------------------------------------
+// Aggregated metrics
+// ------------------------------------------------------------------
+type DetectorMetric = {
+  detector: string;
+  runs: number;
+  errors: number;
+  duration_ms: number;
+  suggestions_raw: number;
+  suggestions_blocked: number;
+  suggestions_created: number;
+  suggestions_deduped: number;
+};
+
+function newDetectorMetric(name: string): DetectorMetric {
+  return {
+    detector: name,
+    runs: 0,
+    errors: 0,
+    duration_ms: 0,
+    suggestions_raw: 0,
+    suggestions_blocked: 0,
+    suggestions_created: 0,
+    suggestions_deduped: 0,
+  };
+}
+
+// ------------------------------------------------------------------
 // Scan a single tenant
 // ------------------------------------------------------------------
-async function scanEmpresa(empresaId: string) {
+async function scanEmpresa(
+  runId: string,
+  empresaId: string,
+  metrics: Map<string, DetectorMetric>,
+) {
+  const tenantStart = Date.now();
+  slog("info", "tenant_scan_start", { run_id: runId, empresa_id: empresaId });
+
   const { data: snapshot, error: snapErr } = await admin.rpc(
     "get_advisor_snapshot_admin" as any,
     { p_empresa_id: empresaId },
   );
   if (snapErr) throw new Error(`snapshot: ${snapErr.message}`);
   if (!snapshot || (snapshot as any).error) {
-    return { empresa_id: empresaId, skipped: true, reason: (snapshot as any)?.error ?? "no_snapshot" };
+    slog("warn", "tenant_scan_skipped", {
+      run_id: runId,
+      empresa_id: empresaId,
+      reason: (snapshot as any)?.error ?? "no_snapshot",
+    });
+    return {
+      empresa_id: empresaId,
+      skipped: true,
+      reason: (snapshot as any)?.error ?? "no_snapshot",
+      duration_ms: Date.now() - tenantStart,
+    };
   }
 
-  // Persistir snapshot leve (série temporal)
-  await admin.from("orbit_advisor_snapshots").insert({
-    empresa_id: empresaId,
-    snapshot,
-  });
+  await admin.from("orbit_advisor_snapshots").insert({ empresa_id: empresaId, snapshot });
 
-  // Rodar detectores
-  const suggestions: Suggestion[] = [];
-  for (const detector of DETECTORS) {
-    try {
-      suggestions.push(...detector(empresaId, snapshot));
-    } catch (e) {
-      console.error(`[scan] detector failed for ${empresaId}:`, (e as Error).message);
-    }
-  }
-
-  if (suggestions.length === 0) {
-    return { empresa_id: empresaId, snapshot_saved: true, suggestions_created: 0 };
-  }
-
-  // Aplicar guardrails: se o path da action estiver em advisor_locked_paths, marca como blocked
+  // Rodar detectores medindo cada um
   const locked: string[] = (snapshot as any)?.ai_config?.advisor_locked_paths ?? [];
   const lockedSet = new Set(locked.map(String));
 
-  const rows = suggestions.map((s) => {
+  const detectorResults: Array<{ detector: string; suggestions: Suggestion[] }> = [];
+  const perDetectorTiming: Record<string, number> = {};
+
+  for (const detector of DETECTORS) {
+    if (!metrics.has(detector.name)) metrics.set(detector.name, newDetectorMetric(detector.name));
+    const m = metrics.get(detector.name)!;
+    m.runs += 1;
+    const dStart = Date.now();
+    try {
+      const suggestions = detector.run(empresaId, snapshot);
+      const dur = Date.now() - dStart;
+      m.duration_ms += dur;
+      m.suggestions_raw += suggestions.length;
+      perDetectorTiming[detector.name] = dur;
+      detectorResults.push({ detector: detector.name, suggestions });
+      slog("info", "detector_ran", {
+        run_id: runId,
+        empresa_id: empresaId,
+        detector: detector.name,
+        duration_ms: dur,
+        suggestions: suggestions.length,
+      });
+    } catch (e) {
+      const dur = Date.now() - dStart;
+      m.duration_ms += dur;
+      m.errors += 1;
+      perDetectorTiming[detector.name] = dur;
+      slog("error", "detector_failed", {
+        run_id: runId,
+        empresa_id: empresaId,
+        detector: detector.name,
+        duration_ms: dur,
+        error: (e as Error).message,
+      });
+    }
+  }
+
+  const allSuggestions = detectorResults.flatMap((r) => r.suggestions);
+  if (allSuggestions.length === 0) {
+    slog("info", "tenant_scan_done", {
+      run_id: runId,
+      empresa_id: empresaId,
+      duration_ms: Date.now() - tenantStart,
+      suggestions_created: 0,
+    });
+    return {
+      empresa_id: empresaId,
+      snapshot_saved: true,
+      suggestions_evaluated: 0,
+      suggestions_created: 0,
+      suggestions_blocked: 0,
+      suggestions_deduped: 0,
+      per_detector: perDetectorTiming,
+      duration_ms: Date.now() - tenantStart,
+    };
+  }
+
+  // Aplicar guardrails por advisor_locked_paths
+  const blockedByDetector: Record<string, number> = {};
+  const rows = allSuggestions.map((s) => {
     const tipoBloqueado = lockedSet.has(s.tipo);
+    if (tipoBloqueado) {
+      blockedByDetector[s.tipo] = (blockedByDetector[s.tipo] ?? 0) + 1;
+      const m = metrics.get(s.tipo);
+      if (m) m.suggestions_blocked += 1;
+      slog("info", "suggestion_blocked", {
+        run_id: runId,
+        empresa_id: empresaId,
+        detector: s.tipo,
+        dedupe_key: s.dedupe_key,
+        reason: "advisor_locked_paths",
+      });
+    }
     return {
       ...s,
       status: tipoBloqueado ? "blocked" : s.status,
@@ -242,44 +372,69 @@ async function scanEmpresa(empresaId: string) {
     };
   });
 
-  // Filtrar sugestões que já existem como pending (dedupe manual —
-  // o índice único é parcial, então não dá para usar ON CONFLICT do PostgREST).
+  // Dedup manual (índice único é parcial)
   const dedupeKeys = rows.map((r) => r.dedupe_key);
   const { data: existing } = await admin
     .from("orbit_advisor_suggestions")
-    .select("dedupe_key")
+    .select("dedupe_key,tipo")
     .eq("empresa_id", empresaId)
     .eq("status", "pending")
     .in("dedupe_key", dedupeKeys);
   const existingSet = new Set((existing ?? []).map((r: any) => r.dedupe_key));
-  const toInsert = rows.filter((r) => !existingSet.has(r.dedupe_key));
 
-  if (toInsert.length === 0) {
-    return {
-      empresa_id: empresaId,
-      snapshot_saved: true,
-      suggestions_evaluated: rows.length,
-      suggestions_created: 0,
-      note: "all_deduped",
-    };
+  let dedupedCount = 0;
+  const toInsert = rows.filter((r) => {
+    // rows já marcadas como blocked ainda são inseridas (histórico); só dedupamos as pending
+    if (r.status === "pending" && existingSet.has(r.dedupe_key)) {
+      dedupedCount += 1;
+      const m = metrics.get(r.tipo);
+      if (m) m.suggestions_deduped += 1;
+      return false;
+    }
+    return true;
+  });
+
+  let insertedCount = 0;
+  if (toInsert.length > 0) {
+    const { data: inserted, error: insErr } = await admin
+      .from("orbit_advisor_suggestions")
+      .insert(toInsert)
+      .select("id,tipo,status");
+    if (insErr) {
+      slog("error", "suggestions_insert_failed", {
+        run_id: runId,
+        empresa_id: empresaId,
+        error: insErr.message,
+      });
+      return {
+        empresa_id: empresaId,
+        error: insErr.message,
+        per_detector: perDetectorTiming,
+        duration_ms: Date.now() - tenantStart,
+      };
+    }
+    insertedCount = inserted?.length ?? 0;
+    for (const row of inserted ?? []) {
+      if (row.status === "pending") {
+        const m = metrics.get(row.tipo);
+        if (m) m.suggestions_created += 1;
+      }
+    }
   }
 
-  const { data: inserted, error: insErr } = await admin
-    .from("orbit_advisor_suggestions")
-    .insert(toInsert)
-    .select("id");
-
-  if (insErr) {
-    console.error(`[scan] insert failed for ${empresaId}:`, insErr.message);
-    return { empresa_id: empresaId, error: insErr.message };
-  }
-
-  return {
+  const summary = {
     empresa_id: empresaId,
     snapshot_saved: true,
     suggestions_evaluated: rows.length,
-    suggestions_created: inserted?.length ?? 0,
+    suggestions_created: insertedCount - Object.values(blockedByDetector).reduce((a, b) => a + b, 0),
+    suggestions_blocked: Object.values(blockedByDetector).reduce((a, b) => a + b, 0),
+    suggestions_deduped: dedupedCount,
+    blocked_by_detector: blockedByDetector,
+    per_detector: perDetectorTiming,
+    duration_ms: Date.now() - tenantStart,
   };
+  slog("info", "tenant_scan_done", { run_id: runId, ...summary });
+  return summary;
 }
 
 // ------------------------------------------------------------------
@@ -317,6 +472,12 @@ async function empresaFromUserJwt(req: Request): Promise<string | null> {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  const runId = crypto.randomUUID();
+  const runStart = Date.now();
+  const startedAt = new Date().toISOString();
+  const metrics = new Map<string, DetectorMetric>();
+  let source: "cron" | "manual_service" | "manual_user" = "cron";
+
   try {
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
     const requestedEmpresa: string | undefined = body?.empresa_id;
@@ -325,6 +486,7 @@ Deno.serve(async (req) => {
     let targets: string[] = [];
 
     if (service) {
+      source = requestedEmpresa ? "manual_service" : "cron";
       if (requestedEmpresa) {
         targets = [requestedEmpresa];
       } else {
@@ -333,7 +495,7 @@ Deno.serve(async (req) => {
         targets = (data ?? []).map((r: any) => r.empresa_id);
       }
     } else {
-      // usuário autenticado só pode scanear a própria empresa
+      source = "manual_user";
       const userEmpresa = await empresaFromUserJwt(req);
       if (!userEmpresa) {
         return new Response(
@@ -350,25 +512,109 @@ Deno.serve(async (req) => {
       targets = [userEmpresa];
     }
 
-    console.log(`[scan] processing ${targets.length} tenant(s)`);
-    const results = [];
+    slog("info", "scan_run_start", {
+      run_id: runId,
+      source,
+      tenants_total: targets.length,
+    });
+
+    const results: any[] = [];
+    let okCount = 0;
+    let errCount = 0;
     for (const empresaId of targets) {
       try {
-        results.push(await scanEmpresa(empresaId));
+        const r = await scanEmpresa(runId, empresaId, metrics);
+        results.push(r);
+        if (r.error) errCount += 1;
+        else okCount += 1;
       } catch (e) {
-        console.error(`[scan] tenant ${empresaId} failed:`, (e as Error).message);
+        slog("error", "tenant_scan_failed", {
+          run_id: runId,
+          empresa_id: empresaId,
+          error: (e as Error).message,
+        });
         results.push({ empresa_id: empresaId, error: (e as Error).message });
+        errCount += 1;
       }
     }
 
+    const aggregated = {
+      evaluated: results.reduce((a, r) => a + (r.suggestions_evaluated ?? 0), 0),
+      created: results.reduce((a, r) => a + (r.suggestions_created ?? 0), 0),
+      blocked: results.reduce((a, r) => a + (r.suggestions_blocked ?? 0), 0),
+      deduped: results.reduce((a, r) => a + (r.suggestions_deduped ?? 0), 0),
+    };
+    const durationMs = Date.now() - runStart;
+    const detectorMetricsObj = Object.fromEntries(metrics);
+
+    slog("info", "scan_run_done", {
+      run_id: runId,
+      source,
+      duration_ms: durationMs,
+      tenants_ok: okCount,
+      tenants_error: errCount,
+      ...aggregated,
+      detector_metrics: detectorMetricsObj,
+    });
+
+    // Persistir execução para status page
+    try {
+      await admin.from("orbit_advisor_scan_runs").insert({
+        id: runId,
+        started_at: startedAt,
+        finished_at: new Date().toISOString(),
+        duration_ms: durationMs,
+        source,
+        tenants_total: targets.length,
+        tenants_ok: okCount,
+        tenants_error: errCount,
+        suggestions_evaluated: aggregated.evaluated,
+        suggestions_created: aggregated.created,
+        suggestions_blocked: aggregated.blocked,
+        suggestions_deduped: aggregated.deduped,
+        detector_metrics: detectorMetricsObj,
+        results,
+      });
+    } catch (persistErr) {
+      slog("error", "scan_run_persist_failed", {
+        run_id: runId,
+        error: (persistErr as Error).message,
+      });
+    }
+
     return new Response(
-      JSON.stringify({ ok: true, data: { scanned: results.length, results } }),
+      JSON.stringify({
+        ok: true,
+        data: {
+          run_id: runId,
+          duration_ms: durationMs,
+          scanned: results.length,
+          ...aggregated,
+          detector_metrics: detectorMetricsObj,
+          results,
+        },
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
-    console.error("[scan] fatal:", (e as Error).message);
+    const durationMs = Date.now() - runStart;
+    slog("error", "scan_run_fatal", {
+      run_id: runId,
+      duration_ms: durationMs,
+      error: (e as Error).message,
+    });
+    try {
+      await admin.from("orbit_advisor_scan_runs").insert({
+        id: runId,
+        started_at: startedAt,
+        finished_at: new Date().toISOString(),
+        duration_ms: durationMs,
+        source,
+        error: (e as Error).message,
+      });
+    } catch { /* swallow */ }
     return new Response(
-      JSON.stringify({ ok: false, error: (e as Error).message }),
+      JSON.stringify({ ok: false, run_id: runId, error: (e as Error).message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }

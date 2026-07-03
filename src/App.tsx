@@ -54,6 +54,7 @@ import TenantMapPage from "./pages/pe-admin/TenantMapPage";
 import PeAdminDocPage from "./pages/pe-admin/PeAdminDocPage";
 import CadastrosPage from "./pages/pe-admin/CadastrosPage";
 import PlanosPage from "./pages/pe-admin/PlanosPage";
+import AdvisorScanStatusPage from "./pages/pe-admin/AdvisorScanStatusPage";
 
 const queryClient = new QueryClient();
 
@@ -202,6 +203,7 @@ const AppRoutes = () => (
       <Route path="planos" element={<PlanosPage />} />
       <Route path="tenants" element={<TenantMapPage />} />
       <Route path="audit" element={<PeAuditLogPage />} />
+      <Route path="advisor-scan" element={<AdvisorScanStatusPage />} />
       <Route path="documentacao" element={<PeAdminDocPage />} />
       <Route path="*" element={<Navigate to="/pe-admin/cadastros" replace />} />
     </Route>
