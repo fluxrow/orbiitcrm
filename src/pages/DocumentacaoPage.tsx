@@ -9,11 +9,13 @@ import {
 } from "@/components/ui/table";
 import {
   FileDown, BookOpen, Building2, Plug, BrainCircuit, FlaskConical,
-  GitBranch, Users2, Activity, Wrench, Cpu, Route, ListTree,
+  GitBranch, Users2, Activity, Wrench, Cpu, Route, ListTree, Rocket, ShieldCheck,
 } from "lucide-react";
 
 const sections = [
   { id: "intro", label: "Introdução", icon: BookOpen },
+  { id: "core-flow", label: "★ Orbit Core Flow", icon: ShieldCheck },
+  { id: "setup-guide", label: "★ Guia de Configuração (5 min)", icon: Rocket },
   { id: "tenant", label: "1. Provisionamento do Tenant", icon: Building2 },
   { id: "integracoes", label: "2. Integrações Core", icon: Plug },
   { id: "ia", label: "3. Cérebro da IA", icon: BrainCircuit },
