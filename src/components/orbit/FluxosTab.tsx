@@ -23,6 +23,7 @@ import {
   type OrbitFlowTemplate,
 } from "@/hooks/useOrbitFlows";
 import { FlowEventMap } from "./FlowEventMap";
+import { InstantiateCoreFlowButton } from "./InstantiateCoreFlowButton";
 import { toast } from "sonner";
 
 const TRIGGER_LABELS: Record<string, string> = {
