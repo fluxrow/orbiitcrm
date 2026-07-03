@@ -248,9 +248,10 @@ export default function DocumentacaoPage() {
             </Step>
           </section>
 
-          {/* placeholder anchor kept */}
-          <section id="tenant-anchor-marker" className="hidden" aria-hidden="true" />
+          {/* 1. Tenant */}
+          <section id="tenant" className="doc-section space-y-4">
             <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><Building2 className="h-5 w-5 text-primary" /> 1. Provisionamento do Tenant</h2>
+            <Separator />
             <Separator />
 
             <Step title="1.1 Criar a empresa (tenant raiz)" action="Provisionar nova empresa no Orbit, com slug único de acesso (/{slug}/...).">
