@@ -885,6 +885,7 @@ export type Database = {
       orbit_ai_config: {
         Row: {
           advisor_locked_paths: Json
+          advisor_thresholds: Json
           campos_qualificacao: Json
           created_at: string | null
           empresa_id: string | null
@@ -913,6 +914,7 @@ export type Database = {
         }
         Insert: {
           advisor_locked_paths?: Json
+          advisor_thresholds?: Json
           campos_qualificacao?: Json
           created_at?: string | null
           empresa_id?: string | null
@@ -941,6 +943,7 @@ export type Database = {
         }
         Update: {
           advisor_locked_paths?: Json
+          advisor_thresholds?: Json
           campos_qualificacao?: Json
           created_at?: string | null
           empresa_id?: string | null
@@ -2141,39 +2144,56 @@ export type Database = {
           ativo: boolean
           categoria: string | null
           created_at: string
+          criado_por_advisor: boolean
           definicao: Json
           descricao: string | null
           id: string
           is_global: boolean
           is_official: boolean
           nome: string
+          source_flow_id: string | null
+          status: string
           updated_at: string
         }
         Insert: {
           ativo?: boolean
           categoria?: string | null
           created_at?: string
+          criado_por_advisor?: boolean
           definicao?: Json
           descricao?: string | null
           id?: string
           is_global?: boolean
           is_official?: boolean
           nome: string
+          source_flow_id?: string | null
+          status?: string
           updated_at?: string
         }
         Update: {
           ativo?: boolean
           categoria?: string | null
           created_at?: string
+          criado_por_advisor?: boolean
           definicao?: Json
           descricao?: string | null
           id?: string
           is_global?: boolean
           is_official?: boolean
           nome?: string
+          source_flow_id?: string | null
+          status?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "orbit_flow_templates_source_flow_id_fkey"
+            columns: ["source_flow_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_flows"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       orbit_flows: {
         Row: {
@@ -4410,12 +4430,24 @@ export type Database = {
         Args: { p_config_id: string }
         Returns: Json
       }
+      apply_flow_pause: {
+        Args: { p_empresa: string; p_flow: string }
+        Returns: Json
+      }
+      apply_flow_variation_draft: {
+        Args: { p_empresa: string; p_flow: string }
+        Returns: Json
+      }
       apply_pipeline_template: {
         Args: {
           p_empresa_id: string
           p_replace?: boolean
           p_template_id: string
         }
+        Returns: Json
+      }
+      apply_stage_followup: {
+        Args: { p_empresa: string; p_stage: string; p_template: Json }
         Returns: Json
       }
       ensure_deal_for_prospect: {
