@@ -269,6 +269,93 @@ async function actionNotifyVendedor(cfg: Json, run: Json): Promise<StepResult> {
   }
 }
 
+// ── If/Else (ramificação condicional) ────────────────────────────────
+
+type ConditionOp =
+  | "equals" | "not_equals" | "contains" | "not_contains"
+  | "gt" | "gte" | "lt" | "lte"
+  | "is_empty" | "is_not_empty" | "in";
+
+function getFieldValue(ctx: Json, field: string): any {
+  const [scope, ...rest] = String(field || "").split(".");
+  const key = rest.join(".");
+  const source = ctx?.[scope];
+  if (source == null) return undefined;
+  if (!key) return source;
+  return key.split(".").reduce<any>((o, k) => (o == null ? o : o[k]), source);
+}
+
+function evaluateRule(v: any, op: ConditionOp, expected: any): boolean {
+  const asNum = (x: any) => (typeof x === "number" ? x : Number(x));
+  const strV = (x: any) => (x == null ? "" : String(x));
+  switch (op) {
+    case "equals": return strV(v) === strV(expected);
+    case "not_equals": return strV(v) !== strV(expected);
+    case "contains": return strV(v).toLowerCase().includes(strV(expected).toLowerCase());
+    case "not_contains": return !strV(v).toLowerCase().includes(strV(expected).toLowerCase());
+    case "gt": return asNum(v) > asNum(expected);
+    case "gte": return asNum(v) >= asNum(expected);
+    case "lt": return asNum(v) < asNum(expected);
+    case "lte": return asNum(v) <= asNum(expected);
+    case "is_empty":
+      return v == null || v === "" || (Array.isArray(v) && v.length === 0);
+    case "is_not_empty":
+      return !(v == null || v === "" || (Array.isArray(v) && v.length === 0));
+    case "in": {
+      const list = strV(expected).split(",").map((s: string) => s.trim()).filter(Boolean);
+      return list.includes(strV(v));
+    }
+    default: return false;
+  }
+}
+
+function evaluateCondition(ctx: Json, cond: Json): boolean {
+  const rules = Array.isArray(cond?.rules) ? cond.rules : [];
+  if (!rules.length) return true;
+  const logic = cond?.logic === "OR" ? "OR" : "AND";
+  const results = rules.map((r: any) => evaluateRule(getFieldValue(ctx, r.field), r.op as ConditionOp, r.value));
+  return logic === "OR" ? results.some(Boolean) : results.every(Boolean);
+}
+
+async function loadEvalContext(run: Json): Promise<Json> {
+  const payload = run.context?.payload ?? {};
+  const ctx: Json = { payload, prospect: null, deal: null };
+  const prospectId = payload.prospect_id || (run.entity_type === "prospect" ? run.entity_id : null);
+  if (prospectId) {
+    const { data } = await supabase.from("orbit_prospects").select("*").eq("id", prospectId).maybeSingle();
+    ctx.prospect = data ?? null;
+  }
+  const dealId = payload.deal_id || (run.entity_type === "deal" ? run.entity_id : null);
+  if (dealId) {
+    const { data } = await supabase.from("orbit_deals").select("*").eq("id", dealId).maybeSingle();
+    ctx.deal = data ?? null;
+  }
+  return ctx;
+}
+
+async function actionIfElse(cfg: Json, run: Json): Promise<StepResult> {
+  const ctx = await loadEvalContext(run);
+  const passed = evaluateCondition(ctx, cfg?.condition ?? {});
+  const branch = passed ? "then" : "else";
+  const subActions = Array.isArray(cfg?.[branch]) ? cfg[branch] : [];
+  let executed = 0;
+  for (const sub of subActions) {
+    if (sub.delay_seconds && sub.delay_seconds > 0) {
+      await new Promise((r) => setTimeout(r, Math.min(sub.delay_seconds, 30) * 1000));
+    }
+    const res = await runAction(sub.action_type, sub.action_config ?? {}, run);
+    executed++;
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: `[if_else/${branch} #${executed}] ${res.error ?? "erro"}`,
+        output: { branch, executed, condition_passed: passed },
+      };
+    }
+  }
+  return { ok: true, output: { branch, executed, condition_passed: passed } };
+}
+
 async function runAction(actionType: string, cfg: Json, run: Json): Promise<StepResult> {
   switch (actionType) {
     case "send_whatsapp_template": return actionSendWhatsappTemplate(cfg, run);
@@ -280,6 +367,7 @@ async function runAction(actionType: string, cfg: Json, run: Json): Promise<Step
     case "send_rich_media":        return actionSendRichMedia(cfg, run);
     case "check_calendar_and_offer": return actionCheckCalendarAndOffer(cfg, run);
     case "delay_execution":        return { ok: true, output: { delayed: true } };
+    case "if_else":                return actionIfElse(cfg, run);
     default: return { ok: false, error: `action_type desconhecido: ${actionType}` };
   }
 }
