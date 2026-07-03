@@ -135,20 +135,21 @@ const detectFlowErrorSpike: Detector = {
 
 const detectLatencyRegression: Detector = {
   name: "flow_latency_regression",
-  run(empresaId, snapshot) {
+  run(empresaId, snapshot, t) {
+    const cfg = t.flow_latency_regression;
     const out: Suggestion[] = [];
     for (const f of snapshot.flows ?? []) {
       const p95 = Number(f.latencia_p95_s ?? 0);
-      if (p95 >= 60) {
+      if (p95 >= cfg.p95_warn_s) {
         out.push({
           empresa_id: empresaId,
           tipo: "flow_latency_regression",
           titulo: `Fluxo "${f.nome}" com p95 de ${p95.toFixed(1)}s`,
           racional:
-            `Latência p95 nas últimas 24h ultrapassou 60s (${p95.toFixed(1)}s). ` +
+            `Latência p95 nas últimas 24h ultrapassou ${cfg.p95_warn_s}s (${p95.toFixed(1)}s). ` +
             `Provável gargalo em waits/HTTP externo — considerar reduzir espera ou paralelizar.`,
-          risco: p95 >= 180 ? "alto" : "medio",
-          action: { kind: "flow_inspect", target_id: f.id, hint: "Rever waits e chamadas externas." },
+          risco: p95 >= cfg.p95_high_s ? "alto" : "medio",
+          action: { kind: "flow_variation_propose", target_id: f.id, hint: "Rever waits e chamadas externas." },
           dedupe_key: `flow_latency:${f.id}`,
           expires_at: inHours(12),
           criada_por: "scan",
@@ -162,25 +163,26 @@ const detectLatencyRegression: Detector = {
 
 const detectStageStagnation: Detector = {
   name: "stage_stagnation",
-  run(empresaId, snapshot) {
+  run(empresaId, snapshot, t) {
+    const cfg = t.stage_stagnation;
     const out: Suggestion[] = [];
     for (const s of snapshot.pipeline ?? []) {
       if (s.is_won || s.is_lost) continue;
       const ativos = Number(s.leads_ativos ?? 0);
       const mov7 = Number(s.mov_7d ?? 0);
-      if (ativos >= 15 && mov7 === 0) {
+      if (ativos >= cfg.min_ativos && mov7 === 0) {
         out.push({
           empresa_id: empresaId,
           tipo: "stage_stagnation",
-          titulo: `Etapa "${s.nome}" com ${ativos} leads parados há 7+ dias`,
+          titulo: `Etapa "${s.nome}" com ${ativos} leads parados há ${cfg.window_days}+ dias`,
           racional:
-            `Nenhum lead se moveu de "${s.nome}" nos últimos 7 dias, e há ${ativos} ativos. ` +
+            `Nenhum lead se moveu de "${s.nome}" nos últimos ${cfg.window_days} dias, e há ${ativos} ativos. ` +
             `Sugere revisão do critério de avanço ou de um follow-up automático.`,
           risco: "medio",
           action: {
-            kind: "stage_inspect",
+            kind: "stage_add_followup_task",
             target_id: s.id,
-            hint: "Considerar variação de fluxo com follow-up para essa etapa.",
+            hint: "Criar tarefa de follow-up para desbloquear os leads parados.",
           },
           dedupe_key: `stage_stag:${s.id}`,
           expires_at: inHours(24),
@@ -192,6 +194,7 @@ const detectStageStagnation: Detector = {
     return out;
   },
 };
+
 
 const detectOverloadedKpis: Detector = {
   name: "overloaded_kpis",
