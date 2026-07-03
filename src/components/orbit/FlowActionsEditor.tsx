@@ -288,22 +288,59 @@ export function FlowActionsEditor({
           );
         }}
       />
+      <FlowIfElseEditor
+        action={ifElseEditing}
+        stages={stages}
+        onClose={() => setIfElseEditing(null)}
+        onSave={(patch) => {
+          if (!ifElseEditing) return;
+          upsert.mutate(
+            {
+              id: ifElseEditing.id,
+              flow_id: ifElseEditing.flow_id,
+              ordem: ifElseEditing.ordem,
+              action_type: ifElseEditing.action_type,
+              action_config: patch.action_config,
+              delay_seconds: patch.delay_seconds,
+            },
+            {
+              onSuccess: () => {
+                toast.success("Ação atualizada");
+                setIfElseEditing(null);
+              },
+              onError: (e: any) => toast.error(`Erro: ${e.message}`),
+            },
+          );
+        }}
+      />
     </>
   );
 }
 
-function summarizeConfig(a: OrbitFlowAction): string {
+function summarizeConfig(a: OrbitFlowAction, stagesById?: Record<string, PipelineStage>): string {
   const c = a.action_config ?? {};
   switch (a.action_type) {
     case "send_whatsapp_template": return c.template_slug ? `template: ${c.template_slug}` : "sem template";
     case "send_rich_media": return `${c.tipo_midia || "?"} · ${c.url_midia ? "URL ok" : "sem URL"}`;
     case "check_calendar_and_offer": return `${c.max_offers ?? 3} horários · ${c.start_hour ?? 9}h-${c.end_hour ?? 18}h`;
     case "change_deal_stage":
-    case "move_deal_stage": return c.to_stage_slug ? `→ ${c.to_stage_slug}` : c.to_stage_id ? "→ etapa definida" : "etapa não definida";
+    case "move_deal_stage": {
+      const stage = c.to_stage_id ? stagesById?.[c.to_stage_id] : undefined;
+      if (stage) return `→ ${stage.nome}`;
+      if (c.to_stage_slug) return `→ ${c.to_stage_slug}`;
+      if (c.to_stage_id) return "→ etapa definida";
+      return "etapa não definida";
+    }
     case "create_task": return `${c.titulo || "tarefa"} · ${c.prazo_dias ?? 1}d`;
     case "toggle_ai_agent": return c.human_talk ? "modo humano" : "modo IA";
     case "notify_vendedor": return `canal: ${c.canal || "email"}`;
     case "delay_execution": return `aguarda ${c.wait_value ?? 0} ${c.wait_unit === "hours" ? "h" : "min"}`;
+    case "if_else": {
+      const rules = c?.condition?.rules?.length ?? 0;
+      const thenN = Array.isArray(c?.then) ? c.then.length : 0;
+      const elseN = Array.isArray(c?.else) ? c.else.length : 0;
+      return `Se ${rules} regra(s) · Então ${thenN} · Senão ${elseN}`;
+    }
     default: return "";
   }
 }
