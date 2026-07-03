@@ -1841,6 +1841,7 @@ export type Database = {
           descricao: string | null
           id: string
           is_global: boolean
+          is_official: boolean
           nome: string
           updated_at: string
         }
@@ -1852,6 +1853,7 @@ export type Database = {
           descricao?: string | null
           id?: string
           is_global?: boolean
+          is_official?: boolean
           nome: string
           updated_at?: string
         }
@@ -1863,6 +1865,7 @@ export type Database = {
           descricao?: string | null
           id?: string
           is_global?: boolean
+          is_official?: boolean
           nome?: string
           updated_at?: string
         }
