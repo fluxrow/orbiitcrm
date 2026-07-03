@@ -121,12 +121,24 @@ const ACTION_CATALOG: ActionMeta[] = [
     icon: BellRing,
     defaultConfig: { canal: "email" },
   },
+  {
+    type: "if_else",
+    label: "Condição (Se / Senão)",
+    desc: "Executa um bloco de ações se a condição for verdadeira, outro se for falsa.",
+    icon: GitBranch,
+    defaultConfig: {
+      condition: { logic: "AND", rules: [] },
+      then: [],
+      else: [],
+    },
+  },
 ];
 
-const META_BY_TYPE = Object.fromEntries(ACTION_CATALOG.map((m) => [m.type, m])) as Record<
+export const META_BY_TYPE = Object.fromEntries(ACTION_CATALOG.map((m) => [m.type, m])) as Record<
   OrbitFlowActionType,
   ActionMeta
 >;
+export { ACTION_CATALOG };
 
 export function FlowActionsEditor({
   flow,
