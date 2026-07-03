@@ -304,10 +304,18 @@ function RuleRow({
   onDelete: () => void;
 }) {
   const needsValue = OPS_NEEDING_VALUE.includes(rule.op);
+  const missingValue = needsValue && !String(rule.value ?? "").trim();
+  const missingField = !rule.field;
+  const invalid = missingValue || missingField;
   return (
-    <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
+    <div
+      className={`grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 p-1 rounded ${
+        invalid ? "ring-1 ring-red-500/40 bg-red-500/5" : ""
+      }`}
+      title={invalid ? "Regra incompleta — preencha campo e valor" : undefined}
+    >
       <Select value={rule.field} onValueChange={(v) => onChange({ ...rule, field: v })}>
-        <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+        <SelectTrigger className={`h-9 text-xs ${missingField ? "border-red-500/60" : ""}`}><SelectValue placeholder="Selecione um campo" /></SelectTrigger>
         <SelectContent>
           {FLOW_CONDITION_FIELDS.map((g) => (
             <SelectGroup key={g.label}>
@@ -334,7 +342,7 @@ function RuleRow({
         placeholder={needsValue ? "valor" : "—"}
         value={rule.value ?? ""}
         onChange={(e) => onChange({ ...rule, value: e.target.value })}
-        className="h-9 text-xs"
+        className={`h-9 text-xs ${missingValue ? "border-red-500/60" : ""}`}
       />
       <Button variant="ghost" size="icon" onClick={onDelete}>
         <Trash2 className="h-4 w-4" />
