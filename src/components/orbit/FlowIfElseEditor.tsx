@@ -161,6 +161,8 @@ export function FlowIfElseEditor({
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
           <Button
             className="bg-brand text-brand-foreground hover:bg-brand/90"
+            disabled={hasInvalidRule(cfg.condition)}
+            title={hasInvalidRule(cfg.condition) ? "Existem regras incompletas — corrija antes de salvar" : undefined}
             onClick={() => onSave({ action_config: cfg as any, delay_seconds: delay })}
           >
             Salvar
