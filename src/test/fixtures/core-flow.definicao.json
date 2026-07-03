@@ -1,0 +1,215 @@
+{
+    "actions": [
+        {
+            "action_type": "switch",
+            "action_config": {
+                "cases": [
+                    {
+                        "id": "c_ads",
+                        "label": "Instagram/Meta Ads",
+                        "match": {
+                            "op": "in",
+                            "value": "instagram,meta,facebook,ads"
+                        },
+                        "actions": [
+                        ]
+                    },
+                    {
+                        "id": "c_site",
+                        "label": "Site / Typebot",
+                        "match": {
+                            "op": "in",
+                            "value": "site,typebot,landing,form"
+                        },
+                        "actions": [
+                        ]
+                    }
+                ],
+                "field": "prospect.origem",
+                "default": {
+                    "actions": [
+                    ]
+                }
+            },
+            "delay_seconds": 0
+        },
+        {
+            "action_type": "toggle_ai_agent",
+            "action_config": {
+                "human_talk": false,
+                "prompt_slug": "CORE_QUALIFICACAO_INICIAL"
+            },
+            "delay_seconds": 0
+        },
+        {
+            "action_type": "if_else",
+            "action_config": {
+                "else": [
+                    {
+                        "action_type": "if_else",
+                        "action_config": {
+                            "else": [
+                                {
+                                    "action_type": "send_whatsapp_template",
+                                    "action_config": {
+                                        "template_slug": "[CORE] NURTURING_GENERICO"
+                                    },
+                                    "delay_seconds": 0
+                                }
+                            ],
+                            "then": [
+                                {
+                                    "action_type": "send_whatsapp_template",
+                                    "action_config": {
+                                        "template_slug": "[CORE] OFFER_LOW_TICKET"
+                                    },
+                                    "delay_seconds": 0
+                                }
+                            ],
+                            "condition": {
+                                "logic": "AND",
+                                "children": [
+                                    {
+                                        "op": "equals",
+                                        "field": "prospect.renda_baixa",
+                                        "value": "true"
+                                    }
+                                ]
+                            }
+                        },
+                        "delay_seconds": 0
+                    }
+                ],
+                "then": [
+                    {
+                        "action_type": "create_task",
+                        "action_config": {
+                            "titulo": "Novo lead qualificado — abrir deal",
+                            "prazo_dias": 1
+                        },
+                        "delay_seconds": 0
+                    },
+                    {
+                        "action_type": "notify_vendedor",
+                        "action_config": {
+                            "para": "admin",
+                            "canal": "whatsapp",
+                            "template_slug": "[CORE] Novo Deal Qualificado"
+                        },
+                        "delay_seconds": 0
+                    }
+                ],
+                "condition": {
+                    "logic": "AND",
+                    "children": [
+                        {
+                            "op": "equals",
+                            "field": "prospect.qualificado",
+                            "value": "true"
+                        }
+                    ]
+                }
+            },
+            "delay_seconds": 0
+        },
+        {
+            "action_type": "delay_execution",
+            "action_config": {
+                "wait_unit": "hours",
+                "wait_value": 3
+            },
+            "delay_seconds": 0
+        },
+        {
+            "action_type": "toggle_ai_agent",
+            "action_config": {
+                "human_talk": false,
+                "prompt_slug": "CORE_FOLLOWUP"
+            },
+            "delay_seconds": 0
+        },
+        {
+            "action_type": "switch",
+            "action_config": {
+                "cases": [
+                    {
+                        "id": "aberta",
+                        "label": "Conversa aberta",
+                        "match": {
+                            "op": "equals",
+                            "value": "aberta"
+                        },
+                        "actions": [
+                            {
+                                "action_type": "delay_execution",
+                                "action_config": {
+                                    "wait_unit": "hours",
+                                    "wait_value": 24
+                                },
+                                "delay_seconds": 0
+                            }
+                        ]
+                    },
+                    {
+                        "id": "encerrada",
+                        "label": "Conversa encerrada",
+                        "match": {
+                            "op": "equals",
+                            "value": "encerrada"
+                        },
+                        "actions": [
+                        ]
+                    }
+                ],
+                "field": "conversa.status",
+                "default": {
+                    "actions": [
+                    ]
+                }
+            },
+            "delay_seconds": 0
+        },
+        {
+            "action_type": "if_else",
+            "action_config": {
+                "else": [
+                ],
+                "then": [
+                    {
+                        "action_type": "notify_vendedor",
+                        "action_config": {
+                            "para": "responsavel",
+                            "canal": "whatsapp",
+                            "template_slug": "[CORE] Handoff Ouro"
+                        },
+                        "delay_seconds": 0
+                    },
+                    {
+                        "action_type": "create_task",
+                        "action_config": {
+                            "titulo": "Retomar handoff — cliente aguardando",
+                            "prazo_dias": 0
+                        },
+                        "delay_seconds": 0
+                    }
+                ],
+                "condition": {
+                    "logic": "AND",
+                    "children": [
+                        {
+                            "op": "equals",
+                            "field": "conversa.status",
+                            "value": "handoff"
+                        }
+                    ]
+                }
+            },
+            "delay_seconds": 0
+        }
+    ],
+    "condicoes": {
+    },
+    "trigger_type": "lead_recebido",
+    "trigger_config": {
+    }
+}
