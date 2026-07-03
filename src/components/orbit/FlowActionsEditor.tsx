@@ -222,10 +222,16 @@ export function FlowActionsEditor({
                       <div className="font-medium text-sm truncate">{meta.label}</div>
                       <div className="text-xs text-muted-foreground truncate">
                         {a.delay_seconds ? `Após ${a.delay_seconds}s · ` : ""}
-                        {summarizeConfig(a)}
+                        {summarizeConfig(a, stagesById)}
                       </div>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={() => setEditing(a)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() =>
+                        a.action_type === "if_else" ? setIfElseEditing(a) : setEditing(a)
+                      }
+                    >
                       <Pencil className="h-4 w-4" />
                     </Button>
                     <Button
