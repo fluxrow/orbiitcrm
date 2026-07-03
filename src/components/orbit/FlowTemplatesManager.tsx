@@ -289,24 +289,60 @@ export function FlowTemplatesManager() {
                       </span>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Editar"
-                        onClick={() => setEditor({ open: true, template: t })}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Duplicar"
-                        onClick={() =>
-                          setEditor({ open: true, template: t, duplicate: true })
-                        }
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
+                      {(t as any).is_official ? (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Configurar variações"
+                                onClick={() => setVariationsFor(t)}
+                              >
+                                <Settings2 className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Configurar variações (oficial)</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Editar"
+                          onClick={() => setEditor({ open: true, template: t })}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Duplicar"
+                                disabled={(t as any).is_official}
+                                onClick={() =>
+                                  setEditor({ open: true, template: t, duplicate: true })
+                                }
+                              >
+                                {(t as any).is_official ? (
+                                  <Lock className="h-4 w-4" />
+                                ) : (
+                                  <Copy className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          {(t as any).is_official && (
+                            <TooltipContent>
+                              Templates oficiais são somente leitura — use "Instanciar" no tenant
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
+                      </TooltipProvider>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -315,21 +351,35 @@ export function FlowTemplatesManager() {
                       >
                         <Download className="h-4 w-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Excluir"
-                        onClick={() => {
-                          if (confirm(`Excluir o template "${t.nome}"?`)) {
-                            del.mutate(t.id, {
-                              onSuccess: () => toast.success("Template excluído"),
-                              onError: (e: any) => toast.error(e.message),
-                            });
-                          }
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Excluir"
+                                disabled={(t as any).is_official}
+                                onClick={() => {
+                                  if (confirm(`Excluir o template "${t.nome}"?`)) {
+                                    del.mutate(t.id, {
+                                      onSuccess: () => toast.success("Template excluído"),
+                                      onError: (e: any) => toast.error(e.message),
+                                    });
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          {(t as any).is_official && (
+                            <TooltipContent>
+                              Templates oficiais não podem ser excluídos
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
                   </div>
                 </div>
@@ -342,6 +392,18 @@ export function FlowTemplatesManager() {
       <TemplateEditorDialog
         state={editor}
         onClose={() => setEditor({ open: false, template: null })}
+      />
+      <OfficialTemplateVariationsDialog
+        template={variationsFor}
+        onClose={() => setVariationsFor(null)}
+      />
+      <ImportPreviewDialog
+        open={!!importPreview}
+        parsed={importPreview}
+        availableTemplates={availableTemplates}
+        availableAgents={availableAgents}
+        onCancel={() => setImportPreview(null)}
+        onConfirm={confirmImport}
       />
     </Card>
   );
