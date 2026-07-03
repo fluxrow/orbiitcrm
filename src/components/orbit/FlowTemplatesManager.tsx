@@ -73,8 +73,8 @@ export function FlowTemplatesManager() {
     try {
       const txt = await file.text();
       const parsed = parseTemplateImport(txt);
-      if (!parsed.ok) {
-        toast.error(`Import falhou: ${parsed.error}`);
+      if (parsed.ok !== true) {
+        toast.error(`Import falhou: ${(parsed as { error: string }).error}`);
         return;
       }
       const existing = (templates ?? []).find((t) => t.nome === parsed.data.nome);
