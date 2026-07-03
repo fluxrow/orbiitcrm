@@ -198,20 +198,20 @@ const detectStageStagnation: Detector = {
 
 const detectOverloadedKpis: Detector = {
   name: "overloaded_kpis",
-  run(empresaId, snapshot) {
+  run(empresaId, snapshot, t) {
     const out: Suggestion[] = [];
     const k = snapshot.kpis ?? {};
     const tasks = Number(k.tasks_atrasadas ?? 0);
     const handoffs = Number(k.handoffs_pendentes ?? 0);
     const conversas = Number(k.conversas_abertas ?? 0);
 
-    if (tasks >= 10) {
+    if (tasks >= t.tasks_backlog.warn) {
       out.push({
         empresa_id: empresaId,
         tipo: "tasks_backlog",
         titulo: `${tasks} tarefas em atraso`,
         racional: `Tarefas com prazo vencido acumuladas: ${tasks}. Recomenda-se redistribuir ou renegociar prazos.`,
-        risco: tasks >= 50 ? "alto" : "medio",
+        risco: tasks >= t.tasks_backlog.high ? "alto" : "medio",
         action: { kind: "tasks_inspect", hint: "Abrir Tarefas e filtrar por atrasadas." },
         dedupe_key: "tasks_backlog",
         expires_at: inHours(12),
@@ -219,7 +219,7 @@ const detectOverloadedKpis: Detector = {
         status: "pending",
       });
     }
-    if (handoffs >= 5) {
+    if (handoffs >= t.handoff_queue.warn) {
       out.push({
         empresa_id: empresaId,
         tipo: "handoff_queue",
@@ -233,7 +233,7 @@ const detectOverloadedKpis: Detector = {
         status: "pending",
       });
     }
-    if (conversas >= 50) {
+    if (conversas >= t.conversas_overflow.warn) {
       out.push({
         empresa_id: empresaId,
         tipo: "conversas_overflow",
@@ -251,6 +251,7 @@ const detectOverloadedKpis: Detector = {
     return out;
   },
 };
+
 
 const DETECTORS: Detector[] = [
   detectFlowErrorSpike,
