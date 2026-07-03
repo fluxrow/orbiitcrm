@@ -322,6 +322,7 @@ async function scanEmpresa(
   // Rodar detectores medindo cada um
   const locked: string[] = (snapshot as any)?.ai_config?.advisor_locked_paths ?? [];
   const lockedSet = new Set(locked.map(String));
+  const thresholds = resolveThresholds(snapshot);
 
   const detectorResults: Array<{ detector: string; suggestions: Suggestion[] }> = [];
   const perDetectorTiming: Record<string, number> = {};
@@ -332,7 +333,8 @@ async function scanEmpresa(
     m.runs += 1;
     const dStart = Date.now();
     try {
-      const suggestions = detector.run(empresaId, snapshot);
+      const suggestions = detector.run(empresaId, snapshot, thresholds);
+
       const dur = Date.now() - dStart;
       m.duration_ms += dur;
       m.suggestions_raw += suggestions.length;
