@@ -48,7 +48,12 @@ function TenantContent() {
     );
   }
 
-  return <Outlet />;
+  return (
+    <>
+      <Outlet />
+      <AdvisorDock />
+    </>
+  );
 }
 
 export default function TenantLayout() {
