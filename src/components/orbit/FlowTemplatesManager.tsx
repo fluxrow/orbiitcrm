@@ -267,6 +267,14 @@ export function FlowTemplatesManager() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        title="Exportar .flow.json"
+                        onClick={() => handleExport(t)}
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         title="Excluir"
                         onClick={() => {
                           if (confirm(`Excluir o template "${t.nome}"?`)) {
