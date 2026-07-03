@@ -33,7 +33,7 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { Badge } from "@/components/ui/badge";
-import { Check, ChevronsUpDown, Plus, Pencil } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, Pencil, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -41,6 +41,7 @@ import {
   useCreateTemplate,
   useUpdateTemplate,
 } from "@/hooks/useOrbitTemplates";
+import { MessageTemplateFormSchema, validatePlaceholders } from "@/lib/flowTemplateSchema";
 
 type TemplateLike = {
   id: string;
@@ -235,17 +236,33 @@ function TemplateQuickCreateDialog({
   if (!state) return null;
   const editing = state.mode === "edit" && state.template;
 
+  const placeholderCheck = validatePlaceholders(corpo);
+
   const handleSave = async () => {
-    if (!nome.trim() || !corpo.trim()) {
-      toast.error("Nome e corpo são obrigatórios");
+    const parsed = MessageTemplateFormSchema.safeParse({
+      nome: nome.trim(),
+      canal,
+      categoria: categoria.trim() || null,
+      corpo_texto: corpo,
+      assunto_email: assunto.trim() || null,
+    });
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
+      toast.error(first?.message || "Dados inválidos");
       return;
+    }
+    if (placeholderCheck.unknown.length > 0) {
+      const proceed = confirm(
+        `Placeholders desconhecidos: ${placeholderCheck.unknown.map((p) => `{{${p}}}`).join(", ")}\n\nEles não serão substituídos em runtime. Salvar mesmo assim?`,
+      );
+      if (!proceed) return;
     }
     try {
       const payload: any = {
-        nome: nome.trim(),
-        canal,
-        categoria: categoria.trim() || null,
-        corpo_texto: corpo,
+        nome: parsed.data.nome,
+        canal: parsed.data.canal,
+        categoria: parsed.data.categoria,
+        corpo_texto: parsed.data.corpo_texto,
         ativo: true,
       };
       if (canal === "email" && assunto.trim()) payload.assunto_email = assunto.trim();
@@ -306,8 +323,24 @@ function TemplateQuickCreateDialog({
               placeholder="Olá {{prospect.nome}}, tudo bem?"
             />
             <div className="text-[11px] text-muted-foreground">
-              Variáveis suportadas: <code>{"{{prospect.nome}}"}</code>, <code>{"{{prospect.email}}"}</code>, <code>{"{{deal.valor}}"}</code>, <code>{"{{deal.titulo}}"}</code>.
+              Variáveis suportadas: <code>{"{{prospect.nome}}"}</code>, <code>{"{{prospect.email}}"}</code>, <code>{"{{deal.valor}}"}</code>, <code>{"{{empresa.nome}}"}</code>, <code>{"{{link_agendamento}}"}</code>.
             </div>
+            {placeholderCheck.unknown.length > 0 && (
+              <div className="flex items-start gap-2 text-[11px] text-amber-400 rounded border border-amber-500/30 bg-amber-500/5 p-2">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <div>
+                  Placeholders desconhecidos: {placeholderCheck.unknown.map((p) => (
+                    <code key={p} className="mx-0.5 bg-amber-500/10 px-1 rounded">{`{{${p}}}`}</code>
+                  ))}
+                  <div className="text-muted-foreground mt-1">Não serão substituídos em runtime.</div>
+                </div>
+              </div>
+            )}
+            {placeholderCheck.known.length > 0 && (
+              <div className="text-[11px] text-emerald-400/90">
+                {placeholderCheck.known.length} placeholder(s) reconhecido(s).
+              </div>
+            )}
           </div>
         </div>
         <DialogFooter>

@@ -20,7 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Layers, Plus, Pencil, Copy, Trash2, Search, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Layers, Plus, Pencil, Copy, Trash2, Search, AlertCircle, CheckCircle2, Download, Upload, ShieldCheck } from "lucide-react";
 import {
   useAllFlowTemplates,
   useDeleteFlowTemplate,
@@ -31,6 +31,8 @@ import type { OrbitFlowTemplate } from "@/hooks/useOrbitFlows";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { buildTemplateExport, parseTemplateImport } from "@/lib/flowTemplateSchema";
+import { useRef } from "react";
 
 const EMPTY_DEF = `{
   "trigger_type": "lead_recebido",
@@ -49,8 +51,57 @@ export function FlowTemplatesManager() {
   const { data: templates, isLoading } = useAllFlowTemplates();
   const toggle = useToggleFlowTemplate();
   const del = useDeleteFlowTemplate();
+  const upsert = useUpsertFlowTemplate();
   const [search, setSearch] = useState("");
   const [editor, setEditor] = useState<EditorState>({ open: false, template: null });
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleExport = (t: OrbitFlowTemplate) => {
+    const payload = buildTemplateExport(t);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safeName = t.nome.replace(/[^\w.-]+/g, "_");
+    a.href = url;
+    a.download = `${safeName}.flow.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exportado: ${a.download}`);
+  };
+
+  const handleImport = async (file: File) => {
+    try {
+      const txt = await file.text();
+      const parsed = parseTemplateImport(txt);
+      if (parsed.ok !== true) {
+        toast.error(`Import falhou: ${(parsed as { error: string }).error}`);
+        return;
+      }
+      const existing = (templates ?? []).find((t) => t.nome === parsed.data.nome);
+      const shouldUpdate = existing
+        ? confirm(
+            `Template "${parsed.data.nome}" já existe.\n\nOK = atualizar existente\nCancelar = criar cópia`
+          )
+        : false;
+      upsert.mutate(
+        {
+          id: shouldUpdate ? existing!.id : undefined,
+          nome: shouldUpdate ? parsed.data.nome : existing ? `${parsed.data.nome} (import)` : parsed.data.nome,
+          descricao: parsed.data.descricao ?? null,
+          categoria: parsed.data.categoria ?? null,
+          definicao: parsed.data.definicao,
+          ativo: true,
+          is_global: true,
+        },
+        {
+          onSuccess: () => toast.success(shouldUpdate ? "Template atualizado" : "Template importado"),
+          onError: (e: any) => toast.error(e.message),
+        },
+      );
+    } catch (e: any) {
+      toast.error(`Falha ao ler arquivo: ${e.message}`);
+    }
+  };
 
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
@@ -76,13 +127,34 @@ export function FlowTemplatesManager() {
             CRUD global dos templates disponíveis no wizard "Novo Fluxo".
           </CardDescription>
         </div>
-        <Button
-          className="bg-brand text-brand-foreground hover:bg-brand/90"
-          onClick={() => setEditor({ open: true, template: null })}
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Novo template
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleImport(f);
+              e.target.value = "";
+            }}
+          />
+          <Button
+            variant="outline"
+            onClick={() => importInputRef.current?.click()}
+            title="Importar template .flow.json"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Importar
+          </Button>
+          <Button
+            className="bg-brand text-brand-foreground hover:bg-brand/90"
+            onClick={() => setEditor({ open: true, template: null })}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Novo template
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="relative max-w-sm">
@@ -113,7 +185,14 @@ export function FlowTemplatesManager() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <div className="font-semibold leading-tight break-words">{t.nome}</div>
+                      <div className="font-semibold leading-tight break-words flex items-center gap-2 flex-wrap">
+                        {t.nome}
+                        {(t as any).is_official && (
+                          <Badge className="bg-brand/20 text-brand text-[10px] gap-1">
+                            <ShieldCheck className="h-3 w-3" /> Oficial
+                          </Badge>
+                        )}
+                      </div>
                       {t.descricao && (
                         <p className="text-xs text-muted-foreground mt-1 line-clamp-3 break-words">
                           {t.descricao}
@@ -184,6 +263,14 @@ export function FlowTemplatesManager() {
                         }
                       >
                         <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Exportar .flow.json"
+                        onClick={() => handleExport(t)}
+                      >
+                        <Download className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="ghost"

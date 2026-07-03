@@ -1,124 +1,137 @@
-# Construtor de Fluxos V2 — 4 melhorias
+## Objetivo
 
-Objetivo: reduzir cliques e idas ao banco para configurar fluxos. Cada item é independente e pode ser mergeado sozinho na ordem abaixo (do menor risco ao maior).
-
----
-
-## 1) Drag-and-drop para reordenar ações
-
-**Hoje:** o `GripVertical` é decorativo; reordenar exige apagar/recriar.
-
-**Entrega:**
-
-- Adicionar `@dnd-kit/core` + `@dnd-kit/sortable` (padrão do ecossistema shadcn, sem dependência de HTML5 nativo).
-- Em `FlowActionsEditor.tsx`, envolver a lista de ações com `DndContext` + `SortableContext`. Cada card vira `useSortable` e o `GripVertical` recebe `listeners`/`attributes` como handle.
-- Ao soltar (`onDragEnd`), calcular nova ordem local (otimista) e persistir com um único update em lote: iterar `actions` reordenadas e chamar `upsertFlowAction` só nas linhas cuja `ordem` mudou. Se houver ≥ 5 mudanças, criar um helper `useReorderFlowActions` que faz update em massa via `.upsert()` com array (mesmo endpoint, uma request).
-- Feedback visual: card ganha `opacity-70` durante o drag; cursor muda para `grab/grabbing`.
-- Dentro do `FlowIfElseEditor` (listas Then/Else), aplicar o mesmo padrão — extrair `SortableActionList` como componente reutilizável para não duplicar código.
-
-**Fora do escopo:** arrastar uma ação de fora do if/else para dentro (só reordena dentro do próprio container).
+Formalizar o **Orbit Core Flow** — o template mestre que toda nova conta recebe — junto com:
+1. Melhorias no editor de condições aninhadas (AND/OR).
+2. Validação inline no editor de templates de mensagem.
+3. Import/Export de templates de fluxo (JSON) — para replicar o Core em qualquer tenant.
+4. Atualização da documentação (`DocumentacaoPage`) e criação de um **Guia de Configuração** in-app.
 
 ---
 
-## 2) Grupos aninhados de condições (AND/OR encadeados)
+## Parte 1 — Orbit Core Flow (template mestre)
 
-**Hoje:** `ConditionGroup = { logic, rules[] }` — só um nível.
+### 1.1 Seed do template no banco
+Migration nova que insere (ou faz `upsert` por `nome`) o template `[CORE] Orbit Core Flow` em `orbit_flow_templates`, marcado `is_global=true`, `is_official=true` (nova coluna booleana). Estrutura JSON do `definicao`:
 
-**Entrega:**
+```text
+trigger: orbit_lead_recebido
+actions:
+  1. switch  → prospect.origem
+       case "instagram|meta"  → set_tag: ORIGEM_ADS
+       case "site|typebot"    → set_tag: ORIGEM_SITE
+       default                → set_tag: ORIGEM_MANUAL
+  2. ai_agent → prompt_slug: CORE_QUALIFICACAO_INICIAL
+  3. if/else → prospect.qualificado == true
+       THEN:
+         4. auto_create_deal_for_prospect
+         5. send_vendedor_notification (admin)
+       ELSE:
+         6. if/else → prospect.renda_baixa == true
+              THEN: send_template  slug=[CORE] OFFER_LOW_TICKET
+              ELSE: send_template  slug=[CORE] NURTURING_GENERICO
+  7. delay 3h (no_reply)
+  8. ai_agent → prompt_slug: CORE_FOLLOWUP
+  9. switch → status_conversa
+       case "aberta"    → schedule_recheck 24h
+       case "encerrada" → end_flow
+ 10. if/else → status_conversa == "handoff"
+       THEN: transferencia_vendedor + zapi_notify_admin
+```
 
-- Estender o tipo em `flowConditionFields.ts`:
-  ```ts
-  type ConditionNode = ConditionRule | ConditionGroup;
-  type ConditionGroup = { logic: "AND" | "OR"; children: ConditionNode[] };
-  ```
-  Discriminador: presença de `children` = grupo; presença de `field` = regra.
-- Migração transparente: `evaluateCondition` aceita ambos os formatos (`rules` legado vira `children`). Nenhum flow existente quebra.
-- UI (`FlowIfElseEditor` + `FlowConditionsDialog`): grupo renderizado como card indentado com borda esquerda colorida. Botões no topo de cada grupo: `+ Regra`, `+ Grupo`, toggle `AND/OR`, botão remover grupo (exceto raiz).
-- Limite: profundidade máxima 3 níveis (evita UI ilegível) — botão `+ Grupo` fica disabled no nível 3 com tooltip "Máx. 3 níveis".
-- Backend (`orbit-flow-executor/index.ts`): reescrever `evaluateCondition` como recursivo — se nó tem `children`, avalia cada um e combina com `logic`; senão avalia como regra. Um único caminho para os dois formatos.
+O JSON usa os mesmos tipos já suportados por `useOrbitFlows.ts` / `orbit-flow-executor` (nenhuma nova ação backend).
 
-**Compat:** flows salvos com `rules[]` continuam válidos — helper `normalizeCondition()` converte on-read.
+### 1.2 Templates de mensagem "[CORE]"
+Mesma migration insere no `orbit_message_templates` (escopo `empresa_id = NULL` = global do master tenant) com `slug` fixo:
+- `[CORE] Abordagem Inicial`
+- `[CORE] Quebra de Objeção`
+- `[CORE] OFFER_LOW_TICKET` (downsell)
+- `[CORE] NURTURING_GENERICO`
+- `[CORE] Follow-up 3h`
+
+Corpo com placeholders `{{lead.nome}}`, `{{empresa.nome}}`, `{{link_agendamento}}`. Os slugs referenciados pelo Core Flow batem 1:1.
+
+### 1.3 Instanciação automática no onboarding
+No fluxo `orbit-onboarding-*` (ou trigger de criação de `saas_empresa`), acrescentar step **"aplicar Core Flow"**: chama a mesma rotina do wizard "Novo Fluxo" com `template_id = core_flow_id`, gerando um `orbit_flows` + `orbit_flow_actions` reais na conta nova, já ativos.
+
+Nova opção no `FlowTemplatesManager`: badge **"Oficial"** + botão **"Aplicar em todas as contas ativas"** (dispara edge function `orbit-flow-broadcast-core`).
 
 ---
 
-## 3) Edição inline de templates de mensagem
+## Parte 2 — Import / Export JSON de templates
 
-**Hoje:** ação `send_whatsapp_template` exige `template_slug` digitado; usuário sai do fluxo para `/orbit/templates`, cria, volta e cola o slug.
-
-**Entrega:**
-
-- Substituir o `Input` de `template_slug` em `FlowActionsEditor.tsx` por um `TemplateSelectField` (novo componente):
-  - `Combobox` (shadcn `Command` + `Popover`) listando `useOrbitTemplates({ canal: 'whatsapp', ativo: true })`.
-  - Cada item mostra `nome` + preview de 1 linha do `corpo` truncado.
-  - Item fixo no topo: **"+ Criar novo template"** → abre `TemplateQuickCreateDialog` (novo).
-  - Item fixo abaixo do selecionado: **"✎ Editar este template"** → abre o mesmo dialog em modo edição.
-- `TemplateQuickCreateDialog`: formulário mínimo — `nome`, `canal` (default `whatsapp`, mas configurável), `categoria`, `corpo` (textarea com contador de caracteres e hint de variáveis `{{prospect.nome}}`, `{{deal.valor}}`). Ao salvar, usa `useCreateTemplate`/`useUpdateTemplate` (já existentes em `useOrbitTemplates.ts`), invalida a query e auto-seleciona o template recém-criado na ação.
-- Preview inline abaixo do select: mostra o corpo do template com variáveis destacadas (badge `{{...}}`). Se o template tem mídia (áudio/imagem), badge indicando.
-- Persistência do vínculo: continua salvando `template_slug` no `action_config` (não muda backend), mas também `template_id` como referência secundária (útil se o slug mudar).
-
-**Escopo estendido opcional:** ação `send_rich_media` recebe o mesmo tratamento — Combobox de templates filtrado por `canal in ('whatsapp','email')` conforme o subtipo.
+- Novo botão no `FlowTemplatesManager` por linha: **Exportar** → baixa `{nome}.flow.json` com `{ nome, descricao, categoria, definicao, version: 1 }`.
+- Novo botão global **Importar** → dialog aceita `.json`, valida schema com Zod (`FlowTemplateSchemaV1`), preview das ações e confirmação → cria novo template.
+- Suporte a re-importação: se `nome` bater, oferecer "Atualizar existente" vs "Criar cópia".
 
 ---
 
-## 4) Switch/case — ramificações com N saídas
+## Parte 3 — UI de condições aninhadas (AND/OR)
 
-**Hoje:** só `if_else` (2 saídas). Cenários como "encaminhar por origem do lead" viram cadeia aninhada de if/else, ilegível.
+Refino em `FlowIfElseEditor` / `FlowConditionsDialog`:
+- Cada grupo ganha **barra lateral colorida** (AND=azul, OR=âmbar) + rótulo `TODAS as regras` / `QUALQUER regra`.
+- Indentação clara por nível + contador (`Nível 2/3`).
+- Botão "colapsar grupo" para grupos com >3 regras.
+- Ao editar regra existente: manter o `id` estável (não recriar), evitando reset do valor ao trocar operador.
+- Validação inline: destaca em vermelho regras com `field` ou `value` vazios; bloqueia salvar do fluxo se houver regra inválida (toast + scroll até primeira).
+- Testes manuais: renomear campo, trocar operador, mover regra entre grupos, remover grupo com filhos.
 
-**Entrega:**
+---
 
-- Novo `action_type = "switch"` em `useOrbitFlows.ts` (`OrbitFlowActionType`).
-- Estrutura em `action_config` (JSONB, sem migration):
-  ```json
-  {
-    "field": "prospect.origem",
-    "cases": [
-      { "id": "c1", "label": "Instagram", "match": { "op": "equals", "value": "instagram" }, "actions": [...] },
-      { "id": "c2", "label": "Site (form)", "match": { "op": "in", "value": "site,form,landing" }, "actions": [...] }
-    ],
-    "default": { "actions": [...] }
-  }
-  ```
-  Reusa os mesmos `ConditionOp` do if/else — cada `case` é uma regra única contra o `field` comum. Isso mantém a UI simples (sem duplicar catálogo de operadores).
-- Editor (`FlowSwitchEditor.tsx`, novo): 
-  - Topo: dropdown com o `field` avaliado (usa `FLOW_CONDITION_FIELDS`).
-  - Lista vertical de casos, cada um em card colapsável: label editável, operador + valor, sublista de ações (reusa `SortableActionList` do item 1). Botão `+ Adicionar caso`, drag para reordenar prioridade.
-  - Caso `default` fixo no fim (não removível).
-- Avaliação backend (`orbit-flow-executor/index.ts`): case `switch` — avalia `cases` em ordem, executa o primeiro match; se nenhum, executa `default`. Retorna `{ case_id, steps }` no output do step.
-- Picker: adicionar card "Roteamento (múltiplos caminhos)" no `ActionPickerDialog` com ícone `Split`.
-- Resumo na lista: `Se {field}: {N} caminhos + padrão`.
+## Parte 4 — Validação do editor inline de templates
+
+No `TemplateSelectField` + `TemplateQuickCreateDialog`:
+- Schema Zod: `nome ≥ 3`, `corpo ≥ 10`, `canal` obrigatório.
+- Parser de placeholders `{{...}}`: extrai variáveis do corpo e valida contra whitelist (`lead.*`, `empresa.*`, `deal.*`, `link_*`). Placeholders desconhecidos → warning amarelo (não bloqueia).
+- Se o template selecionado num action estiver **inativo** ou **deletado**, mostrar `AlertCircle` vermelho no card da action e impedir salvar o fluxo.
+- Preview live com placeholders substituídos por exemplos (mock lead).
+
+---
+
+## Parte 5 — Documentação e Guia de Configuração
+
+### 5.1 `DocumentacaoPage` (usuário final)
+Nova seção **"Orbit Core Flow"** com:
+- O que é / por que existe.
+- Diagrama ASCII do fluxo (mesma árvore da Parte 1).
+- Lista dos templates `[CORE]` e placeholders esperados.
+- Como customizar (troca de templates, prompt IA) sem quebrar a estrutura.
+- FAQ: "posso apagar uma ação?", "como voltar ao padrão?".
+
+### 5.2 Novo **Guia de Configuração in-app** (`/{slug}/setup-guide`)
+Wizard de 5 passos com checklist persistente (`orbit_client_onboardings`):
+1. Conectar WhatsApp (Z-API).
+2. Configurar identidade da IA (prompt + tom).
+3. Revisar templates `[CORE]` (renomear mentoria, links).
+4. Ativar o Core Flow (toggle).
+5. Enviar lead de teste.
+
+Cada passo tem: descrição, link direto pra tela, botão "marcar como feito", indicador de progresso. Pensado para **onboarders externos** — texto sem jargão técnico.
+
+### 5.3 README interno (`docs/CORE_FLOW.md`)
+Para devs/onboarders: descreve o schema JSON do template, como editar via migration, como rodar o broadcast, e o contrato dos slugs `[CORE]`.
 
 ---
 
 ## Detalhes técnicos
 
-**Arquivos tocados:**
+- **Migration**: `orbit_flow_templates.is_official boolean default false` + `unique(nome) where is_official`; seed via `INSERT ... ON CONFLICT`.
+- **GRANTs**: já cobertos pelas policies existentes de `orbit_flow_templates` e `orbit_message_templates`.
+- **Edge function nova**: `orbit-flow-broadcast-core` (super-admin only) — itera `saas_empresa` ativas e instancia o Core Flow onde ainda não existe.
+- **Zod schemas** novos em `src/lib/flowTemplateSchema.ts` (compartilhado import/export + validação inline).
+- **Rota nova**: `src/pages/SetupGuidePage.tsx` + entry no `OrbitSidebar` (badge "Novo").
+- **Sem breaking changes** no executor: todas as ações usadas já existem.
 
+## Ordem de execução
 
-| Item        | Novos                                                      | Editados                                                                                                     |
-| ----------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| 1 DnD       | `SortableActionList.tsx`, `useReorderFlowActions.ts`       | `FlowActionsEditor.tsx`, `FlowIfElseEditor.tsx`, `package.json` (`@dnd-kit/*`)                               |
-| 2 Aninhado  | —                                                          | `flowConditionFields.ts`, `FlowIfElseEditor.tsx`, `FlowConditionsDialog.tsx`, `orbit-flow-executor/index.ts` |
-| 3 Templates | `TemplateSelectField.tsx`, `TemplateQuickCreateDialog.tsx` | `FlowActionsEditor.tsx`                                                                                      |
-| 4 Switch    | `FlowSwitchEditor.tsx`                                     | `FlowActionsEditor.tsx`, `useOrbitFlows.ts`, `orbit-flow-executor/index.ts`                                  |
+1. Migration seed (Core Flow + templates `[CORE]` + coluna `is_official`).
+2. Import/Export JSON no `FlowTemplatesManager`.
+3. Broadcast edge function + botão "Aplicar em todas as contas".
+4. Refino UI condições aninhadas.
+5. Validação inline de templates.
+6. Documentação + Guia de Configuração.
 
+## Fora de escopo
 
-**Sem migration de schema** em nenhum item — tudo cabe em `action_config` JSONB.
-
-**Ordem de merge (baixo → alto risco):**
-
-1. DnD (só front, ganho imediato)
-2. Edição inline de templates (front + reuso de hooks existentes)
-3. Grupos aninhados (front + 1 função no executor, com fallback compat)
-4. Switch/case (novo action_type, front + executor)
-
-Cada item é testável isoladamente com um fluxo real no `/orbit/config → Fluxos`.  
-Lovable adicione um log de erro detalhado no `orbit-flow-executor`. Se uma condição falhar, você precisa saber *exatamente* qual regra não bateu, senão você vai ficar caçando erro no escuro.
-
----
-
-## Fora do escopo
-
-- Simulador visual do fluxo (grafo tipo n8n) — grande refactor, fica para V3.
-- Versionamento/histórico de edições do fluxo.
-- Templates de fluxo com placeholders parametrizados.
-- Testes A/B nativos (rodar 50% em cada branch).
+- Versionamento histórico de templates (v2, v3).
+- Editor visual estilo n8n.
+- Marketplace público de fluxos.

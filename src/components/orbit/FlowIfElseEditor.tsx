@@ -69,6 +69,19 @@ function emptyCfg(): IfElseCfg {
   return { condition: { logic: "AND", children: [] }, then: [], else: [] };
 }
 
+function hasInvalidRule(group: ConditionGroup): boolean {
+  const g = normalizeGroup(group);
+  for (const c of g.children ?? []) {
+    if (isGroup(c)) {
+      if (hasInvalidRule(c)) return true;
+    } else {
+      if (!c.field) return true;
+      if (OPS_NEEDING_VALUE.includes(c.op) && !String(c.value ?? "").trim()) return true;
+    }
+  }
+  return false;
+}
+
 export function FlowIfElseEditor({
   action,
   stages,
@@ -161,6 +174,8 @@ export function FlowIfElseEditor({
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
           <Button
             className="bg-brand text-brand-foreground hover:bg-brand/90"
+            disabled={hasInvalidRule(cfg.condition)}
+            title={hasInvalidRule(cfg.condition) ? "Existem regras incompletas — corrija antes de salvar" : undefined}
             onClick={() => onSave({ action_config: cfg as any, delay_seconds: delay })}
           >
             Salvar
@@ -204,12 +219,20 @@ export function ConditionBuilder({
   const canNest = depth < MAX_CONDITION_DEPTH;
   const borderColors = ["border-l-primary/70", "border-l-amber-500/70", "border-l-purple-500/70"];
   const borderClass = depth === 1 ? "" : `border-l-2 pl-3 ${borderColors[(depth - 2) % 3]}`;
+  const logicLabel = g.logic === "AND" ? "TODAS as regras (E)" : "QUALQUER regra (OU)";
+  const logicPillClass =
+    g.logic === "AND"
+      ? "bg-primary/15 text-primary border-primary/30"
+      : "bg-amber-500/15 text-amber-400 border-amber-500/30";
 
   return (
     <div className={`rounded-md ${depth === 1 ? "border border-border p-3" : borderClass} space-y-2`}>
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
-          <Label className="text-xs">{depth === 1 ? "Regras" : `Grupo (nível ${depth})`}</Label>
+          <Label className="text-xs">{depth === 1 ? "Regras" : `Grupo · nível ${depth}/${MAX_CONDITION_DEPTH}`}</Label>
+          <Badge variant="outline" className={`text-[10px] ${logicPillClass}`}>
+            {logicLabel}
+          </Badge>
           <Select value={g.logic} onValueChange={(v) => setLogic(v as "AND" | "OR")}>
             <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -296,10 +319,18 @@ function RuleRow({
   onDelete: () => void;
 }) {
   const needsValue = OPS_NEEDING_VALUE.includes(rule.op);
+  const missingValue = needsValue && !String(rule.value ?? "").trim();
+  const missingField = !rule.field;
+  const invalid = missingValue || missingField;
   return (
-    <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
+    <div
+      className={`grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 p-1 rounded ${
+        invalid ? "ring-1 ring-red-500/40 bg-red-500/5" : ""
+      }`}
+      title={invalid ? "Regra incompleta — preencha campo e valor" : undefined}
+    >
       <Select value={rule.field} onValueChange={(v) => onChange({ ...rule, field: v })}>
-        <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+        <SelectTrigger className={`h-9 text-xs ${missingField ? "border-red-500/60" : ""}`}><SelectValue placeholder="Selecione um campo" /></SelectTrigger>
         <SelectContent>
           {FLOW_CONDITION_FIELDS.map((g) => (
             <SelectGroup key={g.label}>
@@ -326,7 +357,7 @@ function RuleRow({
         placeholder={needsValue ? "valor" : "—"}
         value={rule.value ?? ""}
         onChange={(e) => onChange({ ...rule, value: e.target.value })}
-        className="h-9 text-xs"
+        className={`h-9 text-xs ${missingValue ? "border-red-500/60" : ""}`}
       />
       <Button variant="ghost" size="icon" onClick={onDelete}>
         <Trash2 className="h-4 w-4" />
