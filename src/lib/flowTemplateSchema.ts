@@ -50,9 +50,11 @@ export function buildTemplateExport(t: {
   };
 }
 
-export function parseTemplateImport(txt: string):
+export type ImportResult =
   | { ok: true; data: FlowTemplateExport }
-  | { ok: false; error: string } {
+  | { ok: false; error: string };
+
+export function parseTemplateImport(txt: string): ImportResult {
   let raw: any;
   try {
     raw = JSON.parse(txt);
