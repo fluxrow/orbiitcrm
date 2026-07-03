@@ -1,4 +1,4 @@
-// Catálogo de campos e operadores para condições de fluxo (if/else).
+// Catálogo de campos e operadores para condições de fluxo (if/else e switch).
 // Compartilhado entre o construtor (UI) e usado como referência do executor.
 
 export type ConditionOp =
@@ -15,14 +15,20 @@ export type ConditionOp =
   | "in";
 
 export type ConditionRule = {
-  field: string; // ex.: "prospect.documento_tipo", "deal.valor", "payload.utm_source"
+  field: string;
   op: ConditionOp;
   value?: string;
 };
 
+// V2: grupos aninhados (AND/OR encadeados)
+export type ConditionNode = ConditionRule | ConditionGroup;
+
 export type ConditionGroup = {
   logic: "AND" | "OR";
-  rules: ConditionRule[];
+  // v2: children pode conter regras OU sub-grupos
+  children?: ConditionNode[];
+  // legado v1: rules[] plano — normalizeCondition converte para children
+  rules?: ConditionRule[];
 };
 
 export type IfElseConfig = {
@@ -30,6 +36,8 @@ export type IfElseConfig = {
   then: Array<{ action_type: string; action_config: Record<string, any>; delay_seconds: number }>;
   else: Array<{ action_type: string; action_config: Record<string, any>; delay_seconds: number }>;
 };
+
+export const MAX_CONDITION_DEPTH = 3;
 
 export const OP_LABELS: Record<ConditionOp, string> = {
   equals: "= igual a",
@@ -101,6 +109,31 @@ export const FLOW_CONDITION_FIELDS: FieldGroup[] = [
   },
 ];
 
+// ── Normalização (v1 rules[] ↔ v2 children[]) ────────────────────────────
+
+export function isGroup(node: ConditionNode | undefined | null): node is ConditionGroup {
+  if (!node) return false;
+  return typeof (node as any).logic === "string" && !("field" in (node as any));
+}
+
+export function normalizeGroup(g: ConditionGroup | undefined | null): ConditionGroup {
+  const logic: "AND" | "OR" = g?.logic === "OR" ? "OR" : "AND";
+  const children: ConditionNode[] = [];
+  if (Array.isArray(g?.children)) {
+    for (const c of g!.children!) {
+      if (isGroup(c)) children.push(normalizeGroup(c));
+      else if (c && typeof (c as any).field === "string") children.push(c as ConditionRule);
+    }
+  }
+  // legado: rules[] plano
+  if (Array.isArray(g?.rules)) {
+    for (const r of g!.rules!) {
+      if (r && typeof r.field === "string") children.push(r);
+    }
+  }
+  return { logic, children };
+}
+
 // ── Avaliador puro (para preview no cliente; backend tem cópia própria em Deno) ──
 
 export function getFieldValue(ctx: Record<string, any>, field: string): any {
@@ -138,9 +171,20 @@ export function evaluateRule(v: any, op: ConditionOp, expected: any): boolean {
 }
 
 export function evaluateCondition(ctx: Record<string, any>, cond?: ConditionGroup): boolean {
-  const rules = cond?.rules ?? [];
-  if (!rules.length) return true;
-  const logic = cond?.logic === "OR" ? "OR" : "AND";
-  const results = rules.map((r) => evaluateRule(getFieldValue(ctx, r.field), r.op, r.value));
-  return logic === "OR" ? results.some(Boolean) : results.every(Boolean);
+  const g = normalizeGroup(cond);
+  const children = g.children ?? [];
+  if (!children.length) return true;
+  const results = children.map((n) =>
+    isGroup(n) ? evaluateCondition(ctx, n) : evaluateRule(getFieldValue(ctx, n.field), n.op, n.value),
+  );
+  return g.logic === "OR" ? results.some(Boolean) : results.every(Boolean);
+}
+
+// Conta total de regras (recursivo) para exibir resumo
+export function countRules(cond?: ConditionGroup): number {
+  const g = normalizeGroup(cond);
+  return (g.children ?? []).reduce<number>(
+    (acc, n) => acc + (isGroup(n) ? countRules(n) : 1),
+    0,
+  );
 }

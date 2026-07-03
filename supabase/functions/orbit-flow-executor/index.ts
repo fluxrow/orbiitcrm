@@ -309,12 +309,37 @@ function evaluateRule(v: any, op: ConditionOp, expected: any): boolean {
   }
 }
 
-function evaluateCondition(ctx: Json, cond: Json): boolean {
-  const rules = Array.isArray(cond?.rules) ? cond.rules : [];
-  if (!rules.length) return true;
-  const logic = cond?.logic === "OR" ? "OR" : "AND";
-  const results = rules.map((r: any) => evaluateRule(getFieldValue(ctx, r.field), r.op as ConditionOp, r.value));
-  return logic === "OR" ? results.some(Boolean) : results.every(Boolean);
+function isGroup(n: any): boolean {
+  return n && typeof n.logic === "string" && !("field" in n);
+}
+
+function normalizeGroup(g: any): { logic: "AND" | "OR"; children: any[] } {
+  const logic: "AND" | "OR" = g?.logic === "OR" ? "OR" : "AND";
+  const children: any[] = [];
+  if (Array.isArray(g?.children)) {
+    for (const c of g.children) {
+      if (isGroup(c)) children.push(normalizeGroup(c));
+      else if (c && typeof c.field === "string") children.push(c);
+    }
+  }
+  if (Array.isArray(g?.rules)) {
+    for (const r of g.rules) if (r && typeof r.field === "string") children.push(r);
+  }
+  return { logic, children };
+}
+
+function evaluateCondition(ctx: Json, cond: Json, trace?: string[]): boolean {
+  const g = normalizeGroup(cond);
+  const children = g.children;
+  if (!children.length) return true;
+  const results = children.map((n: any) => {
+    if (isGroup(n)) return evaluateCondition(ctx, n, trace);
+    const v = getFieldValue(ctx, n.field);
+    const ok = evaluateRule(v, n.op as ConditionOp, n.value);
+    trace?.push(`${n.field} ${n.op} ${JSON.stringify(n.value)} → ${JSON.stringify(v)} = ${ok}`);
+    return ok;
+  });
+  return g.logic === "OR" ? results.some(Boolean) : results.every(Boolean);
 }
 
 async function loadEvalContext(run: Json): Promise<Json> {
@@ -335,9 +360,11 @@ async function loadEvalContext(run: Json): Promise<Json> {
 
 async function actionIfElse(cfg: Json, run: Json): Promise<StepResult> {
   const ctx = await loadEvalContext(run);
-  const passed = evaluateCondition(ctx, cfg?.condition ?? {});
+  const trace: string[] = [];
+  const passed = evaluateCondition(ctx, cfg?.condition ?? {}, trace);
   const branch = passed ? "then" : "else";
   const subActions = Array.isArray(cfg?.[branch]) ? cfg[branch] : [];
+  console.log(`[if_else] passed=${passed} branch=${branch} rules=`, trace);
   let executed = 0;
   for (const sub of subActions) {
     if (sub.delay_seconds && sub.delay_seconds > 0) {
@@ -349,11 +376,50 @@ async function actionIfElse(cfg: Json, run: Json): Promise<StepResult> {
       return {
         ok: false,
         error: `[if_else/${branch} #${executed}] ${res.error ?? "erro"}`,
-        output: { branch, executed, condition_passed: passed },
+        output: { branch, executed, condition_passed: passed, trace },
       };
     }
   }
-  return { ok: true, output: { branch, executed, condition_passed: passed } };
+  return { ok: true, output: { branch, executed, condition_passed: passed, trace } };
+}
+
+async function actionSwitch(cfg: Json, run: Json): Promise<StepResult> {
+  const ctx = await loadEvalContext(run);
+  const field: string = cfg?.field || "";
+  const v = getFieldValue(ctx, field);
+  const cases: any[] = Array.isArray(cfg?.cases) ? cfg.cases : [];
+  const trace: string[] = [];
+
+  let matched: any = null;
+  for (const cc of cases) {
+    const op = (cc?.match?.op || "equals") as ConditionOp;
+    const val = cc?.match?.value;
+    const ok = evaluateRule(v, op, val);
+    trace.push(`${cc?.id || "?"}(${cc?.label || ""}): ${field} ${op} ${JSON.stringify(val)} = ${ok}`);
+    if (ok) { matched = cc; break; }
+  }
+  const subActions: any[] = matched
+    ? (Array.isArray(matched.actions) ? matched.actions : [])
+    : (Array.isArray(cfg?.default?.actions) ? cfg.default.actions : []);
+  const branch = matched ? (matched.id || matched.label || "case") : "default";
+  console.log(`[switch] field=${field} value=`, v, `branch=${branch}`, trace);
+
+  let executed = 0;
+  for (const sub of subActions) {
+    if (sub.delay_seconds && sub.delay_seconds > 0) {
+      await new Promise((r) => setTimeout(r, Math.min(sub.delay_seconds, 30) * 1000));
+    }
+    const res = await runAction(sub.action_type, sub.action_config ?? {}, run);
+    executed++;
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: `[switch/${branch} #${executed}] ${res.error ?? "erro"}`,
+        output: { branch, executed, field, value: v, trace },
+      };
+    }
+  }
+  return { ok: true, output: { branch, executed, field, value: v, trace } };
 }
 
 async function runAction(actionType: string, cfg: Json, run: Json): Promise<StepResult> {
@@ -368,6 +434,7 @@ async function runAction(actionType: string, cfg: Json, run: Json): Promise<Step
     case "check_calendar_and_offer": return actionCheckCalendarAndOffer(cfg, run);
     case "delay_execution":        return { ok: true, output: { delayed: true } };
     case "if_else":                return actionIfElse(cfg, run);
+    case "switch":                 return actionSwitch(cfg, run);
     default: return { ok: false, error: `action_type desconhecido: ${actionType}` };
   }
 }

@@ -26,7 +26,8 @@ export type OrbitFlowActionType =
   | "send_rich_media"
   | "check_calendar_and_offer"
   | "delay_execution"
-  | "if_else";
+  | "if_else"
+  | "switch";
 
 export type OrbitFlowAction = {
   id: string;
