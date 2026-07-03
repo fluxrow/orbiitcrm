@@ -98,3 +98,8 @@ verify_jwt = false
 
 [functions.orbit-advisor-scan]
 verify_jwt = false
+
+[functions.orbit-advisor-apply]
+verify_jwt = false
+
+
