@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, Zap, History, Trash2, Play, AlertCircle, CheckCircle2, Clock, Filter, ListChecks } from "lucide-react";
 import { FlowConditionsDialog } from "./FlowConditionsDialog";
+import { FlowHelpPanel } from "./FlowHelpPanel";
 import { FlowActionsEditor } from "./FlowActionsEditor";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -58,6 +59,7 @@ export function FluxosTab({ empresaId }: { empresaId: string | null | undefined 
 
   return (
     <div className="space-y-4">
+      <FlowHelpPanel />
       <FlowEventMap empresaId={empresaId} />
 
       <Card className="glass-card">
