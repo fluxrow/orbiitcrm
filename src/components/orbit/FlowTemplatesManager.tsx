@@ -102,6 +102,24 @@ export function FlowTemplatesManager() {
     toast.success(`Exportado: ${a.download}`);
   };
 
+  const doUpsert = (data: FlowTemplateExport, shouldUpdate: boolean, existingId?: string) => {
+    upsert.mutate(
+      {
+        id: shouldUpdate ? existingId : undefined,
+        nome: shouldUpdate ? data.nome : existingId ? `${data.nome} (import)` : data.nome,
+        descricao: data.descricao ?? null,
+        categoria: data.categoria ?? null,
+        definicao: data.definicao,
+        ativo: true,
+        is_global: true,
+      },
+      {
+        onSuccess: () => toast.success(shouldUpdate ? "Template atualizado" : "Template importado"),
+        onError: (e: any) => toast.error(e.message),
+      },
+    );
+  };
+
   const handleImport = async (file: File) => {
     try {
       const txt = await file.text();
@@ -110,30 +128,22 @@ export function FlowTemplatesManager() {
         toast.error(`Import falhou: ${(parsed as { error: string }).error}`);
         return;
       }
-      const existing = (templates ?? []).find((t) => t.nome === parsed.data.nome);
-      const shouldUpdate = existing
-        ? confirm(
-            `Template "${parsed.data.nome}" já existe.\n\nOK = atualizar existente\nCancelar = criar cópia`
-          )
-        : false;
-      upsert.mutate(
-        {
-          id: shouldUpdate ? existing!.id : undefined,
-          nome: shouldUpdate ? parsed.data.nome : existing ? `${parsed.data.nome} (import)` : parsed.data.nome,
-          descricao: parsed.data.descricao ?? null,
-          categoria: parsed.data.categoria ?? null,
-          definicao: parsed.data.definicao,
-          ativo: true,
-          is_global: true,
-        },
-        {
-          onSuccess: () => toast.success(shouldUpdate ? "Template atualizado" : "Template importado"),
-          onError: (e: any) => toast.error(e.message),
-        },
-      );
+      // Abre o preview para validação de placeholders / templates / agentes.
+      setImportPreview(parsed.data);
     } catch (e: any) {
       toast.error(`Falha ao ler arquivo: ${e.message}`);
     }
+  };
+
+  const confirmImport = (patched: FlowTemplateExport) => {
+    const existing = (templates ?? []).find((t) => t.nome === patched.nome);
+    const shouldUpdate = existing
+      ? confirm(
+          `Template "${patched.nome}" já existe.\n\nOK = atualizar existente\nCancelar = criar cópia`,
+        )
+      : false;
+    doUpsert(patched, shouldUpdate, existing?.id);
+    setImportPreview(null);
   };
 
   const filtered = useMemo(() => {
