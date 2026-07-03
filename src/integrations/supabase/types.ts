@@ -581,8 +581,247 @@ export type Database = {
           },
         ]
       }
+      orbit_advisor_applied_changes: {
+        Row: {
+          applied_by: string
+          created_at: string
+          empresa_id: string
+          id: string
+          rollback_of: string | null
+          snapshot_after: Json | null
+          snapshot_before: Json | null
+          suggestion_id: string | null
+          target_id: string | null
+          target_kind: string
+        }
+        Insert: {
+          applied_by: string
+          created_at?: string
+          empresa_id: string
+          id?: string
+          rollback_of?: string | null
+          snapshot_after?: Json | null
+          snapshot_before?: Json | null
+          suggestion_id?: string | null
+          target_id?: string | null
+          target_kind: string
+        }
+        Update: {
+          applied_by?: string
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          rollback_of?: string | null
+          snapshot_after?: Json | null
+          snapshot_before?: Json | null
+          suggestion_id?: string | null
+          target_id?: string | null
+          target_kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_advisor_applied_changes_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_advisor_applied_changes_rollback_of_fkey"
+            columns: ["rollback_of"]
+            isOneToOne: false
+            referencedRelation: "orbit_advisor_applied_changes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_advisor_applied_changes_suggestion_id_fkey"
+            columns: ["suggestion_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_advisor_suggestions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_advisor_messages: {
+        Row: {
+          content: Json
+          created_at: string
+          empresa_id: string
+          id: string
+          role: string
+          thread_id: string
+          tokens_in: number | null
+          tokens_out: number | null
+          tool_calls: Json | null
+        }
+        Insert: {
+          content?: Json
+          created_at?: string
+          empresa_id: string
+          id?: string
+          role: string
+          thread_id: string
+          tokens_in?: number | null
+          tokens_out?: number | null
+          tool_calls?: Json | null
+        }
+        Update: {
+          content?: Json
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          role?: string
+          thread_id?: string
+          tokens_in?: number | null
+          tokens_out?: number | null
+          tool_calls?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_advisor_messages_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_advisor_messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_advisor_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_advisor_snapshots: {
+        Row: {
+          empresa_id: string
+          id: string
+          snapshot: Json
+          taken_at: string
+        }
+        Insert: {
+          empresa_id: string
+          id?: string
+          snapshot: Json
+          taken_at?: string
+        }
+        Update: {
+          empresa_id?: string
+          id?: string
+          snapshot?: Json
+          taken_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_advisor_snapshots_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_advisor_suggestions: {
+        Row: {
+          action: Json
+          applied_change_id: string | null
+          blocked_reason: string | null
+          criada_por: string
+          empresa_id: string
+          gerada_em: string
+          id: string
+          racional: string | null
+          risco: string
+          status: string
+          tipo: string
+          titulo: string
+          updated_at: string
+          user_confirmed_at: string | null
+          user_confirmed_by: string | null
+        }
+        Insert: {
+          action?: Json
+          applied_change_id?: string | null
+          blocked_reason?: string | null
+          criada_por?: string
+          empresa_id: string
+          gerada_em?: string
+          id?: string
+          racional?: string | null
+          risco?: string
+          status?: string
+          tipo: string
+          titulo: string
+          updated_at?: string
+          user_confirmed_at?: string | null
+          user_confirmed_by?: string | null
+        }
+        Update: {
+          action?: Json
+          applied_change_id?: string | null
+          blocked_reason?: string | null
+          criada_por?: string
+          empresa_id?: string
+          gerada_em?: string
+          id?: string
+          racional?: string | null
+          risco?: string
+          status?: string
+          tipo?: string
+          titulo?: string
+          updated_at?: string
+          user_confirmed_at?: string | null
+          user_confirmed_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_advisor_suggestions_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_advisor_threads: {
+        Row: {
+          created_at: string
+          empresa_id: string
+          id: string
+          titulo: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          empresa_id: string
+          id?: string
+          titulo?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          titulo?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_advisor_threads_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_ai_config: {
         Row: {
+          advisor_locked_paths: Json
           campos_qualificacao: Json
           created_at: string | null
           empresa_id: string | null
@@ -610,6 +849,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          advisor_locked_paths?: Json
           campos_qualificacao?: Json
           created_at?: string | null
           empresa_id?: string | null
@@ -637,6 +877,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          advisor_locked_paths?: Json
           campos_qualificacao?: Json
           created_at?: string | null
           empresa_id?: string | null
@@ -4120,6 +4361,7 @@ export type Database = {
       }
       extract_domain: { Args: { p: string }; Returns: string }
       generate_unique_slug: { Args: { p_nome: string }; Returns: string }
+      get_advisor_snapshot: { Args: { p_empresa_id: string }; Returns: Json }
       get_campaign_analytics_summary: {
         Args: { p_campaign_id: string }
         Returns: {
