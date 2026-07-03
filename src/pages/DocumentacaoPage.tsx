@@ -247,8 +247,8 @@ export default function DocumentacaoPage() {
               <p className="text-xs text-muted-foreground">Use variáveis <code>{"{{prospect.nome}}"}</code>, <code>{"{{empresa.nome}}"}</code>, <code>{"{{link_agendamento}}"}</code>. Placeholders desconhecidos ficam com aviso amarelo.</p>
             </Step>
 
-            <Step title="Passo 4 · Instanciar o Core Flow" action="Configurações → Fluxos → Novo Fluxo. Selecione [CORE] Orbit Core Flow (badge Oficial). Ajuste os template_slug de cada ação para os templates recém-criados. Salve e ative.">
-              <p className="text-xs text-muted-foreground">O TemplateSelectField mostra a lista da conta — nenhuma digitação manual.</p>
+            <Step title="Passo 4 · Instanciar o Core Flow" action="Configurações → Fluxos → botão Instanciar Core Flow. Preencha empresa.nome, vendedor.telefone e link_agendamento; o fluxo nasce inativo já com os placeholders substituídos.">
+              <p className="text-xs text-muted-foreground">O template Oficial não é copiado — o fluxo instanciado fica vinculado por <code>template_id</code>. Você pode revisar as ações e depois ativar.</p>
             </Step>
 
             <Step title="Passo 5 · Enviar lead de teste" action="Use o webhook orbit_lead_recebido (Integrações → Ingestão) ou crie um prospect manual. Acompanhe execução em Fluxos → Runs.">
