@@ -236,17 +236,33 @@ function TemplateQuickCreateDialog({
   if (!state) return null;
   const editing = state.mode === "edit" && state.template;
 
+  const placeholderCheck = validatePlaceholders(corpo);
+
   const handleSave = async () => {
-    if (!nome.trim() || !corpo.trim()) {
-      toast.error("Nome e corpo são obrigatórios");
+    const parsed = MessageTemplateFormSchema.safeParse({
+      nome: nome.trim(),
+      canal,
+      categoria: categoria.trim() || null,
+      corpo_texto: corpo,
+      assunto_email: assunto.trim() || null,
+    });
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
+      toast.error(first?.message || "Dados inválidos");
       return;
+    }
+    if (placeholderCheck.unknown.length > 0) {
+      const proceed = confirm(
+        `Placeholders desconhecidos: ${placeholderCheck.unknown.map((p) => `{{${p}}}`).join(", ")}\n\nEles não serão substituídos em runtime. Salvar mesmo assim?`,
+      );
+      if (!proceed) return;
     }
     try {
       const payload: any = {
-        nome: nome.trim(),
-        canal,
-        categoria: categoria.trim() || null,
-        corpo_texto: corpo,
+        nome: parsed.data.nome,
+        canal: parsed.data.canal,
+        categoria: parsed.data.categoria,
+        corpo_texto: parsed.data.corpo_texto,
         ativo: true,
       };
       if (canal === "email" && assunto.trim()) payload.assunto_email = assunto.trim();
