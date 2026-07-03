@@ -728,7 +728,9 @@ export type Database = {
           applied_change_id: string | null
           blocked_reason: string | null
           criada_por: string
+          dedupe_key: string | null
           empresa_id: string
+          expires_at: string | null
           gerada_em: string
           id: string
           racional: string | null
@@ -745,7 +747,9 @@ export type Database = {
           applied_change_id?: string | null
           blocked_reason?: string | null
           criada_por?: string
+          dedupe_key?: string | null
           empresa_id: string
+          expires_at?: string | null
           gerada_em?: string
           id?: string
           racional?: string | null
@@ -762,7 +766,9 @@ export type Database = {
           applied_change_id?: string | null
           blocked_reason?: string | null
           criada_por?: string
+          dedupe_key?: string | null
           empresa_id?: string
+          expires_at?: string | null
           gerada_em?: string
           id?: string
           racional?: string | null
@@ -4362,6 +4368,10 @@ export type Database = {
       extract_domain: { Args: { p: string }; Returns: string }
       generate_unique_slug: { Args: { p_nome: string }; Returns: string }
       get_advisor_snapshot: { Args: { p_empresa_id: string }; Returns: Json }
+      get_advisor_snapshot_admin: {
+        Args: { p_empresa_id: string }
+        Returns: Json
+      }
       get_campaign_analytics_summary: {
         Args: { p_campaign_id: string }
         Returns: {
@@ -4456,6 +4466,14 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      list_advisor_scan_targets: {
+        Args: never
+        Returns: {
+          empresa_id: string
+          nome: string
+          plano: string
+        }[]
       }
       list_public_plans: {
         Args: never
