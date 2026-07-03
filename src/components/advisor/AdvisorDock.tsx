@@ -1,14 +1,18 @@
 import { useState, useRef, useEffect } from "react";
-import { Sparkles, Send, X, RotateCcw, MessageSquare, Lightbulb } from "lucide-react";
+import { Sparkles, Send, X, RotateCcw, MessageSquare, Lightbulb, Play, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAdvisorChat } from "@/hooks/useAdvisorChat";
+import { useAdvisorSuggestions, isApplyable, type AdvisorSuggestion } from "@/hooks/useAdvisorSuggestions";
+import { AdvisorApplyDialog } from "./AdvisorApplyDialog";
 import { useTenant } from "@/contexts/TenantContext";
 import { cn } from "@/lib/utils";
+
 
 /**
  * AdvisorDock — FAB + Sheet lateral com o Orbit Advisor.
@@ -19,9 +23,12 @@ export function AdvisorDock() {
   const { empresaId, isBlocked, notFound } = useTenant();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
+  const [applyTarget, setApplyTarget] = useState<AdvisorSuggestion | null>(null);
   const { messages, isStreaming, send, reset } = useAdvisorChat();
+  const { data: suggestions = [], isLoading: sugLoading } = useAdvisorSuggestions();
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -72,7 +79,10 @@ export function AdvisorDock() {
                   <Sparkles className="h-4 w-4 text-primary-foreground" />
                 </span>
                 Orbit Advisor
-                <Badge variant="outline" className="text-[10px] ml-1">Fase 1 · leitura</Badge>
+                <Badge variant="outline" className="text-[10px] ml-1">
+                  {suggestions.length > 0 ? `${suggestions.length} sugestão(ões)` : "Ativo"}
+                </Badge>
+
               </SheetTitle>
               <div className="flex items-center gap-1">
                 <Button size="icon" variant="ghost" onClick={reset} title="Nova conversa">
@@ -174,21 +184,106 @@ export function AdvisorDock() {
               </form>
             </TabsContent>
 
-            <TabsContent value="insights" className="flex-1 overflow-auto px-5 py-6 mt-0 border-0">
-              <div className="text-sm text-muted-foreground space-y-3">
-                <div className="rounded-md border border-dashed border-border p-4 text-center">
-                  <Lightbulb className="h-6 w-6 mx-auto mb-2 opacity-50" />
-                  <p className="font-medium text-foreground">Sugestões proativas em breve</p>
-                  <p className="text-xs mt-1">
-                    Nesta fase o Advisor só responde perguntas. O scanner automático
-                    (Fase 2) vai popular esta aba com sugestões acionáveis e diff visual.
-                  </p>
-                </div>
-              </div>
+            <TabsContent value="insights" className="flex-1 overflow-hidden mt-0 border-0">
+              <ScrollArea className="h-full px-5 py-4">
+                <TooltipProvider delayDuration={200}>
+                  <div className="space-y-3">
+                    {sugLoading && (
+                      <p className="text-xs text-muted-foreground">Carregando sugestões…</p>
+                    )}
+                    {!sugLoading && suggestions.length === 0 && (
+                      <div className="rounded-md border border-dashed border-border p-4 text-center">
+                        <Lightbulb className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm font-medium text-foreground">
+                          Nenhuma sugestão pendente
+                        </p>
+                        <p className="text-xs mt-1 text-muted-foreground">
+                          O scanner roda de hora em hora. Quando algo merecer sua atenção,
+                          aparece aqui com botão de aplicar.
+                        </p>
+                      </div>
+                    )}
+                    {suggestions.map((s) => {
+                      const applyable = isApplyable(s);
+                      const riscoColor =
+                        s.risco === "alto"
+                          ? "border-destructive/50 bg-destructive/5"
+                          : s.risco === "medio"
+                            ? "border-primary/40 bg-primary/5"
+                            : "border-border bg-muted/30";
+                      return (
+                        <div
+                          key={s.id}
+                          className={cn(
+                            "rounded-md border p-3 space-y-2",
+                            riscoColor,
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-foreground leading-snug">
+                                {s.titulo}
+                              </p>
+                              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                <Badge variant="outline" className="text-[9px] uppercase">
+                                  {s.risco}
+                                </Badge>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {s.action?.kind ?? "sem ação"}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            {s.racional}
+                          </p>
+                          <div className="flex justify-end pt-1">
+                            {applyable ? (
+                              <Button
+                                size="sm"
+                                variant="default"
+                                onClick={() => setApplyTarget(s)}
+                                className="h-7 text-xs"
+                              >
+                                <Play className="h-3 w-3 mr-1" /> Aplicar
+                              </Button>
+                            ) : (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      disabled
+                                      className="h-7 text-xs"
+                                    >
+                                      <Lock className="h-3 w-3 mr-1" /> Revisão manual
+                                    </Button>
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="left" className="text-xs max-w-[220px]">
+                                  Este tipo de ação ainda não é aplicável direto pelo Advisor.
+                                  Abra o item no Orbit para agir manualmente.
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </TooltipProvider>
+              </ScrollArea>
             </TabsContent>
           </Tabs>
         </SheetContent>
       </Sheet>
+
+      <AdvisorApplyDialog
+        suggestion={applyTarget}
+        onClose={() => setApplyTarget(null)}
+      />
     </>
   );
+
 }

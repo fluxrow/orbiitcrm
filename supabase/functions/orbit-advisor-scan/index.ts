@@ -62,26 +62,52 @@ type Suggestion = {
   status: "pending";
 };
 
+// ------------------------------------------------------------------
+// Default thresholds (podem ser sobrescritos por tenant via
+// orbit_ai_config.advisor_thresholds — merge raso por detector).
+// ------------------------------------------------------------------
+const DEFAULT_THRESHOLDS = {
+  flow_error_spike:        { min_errors: 3,  error_ratio: 0.2, hi_errors: 10 },
+  flow_latency_regression: { p95_warn_s: 60, p95_high_s: 180 },
+  stage_stagnation:        { min_ativos: 15, window_days: 7 },
+  tasks_backlog:           { warn: 10, high: 50 },
+  handoff_queue:           { warn: 5 },
+  conversas_overflow:      { warn: 50 },
+} as const;
+
+type Thresholds = typeof DEFAULT_THRESHOLDS;
+
+function resolveThresholds(snapshot: any): Thresholds {
+  const tenant = (snapshot?.ai_config?.advisor_thresholds ?? {}) as Record<string, Record<string, unknown>>;
+  const out: any = {};
+  for (const [k, defaults] of Object.entries(DEFAULT_THRESHOLDS)) {
+    out[k] = { ...defaults, ...(tenant[k] ?? {}) };
+  }
+  return out as Thresholds;
+}
+
 type Detector = {
   name: string;
-  run: (empresaId: string, snapshot: any) => Suggestion[];
+  run: (empresaId: string, snapshot: any, t: Thresholds) => Suggestion[];
 };
 
 function inHours(h: number): string {
   return new Date(Date.now() + h * 3600 * 1000).toISOString();
 }
 
+
 // ------------------------------------------------------------------
 // Deterministic detectors — cheap, no LLM
 // ------------------------------------------------------------------
 const detectFlowErrorSpike: Detector = {
   name: "flow_error_spike",
-  run(empresaId, snapshot) {
+  run(empresaId, snapshot, t) {
+    const cfg = t.flow_error_spike;
     const out: Suggestion[] = [];
     for (const f of snapshot.flows ?? []) {
       const erros = Number(f.erros_24h ?? 0);
       const runs = Number(f.runs_24h ?? 0);
-      if (erros >= 3 || (runs > 0 && erros / runs >= 0.2)) {
+      if (erros >= cfg.min_errors || (runs > 0 && erros / runs >= cfg.error_ratio)) {
         out.push({
           empresa_id: empresaId,
           tipo: "flow_error_spike",
@@ -89,11 +115,11 @@ const detectFlowErrorSpike: Detector = {
           racional:
             `O fluxo executou ${runs}x nas últimas 24h e falhou ${erros}x.` +
             (f.ultimo_erro ? ` Último erro: ${String(f.ultimo_erro).slice(0, 200)}` : ""),
-          risco: erros >= 10 ? "alto" : "medio",
+          risco: erros >= cfg.hi_errors ? "alto" : "medio",
           action: {
-            kind: "flow_inspect",
+            kind: "flow_pause",
             target_id: f.id,
-            hint: "Revisar orbit_flow_run_steps para o erro raiz antes de propor variação.",
+            hint: "Pausar o fluxo enquanto o erro raiz é investigado.",
           },
           dedupe_key: `flow_error_spike:${f.id}`,
           expires_at: inHours(6),
@@ -106,22 +132,24 @@ const detectFlowErrorSpike: Detector = {
   },
 };
 
+
 const detectLatencyRegression: Detector = {
   name: "flow_latency_regression",
-  run(empresaId, snapshot) {
+  run(empresaId, snapshot, t) {
+    const cfg = t.flow_latency_regression;
     const out: Suggestion[] = [];
     for (const f of snapshot.flows ?? []) {
       const p95 = Number(f.latencia_p95_s ?? 0);
-      if (p95 >= 60) {
+      if (p95 >= cfg.p95_warn_s) {
         out.push({
           empresa_id: empresaId,
           tipo: "flow_latency_regression",
           titulo: `Fluxo "${f.nome}" com p95 de ${p95.toFixed(1)}s`,
           racional:
-            `Latência p95 nas últimas 24h ultrapassou 60s (${p95.toFixed(1)}s). ` +
+            `Latência p95 nas últimas 24h ultrapassou ${cfg.p95_warn_s}s (${p95.toFixed(1)}s). ` +
             `Provável gargalo em waits/HTTP externo — considerar reduzir espera ou paralelizar.`,
-          risco: p95 >= 180 ? "alto" : "medio",
-          action: { kind: "flow_inspect", target_id: f.id, hint: "Rever waits e chamadas externas." },
+          risco: p95 >= cfg.p95_high_s ? "alto" : "medio",
+          action: { kind: "flow_variation_propose", target_id: f.id, hint: "Rever waits e chamadas externas." },
           dedupe_key: `flow_latency:${f.id}`,
           expires_at: inHours(12),
           criada_por: "scan",
@@ -135,25 +163,26 @@ const detectLatencyRegression: Detector = {
 
 const detectStageStagnation: Detector = {
   name: "stage_stagnation",
-  run(empresaId, snapshot) {
+  run(empresaId, snapshot, t) {
+    const cfg = t.stage_stagnation;
     const out: Suggestion[] = [];
     for (const s of snapshot.pipeline ?? []) {
       if (s.is_won || s.is_lost) continue;
       const ativos = Number(s.leads_ativos ?? 0);
       const mov7 = Number(s.mov_7d ?? 0);
-      if (ativos >= 15 && mov7 === 0) {
+      if (ativos >= cfg.min_ativos && mov7 === 0) {
         out.push({
           empresa_id: empresaId,
           tipo: "stage_stagnation",
-          titulo: `Etapa "${s.nome}" com ${ativos} leads parados há 7+ dias`,
+          titulo: `Etapa "${s.nome}" com ${ativos} leads parados há ${cfg.window_days}+ dias`,
           racional:
-            `Nenhum lead se moveu de "${s.nome}" nos últimos 7 dias, e há ${ativos} ativos. ` +
+            `Nenhum lead se moveu de "${s.nome}" nos últimos ${cfg.window_days} dias, e há ${ativos} ativos. ` +
             `Sugere revisão do critério de avanço ou de um follow-up automático.`,
           risco: "medio",
           action: {
-            kind: "stage_inspect",
+            kind: "stage_add_followup_task",
             target_id: s.id,
-            hint: "Considerar variação de fluxo com follow-up para essa etapa.",
+            hint: "Criar tarefa de follow-up para desbloquear os leads parados.",
           },
           dedupe_key: `stage_stag:${s.id}`,
           expires_at: inHours(24),
@@ -166,22 +195,23 @@ const detectStageStagnation: Detector = {
   },
 };
 
+
 const detectOverloadedKpis: Detector = {
   name: "overloaded_kpis",
-  run(empresaId, snapshot) {
+  run(empresaId, snapshot, t) {
     const out: Suggestion[] = [];
     const k = snapshot.kpis ?? {};
     const tasks = Number(k.tasks_atrasadas ?? 0);
     const handoffs = Number(k.handoffs_pendentes ?? 0);
     const conversas = Number(k.conversas_abertas ?? 0);
 
-    if (tasks >= 10) {
+    if (tasks >= t.tasks_backlog.warn) {
       out.push({
         empresa_id: empresaId,
         tipo: "tasks_backlog",
         titulo: `${tasks} tarefas em atraso`,
         racional: `Tarefas com prazo vencido acumuladas: ${tasks}. Recomenda-se redistribuir ou renegociar prazos.`,
-        risco: tasks >= 50 ? "alto" : "medio",
+        risco: tasks >= t.tasks_backlog.high ? "alto" : "medio",
         action: { kind: "tasks_inspect", hint: "Abrir Tarefas e filtrar por atrasadas." },
         dedupe_key: "tasks_backlog",
         expires_at: inHours(12),
@@ -189,7 +219,7 @@ const detectOverloadedKpis: Detector = {
         status: "pending",
       });
     }
-    if (handoffs >= 5) {
+    if (handoffs >= t.handoff_queue.warn) {
       out.push({
         empresa_id: empresaId,
         tipo: "handoff_queue",
@@ -203,7 +233,7 @@ const detectOverloadedKpis: Detector = {
         status: "pending",
       });
     }
-    if (conversas >= 50) {
+    if (conversas >= t.conversas_overflow.warn) {
       out.push({
         empresa_id: empresaId,
         tipo: "conversas_overflow",
@@ -221,6 +251,7 @@ const detectOverloadedKpis: Detector = {
     return out;
   },
 };
+
 
 const DETECTORS: Detector[] = [
   detectFlowErrorSpike,
@@ -291,6 +322,7 @@ async function scanEmpresa(
   // Rodar detectores medindo cada um
   const locked: string[] = (snapshot as any)?.ai_config?.advisor_locked_paths ?? [];
   const lockedSet = new Set(locked.map(String));
+  const thresholds = resolveThresholds(snapshot);
 
   const detectorResults: Array<{ detector: string; suggestions: Suggestion[] }> = [];
   const perDetectorTiming: Record<string, number> = {};
@@ -301,7 +333,8 @@ async function scanEmpresa(
     m.runs += 1;
     const dStart = Date.now();
     try {
-      const suggestions = detector.run(empresaId, snapshot);
+      const suggestions = detector.run(empresaId, snapshot, thresholds);
+
       const dur = Date.now() - dStart;
       m.duration_ms += dur;
       m.suggestions_raw += suggestions.length;
