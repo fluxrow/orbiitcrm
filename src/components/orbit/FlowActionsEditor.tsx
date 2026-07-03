@@ -635,11 +635,74 @@ function ActionEditDialog({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
       <Label className="text-xs">{label}</Label>
       {children}
+    </div>
+  );
+}
+
+export { ActionPickerDialog, ActionEditDialog };
+
+function StageSelectField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (stage: PipelineStage | null) => void;
+}) {
+  const { data: stages = [], isLoading } = usePipelineStages();
+  const hasStages = (stages ?? []).length > 0;
+  return (
+    <div className="space-y-2">
+      <Field label="Etapa de destino no funil">
+        {isLoading ? (
+          <div className="text-xs text-muted-foreground">Carregando etapas...</div>
+        ) : !hasStages ? (
+          <div className="text-xs text-amber-400">
+            Nenhuma etapa cadastrada. Configure em Pipeline primeiro.
+          </div>
+        ) : (
+          <Select
+            value={value || "__none__"}
+            onValueChange={(v) => {
+              if (v === "__none__") return onChange(null);
+              const s = (stages ?? []).find((x) => x.id === v) ?? null;
+              onChange(s);
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione uma etapa" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">— Nenhuma —</SelectItem>
+              {(stages ?? []).map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  <span className="inline-flex items-center gap-2">
+                    <span
+                      className="inline-block h-2 w-2 rounded-full"
+                      style={{ background: s.cor || "hsl(var(--muted-foreground))" }}
+                    />
+                    {s.nome}
+                    {s.is_won ? <span className="text-[10px] text-green-400 ml-1">(ganho)</span> : null}
+                    {s.is_lost ? <span className="text-[10px] text-red-400 ml-1">(perdido)</span> : null}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </Field>
+      <a
+        href="/orbit/config"
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+      >
+        <ExternalLink className="h-3 w-3" /> Gerenciar etapas do pipeline
+      </a>
     </div>
   );
 }
