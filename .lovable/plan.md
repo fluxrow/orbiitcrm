@@ -1,137 +1,97 @@
+
 ## Objetivo
 
-Formalizar o **Orbit Core Flow** — o template mestre que toda nova conta recebe — junto com:
-1. Melhorias no editor de condições aninhadas (AND/OR).
-2. Validação inline no editor de templates de mensagem.
-3. Import/Export de templates de fluxo (JSON) — para replicar o Core em qualquer tenant.
-4. Atualização da documentação (`DocumentacaoPage`) e criação de um **Guia de Configuração** in-app.
+Três reforços à espinha dorsal do Orbit Core Flow:
+
+1. **Botão "Instanciar Core Flow"** — 1 clique cria o fluxo no tenant atual, já ligado ao template oficial e com as variáveis do cliente resolvidas.
+2. **Blindar templates com badge "Oficial"** — edição livre bloqueada; só variações controladas (trocar templates de mensagem e prompts de IA).
+3. **Import de `.flow.json` mais rígido** — valida versão e placeholders contra a whitelist do tenant antes de gravar.
 
 ---
 
-## Parte 1 — Orbit Core Flow (template mestre)
+## Parte 1 — Botão "Instanciar Core Flow"
 
-### 1.1 Seed do template no banco
-Migration nova que insere (ou faz `upsert` por `nome`) o template `[CORE] Orbit Core Flow` em `orbit_flow_templates`, marcado `is_global=true`, `is_official=true` (nova coluna booleana). Estrutura JSON do `definicao`:
+**Onde:** `src/pages/OrbitFlowsPage.tsx` (header, ao lado de "Novo fluxo") e também um card destacado quando o tenant ainda não tem nenhum fluxo baseado no `[CORE]`.
 
-```text
-trigger: orbit_lead_recebido
-actions:
-  1. switch  → prospect.origem
-       case "instagram|meta"  → set_tag: ORIGEM_ADS
-       case "site|typebot"    → set_tag: ORIGEM_SITE
-       default                → set_tag: ORIGEM_MANUAL
-  2. ai_agent → prompt_slug: CORE_QUALIFICACAO_INICIAL
-  3. if/else → prospect.qualificado == true
-       THEN:
-         4. auto_create_deal_for_prospect
-         5. send_vendedor_notification (admin)
-       ELSE:
-         6. if/else → prospect.renda_baixa == true
-              THEN: send_template  slug=[CORE] OFFER_LOW_TICKET
-              ELSE: send_template  slug=[CORE] NURTURING_GENERICO
-  7. delay 3h (no_reply)
-  8. ai_agent → prompt_slug: CORE_FOLLOWUP
-  9. switch → status_conversa
-       case "aberta"    → schedule_recheck 24h
-       case "encerrada" → end_flow
- 10. if/else → status_conversa == "handoff"
-       THEN: transferencia_vendedor + zapi_notify_admin
-```
+**Comportamento:**
+- Busca o template com `is_official = true` e nome iniciando com `[CORE]` via `useAllFlowTemplates`.
+- Se o tenant já tem um fluxo com `template_id` daquele core → mostra "Core Flow já instalado" com link para editar.
+- Se não: abre um `ConfirmDialog` mostrando as variáveis que serão injetadas (nome da empresa, telefone do vendedor default, link de agendamento default) com inputs pré-preenchidos a partir de `orbit_empresas` / `pe_users` / `orbit_integrations_config`.
+- Ao confirmar, chama a mutation existente `useCreateFlowFromTemplate` (arquivo `useOrbitFlows.ts`) passando o template do core; em seguida roda um `patchFlowDefinition` que percorre `actions[]` e substitui os placeholders `{{empresa.nome}}`, `{{vendedor.telefone}}`, `{{link_agendamento}}` em `action_config` (JSON deep-clone).
+- Toast + redireciona para o editor do fluxo criado (`/{slug}/flows/{id}`).
 
-O JSON usa os mesmos tipos já suportados por `useOrbitFlows.ts` / `orbit-flow-executor` (nenhuma nova ação backend).
+**Novos arquivos:**
+- `src/components/orbit/InstantiateCoreFlowButton.tsx` — botão + dialog.
+- `src/hooks/useInstantiateCoreFlow.ts` — carrega variáveis do tenant, clona definição, aplica substituições, chama a mutation.
 
-### 1.2 Templates de mensagem "[CORE]"
-Mesma migration insere no `orbit_message_templates` (escopo `empresa_id = NULL` = global do master tenant) com `slug` fixo:
-- `[CORE] Abordagem Inicial`
-- `[CORE] Quebra de Objeção`
-- `[CORE] OFFER_LOW_TICKET` (downsell)
-- `[CORE] NURTURING_GENERICO`
-- `[CORE] Follow-up 3h`
-
-Corpo com placeholders `{{lead.nome}}`, `{{empresa.nome}}`, `{{link_agendamento}}`. Os slugs referenciados pelo Core Flow batem 1:1.
-
-### 1.3 Instanciação automática no onboarding
-No fluxo `orbit-onboarding-*` (ou trigger de criação de `saas_empresa`), acrescentar step **"aplicar Core Flow"**: chama a mesma rotina do wizard "Novo Fluxo" com `template_id = core_flow_id`, gerando um `orbit_flows` + `orbit_flow_actions` reais na conta nova, já ativos.
-
-Nova opção no `FlowTemplatesManager`: badge **"Oficial"** + botão **"Aplicar em todas as contas ativas"** (dispara edge function `orbit-flow-broadcast-core`).
+**Sem migration** — reaproveita `is_official`, `orbit_flow_templates` e `orbit_flows` já existentes.
 
 ---
 
-## Parte 2 — Import / Export JSON de templates
+## Parte 2 — Bloquear edição linha a linha de templates "Oficiais"
 
-- Novo botão no `FlowTemplatesManager` por linha: **Exportar** → baixa `{nome}.flow.json` com `{ nome, descricao, categoria, definicao, version: 1 }`.
-- Novo botão global **Importar** → dialog aceita `.json`, valida schema com Zod (`FlowTemplateSchemaV1`), preview das ações e confirmação → cria novo template.
-- Suporte a re-importação: se `nome` bater, oferecer "Atualizar existente" vs "Criar cópia".
+**Regra:** um template com `is_official = true` não pode ter sua definição JSON alterada, nem ser renomeado, duplicado como cópia editável ou excluído. Só é permitido:
+- Ativar / desativar (Switch).
+- Exportar `.flow.json`.
+- Instanciar em um tenant (Parte 1).
+- Editar **apenas** metadados de exibição controlados: nome dos templates de mensagem referenciados e slugs dos agentes de IA — via um novo modo "Configurar variações".
 
----
+**Alterações em `FlowTemplatesManager.tsx`:**
+- Se `t.is_official`:
+  - Botão "Editar" (Pencil) vira "Configurar variações" (`Settings2`) → abre novo `<OfficialTemplateVariationsDialog />`.
+  - Botão "Duplicar" fica desabilitado com tooltip "Templates oficiais são somente leitura — use Instanciar".
+  - Botão "Excluir" fica desabilitado com tooltip "Templates oficiais não podem ser excluídos".
+- `TemplateEditorDialog` recebe `readOnly` quando abrir um oficial (defesa em profundidade). Textarea da definição fica `readOnly`, botão "Salvar" oculto.
 
-## Parte 3 — UI de condições aninhadas (AND/OR)
+**Guard no back-end (defesa em profundidade):**
+- Migration curta adicionando uma função `public.prevent_official_flow_template_edit()` e um trigger `BEFORE UPDATE OR DELETE ON orbit_flow_templates` que bloqueia se `OLD.is_official = true` E (a) `DELETE`, ou (b) `UPDATE` mudou `nome`, `descricao`, `categoria`, `definicao`. Continua permitindo `ativo` toggle. Bypass: `service_role` (para permitir seed/broadcast).
 
-Refino em `FlowIfElseEditor` / `FlowConditionsDialog`:
-- Cada grupo ganha **barra lateral colorida** (AND=azul, OR=âmbar) + rótulo `TODAS as regras` / `QUALQUER regra`.
-- Indentação clara por nível + contador (`Nível 2/3`).
-- Botão "colapsar grupo" para grupos com >3 regras.
-- Ao editar regra existente: manter o `id` estável (não recriar), evitando reset do valor ao trocar operador.
-- Validação inline: destaca em vermelho regras com `field` ou `value` vazios; bloqueia salvar do fluxo se houver regra inválida (toast + scroll até primeira).
-- Testes manuais: renomear campo, trocar operador, mover regra entre grupos, remover grupo com filhos.
+**Novo componente:**
+- `src/components/orbit/OfficialTemplateVariationsDialog.tsx` — lê `definicao`, extrai referências a templates de mensagem (`send_whatsapp_template`, `send_email_template`) e a agentes IA (`toggle_ai_agent`) e mostra selects/dropdowns para trocar apenas esses IDs/slugs, salvando de volta em `definicao` com um novo `useUpdateOfficialVariations` que passa por edge function `orbit-flow-template-variation` (usa service role, valida que só campos permitidos mudaram).
 
----
-
-## Parte 4 — Validação do editor inline de templates
-
-No `TemplateSelectField` + `TemplateQuickCreateDialog`:
-- Schema Zod: `nome ≥ 3`, `corpo ≥ 10`, `canal` obrigatório.
-- Parser de placeholders `{{...}}`: extrai variáveis do corpo e valida contra whitelist (`lead.*`, `empresa.*`, `deal.*`, `link_*`). Placeholders desconhecidos → warning amarelo (não bloqueia).
-- Se o template selecionado num action estiver **inativo** ou **deletado**, mostrar `AlertCircle` vermelho no card da action e impedir salvar o fluxo.
-- Preview live com placeholders substituídos por exemplos (mock lead).
+**Nova edge function:** `supabase/functions/orbit-flow-template-variation/index.ts` — recebe `{ template_id, variations: { [action_path]: { template_id?, agent_slug? } } }`, carrega o template, aplica só nesses paths, salva. CORS + JWT verify em código + Zod.
 
 ---
 
-## Parte 5 — Documentação e Guia de Configuração
+## Parte 3 — Import `.flow.json` com validação de versão e whitelist
 
-### 5.1 `DocumentacaoPage` (usuário final)
-Nova seção **"Orbit Core Flow"** com:
-- O que é / por que existe.
-- Diagrama ASCII do fluxo (mesma árvore da Parte 1).
-- Lista dos templates `[CORE]` e placeholders esperados.
-- Como customizar (troca de templates, prompt IA) sem quebrar a estrutura.
-- FAQ: "posso apagar uma ação?", "como voltar ao padrão?".
+**Alterações em `src/lib/flowTemplateSchema.ts`:**
+- Constante `SUPPORTED_IMPORT_VERSIONS = [1]`; `parseTemplateImport` retorna `{ ok: false, error: "Versão X não suportada. Suportadas: 1" }` quando fora da lista. Hoje já é `z.literal(1)` — trocar para `z.number().int()` + checagem manual, com mensagem clara.
+- Nova função `validateImportPlaceholders(definicao, whitelist)` que percorre `actions[]` recursivamente, extrai todos os `{{...}}` de valores string em `action_config` e retorna `{ unknown: string[], usedTemplateIds: string[], usedAgentSlugs: string[] }`.
+- Nova função `validateImportAgainstTenant(def, ctx)` que compara `usedTemplateIds` com IDs disponíveis (`orbit_message_templates` do tenant), `usedAgentSlugs` com `orbit_ai_config` daquele tenant, e placeholders desconhecidos contra `TEMPLATE_PLACEHOLDER_WHITELIST` (mais `payload.*` e `custom.*`).
 
-### 5.2 Novo **Guia de Configuração in-app** (`/{slug}/setup-guide`)
-Wizard de 5 passos com checklist persistente (`orbit_client_onboardings`):
-1. Conectar WhatsApp (Z-API).
-2. Configurar identidade da IA (prompt + tom).
-3. Revisar templates `[CORE]` (renomear mentoria, links).
-4. Ativar o Core Flow (toggle).
-5. Enviar lead de teste.
+**Alterações em `FlowTemplatesManager.tsx` → `handleImport`:**
+- Depois do `parseTemplateImport`, roda `validateImportAgainstTenant`. Se houver `unknown placeholders`, `missing_templates` ou `missing_agents`, abre um novo `<ImportPreviewDialog />` listando cada problema em vermelho e as ações compatíveis em verde. O botão "Importar assim mesmo" só é habilitado se não houver **erros bloqueantes** (placeholders desconhecidos = warn; templates/agentes ausentes = bloqueante, com opção "Mapear agora" que abre dropdowns para escolher substitutos existentes).
+- Ao confirmar, aplica o mapping (substitui IDs/slugs no `definicao`) e chama `upsert.mutate` como hoje.
 
-Cada passo tem: descrição, link direto pra tela, botão "marcar como feito", indicador de progresso. Pensado para **onboarders externos** — texto sem jargão técnico.
-
-### 5.3 README interno (`docs/CORE_FLOW.md`)
-Para devs/onboarders: descreve o schema JSON do template, como editar via migration, como rodar o broadcast, e o contrato dos slugs `[CORE]`.
+**Novo arquivo:**
+- `src/components/orbit/ImportPreviewDialog.tsx` — modal com três seções (Placeholders, Templates de mensagem, Agentes IA) e um botão "Importar" desabilitado enquanto houver bloqueio.
 
 ---
 
-## Detalhes técnicos
+## Documentação
 
-- **Migration**: `orbit_flow_templates.is_official boolean default false` + `unique(nome) where is_official`; seed via `INSERT ... ON CONFLICT`.
-- **GRANTs**: já cobertos pelas policies existentes de `orbit_flow_templates` e `orbit_message_templates`.
-- **Edge function nova**: `orbit-flow-broadcast-core` (super-admin only) — itera `saas_empresa` ativas e instancia o Core Flow onde ainda não existe.
-- **Zod schemas** novos em `src/lib/flowTemplateSchema.ts` (compartilhado import/export + validação inline).
-- **Rota nova**: `src/pages/SetupGuidePage.tsx` + entry no `OrbitSidebar` (badge "Novo").
-- **Sem breaking changes** no executor: todas as ações usadas já existem.
+- `docs/CORE_FLOW.md`: nova seção **"Instanciar em um tenant"** com screenshot do botão, tabela de variáveis injetadas e exemplo de patch.
+- `docs/CORE_FLOW.md`: nova seção **"Templates Oficiais são imutáveis"** explicando o trigger + o dialog de variações.
+- `docs/CORE_FLOW.md`: nova seção **"Import Validado"** documentando versões suportadas, whitelist de placeholders e o fluxo de mapping.
+- `src/pages/DocumentacaoPage.tsx` (bloco "Orbit Core Flow"): adiciona 3 subitens correspondentes com o mesmo conteúdo resumido, mais o passo "Clique em **Instanciar Core Flow** na página Fluxos" no Guia de Configuração de 5 min.
 
-## Ordem de execução
-
-1. Migration seed (Core Flow + templates `[CORE]` + coluna `is_official`).
-2. Import/Export JSON no `FlowTemplatesManager`.
-3. Broadcast edge function + botão "Aplicar em todas as contas".
-4. Refino UI condições aninhadas.
-5. Validação inline de templates.
-6. Documentação + Guia de Configuração.
+---
 
 ## Fora de escopo
 
-- Versionamento histórico de templates (v2, v3).
-- Editor visual estilo n8n.
-- Marketplace público de fluxos.
+- Versionamento histórico dos templates oficiais (v1 / v2 / rollback).
+- Editor visual de placeholders por nível de aninhamento.
+- Marketplace público de `.flow.json`.
+- Multi-idioma dos templates.
+
+## Ordem de execução
+
+1. Migration: trigger `prevent_official_flow_template_edit`.
+2. Schema + helpers de validação em `flowTemplateSchema.ts` + testes unitários.
+3. Edge function `orbit-flow-template-variation` + deploy.
+4. `useInstantiateCoreFlow` + `InstantiateCoreFlowButton` + integração na `OrbitFlowsPage`.
+5. Bloqueio na UI + `OfficialTemplateVariationsDialog`.
+6. `ImportPreviewDialog` + integração em `FlowTemplatesManager`.
+7. Atualização de `docs/CORE_FLOW.md` e `DocumentacaoPage.tsx`.
+8. Teste E2E adicional cobrindo: instanciar, tentar editar oficial (deve falhar), importar `.flow.json` com placeholder desconhecido (deve pedir mapping).
