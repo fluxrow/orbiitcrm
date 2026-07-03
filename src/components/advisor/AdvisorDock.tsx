@@ -1,14 +1,18 @@
 import { useState, useRef, useEffect } from "react";
-import { Sparkles, Send, X, RotateCcw, MessageSquare, Lightbulb } from "lucide-react";
+import { Sparkles, Send, X, RotateCcw, MessageSquare, Lightbulb, Play, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAdvisorChat } from "@/hooks/useAdvisorChat";
+import { useAdvisorSuggestions, isApplyable, type AdvisorSuggestion } from "@/hooks/useAdvisorSuggestions";
+import { AdvisorApplyDialog } from "./AdvisorApplyDialog";
 import { useTenant } from "@/contexts/TenantContext";
 import { cn } from "@/lib/utils";
+
 
 /**
  * AdvisorDock — FAB + Sheet lateral com o Orbit Advisor.
