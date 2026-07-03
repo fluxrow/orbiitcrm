@@ -2871,7 +2871,7 @@ export type Database = {
           cor: string | null
           created_at: string | null
           descricao: string | null
-          empresa_id: string | null
+          empresa_id: string
           id: string
           is_archived: boolean
           is_lost: boolean | null
@@ -2890,7 +2890,7 @@ export type Database = {
           cor?: string | null
           created_at?: string | null
           descricao?: string | null
-          empresa_id?: string | null
+          empresa_id: string
           id?: string
           is_archived?: boolean
           is_lost?: boolean | null
@@ -2909,7 +2909,7 @@ export type Database = {
           cor?: string | null
           created_at?: string | null
           descricao?: string | null
-          empresa_id?: string | null
+          empresa_id?: string
           id?: string
           is_archived?: boolean
           is_lost?: boolean | null
