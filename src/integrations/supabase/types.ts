@@ -693,6 +693,63 @@ export type Database = {
           },
         ]
       }
+      orbit_advisor_scan_runs: {
+        Row: {
+          created_at: string
+          detector_metrics: Json
+          duration_ms: number | null
+          error: string | null
+          finished_at: string | null
+          id: string
+          results: Json
+          source: string
+          started_at: string
+          suggestions_blocked: number
+          suggestions_created: number
+          suggestions_deduped: number
+          suggestions_evaluated: number
+          tenants_error: number
+          tenants_ok: number
+          tenants_total: number
+        }
+        Insert: {
+          created_at?: string
+          detector_metrics?: Json
+          duration_ms?: number | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          results?: Json
+          source?: string
+          started_at?: string
+          suggestions_blocked?: number
+          suggestions_created?: number
+          suggestions_deduped?: number
+          suggestions_evaluated?: number
+          tenants_error?: number
+          tenants_ok?: number
+          tenants_total?: number
+        }
+        Update: {
+          created_at?: string
+          detector_metrics?: Json
+          duration_ms?: number | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          results?: Json
+          source?: string
+          started_at?: string
+          suggestions_blocked?: number
+          suggestions_created?: number
+          suggestions_deduped?: number
+          suggestions_evaluated?: number
+          tenants_error?: number
+          tenants_ok?: number
+          tenants_total?: number
+        }
+        Relationships: []
+      }
       orbit_advisor_snapshots: {
         Row: {
           empresa_id: string
