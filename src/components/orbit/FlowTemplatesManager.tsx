@@ -20,7 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Layers, Plus, Pencil, Copy, Trash2, Search, AlertCircle, CheckCircle2, Download, Upload, ShieldCheck } from "lucide-react";
+import { Layers, Plus, Pencil, Copy, Trash2, Search, AlertCircle, CheckCircle2, Download, Upload, ShieldCheck, Settings2, Lock } from "lucide-react";
 import {
   useAllFlowTemplates,
   useDeleteFlowTemplate,
@@ -31,8 +31,17 @@ import type { OrbitFlowTemplate } from "@/hooks/useOrbitFlows";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { buildTemplateExport, parseTemplateImport } from "@/lib/flowTemplateSchema";
-import { useRef } from "react";
+import {
+  buildTemplateExport,
+  parseTemplateImport,
+  type FlowTemplateExport,
+} from "@/lib/flowTemplateSchema";
+import { useEffect, useRef } from "react";
+import { ImportPreviewDialog } from "./ImportPreviewDialog";
+import { OfficialTemplateVariationsDialog } from "./OfficialTemplateVariationsDialog";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const EMPTY_DEF = `{
   "trigger_type": "lead_recebido",
@@ -54,7 +63,31 @@ export function FlowTemplatesManager() {
   const upsert = useUpsertFlowTemplate();
   const [search, setSearch] = useState("");
   const [editor, setEditor] = useState<EditorState>({ open: false, template: null });
+  const [variationsFor, setVariationsFor] = useState<OrbitFlowTemplate | null>(null);
+  const [importPreview, setImportPreview] = useState<FlowTemplateExport | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Referências disponíveis (globalmente visíveis para o admin) para o preview de import.
+  const { data: availableTemplates = [] } = useQuery({
+    queryKey: ["flow-import-templates"],
+    queryFn: async () => {
+      const { data } = await (supabase.from("orbit_message_templates" as any) as any)
+        .select("id, nome")
+        .limit(1000);
+      return (data ?? []) as { id: string; nome: string }[];
+    },
+  });
+  const { data: availableAgents = [] } = useQuery({
+    queryKey: ["flow-import-agents"],
+    queryFn: async () => {
+      const { data } = await (supabase.from("orbit_ai_config" as any) as any)
+        .select("agent_slug, nome_agente")
+        .limit(1000);
+      return ((data ?? []) as any[])
+        .filter((r) => r.agent_slug)
+        .map((r) => ({ slug: r.agent_slug as string, nome: r.nome_agente as string | null }));
+    },
+  });
 
   const handleExport = (t: OrbitFlowTemplate) => {
     const payload = buildTemplateExport(t);
@@ -69,6 +102,24 @@ export function FlowTemplatesManager() {
     toast.success(`Exportado: ${a.download}`);
   };
 
+  const doUpsert = (data: FlowTemplateExport, shouldUpdate: boolean, existingId?: string) => {
+    upsert.mutate(
+      {
+        id: shouldUpdate ? existingId : undefined,
+        nome: shouldUpdate ? data.nome : existingId ? `${data.nome} (import)` : data.nome,
+        descricao: data.descricao ?? null,
+        categoria: data.categoria ?? null,
+        definicao: data.definicao,
+        ativo: true,
+        is_global: true,
+      },
+      {
+        onSuccess: () => toast.success(shouldUpdate ? "Template atualizado" : "Template importado"),
+        onError: (e: any) => toast.error(e.message),
+      },
+    );
+  };
+
   const handleImport = async (file: File) => {
     try {
       const txt = await file.text();
@@ -77,30 +128,22 @@ export function FlowTemplatesManager() {
         toast.error(`Import falhou: ${(parsed as { error: string }).error}`);
         return;
       }
-      const existing = (templates ?? []).find((t) => t.nome === parsed.data.nome);
-      const shouldUpdate = existing
-        ? confirm(
-            `Template "${parsed.data.nome}" já existe.\n\nOK = atualizar existente\nCancelar = criar cópia`
-          )
-        : false;
-      upsert.mutate(
-        {
-          id: shouldUpdate ? existing!.id : undefined,
-          nome: shouldUpdate ? parsed.data.nome : existing ? `${parsed.data.nome} (import)` : parsed.data.nome,
-          descricao: parsed.data.descricao ?? null,
-          categoria: parsed.data.categoria ?? null,
-          definicao: parsed.data.definicao,
-          ativo: true,
-          is_global: true,
-        },
-        {
-          onSuccess: () => toast.success(shouldUpdate ? "Template atualizado" : "Template importado"),
-          onError: (e: any) => toast.error(e.message),
-        },
-      );
+      // Abre o preview para validação de placeholders / templates / agentes.
+      setImportPreview(parsed.data);
     } catch (e: any) {
       toast.error(`Falha ao ler arquivo: ${e.message}`);
     }
+  };
+
+  const confirmImport = (patched: FlowTemplateExport) => {
+    const existing = (templates ?? []).find((t) => t.nome === patched.nome);
+    const shouldUpdate = existing
+      ? confirm(
+          `Template "${patched.nome}" já existe.\n\nOK = atualizar existente\nCancelar = criar cópia`,
+        )
+      : false;
+    doUpsert(patched, shouldUpdate, existing?.id);
+    setImportPreview(null);
   };
 
   const filtered = useMemo(() => {
@@ -246,24 +289,60 @@ export function FlowTemplatesManager() {
                       </span>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Editar"
-                        onClick={() => setEditor({ open: true, template: t })}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Duplicar"
-                        onClick={() =>
-                          setEditor({ open: true, template: t, duplicate: true })
-                        }
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
+                      {(t as any).is_official ? (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Configurar variações"
+                                onClick={() => setVariationsFor(t)}
+                              >
+                                <Settings2 className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Configurar variações (oficial)</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Editar"
+                          onClick={() => setEditor({ open: true, template: t })}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Duplicar"
+                                disabled={(t as any).is_official}
+                                onClick={() =>
+                                  setEditor({ open: true, template: t, duplicate: true })
+                                }
+                              >
+                                {(t as any).is_official ? (
+                                  <Lock className="h-4 w-4" />
+                                ) : (
+                                  <Copy className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          {(t as any).is_official && (
+                            <TooltipContent>
+                              Templates oficiais são somente leitura — use "Instanciar" no tenant
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
+                      </TooltipProvider>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -272,21 +351,35 @@ export function FlowTemplatesManager() {
                       >
                         <Download className="h-4 w-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Excluir"
-                        onClick={() => {
-                          if (confirm(`Excluir o template "${t.nome}"?`)) {
-                            del.mutate(t.id, {
-                              onSuccess: () => toast.success("Template excluído"),
-                              onError: (e: any) => toast.error(e.message),
-                            });
-                          }
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Excluir"
+                                disabled={(t as any).is_official}
+                                onClick={() => {
+                                  if (confirm(`Excluir o template "${t.nome}"?`)) {
+                                    del.mutate(t.id, {
+                                      onSuccess: () => toast.success("Template excluído"),
+                                      onError: (e: any) => toast.error(e.message),
+                                    });
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          {(t as any).is_official && (
+                            <TooltipContent>
+                              Templates oficiais não podem ser excluídos
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
                   </div>
                 </div>
@@ -299,6 +392,18 @@ export function FlowTemplatesManager() {
       <TemplateEditorDialog
         state={editor}
         onClose={() => setEditor({ open: false, template: null })}
+      />
+      <OfficialTemplateVariationsDialog
+        template={variationsFor}
+        onClose={() => setVariationsFor(null)}
+      />
+      <ImportPreviewDialog
+        open={!!importPreview}
+        parsed={importPreview}
+        availableTemplates={availableTemplates}
+        availableAgents={availableAgents}
+        onCancel={() => setImportPreview(null)}
+        onConfirm={confirmImport}
       />
     </Card>
   );

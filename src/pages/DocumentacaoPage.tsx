@@ -207,11 +207,19 @@ export default function DocumentacaoPage() {
                 </ul>
               </div>
               <div>
+                <p className="text-foreground font-semibold mb-2">Novidades (v1.1)</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li><strong>Instanciar Core Flow (1 clique):</strong> em <em>Configurações → Fluxos</em>, o botão <em>Instanciar Core Flow</em> cria o fluxo já com <code>{"{{empresa.nome}}"}</code>, <code>{"{{vendedor.telefone}}"}</code> e <code>{"{{link_agendamento}}"}</code> substituídos. Fluxo nasce inativo.</li>
+                  <li><strong>Templates Oficiais são imutáveis:</strong> o badge <em>Oficial</em> bloqueia edição, duplicação e exclusão pela UI, reforçado por um trigger no banco. Use <em>Configurar variações</em> para trocar apenas <code>template_id</code> e <code>agent_slug</code>.</li>
+                  <li><strong>Import validado:</strong> ao importar <code>.flow.json</code> abre um preview que valida a versão suportada, marca placeholders fora da whitelist e obriga mapear IDs de mensagem/slugs de IA ausentes no tenant.</li>
+                </ul>
+              </div>
+              <div>
                 <p className="text-foreground font-semibold mb-2">FAQ</p>
                 <ul className="space-y-2">
                   <li><strong className="text-foreground">Posso apagar uma ação?</strong> Sim, mas prefira duplicar o template.</li>
-                  <li><strong className="text-foreground">Voltar ao padrão?</strong> Delete o fluxo instanciado e recrie a partir do template <code>[CORE] Orbit Core Flow</code>.</li>
-                  <li><strong className="text-foreground">Portar entre contas?</strong> Use <em>Exportar</em>/<em>Importar</em> (.flow.json) no Gerenciador de Templates.</li>
+                  <li><strong className="text-foreground">Voltar ao padrão?</strong> Delete o fluxo instanciado e clique <em>Instanciar Core Flow</em> novamente.</li>
+                  <li><strong className="text-foreground">Portar entre contas?</strong> Use <em>Exportar</em>/<em>Importar</em> (.flow.json) no Gerenciador de Templates — o preview mostra bloqueios.</li>
                 </ul>
               </div>
             </CardContent></Card>
@@ -239,8 +247,8 @@ export default function DocumentacaoPage() {
               <p className="text-xs text-muted-foreground">Use variáveis <code>{"{{prospect.nome}}"}</code>, <code>{"{{empresa.nome}}"}</code>, <code>{"{{link_agendamento}}"}</code>. Placeholders desconhecidos ficam com aviso amarelo.</p>
             </Step>
 
-            <Step title="Passo 4 · Instanciar o Core Flow" action="Configurações → Fluxos → Novo Fluxo. Selecione [CORE] Orbit Core Flow (badge Oficial). Ajuste os template_slug de cada ação para os templates recém-criados. Salve e ative.">
-              <p className="text-xs text-muted-foreground">O TemplateSelectField mostra a lista da conta — nenhuma digitação manual.</p>
+            <Step title="Passo 4 · Instanciar o Core Flow" action="Configurações → Fluxos → botão Instanciar Core Flow. Preencha empresa.nome, vendedor.telefone e link_agendamento; o fluxo nasce inativo já com os placeholders substituídos.">
+              <p className="text-xs text-muted-foreground">O template Oficial não é copiado — o fluxo instanciado fica vinculado por <code>template_id</code>. Você pode revisar as ações e depois ativar.</p>
             </Step>
 
             <Step title="Passo 5 · Enviar lead de teste" action="Use o webhook orbit_lead_recebido (Integrações → Ingestão) ou crie um prospect manual. Acompanhe execução em Fluxos → Runs.">

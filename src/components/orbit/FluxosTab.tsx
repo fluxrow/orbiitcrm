@@ -23,6 +23,7 @@ import {
   type OrbitFlowTemplate,
 } from "@/hooks/useOrbitFlows";
 import { FlowEventMap } from "./FlowEventMap";
+import { InstantiateCoreFlowButton } from "./InstantiateCoreFlowButton";
 import { toast } from "sonner";
 
 const TRIGGER_LABELS: Record<string, string> = {
@@ -73,13 +74,16 @@ export function FluxosTab({ empresaId }: { empresaId: string | null | undefined 
               Automatize ações com base em eventos do CRM (lead qualificado, mudança de etapa, etc.).
             </CardDescription>
           </div>
-          <Button
-            onClick={() => setWizardOpen(true)}
-            className="bg-brand text-brand-foreground hover:bg-brand/90"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Novo Fluxo
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <InstantiateCoreFlowButton empresaId={empresaId} />
+            <Button
+              onClick={() => setWizardOpen(true)}
+              className="bg-brand text-brand-foreground hover:bg-brand/90"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Novo Fluxo
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (

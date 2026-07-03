@@ -113,3 +113,75 @@ Delete o fluxo instanciado e crie um novo a partir do template `[CORE] Orbit Cor
 
 **Posso ter dois Core Flows na mesma conta?**  
 Não é recomendado — só um deve ter trigger `lead_recebido`.
+
+---
+
+## Instanciar em um tenant (1 clique)
+
+Em `Configurações → Fluxos`, o botão **Instanciar Core Flow** aparece
+quando o template com `is_official = true` e nome iniciando por `[CORE]`
+está disponível e o tenant ainda não tem um fluxo vinculado a ele.
+
+Ao clicar, um dialog pede três variáveis do cliente:
+
+| Placeholder             | Onde é substituído                                              |
+| ----------------------- | --------------------------------------------------------------- |
+| `{{empresa.nome}}`      | Corpo dos templates, prompts da IA, títulos de task            |
+| `{{vendedor.telefone}}` | Ação `notify_vendedor` (número default do handoff)              |
+| `{{link_agendamento}}`  | Templates de mensagem `[CORE] Quebra de Objeção` etc.           |
+
+A substituição é feita por `injectPlaceholderValues()` em
+`src/lib/flowTemplateSchema.ts`: apenas valores **string** dentro de
+`trigger_config` / `condicoes` / `action_config` (recursivo em
+`then_actions` / `else_actions` / `cases`). Placeholders deixados em
+branco preservam o `{{placeholder}}` original para você preencher depois.
+
+O fluxo nasce **inativo** (`ativo = false`) — você revisa e ativa.
+
+---
+
+## Templates Oficiais são imutáveis
+
+Templates com `is_official = true` são a espinha dorsal e não podem ser
+alterados livremente:
+
+- **UI:** botões `Editar`, `Duplicar` e `Excluir` ficam desabilitados no
+  `FlowTemplatesManager` com tooltip explicativo. Só sobra
+  `Configurar variações`, `Exportar` e o switch `Ativo`.
+- **Banco:** o trigger `prevent_official_flow_template_edit` bloqueia
+  `UPDATE` de `nome`, `descricao`, `categoria`, `definicao` e
+  `is_official`, e bloqueia `DELETE`. Apenas `service_role` bypassa
+  (para permitir seed inicial e a edge function de variações).
+- **Variações permitidas:** o dialog `OfficialTemplateVariationsDialog`
+  chama a edge function `orbit-flow-template-variation` (super-admin
+  only) que aceita apenas um objeto
+  `{ templates: {oldId: newId}, agents: {oldSlug: newSlug} }` e regrava
+  a `definicao` trocando as referências nas ações
+  `send_whatsapp_template` / `send_email_template` / `send_rich_media`
+  e `toggle_ai_agent`.
+
+Para editar tudo, exporte o `.flow.json` e importe como template comum
+(sem o prefixo `[CORE]` e sem `is_official`).
+
+---
+
+## Import validado (`.flow.json`)
+
+O import passa por duas camadas antes de gravar:
+
+1. **`parseTemplateImport`** — valida JSON e schema Zod, e recusa
+   versões fora de `SUPPORTED_IMPORT_VERSIONS` (hoje `[1]`) com
+   mensagem clara.
+2. **`ImportPreviewDialog`** — abre uma prévia com três seções:
+   - **Placeholders:** cada `{{...}}` é comparado com
+     `TEMPLATE_PLACEHOLDER_WHITELIST` (+ `payload.*` e `custom.*`).
+     Desconhecidos ficam amarelos (warning, não bloqueiam).
+   - **Templates de mensagem:** cada `template_id` referenciado é
+     conferido contra `orbit_message_templates` do tenant. Ausentes
+     ficam vermelhos e obrigam mapeamento via `Select`.
+   - **Agentes de IA:** o mesmo para `agent_slug` contra
+     `orbit_ai_config`.
+
+O botão **Importar** só habilita quando não há bloqueios. O mapeamento
+é aplicado por `remapFlowDefinition()` antes do `upsert`.
+
