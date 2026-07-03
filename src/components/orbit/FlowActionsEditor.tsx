@@ -539,24 +539,16 @@ function ActionEditDialog({
           )}
 
           {(action.action_type === "change_deal_stage" || action.action_type === "move_deal_stage") && (
-            <>
-              <Field label="ID da etapa de destino">
-                <Input
-                  value={cfg.to_stage_id ?? ""}
-                  onChange={(e) => setCfg({ ...cfg, to_stage_id: e.target.value })}
-                  placeholder="UUID da etapa"
-                />
-              </Field>
-              {action.action_type === "change_deal_stage" && (
-                <Field label="OU slug da etapa">
-                  <Input
-                    value={cfg.to_stage_slug ?? ""}
-                    onChange={(e) => setCfg({ ...cfg, to_stage_slug: e.target.value })}
-                    placeholder="ex.: em-follow-up"
-                  />
-                </Field>
-              )}
-            </>
+            <StageSelectField
+              value={cfg.to_stage_id ?? ""}
+              onChange={(stage) =>
+                setCfg({
+                  ...cfg,
+                  to_stage_id: stage?.id ?? "",
+                  to_stage_slug: stage?.slug ?? "",
+                })
+              }
+            />
           )}
 
           {action.action_type === "create_task" && (
