@@ -62,14 +62,39 @@ type Suggestion = {
   status: "pending";
 };
 
+// ------------------------------------------------------------------
+// Default thresholds (podem ser sobrescritos por tenant via
+// orbit_ai_config.advisor_thresholds — merge raso por detector).
+// ------------------------------------------------------------------
+const DEFAULT_THRESHOLDS = {
+  flow_error_spike:        { min_errors: 3,  error_ratio: 0.2, hi_errors: 10 },
+  flow_latency_regression: { p95_warn_s: 60, p95_high_s: 180 },
+  stage_stagnation:        { min_ativos: 15, window_days: 7 },
+  tasks_backlog:           { warn: 10, high: 50 },
+  handoff_queue:           { warn: 5 },
+  conversas_overflow:      { warn: 50 },
+} as const;
+
+type Thresholds = typeof DEFAULT_THRESHOLDS;
+
+function resolveThresholds(snapshot: any): Thresholds {
+  const tenant = (snapshot?.ai_config?.advisor_thresholds ?? {}) as Record<string, Record<string, unknown>>;
+  const out: any = {};
+  for (const [k, defaults] of Object.entries(DEFAULT_THRESHOLDS)) {
+    out[k] = { ...defaults, ...(tenant[k] ?? {}) };
+  }
+  return out as Thresholds;
+}
+
 type Detector = {
   name: string;
-  run: (empresaId: string, snapshot: any) => Suggestion[];
+  run: (empresaId: string, snapshot: any, t: Thresholds) => Suggestion[];
 };
 
 function inHours(h: number): string {
   return new Date(Date.now() + h * 3600 * 1000).toISOString();
 }
+
 
 // ------------------------------------------------------------------
 // Deterministic detectors — cheap, no LLM
