@@ -1,0 +1,72 @@
+name: E2E — Core Flow Round-Trip
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/lib/flowTemplateSchema.ts"
+      - "src/components/orbit/FlowTemplatesManager.tsx"
+      - "src/components/orbit/ImportPreviewDialog.tsx"
+      - "supabase/migrations/**"
+      - "tests/e2e/golden-core-flow-roundtrip.spec.ts"
+      - ".github/workflows/e2e-core-flow.yml"
+  pull_request:
+    paths:
+      - "src/lib/flowTemplateSchema.ts"
+      - "src/components/orbit/FlowTemplatesManager.tsx"
+      - "src/components/orbit/ImportPreviewDialog.tsx"
+      - "supabase/migrations/**"
+      - "tests/e2e/golden-core-flow-roundtrip.spec.ts"
+  workflow_dispatch:
+
+jobs:
+  core-flow-roundtrip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: "1"
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      LOVABLE_BROWSER_SUPABASE_STORAGE_KEY: ${{ secrets.LOVABLE_BROWSER_SUPABASE_STORAGE_KEY }}
+      LOVABLE_BROWSER_SUPABASE_SESSION_JSON: ${{ secrets.LOVABLE_BROWSER_SUPABASE_SESSION_JSON }}
+      LOVABLE_BROWSER_SUPABASE_ACCESS_TOKEN: ${{ secrets.LOVABLE_BROWSER_SUPABASE_ACCESS_TOKEN }}
+      E2E_TENANT_SLUG: ${{ secrets.E2E_TENANT_SLUG }}
+      E2E_BASE_URL: http://localhost:8080
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install deps
+        run: bun install --frozen-lockfile
+      - name: Install Playwright browsers (chromium only)
+        run: bunx playwright install --with-deps chromium
+      - name: Build app
+        run: bun run build
+      - name: Start preview server
+        run: |
+          bunx vite preview --host 127.0.0.1 --port 8080 &
+          echo $! > /tmp/vite.pid
+          # aguarda porta ficar pronta
+          for i in {1..60}; do
+            if curl -sf http://localhost:8080 > /dev/null; then
+              echo "preview up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "preview não subiu"; exit 1
+      - name: Run Core Flow round-trip E2E (headless, no retries)
+        run: bunx playwright test tests/e2e/golden-core-flow-roundtrip.spec.ts --reporter=github,list
+      - name: Upload trace / artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-flow-e2e-artifacts
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+      - name: Stop preview
+        if: always()
+        run: |
+          if [ -f /tmp/vite.pid ]; then kill "$(cat /tmp/vite.pid)" || true; fi

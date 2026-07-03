@@ -185,3 +185,50 @@ O import passa por duas camadas antes de gravar:
 O botão **Importar** só habilita quando não há bloqueios. O mapeamento
 é aplicado por `remapFlowDefinition()` antes do `upsert`.
 
+
+---
+
+## Teste E2E de integridade (`golden-core-flow-roundtrip`)
+
+Um Playwright golden path garante que o `[CORE] Orbit Core Flow` nunca
+regride silenciosamente. Localização:
+`tests/e2e/golden-core-flow-roundtrip.spec.ts`.
+
+Cobre três invariantes, com `retries: 0` (divergência = falha imediata):
+
+1. **Export via UI** — abre `/{slug}/config?tab=flow-templates`, clica
+   em **Exportar .flow.json** no card oficial, valida `version=1`,
+   `categoria="Core"` e as 7 ações top-level.
+2. **Import de duplicata atualiza in-place** — sobe o mesmo arquivo,
+   confirma o dialog "já existe → atualizar existente", e checa via
+   query direta que continua existindo **1 só** registro com o mesmo
+   `id`, ainda `is_official=true`. Nenhum card com sufixo `(import)`
+   ou `(cópia)` deve aparecer.
+3. **Round-trip preserva placeholders e prompts da IA** — reexporta
+   após o import e faz `deepEqual(definicao)` byte-a-byte, valida que
+   `inspectFlowDefinition` retorna o mesmo conjunto de placeholders
+   sem desconhecidos, e que os slugs `CORE_QUALIFICACAO_INICIAL` e
+   `CORE_FOLLOWUP` (mais qualquer `system_prompt`/`user_prompt`
+   inline) sobrevivem intactos.
+
+### Rodar localmente
+
+```bash
+bunx playwright test tests/e2e/golden-core-flow-roundtrip.spec.ts
+```
+
+Requer as variáveis do `.env` da conta super-admin
+(`LOVABLE_BROWSER_SUPABASE_*`, `VITE_SUPABASE_*`, `E2E_TENANT_SLUG`).
+
+### CI
+
+Workflow: `.github/workflows/e2e-core-flow.yml`. Roda em
+`ubuntu-latest` com Chromium headless a cada push/PR que toca o
+schema de fluxos, o `FlowTemplatesManager`, migrations ou o próprio
+spec. Trace e report ficam disponíveis como artifact em caso de falha.
+
+**Se este teste falhar**, algo alterou o Core Flow oficial fora do
+caminho suportado (edição manual no banco, migration sem revisão, ou
+bug no export/import). Nunca faça `UPDATE` direto em
+`orbit_flow_templates` onde `is_official = true` — use uma migration
+com `SECURITY DEFINER` explícita.
