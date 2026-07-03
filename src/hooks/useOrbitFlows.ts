@@ -88,6 +88,7 @@ export type OrbitFlowTemplate = {
   definicao: any;
   ativo?: boolean;
   is_global?: boolean;
+  is_official?: boolean;
   created_at?: string;
   updated_at?: string;
 };
