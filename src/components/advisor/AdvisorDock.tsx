@@ -79,7 +79,10 @@ export function AdvisorDock() {
                   <Sparkles className="h-4 w-4 text-primary-foreground" />
                 </span>
                 Orbit Advisor
-                <Badge variant="outline" className="text-[10px] ml-1">Fase 1 · leitura</Badge>
+                <Badge variant="outline" className="text-[10px] ml-1">
+                  {suggestions.length > 0 ? `${suggestions.length} sugestão(ões)` : "Ativo"}
+                </Badge>
+
               </SheetTitle>
               <div className="flex items-center gap-1">
                 <Button size="icon" variant="ghost" onClick={reset} title="Nova conversa">
