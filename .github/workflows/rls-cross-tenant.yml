@@ -1,0 +1,34 @@
+name: RLS Cross-Tenant Smoke
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "src/test/rls-cross-tenant.test.ts"
+      - ".github/workflows/rls-cross-tenant.yml"
+  workflow_dispatch:
+
+jobs:
+  rls-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CI: "1"
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      RLS_TEST_USERS: ${{ secrets.RLS_TEST_USERS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install deps
+        run: bun install --frozen-lockfile
+      - name: Guard — required secrets present
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_PUBLISHABLE_KEY" ] || [ -z "$RLS_TEST_USERS" ]; then
+            echo "::warning::Missing one of VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY / RLS_TEST_USERS. Skipping."
+            exit 0
+          fi
+      - name: Vitest — RLS cross-tenant
+        run: bunx vitest run src/test/rls-cross-tenant.test.ts --reporter=default
