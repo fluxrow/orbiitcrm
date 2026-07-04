@@ -222,6 +222,7 @@ Deno.serve(async (req) => {
         note:
           "Copie rls_test_users_json UMA vez para o GitHub Secret RLS_TEST_USERS. Passwords só aparecem em criação ou com rotate=true.",
       },
+      undefined,
       req,
     );
   } catch (e: any) {
