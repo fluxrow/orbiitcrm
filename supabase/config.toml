@@ -69,6 +69,9 @@ verify_jwt = false
 [functions.admin-set-password]
 verify_jwt = false
 
+[functions.seed-rls-test-users]
+verify_jwt = false
+
 [functions.orbit-ai-generate-template]
 verify_jwt = false
 
