@@ -106,7 +106,6 @@ export default function PeAdminLayout() {
           <Outlet />
         </main>
       </div>
-      <RlsSeedCurlWidget />
     </div>
   );
 }
