@@ -5,7 +5,6 @@ import { usePeAuth } from "@/hooks/usePeAuth";
 import { Building2, Users, FileText, LogOut, Menu, X, Shield, Link2, BookOpen, ClipboardList, CreditCard, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Navigate } from "react-router-dom";
-import { RlsSeedCurlWidget } from "@/components/pe-admin/RlsSeedCurlWidget";
 
 const navItems = [
   { to: "/pe-admin/cadastros", label: "Empresas", icon: Building2 },
