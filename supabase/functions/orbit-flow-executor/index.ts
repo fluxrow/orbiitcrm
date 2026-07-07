@@ -363,6 +363,7 @@ async function actionCreateTask(cfg: Json, run: Json): Promise<StepResult> {
   const prazoDias = Number(cfg.prazo_dias ?? 1);
   const due = new Date(Date.now() + prazoDias * 86400000);
   const dueDate = due.toISOString().slice(0, 10);
+  const dealId = await resolveDealId(run);
   const { data, error } = await supabase
     .from("orbit_tasks")
     .insert({
@@ -371,11 +372,16 @@ async function actionCreateTask(cfg: Json, run: Json): Promise<StepResult> {
       descricao: cfg.descricao || null,
       due_date: dueDate,
       prospect_id: run.context?.payload?.prospect_id ?? null,
-      deal_id: run.context?.payload?.deal_id ?? (run.entity_type === "deal" ? run.entity_id : null),
+      deal_id: dealId,
       status: "pendente",
       tipo_tarefa: cfg.tipo_tarefa ?? "follow_up",
     })
     .select("id")
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, output: { task_id: data?.id } };
+}
+
     .maybeSingle();
   if (error) return { ok: false, error: error.message };
   return { ok: true, output: { task_id: data?.id } };
