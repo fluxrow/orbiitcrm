@@ -382,10 +382,7 @@ async function actionCreateTask(cfg: Json, run: Json): Promise<StepResult> {
   return { ok: true, output: { task_id: data?.id } };
 }
 
-    .maybeSingle();
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, output: { task_id: data?.id } };
-}
+
 
 async function actionToggleAiAgent(cfg: Json, run: Json): Promise<StepResult> {
   const prospectId = run.context?.payload?.prospect_id || (run.entity_type === "prospect" ? run.entity_id : null);
