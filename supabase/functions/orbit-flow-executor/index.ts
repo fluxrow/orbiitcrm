@@ -185,8 +185,30 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
   };
 }
 
+async function resolveDealId(run: Json): Promise<string | null> {
+  const payloadDealId = (run as any).context?.payload?.deal_id;
+  if (payloadDealId) return String(payloadDealId);
+  if ((run as any).entity_type === "deal" && (run as any).entity_id) return String((run as any).entity_id);
+  const prospectId = (run as any).context?.payload?.prospect_id || ((run as any).entity_type === "prospect" ? (run as any).entity_id : null);
+  if (!prospectId) return null;
+  const { data, error } = await supabase
+    .from("orbit_deals")
+    .select("id")
+    .eq("empresa_id", (run as any).empresa_id)
+    .eq("prospect_id", prospectId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.warn("[flow-executor] resolveDealId error", error.message);
+    return null;
+  }
+  return (data as any)?.id ?? null;
+}
+
 async function actionMoveDealStage(cfg: Json, run: Json): Promise<StepResult> {
-  const dealId = run.context?.payload?.deal_id || (run.entity_type === "deal" ? run.entity_id : null);
+  const dealId = await resolveDealId(run);
   if (!dealId) return { ok: false, error: "deal não identificado" };
   if (!cfg.to_stage_id) return { ok: false, error: "to_stage_id ausente" };
 
@@ -198,6 +220,7 @@ async function actionMoveDealStage(cfg: Json, run: Json): Promise<StepResult> {
   if (error) return { ok: false, error: error.message };
   return { ok: true, output: { deal_id: dealId, to_stage_id: cfg.to_stage_id } };
 }
+
 
 // ── Etapa F: novas ações ──────────────────────────────────────────────
 
