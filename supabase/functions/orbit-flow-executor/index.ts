@@ -84,15 +84,22 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
   if (!tpl) return { ok: false, error: "template não encontrado" };
 
   const p: any = prospect;
+  const payloadVars: any = run.context?.payload ?? {};
   const vars: Json = {
-    nome: p.nome ?? p.nome_contato ?? "",
-    empresa: p.empresa ?? p.razao_social ?? p.nome_fantasia ?? "",
-    nome_fantasia: p.nome_fantasia ?? p.empresa ?? "",
-    email: p.email ?? "",
+    nome:
+      p.nome_contato ??
+      p.nome ??
+      p.nome_razao ??
+      p.nome_fantasia ??
+      payloadVars.nome ??
+      "",
+    empresa: p.empresa ?? p.razao_social ?? p.nome_fantasia ?? p.nome_razao ?? "",
+    nome_fantasia: p.nome_fantasia ?? p.empresa ?? p.nome_razao ?? "",
+    email: p.email ?? p.email_principal ?? "",
     telefone: p.whatsapp ?? p.telefone ?? "",
     cidade: p.cidade ?? "",
     segmento: p.segmento ?? "",
-    ...(run.context?.payload?.vars ?? {}),
+    ...(payloadVars.vars ?? {}),
   };
   const mensagem = renderTemplateVars(tpl.corpo_texto || "", vars);
 
