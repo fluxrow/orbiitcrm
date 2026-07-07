@@ -105,7 +105,7 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
     await supabase.from("orbit_mensagens").insert({
       empresa_id: run.empresa_id,
       conversa_id: conversaId,
-      direcao: "saida",
+      direcao: "OUT",
       mensagem,
       canal: "whatsapp",
       status: "simulated",
@@ -130,7 +130,7 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
     await supabase.from("orbit_mensagens").insert({
       empresa_id: run.empresa_id,
       conversa_id: conversaId,
-      direcao: "saida",
+      direcao: "OUT",
       mensagem: "",
       tipo_midia: "image",
       url_midia: tpl.imagem_url,
@@ -146,7 +146,7 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
   await supabase.from("orbit_mensagens").insert({
     empresa_id: run.empresa_id,
     conversa_id: conversaId,
-    direcao: "saida",
+    direcao: "OUT",
     mensagem,
     canal: "whatsapp",
     status: textResult.ok ? "enviada" : "falhou",
