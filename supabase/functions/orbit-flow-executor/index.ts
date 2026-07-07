@@ -22,45 +22,160 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
 type Json = Record<string, any>;
 type StepResult = { ok: boolean; output?: Json; error?: string };
 
+function renderTemplateVars(text: string, vars: Json): string {
+  if (!text) return "";
+  return text.replace(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g, (_m, key) => {
+    const v = vars?.[key];
+    return v == null ? "" : String(v);
+  });
+}
+
+async function findOrCreateConversa(empresaId: string, prospectId: string, telefone: string): Promise<string | null> {
+  const { data: existing } = await supabase
+    .from("orbit_conversas")
+    .select("id")
+    .eq("empresa_id", empresaId)
+    .eq("prospect_id", prospectId)
+    .maybeSingle();
+  if (existing?.id) return existing.id;
+  const { data: created, error } = await supabase
+    .from("orbit_conversas")
+    .insert({
+      empresa_id: empresaId,
+      prospect_id: prospectId,
+      telefone_whatsapp: telefone,
+      canal: "whatsapp",
+      status: "aberta",
+    })
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("findOrCreateConversa error", error);
+    return null;
+  }
+  return created?.id ?? null;
+}
+
 async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepResult> {
-  const templateSlug = cfg.template_slug || cfg.template_id;
-  if (!templateSlug) return { ok: false, error: "template ausente" };
+  const templateSlug = cfg.template_slug || cfg.template_nome || (!cfg.template_id ? cfg.template : undefined);
+  if (!cfg.template_id && !templateSlug) return { ok: false, error: "template ausente" };
 
   const prospectId = run.context?.payload?.prospect_id || (run.entity_type === "prospect" ? run.entity_id : null);
   if (!prospectId) return { ok: false, error: "prospect não identificado" };
 
   const { data: prospect } = await supabase
     .from("orbit_prospects")
-    .select("telefone, whatsapp, empresa_id")
+    .select("*")
     .eq("id", prospectId)
     .maybeSingle();
-  if (!prospect?.telefone && !prospect?.whatsapp) return { ok: false, error: "prospect sem telefone" };
+  if (!prospect) return { ok: false, error: "prospect não encontrado" };
+  const telefone = (prospect as any).whatsapp || (prospect as any).telefone;
+  if (!telefone) return { ok: false, error: "prospect sem telefone" };
 
-  const tplQuery = supabase
+  let tplQuery = supabase
     .from("orbit_message_templates")
-    .select("id, conteudo, nome")
+    .select("id, corpo_texto, nome, imagem_url")
     .eq("empresa_id", run.empresa_id)
     .limit(1);
-  const { data: tpls } = cfg.template_id
-    ? await tplQuery.eq("id", cfg.template_id)
-    : await tplQuery.ilike("nome", `%${templateSlug}%`);
-
-  const tpl = tpls?.[0];
+  if (cfg.template_id) tplQuery = tplQuery.eq("id", cfg.template_id);
+  else tplQuery = tplQuery.ilike("nome", `%${templateSlug}%`);
+  const { data: tpls } = await tplQuery;
+  const tpl = tpls?.[0] as any;
   if (!tpl) return { ok: false, error: "template não encontrado" };
 
-  const resp = await fetch(`${FUNCTIONS_BASE}/orbit-send-message`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
-    body: JSON.stringify({
+  const p: any = prospect;
+  const vars: Json = {
+    nome: p.nome ?? p.nome_contato ?? "",
+    empresa: p.empresa ?? p.razao_social ?? p.nome_fantasia ?? "",
+    nome_fantasia: p.nome_fantasia ?? p.empresa ?? "",
+    email: p.email ?? "",
+    telefone: p.whatsapp ?? p.telefone ?? "",
+    cidade: p.cidade ?? "",
+    segmento: p.segmento ?? "",
+    ...(run.context?.payload?.vars ?? {}),
+  };
+  const mensagem = renderTemplateVars(tpl.corpo_texto || "", vars);
+
+  const conversaId = await findOrCreateConversa(run.empresa_id, prospectId, telefone);
+  if (!conversaId) return { ok: false, error: "não foi possível criar/obter conversa" };
+
+  const nowIso = new Date().toISOString();
+
+  if (cfg.dry_run === true) {
+    await supabase.from("orbit_mensagens").insert({
       empresa_id: run.empresa_id,
-      telefone: prospect.whatsapp || prospect.telefone,
-      mensagem: tpl.conteudo,
-      prospect_id: prospectId,
-      triggered_by_flow_id: run.flow_id,
-    }),
+      conversa_id: conversaId,
+      direcao: "saida",
+      mensagem,
+      canal: "whatsapp",
+      status: "simulated",
+      timestamp: nowIso,
+    });
+    return {
+      ok: true,
+      output: {
+        dry_run: true,
+        template_id: tpl.id,
+        template_nome: tpl.nome,
+        conversa_id: conversaId,
+        telefone,
+        mensagem,
+      },
+    };
+  }
+
+  let imageResult: any = null;
+  if (tpl.imagem_url) {
+    imageResult = await sendZapi(run.empresa_id, telefone, "image", { image: tpl.imagem_url, caption: "" });
+    await supabase.from("orbit_mensagens").insert({
+      empresa_id: run.empresa_id,
+      conversa_id: conversaId,
+      direcao: "saida",
+      mensagem: "",
+      tipo_midia: "image",
+      url_midia: tpl.imagem_url,
+      canal: "whatsapp",
+      status: imageResult.ok ? "enviada" : "falhou",
+      erro: imageResult.ok ? null : imageResult.error ?? null,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  const textResult = await sendZapi(run.empresa_id, telefone, "text", { message: mensagem });
+
+  await supabase.from("orbit_mensagens").insert({
+    empresa_id: run.empresa_id,
+    conversa_id: conversaId,
+    direcao: "saida",
+    mensagem,
+    canal: "whatsapp",
+    status: textResult.ok ? "enviada" : "falhou",
+    erro: textResult.ok ? null : textResult.error ?? null,
+    timestamp: new Date().toISOString(),
   });
-  const json = await resp.json().catch(() => ({}));
-  return { ok: resp.ok, output: json, error: resp.ok ? undefined : json?.error || `HTTP ${resp.status}` };
+
+  await supabase
+    .from("orbit_conversas")
+    .update({
+      ultima_mensagem_at: new Date().toISOString(),
+      ultima_mensagem_preview: (mensagem || "").slice(0, 200),
+    })
+    .eq("id", conversaId);
+
+  return {
+    ok: textResult.ok,
+    output: {
+      template_id: tpl.id,
+      template_nome: tpl.nome,
+      conversa_id: conversaId,
+      telefone,
+      mensagem,
+      image_sent: !!tpl.imagem_url,
+      image_result: imageResult?.output ?? null,
+      zapi: textResult.output ?? null,
+    },
+    error: textResult.ok ? undefined : textResult.error,
+  };
 }
 
 async function actionMoveDealStage(cfg: Json, run: Json): Promise<StepResult> {
