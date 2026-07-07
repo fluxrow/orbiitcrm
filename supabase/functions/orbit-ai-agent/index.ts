@@ -998,7 +998,7 @@ ${regrasBlock}`;
             prospect_id,
             conversa_id,
             vendedor_id: vendedorAtribuido,
-            origem: prospect?.origem ?? null,
+            origem: prospect?.origem_lead ?? prospect?.origem_contato ?? null,
             segmento: prospect?.segmento ?? null,
             source: "orbit-ai-agent",
           },
