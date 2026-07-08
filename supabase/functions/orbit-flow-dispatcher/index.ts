@@ -133,10 +133,12 @@ async function processEvent(event: any) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  // Internal-only: require service-role bearer token
+  // Internal-only: require service-role bearer token OR dedicated cron token
+  const CRON_TOKEN = Deno.env.get("FLOW_DISPATCHER_CRON_TOKEN") ?? "";
   const authHeader = req.headers.get("Authorization") ?? "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token || token !== SERVICE_KEY) {
+  const isAuthorized = token && (token === SERVICE_KEY || (CRON_TOKEN && token === CRON_TOKEN));
+  if (!isAuthorized) {
     return new Response(JSON.stringify({ ok: false, data: null, error: "unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
