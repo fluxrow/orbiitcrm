@@ -37,6 +37,7 @@ export default function OportunidadesKanbanPage() {
   const { data: produtosMap } = useOportunidadesProdutos(orgId);
   const { data: tarefasMap } = useOportunidadesProximaTarefa(orgId);
   const moveOp = useMoveOportunidade();
+  const preventHorizontalHistorySwipe = usePreventHorizontalHistorySwipe<HTMLDivElement>();
 
   const formatCurrency = (v: number | null) =>
     v != null
