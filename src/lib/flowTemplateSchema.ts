@@ -17,8 +17,8 @@ const subActionSchema: z.ZodType<any> = z.lazy(() =>
 
 const flowDefinitionSchema = z.object({
   trigger_type: z.string().min(1),
-  trigger_config: z.record(z.any()).default({}),
-  condicoes: z.record(z.any()).default({}),
+  trigger_config: z.record(z.string(), z.any()).default({}),
+  condicoes: z.record(z.string(), z.any()).default({}),
   actions: z.array(subActionSchema).default([]),
 });
 
