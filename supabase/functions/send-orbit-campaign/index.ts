@@ -334,7 +334,7 @@ const handler = async (req: Request): Promise<Response> => {
       if (campaign.created_by) {
         const { data: userData } = await supabase
           .from("pe_users")
-          .select("full_name, cargo, phone, email, signature_image_url, email_signature, use_personal_signature")
+          .select("full_name, cargo, phone, email, signature_image_url, signature_image_path, email_signature, use_personal_signature")
           .eq("id", campaign.created_by)
           .maybeSingle();
         senderUser = userData;
