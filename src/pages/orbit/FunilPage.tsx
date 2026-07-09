@@ -30,6 +30,7 @@ export default function FunilPage() {
   const convertDeal = useConvertDealToClient();
   const queryClient = useQueryClient();
   const { empresaId, basePath } = useTenant();
+  const preventHorizontalHistorySwipe = usePreventHorizontalHistorySwipe<HTMLDivElement>();
 
   // H2.b — Realtime: refletir mudanças em orbit_deals sem precisar dar F5
   useEffect(() => {
