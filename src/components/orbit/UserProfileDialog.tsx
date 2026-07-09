@@ -259,7 +259,7 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
                     <div style={{ borderTop: "1px solid hsl(var(--border))", paddingTop: "12px", fontFamily: "Arial, sans-serif" }}>
                       {form.signature_image_url ? (
                         <img
-                          src={form.signature_image_url}
+                          src={signaturePreviewUrl || form.signature_image_url}
                           alt={form.full_name || "Assinatura"}
                           style={{ maxWidth: "400px", width: "100%" }}
                           className="rounded"
