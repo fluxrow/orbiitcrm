@@ -11,9 +11,11 @@ import { Plus, Trash2, Play, Pause, Mic, Upload, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/contexts/TenantContext";
 import { useOrbitAudioLibrary, useCreateAudioClip, useDeleteAudioClip, useToggleAudioClip, AUDIO_CONTEXTOS, AudioClip } from "@/hooks/useOrbitAudioLibrary";
+import { useSignedOrbitMediaUrl } from "@/lib/orbit-media";
 import { toast } from "sonner";
 
 function AudioPlayer({ url }: { url: string }) {
+  const signed = useSignedOrbitMediaUrl(url);
   const [playing, setPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const toggle = () => {
@@ -24,8 +26,8 @@ function AudioPlayer({ url }: { url: string }) {
   };
   return (
     <div className="flex items-center gap-2">
-      <audio ref={audioRef} src={url} onEnded={() => setPlaying(false)} className="hidden" />
-      <Button variant="ghost" size="icon" onClick={toggle} className="h-7 w-7">
+      <audio ref={audioRef} src={signed || undefined} onEnded={() => setPlaying(false)} className="hidden" />
+      <Button variant="ghost" size="icon" onClick={toggle} className="h-7 w-7" disabled={!signed}>
         {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
       </Button>
     </div>
