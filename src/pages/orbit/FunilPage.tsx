@@ -14,6 +14,7 @@ import type { Tables } from "@/integrations/supabase/types";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/contexts/TenantContext";
+import { usePreventHorizontalHistorySwipe } from "@/hooks/usePreventHorizontalHistorySwipe";
 
 export default function FunilPage() {
   const navigate = useNavigate();
