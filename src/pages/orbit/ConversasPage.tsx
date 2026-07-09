@@ -19,7 +19,7 @@ import { ConversaProspectDrawer } from "@/components/orbit/ConversaProspectDrawe
 import { AudioLibraryPicker } from "@/components/orbit/AudioLibraryPicker";
 import { ZapiConnectionAlert } from "@/components/orbit/ZapiConnectionAlert";
 import type { AudioClip } from "@/hooks/useOrbitAudioLibrary";
-import { useSignedOrbitMediaUrl } from "@/lib/orbit-media";
+import { useSignedOrbitMedia } from "@/lib/orbit-media";
 
 function stripHtml(html: string): string {
   return html
@@ -36,7 +36,7 @@ function stripHtml(html: string): string {
 }
 
 function MediaPreview({ tipo_midia, url_midia, mensagem }: { tipo_midia: string | null; url_midia: string | null; mensagem?: string }) {
-  const signedUrl = useSignedOrbitMediaUrl(url_midia);
+  const { url: signedUrl, refresh } = useSignedOrbitMedia(url_midia);
   if (!tipo_midia || !signedUrl) return null;
 
   switch (tipo_midia) {
@@ -44,14 +44,14 @@ function MediaPreview({ tipo_midia, url_midia, mensagem }: { tipo_midia: string 
       return (
         <div className="mb-1">
           <a href={signedUrl} target="_blank" rel="noopener noreferrer">
-            <img src={signedUrl} alt={mensagem || "Imagem"} className="max-w-full max-h-60 rounded-md object-cover cursor-pointer hover:opacity-90 transition-opacity" />
+            <img src={signedUrl} alt={mensagem || "Imagem"} onError={refresh} className="max-w-full max-h-60 rounded-md object-cover cursor-pointer hover:opacity-90 transition-opacity" />
           </a>
         </div>
       );
     case "audio":
       return (
         <div className="mb-1">
-          <audio controls className="max-w-full" preload="metadata">
+          <audio controls className="max-w-full" preload="metadata" onError={refresh}>
             <source src={signedUrl} />
           </audio>
         </div>
@@ -59,7 +59,7 @@ function MediaPreview({ tipo_midia, url_midia, mensagem }: { tipo_midia: string 
     case "video":
       return (
         <div className="mb-1">
-          <video controls className="max-w-full max-h-60 rounded-md" preload="metadata">
+          <video controls className="max-w-full max-h-60 rounded-md" preload="metadata" onError={refresh}>
             <source src={signedUrl} />
           </video>
         </div>
