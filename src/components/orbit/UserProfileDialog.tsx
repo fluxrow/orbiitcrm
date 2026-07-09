@@ -36,6 +36,7 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
     signature_image_url: "",
     use_personal_signature: false,
   });
+  const signaturePreviewUrl = useSignedOrbitMediaUrl(form.signature_image_url || null);
 
   const userEmail = user?.email || "";
 
