@@ -3560,6 +3560,7 @@ export type Database = {
           client_token_secret_id: string | null
           created_at: string | null
           empresa_id: string | null
+          envio_real_liberado: boolean
           id: string
           instance_id: string | null
           nome_instancia: string | null
@@ -3576,6 +3577,7 @@ export type Database = {
           client_token_secret_id?: string | null
           created_at?: string | null
           empresa_id?: string | null
+          envio_real_liberado?: boolean
           id?: string
           instance_id?: string | null
           nome_instancia?: string | null
@@ -3592,6 +3594,7 @@ export type Database = {
           client_token_secret_id?: string | null
           created_at?: string | null
           empresa_id?: string | null
+          envio_real_liberado?: boolean
           id?: string
           instance_id?: string | null
           nome_instancia?: string | null
