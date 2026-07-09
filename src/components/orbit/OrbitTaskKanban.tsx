@@ -3,6 +3,7 @@ import { OrbitTaskCard } from "./OrbitTaskCard";
 import { isPast, isToday, isTomorrow, isThisWeek, parseISO } from "date-fns";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { usePreventHorizontalHistorySwipe } from "@/hooks/usePreventHorizontalHistorySwipe";
 
 interface OrbitTaskKanbanProps {
   tasks: any[];
