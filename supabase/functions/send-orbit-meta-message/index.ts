@@ -59,9 +59,15 @@ const handler = async (req: Request): Promise<Response> => {
       .from("orbit_conversas")
       .select("*, prospect:orbit_prospects(*)")
       .eq("id", conversa_id)
-      .single();
+      .eq("empresa_id", empresa_id)
+      .maybeSingle();
 
     if (!conversa) {
+      console.warn("[send-orbit-meta-message] conversa não encontrada ou cross-tenant", {
+        userId: userResult.user.id,
+        conversa_id,
+        empresa_id,
+      });
       return fail(ErrorCodes.NOT_FOUND, "Conversa não encontrada", 404);
     }
 
