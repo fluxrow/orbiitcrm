@@ -236,6 +236,19 @@ async function resolveProspectPhone(prospectId: string): Promise<string | null> 
 async function sendZapi(empresaId: string, telefone: string, kind: "text" | "image" | "audio" | "document" | "video", payload: Json) {
   const zapi = await getOrbitZapiRuntimeConfig(supabase, empresaId);
   if (!zapi?.instance_id || !zapi?.token) return { ok: false, error: "Z-API não configurado" };
+
+  // ── Trava global/por tenant: envio real só se explicitamente liberado ──
+  // Consulta a flag direto na tabela (o runtime helper não a expõe).
+  const { data: gate } = await supabase
+    .from("orbit_zapi_config")
+    .select("envio_real_liberado")
+    .eq("empresa_id", empresaId)
+    .maybeSingle();
+  if (!(gate as any)?.envio_real_liberado) {
+    console.warn("[executor] envio real bloqueado", { empresaId, kind });
+    return { ok: false, error: "envio real bloqueado: integração Z-API não liberada para este tenant (envio_real_liberado=false)" };
+  }
+
   const base = `https://api.z-api.io/instances/${zapi.instance_id}/token/${zapi.token}`;
   const map: Record<string, string> = {
     text: "send-text", image: "send-image", audio: "send-audio", document: "send-document", video: "send-video",
