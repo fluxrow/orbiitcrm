@@ -22,6 +22,7 @@ import PrivacyPage from "./pages/PrivacyPage";
 import TermsPage from "./pages/TermsPage";
 import PublicLayout from "./layouts/PublicLayout";
 import LandingPage from "./pages/LandingPage";
+import OAuthConsentPage from "./pages/OAuthConsentPage";
 
 // Tenant Layout
 import TenantLayout from "./pages/tenant/TenantLayout";
