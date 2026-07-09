@@ -1393,10 +1393,10 @@ async function sendAIResponse(
         return;
       }
 
-      const audioUrl = supabase.storage.from("orbit-media").getPublicUrl(path).data.publicUrl;
-      console.log("[orbit-ai-agent] Áudio TTS gerado:", audioUrl);
+      // Bucket privado — passamos o storage_path direto (sem getPublicUrl).
+      console.log("[orbit-ai-agent] Áudio TTS gerado em:", path);
 
-      await sendWhatsAppAudio(supabase, telefone, audioUrl, conversa_id, empresaId);
+      await sendWhatsAppAudio(supabase, telefone, path, conversa_id, empresaId);
 
       if (ttsModo === "ambos") {
         await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId);
