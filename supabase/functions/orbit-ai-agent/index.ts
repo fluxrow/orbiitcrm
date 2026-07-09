@@ -350,15 +350,21 @@ async function getAudioClip(supabase: any, empresaId: string | null | undefined,
   }
 }
 
-async function sendWhatsAppAudio(supabase: any, telefone: string, audioUrl: string, conversa_id: string, empresaId?: string | null) {
+async function sendWhatsAppAudio(
+  supabase: any,
+  telefone: string,
+  audioSource: string,
+  conversa_id: string,
+  empresaId?: string | null,
+) {
   try {
     const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresaId);
     if (!zapiConfig?.instance_id || !zapiConfig?.token) {
       console.log("[orbit-ai-agent] Z-API não configurado para envio de áudio de biblioteca");
       return;
     }
-    // Assinar URL do bucket privado orbit-media (TTL 1h) — Z-API precisa baixar
-    const signedAudioUrl = await signOrbitMediaUrl(supabase, audioUrl, 3600) || audioUrl;
+    // audioSource pode ser storage_path puro ou URL antiga; helper cobre ambos.
+    const signedAudioUrl = await signOrbitMediaUrl(supabase, audioSource, 3600) || audioSource;
     const response = await fetch(
       `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-audio`,
       {
@@ -369,12 +375,15 @@ async function sendWhatsAppAudio(supabase: any, telefone: string, audioUrl: stri
     );
     const result = await response.json();
     console.log("[orbit-ai-agent] Áudio da biblioteca enviado:", result);
+    // Persistir storage_path se for path do bucket; senão gravar como url_midia (legado).
+    const isPath = !/^https?:\/\//i.test(audioSource);
     await supabase.from("orbit_mensagens").insert({
       conversa_id,
       direcao: "OUT",
       mensagem: "🎙️ Áudio",
       tipo_midia: "audio",
-      url_midia: audioUrl, // Persistir URL original (canonical) — assinatura é feita na hora de exibir
+      storage_path: isPath ? audioSource : null,
+      url_midia: isPath ? null : audioSource,
       canal: "whatsapp",
       status: response.ok ? "enviada" : "falhou",
       provider_message_id: result.messageId || null,
