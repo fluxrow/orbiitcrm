@@ -224,7 +224,7 @@ serve(async (req) => {
         canal: canal || "whatsapp",
         status: messageStatus,
         provider_message_id: providerId,
-        empresa_id: profile?.empresa_id || null,
+        empresa_id: conversaEmpresaId || profile?.empresa_id || null,
         erro: failReason,
         tipo_midia: tipo_midia || null,
         url_midia: url_midia || null,
