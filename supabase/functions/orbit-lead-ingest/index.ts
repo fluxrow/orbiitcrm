@@ -307,7 +307,11 @@ Deno.serve(async (req) => {
     documento: docFinal,
     raw: payload,
   };
-  const dedupeKey = `lead_recebido:${sourceId}:${prospectId}:${created ? "new" : "merge"}:${Date.now()}`;
+  // Dedupe estável: mesmo lead reenviado pelo Typebot em janela de 10 min
+  // gera o mesmo dedupe_key e o INSERT falha (constraint única), impedindo
+  // run duplicado. Após 10 min uma nova entrada legítima é permitida.
+  const bucket10min = Math.floor(Date.now() / (10 * 60 * 1000));
+  const dedupeKey = `lead_recebido:${sourceId}:${prospectId}:${created ? "new" : "merge"}:${bucket10min}`;
   const { error: evErr } = await supabase.from("orbit_flow_events").insert({
     empresa_id: source.empresa_id,
     event_type: "lead_recebido",
