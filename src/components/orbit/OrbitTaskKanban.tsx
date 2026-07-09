@@ -79,7 +79,11 @@ export function OrbitTaskKanban({ tasks, onComplete, onEdit, onOpenProspect, onM
   };
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4 min-h-[500px]">
+    <div
+      className="flex gap-4 overflow-x-auto overscroll-x-contain pb-4 min-h-[500px]"
+      style={{ overscrollBehaviorX: "contain", overscrollBehaviorY: "auto" }}
+      onWheelCapture={preventHorizontalHistorySwipe}
+    >
       {columnConfig.map(({ key, label, color }) => {
         const items = columns[key as keyof typeof columns];
         const isOver = dragOverColumn === key;
