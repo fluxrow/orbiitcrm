@@ -5,6 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Music, Play, Pause, Send, Loader2 } from "lucide-react";
 import { useOrbitAudioLibrary, AUDIO_CONTEXTOS, AudioClip } from "@/hooks/useOrbitAudioLibrary";
+import { useSignedOrbitMediaUrl } from "@/lib/orbit-media";
 
 interface AudioLibraryPickerProps {
   onSelect: (clip: AudioClip) => void;
@@ -12,6 +13,7 @@ interface AudioLibraryPickerProps {
 }
 
 function MiniPlayer({ url }: { url: string }) {
+  const signed = useSignedOrbitMediaUrl(url);
   const [playing, setPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const toggle = (e: React.MouseEvent) => {
@@ -23,8 +25,8 @@ function MiniPlayer({ url }: { url: string }) {
   };
   return (
     <>
-      <audio ref={audioRef} src={url} onEnded={() => setPlaying(false)} className="hidden" />
-      <Button variant="ghost" size="icon" onClick={toggle} className="h-6 w-6 shrink-0">
+      <audio ref={audioRef} src={signed || undefined} onEnded={() => setPlaying(false)} className="hidden" />
+      <Button variant="ghost" size="icon" onClick={toggle} className="h-6 w-6 shrink-0" disabled={!signed}>
         {playing ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
       </Button>
     </>
