@@ -22,6 +22,7 @@ import PrivacyPage from "./pages/PrivacyPage";
 import TermsPage from "./pages/TermsPage";
 import PublicLayout from "./layouts/PublicLayout";
 import LandingPage from "./pages/LandingPage";
+import OAuthConsentPage from "./pages/OAuthConsentPage";
 
 // Tenant Layout
 import TenantLayout from "./pages/tenant/TenantLayout";
@@ -184,6 +185,9 @@ const AppRoutes = () => (
       <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/terms" element={<TermsPage />} />
     </Route>
+
+    {/* OAuth consent (managed Cloud Auth server) */}
+    <Route path="/.lovable/oauth/consent" element={<OAuthConsentPage />} />
 
     <Route path="/funil" element={<DefaultFunilRedirect />} />
 

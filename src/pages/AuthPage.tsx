@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,12 @@ import { ForgotPasswordDialog } from "@/components/auth/ForgotPasswordDialog";
 
 export default function AuthPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const nextParam = searchParams.get("next");
+  const safeNext =
+    nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
+      ? nextParam
+      : null;
   const { user, loading, signIn, signUp } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
@@ -39,6 +45,12 @@ export default function AuthPage() {
   }, [user]);
 
   async function resolveRedirect() {
+    // If the user was sent here from an OAuth consent (or any deep link),
+    // honor ?next=<same-origin path> instead of the default tenant redirect.
+    if (safeNext) {
+      navigate(safeNext, { replace: true });
+      return;
+    }
     try {
       // 1. Check if super_admin
       const { data: roles } = await supabase
