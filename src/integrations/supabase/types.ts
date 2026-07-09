@@ -1055,6 +1055,7 @@ export type Database = {
           empresa_id: string
           id: string
           nome: string
+          storage_path: string | null
           tags: string[] | null
           updated_at: string | null
           url: string
@@ -1069,6 +1070,7 @@ export type Database = {
           empresa_id: string
           id?: string
           nome: string
+          storage_path?: string | null
           tags?: string[] | null
           updated_at?: string | null
           url: string
@@ -1083,6 +1085,7 @@ export type Database = {
           empresa_id?: string
           id?: string
           nome?: string
+          storage_path?: string | null
           tags?: string[] | null
           updated_at?: string | null
           url?: string
@@ -2723,6 +2726,7 @@ export type Database = {
           mensagem: string | null
           provider_message_id: string | null
           status: string | null
+          storage_path: string | null
           timestamp: string | null
           tipo_midia: string | null
           url_midia: string | null
@@ -2738,6 +2742,7 @@ export type Database = {
           mensagem?: string | null
           provider_message_id?: string | null
           status?: string | null
+          storage_path?: string | null
           timestamp?: string | null
           tipo_midia?: string | null
           url_midia?: string | null
@@ -2753,6 +2758,7 @@ export type Database = {
           mensagem?: string | null
           provider_message_id?: string | null
           status?: string | null
+          storage_path?: string | null
           timestamp?: string | null
           tipo_midia?: string | null
           url_midia?: string | null
@@ -3848,6 +3854,7 @@ export type Database = {
           organization_id: string | null
           phone: string | null
           role_id: string | null
+          signature_image_path: string | null
           signature_image_url: string | null
           updated_at: string
           use_personal_signature: boolean | null
@@ -3866,6 +3873,7 @@ export type Database = {
           organization_id?: string | null
           phone?: string | null
           role_id?: string | null
+          signature_image_path?: string | null
           signature_image_url?: string | null
           updated_at?: string
           use_personal_signature?: boolean | null
@@ -3884,6 +3892,7 @@ export type Database = {
           organization_id?: string | null
           phone?: string | null
           role_id?: string | null
+          signature_image_path?: string | null
           signature_image_url?: string | null
           updated_at?: string
           use_personal_signature?: boolean | null

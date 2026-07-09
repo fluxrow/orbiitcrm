@@ -61,6 +61,7 @@ export function useSendMensagem() {
       canal = "whatsapp",
       tipo_midia,
       url_midia,
+      storage_path,
     }: {
       conversa_id: string;
       mensagem: string;
@@ -68,12 +69,13 @@ export function useSendMensagem() {
       canal?: string;
       tipo_midia?: string;
       url_midia?: string;
+      storage_path?: string;
     }) => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
 
       const response = await supabase.functions.invoke("orbit-send-message", {
-        body: { conversa_id, mensagem, telefone, canal, tipo_midia, url_midia },
+        body: { conversa_id, mensagem, telefone, canal, tipo_midia, url_midia, storage_path },
       });
 
       return handleApiResponse(response);

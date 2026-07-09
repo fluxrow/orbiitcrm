@@ -334,7 +334,7 @@ const handler = async (req: Request): Promise<Response> => {
       if (campaign.created_by) {
         const { data: userData } = await supabase
           .from("pe_users")
-          .select("full_name, cargo, phone, email, signature_image_url, email_signature, use_personal_signature")
+          .select("full_name, cargo, phone, email, signature_image_url, signature_image_path, email_signature, use_personal_signature")
           .eq("id", campaign.created_by)
           .maybeSingle();
         senderUser = userData;
@@ -455,8 +455,9 @@ const handler = async (req: Request): Promise<Response> => {
           // ── Append personal signature ──
           if (senderUser?.use_personal_signature) {
             let sigRows = "";
-            if (senderUser.signature_image_url) {
-              const signedSig = await signOrbitMediaUrl(supabase, senderUser.signature_image_url, 60 * 60 * 24 * 30) || senderUser.signature_image_url;
+            const sigSource = senderUser.signature_image_path || senderUser.signature_image_url;
+            if (sigSource) {
+              const signedSig = await signOrbitMediaUrl(supabase, sigSource, 60 * 60 * 24 * 30) || sigSource;
               sigRows = `<tr><td style="padding-top:8px"><img src="${signedSig}" width="400" alt="${senderUser.full_name || "Assinatura"}" style="max-width:100%;height:auto" /></td></tr>`;
             } else {
               if (senderUser.full_name) sigRows += `<tr><td style="font-weight:bold;font-size:14px;padding:0;margin:0">${senderUser.full_name}</td></tr>`;

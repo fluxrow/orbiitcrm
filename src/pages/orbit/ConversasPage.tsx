@@ -35,8 +35,9 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-function MediaPreview({ tipo_midia, url_midia, mensagem }: { tipo_midia: string | null; url_midia: string | null; mensagem?: string }) {
-  const { url: signedUrl, refresh } = useSignedOrbitMedia(url_midia);
+function MediaPreview({ tipo_midia, storage_path, url_midia, mensagem }: { tipo_midia: string | null; storage_path?: string | null; url_midia: string | null; mensagem?: string }) {
+  const source = storage_path || url_midia;
+  const { url: signedUrl, refresh } = useSignedOrbitMedia(source);
   if (!tipo_midia || !signedUrl) return null;
 
   switch (tipo_midia) {
@@ -115,7 +116,7 @@ export default function ConversasPage() {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [mensagens]);
 
-  const uploadFile = async (file: File): Promise<{ url: string; tipo: string }> => {
+  const uploadFile = async (file: File): Promise<{ storage_path: string; tipo: string }> => {
     const ext = file.name.split(".").pop() || "bin";
     // Resolve empresa_id do server-state (conversa ativa ou profile) — NUNCA do input do usuário.
     let empresaId: string | undefined = (active as any)?.empresa_id;
@@ -136,14 +137,13 @@ export default function ConversasPage() {
     });
     if (error) throw error;
 
-    const { data: { publicUrl } } = supabase.storage.from("orbit-media").getPublicUrl(filePath);
-
     let tipo = "document";
     if (file.type.startsWith("image/")) tipo = "image";
     else if (file.type.startsWith("audio/")) tipo = "audio";
     else if (file.type.startsWith("video/")) tipo = "video";
 
-    return { url: publicUrl, tipo };
+    // NÃO usamos getPublicUrl — bucket é privado. Persistimos apenas o storage_path.
+    return { storage_path: filePath, tipo };
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -230,13 +230,13 @@ export default function ConversasPage() {
     setIsUploading(true);
     try {
       const file = new File([blob], `audio-${Date.now()}.webm`, { type: "audio/webm" });
-      const { url } = await uploadFile(file);
+      const { storage_path } = await uploadFile(file);
       await sendMessage.mutateAsync({
         conversa_id: activeId,
         mensagem: "🎙️ Áudio",
         telefone: active?.telefone_whatsapp,
         tipo_midia: "audio",
-        url_midia: url,
+        storage_path,
       });
     } catch {
       toast.error("Erro ao enviar áudio");
@@ -252,13 +252,13 @@ export default function ConversasPage() {
     if (attachedFile) {
       setIsUploading(true);
       try {
-        const { url, tipo } = await uploadFile(attachedFile.file);
+        const { storage_path, tipo } = await uploadFile(attachedFile.file);
         await sendMessage.mutateAsync({
           conversa_id: activeId,
           mensagem: msg.trim() || "",
           telefone: active?.telefone_whatsapp,
           tipo_midia: tipo,
-          url_midia: url,
+          storage_path,
         });
         setMsg("");
         clearAttachment();
@@ -318,10 +318,10 @@ export default function ConversasPage() {
               {/* Messages */}
               <ScrollArea className="flex-1 p-4">
                 <div className="space-y-4">
-                  {mensagens?.filter((m) => m.mensagem || m.tipo_midia || m.url_midia).map((m) => (
+                  {mensagens?.filter((m) => m.mensagem || m.tipo_midia || (m as any).storage_path || m.url_midia).map((m) => (
                     <div key={m.id} className={`flex ${m.direcao === "OUT" ? "justify-end" : "justify-start"}`}>
                       <div className={`max-w-[70%] rounded-lg p-3 ${m.direcao === "OUT" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
-                        <MediaPreview tipo_midia={m.tipo_midia} url_midia={m.url_midia} mensagem={m.mensagem || undefined} />
+                        <MediaPreview tipo_midia={m.tipo_midia} storage_path={(m as any).storage_path} url_midia={m.url_midia} mensagem={m.mensagem || undefined} />
                         {/* Show text if there's no media or there's a caption */}
                         {(!m.tipo_midia || (m.mensagem && m.mensagem !== `📎 ${m.tipo_midia}` && m.mensagem !== "🎙️ Áudio")) && (
                           <p className="text-sm whitespace-pre-wrap">{stripHtml(m.mensagem || "")}</p>
@@ -399,7 +399,8 @@ export default function ConversasPage() {
                             mensagem: "🎙️ Áudio (biblioteca)",
                             telefone: active?.telefone_whatsapp,
                             tipo_midia: "audio",
-                            url_midia: clip.url,
+                            storage_path: (clip as any).storage_path || undefined,
+                            url_midia: (clip as any).storage_path ? undefined : clip.url,
                           });
                         } catch {
                           toast.error("Erro ao enviar áudio da biblioteca");

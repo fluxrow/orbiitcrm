@@ -86,7 +86,7 @@ const handler = async (req: Request): Promise<Response> => {
     if (sender_user_id) {
       const { data } = await supabase
         .from("pe_users")
-        .select("full_name, cargo, phone, email, signature_image_url, email_signature, use_personal_signature")
+        .select("full_name, cargo, phone, email, signature_image_url, signature_image_path, email_signature, use_personal_signature")
         .eq("id", sender_user_id)
         .maybeSingle();
       senderUser = data;
@@ -172,10 +172,11 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (senderUser?.use_personal_signature) {
       let sigRows = "";
-      if (senderUser.signature_image_url) {
-        // Assinar URL do bucket privado orbit-media com TTL longo (30 dias)
+      const sigSource = senderUser.signature_image_path || senderUser.signature_image_url;
+      if (sigSource) {
+        // Assinar path/URL do bucket privado orbit-media com TTL longo (30 dias)
         // — suficiente para o destinatário abrir o e-mail em janela usual.
-        const signedSig = await signOrbitMediaUrl(supabase, senderUser.signature_image_url, 60 * 60 * 24 * 30) || senderUser.signature_image_url;
+        const signedSig = await signOrbitMediaUrl(supabase, sigSource, 60 * 60 * 24 * 30) || sigSource;
         // Image-only signature
         sigRows = `<tr><td style="padding-top:0"><img src="${signedSig}" width="400" alt="${senderUser.full_name || "Assinatura"}" style="max-width:100%;height:auto" /></td></tr>`;
       } else {

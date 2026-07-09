@@ -337,7 +337,7 @@ async function getAudioClip(supabase: any, empresaId: string | null | undefined,
   try {
     const { data } = await supabase
       .from("orbit_audio_library")
-      .select("id, url, uso_count")
+      .select("id, url, storage_path, uso_count")
       .eq("empresa_id", empresaId)
       .eq("contexto", contexto)
       .eq("ativo", true)
@@ -350,15 +350,21 @@ async function getAudioClip(supabase: any, empresaId: string | null | undefined,
   }
 }
 
-async function sendWhatsAppAudio(supabase: any, telefone: string, audioUrl: string, conversa_id: string, empresaId?: string | null) {
+async function sendWhatsAppAudio(
+  supabase: any,
+  telefone: string,
+  audioSource: string,
+  conversa_id: string,
+  empresaId?: string | null,
+) {
   try {
     const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresaId);
     if (!zapiConfig?.instance_id || !zapiConfig?.token) {
       console.log("[orbit-ai-agent] Z-API não configurado para envio de áudio de biblioteca");
       return;
     }
-    // Assinar URL do bucket privado orbit-media (TTL 1h) — Z-API precisa baixar
-    const signedAudioUrl = await signOrbitMediaUrl(supabase, audioUrl, 3600) || audioUrl;
+    // audioSource pode ser storage_path puro ou URL antiga; helper cobre ambos.
+    const signedAudioUrl = await signOrbitMediaUrl(supabase, audioSource, 3600) || audioSource;
     const response = await fetch(
       `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-audio`,
       {
@@ -369,12 +375,15 @@ async function sendWhatsAppAudio(supabase: any, telefone: string, audioUrl: stri
     );
     const result = await response.json();
     console.log("[orbit-ai-agent] Áudio da biblioteca enviado:", result);
+    // Persistir storage_path se for path do bucket; senão gravar como url_midia (legado).
+    const isPath = !/^https?:\/\//i.test(audioSource);
     await supabase.from("orbit_mensagens").insert({
       conversa_id,
       direcao: "OUT",
       mensagem: "🎙️ Áudio",
       tipo_midia: "audio",
-      url_midia: audioUrl, // Persistir URL original (canonical) — assinatura é feita na hora de exibir
+      storage_path: isPath ? audioSource : null,
+      url_midia: isPath ? null : audioSource,
       canal: "whatsapp",
       status: response.ok ? "enviada" : "falhou",
       provider_message_id: result.messageId || null,
@@ -1051,7 +1060,7 @@ ${regrasBlock}`;
         const audioClip = await getAudioClip(supabase, empresaId, audioContexto);
         if (audioClip) {
           console.log("[orbit-ai-agent] Clip de biblioteca encontrado:", audioClip.id, "contexto:", audioContexto);
-          await sendWhatsAppAudio(supabase, telefone, audioClip.url, conversa_id, empresaId);
+          await sendWhatsAppAudio(supabase, telefone, audioClip.storage_path || audioClip.url, conversa_id, empresaId);
           await supabase
             .from("orbit_audio_library")
             .update({ uso_count: audioClip.uso_count + 1 })
@@ -1384,10 +1393,10 @@ async function sendAIResponse(
         return;
       }
 
-      const audioUrl = supabase.storage.from("orbit-media").getPublicUrl(path).data.publicUrl;
-      console.log("[orbit-ai-agent] Áudio TTS gerado:", audioUrl);
+      // Bucket privado — passamos o storage_path direto (sem getPublicUrl).
+      console.log("[orbit-ai-agent] Áudio TTS gerado em:", path);
 
-      await sendWhatsAppAudio(supabase, telefone, audioUrl, conversa_id, empresaId);
+      await sendWhatsAppAudio(supabase, telefone, path, conversa_id, empresaId);
 
       if (ttsModo === "ambos") {
         await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId);
@@ -1447,11 +1456,12 @@ async function processChatbotFlow(
         if (matched.resposta_audio_id) {
           const { data: clip } = await supabase
             .from("orbit_audio_library")
-            .select("url")
+            .select("url, storage_path")
             .eq("id", matched.resposta_audio_id)
             .single();
-          if (clip?.url) {
-            await sendWhatsAppAudio(supabase, telefone, clip.url, conversa_id, empresaId);
+          const clipSource = clip?.storage_path || clip?.url;
+          if (clipSource) {
+            await sendWhatsAppAudio(supabase, telefone, clipSource, conversa_id, empresaId);
           }
         }
 
@@ -1498,11 +1508,12 @@ async function processChatbotFlow(
     if (flow.passo1_audio_id) {
       const { data: clip } = await supabase
         .from("orbit_audio_library")
-        .select("url")
+        .select("url, storage_path")
         .eq("id", flow.passo1_audio_id)
         .single();
-      if (clip?.url) {
-        await sendWhatsAppAudio(supabase, telefone, clip.url, conversa_id, empresaId);
+      const clipSource = clip?.storage_path || clip?.url;
+      if (clipSource) {
+        await sendWhatsAppAudio(supabase, telefone, clipSource, conversa_id, empresaId);
       }
     }
 

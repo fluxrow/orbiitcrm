@@ -5,39 +5,46 @@
 const PUBLIC_MARKER = "/storage/v1/object/public/orbit-media/";
 const SIGNED_MARKER = "/storage/v1/object/sign/orbit-media/";
 
-export function extractOrbitMediaPath(url: string | null | undefined): string | null {
-  if (!url) return null;
-  const pubIdx = url.indexOf(PUBLIC_MARKER);
+/**
+ * Aceita path puro, URL pública legada ou signed URL antiga e devolve o
+ * storage path dentro do bucket orbit-media. Retorna null para URLs externas.
+ */
+export function extractOrbitMediaPath(input: string | null | undefined): string | null {
+  if (!input) return null;
+  const pubIdx = input.indexOf(PUBLIC_MARKER);
   if (pubIdx !== -1) {
-    return decodeURIComponent(url.substring(pubIdx + PUBLIC_MARKER.length).split("?")[0]);
+    return decodeURIComponent(input.substring(pubIdx + PUBLIC_MARKER.length).split("?")[0]);
   }
-  const signIdx = url.indexOf(SIGNED_MARKER);
+  const signIdx = input.indexOf(SIGNED_MARKER);
   if (signIdx !== -1) {
-    return decodeURIComponent(url.substring(signIdx + SIGNED_MARKER.length).split("?")[0]);
+    return decodeURIComponent(input.substring(signIdx + SIGNED_MARKER.length).split("?")[0]);
+  }
+  if (!/^https?:\/\//i.test(input) && !input.startsWith("blob:") && !input.startsWith("data:")) {
+    return input.replace(/^\/+/, "");
   }
   return null;
 }
 
 /**
- * Assina uma URL de orbit-media com TTL configurável. Se a URL não pertencer
- * ao bucket, é devolvida sem alteração. Em caso de falha na assinatura,
- * também devolve a URL original (para não quebrar fluxos que dependem dela).
+ * Assina uma URL/path de orbit-media com TTL configurável. Aceita path puro,
+ * URL pública legada ou signed URL. Se não pertencer ao bucket, devolve a
+ * entrada. Em erro na assinatura, também devolve a entrada original.
  */
 export async function signOrbitMediaUrl(
   supabase: any,
-  url: string | null | undefined,
-  ttlSeconds = 60 * 60, // 1h por padrão — suficiente para Z-API baixar mídia
+  input: string | null | undefined,
+  ttlSeconds = 60 * 60, // 1h por padrão
 ): Promise<string | null | undefined> {
-  if (!url) return url;
-  const path = extractOrbitMediaPath(url);
-  if (!path) return url;
+  if (!input) return input;
+  const path = extractOrbitMediaPath(input);
+  if (!path) return input;
   try {
     const { data, error } = await supabase.storage
       .from("orbit-media")
       .createSignedUrl(path, ttlSeconds);
-    if (error || !data?.signedUrl) return url;
+    if (error || !data?.signedUrl) return input;
     return data.signedUrl;
   } catch (_e) {
-    return url;
+    return input;
   }
 }

@@ -64,7 +64,7 @@ export function AudioLibraryPicker({ onSelect, disabled }: AudioLibraryPickerPro
             <div className="p-2 space-y-1">
               {activeClips.map((clip: AudioClip) => (
                 <div key={clip.id} className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/60">
-                  <MiniPlayer url={clip.url} />
+                  <MiniPlayer url={clip.storage_path || clip.url} />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium truncate">{clip.nome}</p>
                     <Badge variant="outline" className="text-[10px] px-1 py-0">{labelFor(clip.contexto)}</Badge>
