@@ -38,17 +38,6 @@ serve(async (req) => {
       );
     }
 
-    // Se telefone não veio do frontend, buscar da conversa
-    if (!telefone) {
-      const { data: conversa } = await supabase
-        .from("orbit_conversas")
-        .select("telefone_whatsapp")
-        .eq("id", conversa_id)
-        .maybeSingle();
-      telefone = conversa?.telefone_whatsapp || null;
-      console.log("[orbit-send-message] Telefone buscado da conversa:", telefone);
-    }
-
     const userId = claims.user.id;
     const { data: profile } = await supabase
       .from("profiles")
@@ -57,6 +46,51 @@ serve(async (req) => {
       .maybeSingle();
 
     console.log("[orbit-send-message] Profile:", JSON.stringify({ userId, empresa_id: profile?.empresa_id }));
+
+    // ── Cross-tenant guard: conversa DEVE pertencer à empresa do usuário ──
+    const { data: conversaRow, error: convErr } = await supabase
+      .from("orbit_conversas")
+      .select("id, empresa_id, telefone_whatsapp")
+      .eq("id", conversa_id)
+      .maybeSingle();
+
+    if (convErr || !conversaRow) {
+      return fail(ErrorCodes.NOT_FOUND, "Conversa não encontrada", 404, undefined, req);
+    }
+
+    const conversaEmpresaId = conversaRow.empresa_id as string | null;
+
+    // super_admin bypass
+    const { data: superRow } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("role", "super_admin")
+      .maybeSingle();
+    const isSuperAdmin = !!superRow;
+
+    if (!isSuperAdmin) {
+      let allowed = profile?.empresa_id && conversaEmpresaId === profile.empresa_id;
+      if (!allowed && conversaEmpresaId) {
+        const { data: membership } = await supabase
+          .from("user_empresa_memberships")
+          .select("empresa_id")
+          .eq("user_id", userId)
+          .eq("empresa_id", conversaEmpresaId)
+          .maybeSingle();
+        allowed = !!membership;
+      }
+      if (!allowed) {
+        console.warn("[orbit-send-message] cross-tenant blocked", { userId, conversa_id, conversaEmpresaId });
+        return fail(ErrorCodes.UNAUTHORIZED, "Acesso negado à conversa", 403, undefined, req);
+      }
+    }
+
+    // Se telefone não veio do frontend, usar o da conversa (já validada acima)
+    if (!telefone) {
+      telefone = conversaRow.telefone_whatsapp || null;
+      console.log("[orbit-send-message] Telefone buscado da conversa:", telefone);
+    }
 
     // ── Plan enforcement ──
     if (profile?.empresa_id) {
@@ -190,7 +224,7 @@ serve(async (req) => {
         canal: canal || "whatsapp",
         status: messageStatus,
         provider_message_id: providerId,
-        empresa_id: profile?.empresa_id || null,
+        empresa_id: conversaEmpresaId || profile?.empresa_id || null,
         erro: failReason,
         tipo_midia: tipo_midia || null,
         url_midia: url_midia || null,
