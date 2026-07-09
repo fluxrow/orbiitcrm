@@ -1060,7 +1060,7 @@ ${regrasBlock}`;
         const audioClip = await getAudioClip(supabase, empresaId, audioContexto);
         if (audioClip) {
           console.log("[orbit-ai-agent] Clip de biblioteca encontrado:", audioClip.id, "contexto:", audioContexto);
-          await sendWhatsAppAudio(supabase, telefone, audioClip.url, conversa_id, empresaId);
+          await sendWhatsAppAudio(supabase, telefone, audioClip.storage_path || audioClip.url, conversa_id, empresaId);
           await supabase
             .from("orbit_audio_library")
             .update({ uso_count: audioClip.uso_count + 1 })
