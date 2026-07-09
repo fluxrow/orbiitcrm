@@ -262,6 +262,7 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
                         <img
                           src={signaturePreviewUrl || form.signature_image_url}
                           alt={form.full_name || "Assinatura"}
+                          onError={refreshSignaturePreview}
                           style={{ maxWidth: "400px", width: "100%" }}
                           className="rounded"
                         />
