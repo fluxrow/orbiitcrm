@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Plus, Eye, CalendarDays } from "lucide-react";
 import { OportunidadeDialog } from "@/components/pe-admin/OportunidadeDialog";
 import { format, parseISO } from "date-fns";
+import { usePreventHorizontalHistorySwipe } from "@/hooks/usePreventHorizontalHistorySwipe";
 
 const ADMIN_ROLES = ["ORG_ADMIN", "ORG_MANAGER"];
 
