@@ -213,7 +213,7 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
                   {form.signature_image_url ? (
                     <div className="relative inline-block">
                       <img
-                        src={form.signature_image_url}
+                        src={signaturePreviewUrl || form.signature_image_url}
                         alt="Assinatura"
                         className="max-h-24 rounded border object-contain"
                       />
