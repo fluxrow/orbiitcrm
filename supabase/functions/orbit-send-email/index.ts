@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, fromPlanCheck, ErrorCodes } from "../_shared/responses.ts";
+import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 
 interface EmailRequest {
   to: string;
@@ -172,8 +173,11 @@ const handler = async (req: Request): Promise<Response> => {
     if (senderUser?.use_personal_signature) {
       let sigRows = "";
       if (senderUser.signature_image_url) {
+        // Assinar URL do bucket privado orbit-media com TTL longo (30 dias)
+        // — suficiente para o destinatário abrir o e-mail em janela usual.
+        const signedSig = await signOrbitMediaUrl(supabase, senderUser.signature_image_url, 60 * 60 * 24 * 30) || senderUser.signature_image_url;
         // Image-only signature
-        sigRows = `<tr><td style="padding-top:0"><img src="${senderUser.signature_image_url}" width="400" alt="${senderUser.full_name || "Assinatura"}" style="max-width:100%;height:auto" /></td></tr>`;
+        sigRows = `<tr><td style="padding-top:0"><img src="${signedSig}" width="400" alt="${senderUser.full_name || "Assinatura"}" style="max-width:100%;height:auto" /></td></tr>`;
       } else {
         // Text-based fallback
         if (senderUser.full_name) sigRows += `<tr><td style="font-weight:bold;font-size:14px;padding:0;margin:0">${senderUser.full_name}</td></tr>`;

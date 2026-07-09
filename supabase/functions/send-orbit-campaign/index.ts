@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, fromPlanCheck, ErrorCodes } from "../_shared/responses.ts";
 import { resolveCtaConfig, buildCtaButtonHtml, injectCta } from "../_shared/whatsapp-cta.ts";
 import { getOrbitZapiRuntimeConfig } from "../_shared/orbit-zapi.ts";
+import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 
 interface CampaignRequest {
   campaign_id: string;
@@ -455,7 +456,8 @@ const handler = async (req: Request): Promise<Response> => {
           if (senderUser?.use_personal_signature) {
             let sigRows = "";
             if (senderUser.signature_image_url) {
-              sigRows = `<tr><td style="padding-top:8px"><img src="${senderUser.signature_image_url}" width="400" alt="${senderUser.full_name || "Assinatura"}" style="max-width:100%;height:auto" /></td></tr>`;
+              const signedSig = await signOrbitMediaUrl(supabase, senderUser.signature_image_url, 60 * 60 * 24 * 30) || senderUser.signature_image_url;
+              sigRows = `<tr><td style="padding-top:8px"><img src="${signedSig}" width="400" alt="${senderUser.full_name || "Assinatura"}" style="max-width:100%;height:auto" /></td></tr>`;
             } else {
               if (senderUser.full_name) sigRows += `<tr><td style="font-weight:bold;font-size:14px;padding:0;margin:0">${senderUser.full_name}</td></tr>`;
               if (senderUser.cargo) sigRows += `<tr><td style="color:#666;font-size:13px;padding:0;margin:0">${senderUser.cargo}</td></tr>`;

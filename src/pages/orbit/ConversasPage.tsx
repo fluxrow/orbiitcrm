@@ -19,6 +19,7 @@ import { ConversaProspectDrawer } from "@/components/orbit/ConversaProspectDrawe
 import { AudioLibraryPicker } from "@/components/orbit/AudioLibraryPicker";
 import { ZapiConnectionAlert } from "@/components/orbit/ZapiConnectionAlert";
 import type { AudioClip } from "@/hooks/useOrbitAudioLibrary";
+import { useSignedOrbitMediaUrl } from "@/lib/orbit-media";
 
 function stripHtml(html: string): string {
   return html
@@ -35,14 +36,15 @@ function stripHtml(html: string): string {
 }
 
 function MediaPreview({ tipo_midia, url_midia, mensagem }: { tipo_midia: string | null; url_midia: string | null; mensagem?: string }) {
-  if (!tipo_midia || !url_midia) return null;
+  const signedUrl = useSignedOrbitMediaUrl(url_midia);
+  if (!tipo_midia || !signedUrl) return null;
 
   switch (tipo_midia) {
     case "image":
       return (
         <div className="mb-1">
-          <a href={url_midia} target="_blank" rel="noopener noreferrer">
-            <img src={url_midia} alt={mensagem || "Imagem"} className="max-w-full max-h-60 rounded-md object-cover cursor-pointer hover:opacity-90 transition-opacity" />
+          <a href={signedUrl} target="_blank" rel="noopener noreferrer">
+            <img src={signedUrl} alt={mensagem || "Imagem"} className="max-w-full max-h-60 rounded-md object-cover cursor-pointer hover:opacity-90 transition-opacity" />
           </a>
         </div>
       );
@@ -50,7 +52,7 @@ function MediaPreview({ tipo_midia, url_midia, mensagem }: { tipo_midia: string 
       return (
         <div className="mb-1">
           <audio controls className="max-w-full" preload="metadata">
-            <source src={url_midia} />
+            <source src={signedUrl} />
           </audio>
         </div>
       );
@@ -58,13 +60,13 @@ function MediaPreview({ tipo_midia, url_midia, mensagem }: { tipo_midia: string 
       return (
         <div className="mb-1">
           <video controls className="max-w-full max-h-60 rounded-md" preload="metadata">
-            <source src={url_midia} />
+            <source src={signedUrl} />
           </video>
         </div>
       );
     case "document":
       return (
-        <a href={url_midia} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 mb-1 p-2 rounded bg-background/20 hover:bg-background/30 transition-colors">
+        <a href={signedUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 mb-1 p-2 rounded bg-background/20 hover:bg-background/30 transition-colors">
           <FileText className="h-5 w-5 shrink-0" />
           <span className="text-sm underline truncate">{mensagem || "Documento"}</span>
         </a>

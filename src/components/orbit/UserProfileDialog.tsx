@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Upload, X, Mail, Phone, User, Briefcase, Image } from "lucide-react";
+import { useSignedOrbitMediaUrl } from "@/lib/orbit-media";
 
 interface UserProfileDialogProps {
   open: boolean;
@@ -35,6 +36,7 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
     signature_image_url: "",
     use_personal_signature: false,
   });
+  const signaturePreviewUrl = useSignedOrbitMediaUrl(form.signature_image_url || null);
 
   const userEmail = user?.email || "";
 
@@ -211,7 +213,7 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
                   {form.signature_image_url ? (
                     <div className="relative inline-block">
                       <img
-                        src={form.signature_image_url}
+                        src={signaturePreviewUrl || form.signature_image_url}
                         alt="Assinatura"
                         className="max-h-24 rounded border object-contain"
                       />
@@ -257,7 +259,7 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
                     <div style={{ borderTop: "1px solid hsl(var(--border))", paddingTop: "12px", fontFamily: "Arial, sans-serif" }}>
                       {form.signature_image_url ? (
                         <img
-                          src={form.signature_image_url}
+                          src={signaturePreviewUrl || form.signature_image_url}
                           alt={form.full_name || "Assinatura"}
                           style={{ maxWidth: "400px", width: "100%" }}
                           className="rounded"
