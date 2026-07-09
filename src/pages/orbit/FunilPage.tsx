@@ -139,7 +139,8 @@ export default function FunilPage() {
         {/* Kanban columns */}
         <div
           className="flex gap-4 overflow-x-auto overscroll-x-contain pb-4"
-          style={{ overscrollBehaviorX: "contain" }}
+          style={{ overscrollBehaviorX: "contain", overscrollBehaviorY: "auto" }}
+          onWheelCapture={preventHorizontalHistorySwipe}
         >
           {dealsGrouped?.map((stage) => {
             const stageDeals = stage.deals || [];
