@@ -337,7 +337,7 @@ async function getAudioClip(supabase: any, empresaId: string | null | undefined,
   try {
     const { data } = await supabase
       .from("orbit_audio_library")
-      .select("id, url, uso_count")
+      .select("id, url, storage_path, uso_count")
       .eq("empresa_id", empresaId)
       .eq("contexto", contexto)
       .eq("ativo", true)
