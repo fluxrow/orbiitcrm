@@ -215,6 +215,7 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
                       <img
                         src={signaturePreviewUrl || form.signature_image_url}
                         alt="Assinatura"
+                        onError={refreshSignaturePreview}
                         className="max-h-24 rounded border object-contain"
                       />
                       <Button
