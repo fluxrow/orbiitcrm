@@ -124,6 +124,7 @@ export function useOrbitDealsGrouped() {
           .from("orbit_pipeline_stages")
           .select("*")
           .eq("empresa_id", empresaId!)
+          .eq("is_archived", false)
           .order("ordem", { ascending: true }),
         supabase
           .from("orbit_deals")
