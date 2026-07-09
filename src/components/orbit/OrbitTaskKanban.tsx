@@ -61,6 +61,7 @@ const columnConfig = [
 export function OrbitTaskKanban({ tasks, onComplete, onEdit, onOpenProspect, onMoveTask }: OrbitTaskKanbanProps) {
   const columns = categorizeTasks(tasks);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+  const preventHorizontalHistorySwipe = usePreventHorizontalHistorySwipe<HTMLDivElement>();
 
   const handleDragOver = (e: React.DragEvent, key: string) => {
     e.preventDefault();
