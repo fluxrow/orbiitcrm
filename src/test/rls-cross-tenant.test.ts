@@ -74,6 +74,9 @@ describe.skipIf(!enabled)("RLS cross-tenant isolation", () => {
     "orbit_prospects",
     "orbit_pipeline_stages",
     "orbit_google_oauth_states",
+    "orbit_conversas",
+    "orbit_mensagens",
+    "orbit_distribuicao_config",
   ] as const;
 
   for (const table of TABLES) {
@@ -109,5 +112,21 @@ describe.skipIf(!enabled)("RLS cross-tenant isolation", () => {
     });
     // Either RLS violation OR permission denied — both count as blocked
     expect(error, "insert with foreign user_id must fail").not.toBeNull();
+  });
+
+  it("tenant B cannot upload into orbit-media folder of tenant A", async () => {
+    const path = `${parsed!.tenant_a.empresa_id}/rls-probe/${crypto.randomUUID()}.txt`;
+    const { error } = await clientB.storage
+      .from("orbit-media")
+      .upload(path, new Blob(["probe"], { type: "text/plain" }));
+    expect(error, "upload into foreign empresa_id folder must fail").not.toBeNull();
+  });
+
+  it("tenant B cannot manage orbit_distribuicao_config of tenant A", async () => {
+    const { error } = await clientB.from("orbit_distribuicao_config").insert({
+      empresa_id: parsed!.tenant_a.empresa_id,
+      modo: "round_robin",
+    } as any);
+    expect(error, "insert distribuicao for foreign tenant must fail").not.toBeNull();
   });
 });
