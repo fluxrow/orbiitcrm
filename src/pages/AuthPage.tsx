@@ -45,6 +45,12 @@ export default function AuthPage() {
   }, [user]);
 
   async function resolveRedirect() {
+    // If the user was sent here from an OAuth consent (or any deep link),
+    // honor ?next=<same-origin path> instead of the default tenant redirect.
+    if (safeNext) {
+      navigate(safeNext, { replace: true });
+      return;
+    }
     try {
       // 1. Check if super_admin
       const { data: roles } = await supabase
