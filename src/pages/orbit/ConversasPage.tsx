@@ -19,6 +19,7 @@ import { ConversaProspectDrawer } from "@/components/orbit/ConversaProspectDrawe
 import { AudioLibraryPicker } from "@/components/orbit/AudioLibraryPicker";
 import { ZapiConnectionAlert } from "@/components/orbit/ZapiConnectionAlert";
 import type { AudioClip } from "@/hooks/useOrbitAudioLibrary";
+import { useSignedOrbitMediaUrl } from "@/lib/orbit-media";
 
 function stripHtml(html: string): string {
   return html
