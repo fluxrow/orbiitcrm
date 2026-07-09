@@ -105,4 +105,8 @@ verify_jwt = false
 [functions.orbit-advisor-apply]
 verify_jwt = false
 
+[functions.orbit-flow-scheduler-tick]
+verify_jwt = false
+
+
 
