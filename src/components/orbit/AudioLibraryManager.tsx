@@ -115,8 +115,8 @@ export function AudioLibraryManager() {
       const path = `${empresaId}/audios/${crypto.randomUUID()}.${ext}`;
       const { error: uploadError } = await supabase.storage.from("orbit-media").upload(path, audioBlob, { contentType: audioBlob.type });
       if (uploadError) throw uploadError;
-      const { data: { publicUrl } } = supabase.storage.from("orbit-media").getPublicUrl(path);
-      await createClip.mutateAsync({ nome: nome.trim(), url: publicUrl, contexto });
+      // Bucket privado — persistir apenas o storage_path (sem getPublicUrl).
+      await createClip.mutateAsync({ nome: nome.trim(), storage_path: path, contexto });
       setOpen(false);
       resetModal();
     } catch (e: any) {
@@ -154,7 +154,7 @@ export function AudioLibraryManager() {
           {clips.map((clip: AudioClip) => (
             <Card key={clip.id} className={!clip.ativo ? "opacity-50" : ""}>
               <CardContent className="p-3 flex items-center gap-3">
-                <AudioPlayer url={clip.url} />
+                <AudioPlayer url={clip.storage_path || clip.url} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{clip.nome}</p>
                   <div className="flex items-center gap-2 mt-0.5">

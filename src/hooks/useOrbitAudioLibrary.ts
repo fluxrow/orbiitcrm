@@ -9,6 +9,7 @@ export interface AudioClip {
   nome: string;
   descricao: string | null;
   url: string;
+  storage_path: string | null;
   duracao_ms: number | null;
   contexto: string;
   tags: string[];
@@ -54,7 +55,8 @@ export function useCreateAudioClip() {
     mutationFn: async (payload: {
       nome: string;
       descricao?: string;
-      url: string;
+      url?: string;
+      storage_path?: string;
       duracao_ms?: number;
       contexto: string;
       tags?: string[];

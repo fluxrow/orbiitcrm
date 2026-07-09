@@ -34,9 +34,10 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
     cargo: "",
     email_signature: "",
     signature_image_url: "",
+    signature_image_path: "",
     use_personal_signature: false,
   });
-  const { url: signaturePreviewUrl, refresh: refreshSignaturePreview } = useSignedOrbitMedia(form.signature_image_url || null);
+  const { url: signaturePreviewUrl, refresh: refreshSignaturePreview } = useSignedOrbitMedia(form.signature_image_path || form.signature_image_url || null);
 
   const userEmail = user?.email || "";
 
@@ -44,7 +45,7 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
     if (open && user?.id) {
       supabase
         .from("pe_users" as any)
-        .select("full_name, phone, whatsapp, cargo, email_signature, signature_image_url, use_personal_signature")
+        .select("full_name, phone, whatsapp, cargo, email_signature, signature_image_url, signature_image_path, use_personal_signature")
         .eq("id", user.id)
         .single()
         .then(({ data }) => {
@@ -56,6 +57,7 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
               cargo: (data as any).cargo || "",
               email_signature: (data as any).email_signature || "",
               signature_image_url: (data as any).signature_image_url || "",
+              signature_image_path: (data as any).signature_image_path || "",
               use_personal_signature: (data as any).use_personal_signature || false,
             });
           }
@@ -93,12 +95,8 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
 
       if (uploadError) throw uploadError;
 
-      const { data: urlData } = supabase.storage
-        .from("orbit-media")
-        .getPublicUrl(filePath);
-
-      const publicUrl = urlData.publicUrl + "?t=" + Date.now();
-      setForm(prev => ({ ...prev, signature_image_url: publicUrl }));
+      // Bucket privado — persistir apenas o storage_path e limpar URL legada.
+      setForm(prev => ({ ...prev, signature_image_path: filePath, signature_image_url: "" }));
       toast.success("Imagem carregada com sucesso!");
     } catch (e: any) {
       toast.error("Erro ao fazer upload: " + e.message);
@@ -108,7 +106,7 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
   };
 
   const handleRemoveImage = () => {
-    setForm(prev => ({ ...prev, signature_image_url: "" }));
+    setForm(prev => ({ ...prev, signature_image_url: "", signature_image_path: "" }));
   };
 
   const handleSave = async () => {
@@ -124,6 +122,7 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
           cargo: form.cargo,
           email_signature: form.email_signature,
           signature_image_url: form.signature_image_url || null,
+          signature_image_path: form.signature_image_path || null,
           use_personal_signature: form.use_personal_signature,
         })
         .eq("id", user.id);
@@ -210,7 +209,7 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
                     Recomendado: largura entre 350-500px. Formatos: PNG, JPG, WebP. Máx: 2MB.
                   </p>
 
-                  {form.signature_image_url ? (
+                  {(form.signature_image_path || form.signature_image_url) ? (
                     <div className="relative inline-block">
                       <img
                         src={signaturePreviewUrl || form.signature_image_url}
@@ -258,7 +257,7 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
                   <Label className="mb-2 block">Preview da Assinatura</Label>
                   <div className="border rounded-lg p-4 bg-muted/30">
                     <div style={{ borderTop: "1px solid hsl(var(--border))", paddingTop: "12px", fontFamily: "Arial, sans-serif" }}>
-                      {form.signature_image_url ? (
+                      {(form.signature_image_path || form.signature_image_url) ? (
                         <img
                           src={signaturePreviewUrl || form.signature_image_url}
                           alt={form.full_name || "Assinatura"}

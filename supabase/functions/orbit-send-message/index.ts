@@ -25,14 +25,17 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    let { conversa_id, mensagem, telefone, canal, tipo_midia, url_midia } = body;
+    let { conversa_id, mensagem, telefone, canal, tipo_midia, url_midia, storage_path } = body;
 
-    console.log("[orbit-send-message] Params recebidos:", JSON.stringify({ conversa_id, mensagem: mensagem?.substring(0, 30), telefone, canal, tipo_midia, url_midia: url_midia ? "SET" : "EMPTY" }));
+    // Prefer storage_path; se ausente, usar url_midia (compat legado).
+    const mediaSource: string | null = storage_path || url_midia || null;
 
-    if (!conversa_id || (!mensagem && !url_midia)) {
+    console.log("[orbit-send-message] Params recebidos:", JSON.stringify({ conversa_id, mensagem: mensagem?.substring(0, 30), telefone, canal, tipo_midia, hasStoragePath: !!storage_path, hasUrlMidia: !!url_midia }));
+
+    if (!conversa_id || (!mensagem && !mediaSource)) {
       return fail(
         ErrorCodes.VALIDATION_ERROR,
-        "conversa_id e mensagem/url_midia são obrigatórios",
+        "conversa_id e mensagem/storage_path/url_midia são obrigatórios",
         400,
         undefined,
         req,
@@ -166,9 +169,9 @@ serve(async (req) => {
           let zapiBody: any;
 
           // Gerar signed URL para mídia do bucket privado orbit-media (TTL 1h)
-          const mediaUrl = url_midia
-            ? await signOrbitMediaUrl(supabase, url_midia, 3600)
-            : url_midia;
+          const mediaUrl = mediaSource
+            ? await signOrbitMediaUrl(supabase, mediaSource, 3600)
+            : null;
 
           // Choose endpoint based on media type
           if (tipo_midia === "image" && mediaUrl) {
@@ -234,6 +237,7 @@ serve(async (req) => {
         erro: failReason,
         tipo_midia: tipo_midia || null,
         url_midia: url_midia || null,
+        storage_path: storage_path || null,
       })
       .select()
       .single();
