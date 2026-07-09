@@ -1,0 +1,194 @@
+{
+  "version": 1,
+  "sdk_version": "0.20.0",
+  "path": "/mcp",
+  "auth": {
+    "type": "oauth",
+    "issuer": "https://oqsnzwkiwgqwopuaugxj.supabase.co/auth/v1",
+    "accepted_audiences": [
+      "authenticated"
+    ]
+  },
+  "mcp": {
+    "server": {
+      "name": "orbit-crm-mcp",
+      "version": "0.1.0",
+      "title": "Orbit CRM"
+    },
+    "tools": [
+      {
+        "name": "list_prospects",
+        "title": "List prospects",
+        "description": "List prospects (leads) for the signed-in user's tenant. Optionally filter by stage or search term. Returns up to 50 records with the most recent activity.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "search": {
+              "description": "Search string matched against name, phone, email, or company.",
+              "type": "string"
+            },
+            "stage": {
+              "description": "Filter by pipeline stage id.",
+              "type": "string"
+            },
+            "limit": {
+              "description": "Maximum number of results (1-50, default 20).",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          }
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "get_prospect",
+        "title": "Get prospect details",
+        "description": "Get the full detail of a single prospect (lead) by id, including recent conversations and open tasks. Respects tenant isolation.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "prospect_id": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Prospect UUID."
+            }
+          },
+          "required": [
+            "prospect_id"
+          ]
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_deals",
+        "title": "List deals",
+        "description": "List deals (opportunities) for the signed-in user's tenant. Optionally filter by pipeline stage. Returns up to 50 deals ordered by most recent update.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "stage": {
+              "description": "Filter by pipeline stage id.",
+              "type": "string"
+            },
+            "limit": {
+              "description": "Max results (1-50, default 20).",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          }
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_tasks",
+        "title": "List tasks",
+        "description": "List open tasks for the signed-in user's tenant. Filter by status (default: pending). Returns up to 50 tasks ordered by due date.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "status": {
+              "description": "Filter by task status. Default: pending.",
+              "type": "string",
+              "enum": [
+                "pending",
+                "in_progress",
+                "completed",
+                "cancelled"
+              ]
+            },
+            "limit": {
+              "description": "Max results (1-50, default 20).",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          }
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "create_task",
+        "title": "Create task",
+        "description": "Create a new task for the signed-in user's tenant. Optionally link it to a prospect and/or deal.",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "titulo": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "Task title."
+            },
+            "descricao": {
+              "description": "Optional description.",
+              "type": "string",
+              "maxLength": 2000
+            },
+            "data_vencimento": {
+              "description": "ISO8601 due date (e.g. 2026-01-15T10:00:00Z).",
+              "type": "string"
+            },
+            "prioridade": {
+              "description": "Priority.",
+              "type": "string",
+              "enum": [
+                "baixa",
+                "media",
+                "alta"
+              ]
+            },
+            "prospect_id": {
+              "description": "Link to a prospect.",
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "deal_id": {
+              "description": "Link to a deal.",
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          "required": [
+            "titulo"
+          ]
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}
