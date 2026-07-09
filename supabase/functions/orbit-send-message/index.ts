@@ -165,20 +165,25 @@ serve(async (req) => {
           let zapiUrl: string;
           let zapiBody: any;
 
+          // Gerar signed URL para mídia do bucket privado orbit-media (TTL 1h)
+          const mediaUrl = url_midia
+            ? await signOrbitMediaUrl(supabase, url_midia, 3600)
+            : url_midia;
+
           // Choose endpoint based on media type
-          if (tipo_midia === "image" && url_midia) {
+          if (tipo_midia === "image" && mediaUrl) {
             zapiUrl = `${zapiBase}/send-image`;
-            zapiBody = { phone: telefone, image: url_midia, caption: mensagem || "" };
-          } else if (tipo_midia === "audio" && url_midia) {
+            zapiBody = { phone: telefone, image: mediaUrl, caption: mensagem || "" };
+          } else if (tipo_midia === "audio" && mediaUrl) {
             zapiUrl = `${zapiBase}/send-audio`;
-            zapiBody = { phone: telefone, audio: url_midia };
-          } else if (tipo_midia === "document" && url_midia) {
+            zapiBody = { phone: telefone, audio: mediaUrl };
+          } else if (tipo_midia === "document" && mediaUrl) {
             zapiUrl = `${zapiBase}/send-document`;
-            const fileName = url_midia.split("/").pop() || "documento";
-            zapiBody = { phone: telefone, document: url_midia, fileName };
-          } else if (tipo_midia === "video" && url_midia) {
+            const fileName = (mediaUrl as string).split("?")[0].split("/").pop() || "documento";
+            zapiBody = { phone: telefone, document: mediaUrl, fileName };
+          } else if (tipo_midia === "video" && mediaUrl) {
             zapiUrl = `${zapiBase}/send-video`;
-            zapiBody = { phone: telefone, video: url_midia, caption: mensagem || "" };
+            zapiBody = { phone: telefone, video: mediaUrl, caption: mensagem || "" };
           } else {
             // Default: text
             zapiUrl = `${zapiBase}/send-text`;
