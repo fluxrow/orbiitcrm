@@ -587,6 +587,111 @@ async function runAction(actionType: string, cfg: Json, run: Json): Promise<Step
   }
 }
 
+// ── Scheduler helpers ─────────────────────────────────────────────────
+const INLINE_DELAY_MAX_SECONDS = 30;
+
+async function enqueueScheduledAction(params: {
+  run: Json;
+  action: Json;
+}): Promise<{ id: string | null; scheduled_for: string }> {
+  const { run, action } = params;
+  const payload = run.context?.payload ?? {};
+  const prospectId = payload.prospect_id ?? (run.entity_type === "prospect" ? run.entity_id : null);
+  const dealId = payload.deal_id ?? (run.entity_type === "deal" ? run.entity_id : null);
+  const scheduledFor = new Date(Date.now() + Number(action.delay_seconds || 0) * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("orbit_flow_scheduled_actions")
+    .insert({
+      empresa_id: run.empresa_id,
+      run_id: run.id,
+      flow_id: run.flow_id,
+      action_id: action.id ?? null,
+      ordem: action.ordem ?? 0,
+      action_type: action.action_type,
+      action_config: action.action_config ?? {},
+      context: {
+        payload,
+        entity_type: run.entity_type ?? null,
+        entity_id: run.entity_id ?? null,
+      },
+      prospect_id: prospectId ?? null,
+      deal_id: dealId ?? null,
+      scheduled_for: scheduledFor,
+      status: "pending",
+    })
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    // duplicate (dedupe): já enfileirado — não é erro fatal
+    console.warn("[executor] enqueue warn", error.message);
+    return { id: null, scheduled_for: scheduledFor };
+  }
+  return { id: (data as any)?.id ?? null, scheduled_for: scheduledFor };
+}
+
+async function handleSingleAction(scheduledId: string): Promise<Response> {
+  const { data: sched, error } = await supabase
+    .from("orbit_flow_scheduled_actions")
+    .select("*")
+    .eq("id", scheduledId)
+    .maybeSingle();
+  if (error || !sched) {
+    return new Response(JSON.stringify({ ok: false, error: "scheduled não encontrado" }), {
+      status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const s: any = sched;
+  // Só executa se worker já reclamou (status=running). Bloqueia execução arbitrária de linhas pending/canceled/success.
+  if (s.status !== "running") {
+    return new Response(JSON.stringify({ ok: false, error: `status inválido: ${s.status}` }), {
+      status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (!s.empresa_id || !s.action_type) {
+    return new Response(JSON.stringify({ ok: false, error: "scheduled inválido" }), {
+      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const run: Json = {
+    id: s.run_id,
+    empresa_id: s.empresa_id,
+    flow_id: s.flow_id,
+    entity_type: s.context?.entity_type ?? null,
+    entity_id: s.context?.entity_id ?? null,
+    context: { payload: s.context?.payload ?? {} },
+  };
+
+  const stepStart = new Date().toISOString();
+  const { data: step } = await supabase
+    .from("orbit_flow_run_steps")
+    .insert({
+      run_id: s.run_id,
+      action_id: s.action_id,
+      ordem: s.ordem ?? 0,
+      status: "running",
+      started_at: stepStart,
+    })
+    .select("id")
+    .maybeSingle();
+
+  const result = await runAction(s.action_type, s.action_config ?? {}, run);
+
+  await supabase
+    .from("orbit_flow_run_steps")
+    .update({
+      status: result.ok ? "success" : "error",
+      finished_at: new Date().toISOString(),
+      output: result.output ?? null,
+      error: result.error ?? null,
+    })
+    .eq("id", (step as any)?.id);
+
+  return new Response(JSON.stringify({ ok: result.ok, data: { scheduled_id: s.id, output: result.output ?? null }, error: result.error ?? null }), {
+    status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -601,7 +706,20 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { run_id } = await req.json();
+    const body = await req.json();
+
+    // ── Modo single_action (scheduler-tick): valida linha no DB, ignora action arbitrária. ──
+    if (body?.mode === "single_action") {
+      const scheduledId = body?.scheduled_id;
+      if (!scheduledId || typeof scheduledId !== "string") {
+        return new Response(JSON.stringify({ ok: false, error: "scheduled_id obrigatório" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      return await handleSingleAction(scheduledId);
+    }
+
+    const { run_id } = body;
     if (!run_id) throw new Error("run_id obrigatório");
 
 
@@ -627,18 +745,35 @@ Deno.serve(async (req) => {
     let firstError: string | null = null;
 
     for (const action of actions ?? []) {
+      const delay = Number((action as any).delay_seconds ?? 0);
       const stepStart = new Date().toISOString();
       const { data: step } = await supabase
         .from("orbit_flow_run_steps")
-        .insert({ run_id, action_id: action.id, ordem: action.ordem, status: "running", started_at: stepStart })
+        .insert({ run_id, action_id: (action as any).id, ordem: (action as any).ordem, status: "running", started_at: stepStart })
         .select("id")
         .maybeSingle();
 
-      if (action.delay_seconds > 0) {
-        await new Promise((r) => setTimeout(r, Math.min(action.delay_seconds, 30) * 1000));
+      // Delays curtos: comportamento original (inline).
+      // Delays > 30s: enfileira e segue para a próxima action sem bloquear.
+      if (delay > INLINE_DELAY_MAX_SECONDS) {
+        const enq = await enqueueScheduledAction({ run, action: action as any });
+        await supabase
+          .from("orbit_flow_run_steps")
+          .update({
+            status: "success",
+            finished_at: new Date().toISOString(),
+            output: { scheduled: true, scheduled_id: enq.id, scheduled_for: enq.scheduled_for, delay_seconds: delay },
+            error: null,
+          })
+          .eq("id", step?.id);
+        continue;
       }
 
-      const result = await runAction(action.action_type, action.action_config ?? {}, run);
+      if (delay > 0) {
+        await new Promise((r) => setTimeout(r, delay * 1000));
+      }
+
+      const result = await runAction((action as any).action_type, (action as any).action_config ?? {}, run);
 
       await supabase
         .from("orbit_flow_run_steps")
