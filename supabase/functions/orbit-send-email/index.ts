@@ -126,7 +126,7 @@ const handler = async (req: Request): Promise<Response> => {
     let fromEmail = "Orbit <onboarding@resend.dev>";
 
     let resendConfig = null;
-    if (empresa_id) {
+    {
       const { data } = await supabase
         .from("orbit_resend_config")
         .select("*")
