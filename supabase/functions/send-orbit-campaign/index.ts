@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, fromPlanCheck, ErrorCodes } from "../_shared/responses.ts";
 import { resolveCtaConfig, buildCtaButtonHtml, injectCta } from "../_shared/whatsapp-cta.ts";
 import { getOrbitZapiRuntimeConfig } from "../_shared/orbit-zapi.ts";
+import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 
 interface CampaignRequest {
   campaign_id: string;
