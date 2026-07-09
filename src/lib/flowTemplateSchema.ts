@@ -5,7 +5,7 @@ import { z } from "zod";
 export const FLOW_TEMPLATE_EXPORT_VERSION = 1;
 export const SUPPORTED_IMPORT_VERSIONS = [1] as const;
 
-const actionConfigSchema = z.record(z.any());
+const actionConfigSchema = z.record(z.string(), z.any());
 
 const subActionSchema: z.ZodType<any> = z.lazy(() =>
   z.object({
