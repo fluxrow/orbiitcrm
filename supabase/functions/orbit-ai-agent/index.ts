@@ -356,12 +356,14 @@ async function sendWhatsAppAudio(supabase: any, telefone: string, audioUrl: stri
       console.log("[orbit-ai-agent] Z-API não configurado para envio de áudio de biblioteca");
       return;
     }
+    // Assinar URL do bucket privado orbit-media (TTL 1h) — Z-API precisa baixar
+    const signedAudioUrl = await signOrbitMediaUrl(supabase, audioUrl, 3600) || audioUrl;
     const response = await fetch(
       `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-audio`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json", "Client-Token": zapiConfig.client_token || "" },
-        body: JSON.stringify({ phone: telefone, audio: audioUrl }),
+        body: JSON.stringify({ phone: telefone, audio: signedAudioUrl }),
       }
     );
     const result = await response.json();
@@ -371,7 +373,7 @@ async function sendWhatsAppAudio(supabase: any, telefone: string, audioUrl: stri
       direcao: "OUT",
       mensagem: "🎙️ Áudio",
       tipo_midia: "audio",
-      url_midia: audioUrl,
+      url_midia: audioUrl, // Persistir URL original (canonical) — assinatura é feita na hora de exibir
       canal: "whatsapp",
       status: response.ok ? "enviada" : "falhou",
       provider_message_id: result.messageId || null,
