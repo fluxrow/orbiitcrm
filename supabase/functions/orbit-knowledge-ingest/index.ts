@@ -63,13 +63,126 @@ async function extractFromDocx(bytes: Uint8Array): Promise<string> {
   return String(result.value || "");
 }
 
+// ── SSRF guard ────────────────────────────────────────────────────────────
+// Bloqueia esquemas != http/https, hosts internos (localhost, .local, .internal),
+// e faixas IP privadas / link-local / metadata cloud.
+function isPrivateIPv4(ip: string): boolean {
+  const parts = ip.split(".").map((n) => Number(n));
+  if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n) || n < 0 || n > 255)) {
+    return true; // parse falhou -> trata como privado
+  }
+  const [a, b] = parts;
+  if (a === 10) return true;                              // 10.0.0.0/8
+  if (a === 127) return true;                             // 127.0.0.0/8
+  if (a === 0) return true;                               // 0.0.0.0/8
+  if (a === 169 && b === 254) return true;                // 169.254.0.0/16 (link-local + metadata)
+  if (a === 172 && b >= 16 && b <= 31) return true;       // 172.16.0.0/12
+  if (a === 192 && b === 168) return true;                // 192.168.0.0/16
+  if (a === 100 && b >= 64 && b <= 127) return true;      // 100.64.0.0/10 CGNAT
+  if (a >= 224) return true;                              // multicast + reserved
+  return false;
+}
+
+function isPrivateIPv6(ip: string): boolean {
+  const lower = ip.toLowerCase().replace(/^\[|\]$/g, "");
+  if (lower === "::1" || lower === "::") return true;
+  if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // ULA fc00::/7
+  if (lower.startsWith("fe80")) return true;                          // link-local
+  // IPv4-mapped ::ffff:a.b.c.d
+  const m = lower.match(/^::ffff:([\d.]+)$/);
+  if (m) return isPrivateIPv4(m[1]);
+  return false;
+}
+
+function isBlockedHost(host: string): boolean {
+  const h = host.toLowerCase();
+  if (!h) return true;
+  if (h === "localhost" || h.endsWith(".localhost")) return true;
+  if (h.endsWith(".local") || h.endsWith(".internal")) return true;
+  // metadata cloud names
+  if (h === "metadata.google.internal") return true;
+  if (h === "metadata" || h === "instance-data") return true;
+  // IPv4 literal
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) return isPrivateIPv4(h);
+  // IPv6 literal (may include brackets)
+  if (h.includes(":")) return isPrivateIPv6(h);
+  return false;
+}
+
+async function assertSafeUrl(rawUrl: string): Promise<URL> {
+  let u: URL;
+  try {
+    u = new URL(rawUrl);
+  } catch {
+    throw new Error("invalid_url");
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") {
+    throw new Error(`blocked_scheme: ${u.protocol}`);
+  }
+  if (isBlockedHost(u.hostname)) {
+    throw new Error(`blocked_host: ${u.hostname}`);
+  }
+  return u;
+}
+
+const MAX_URL_BYTES = 5 * 1024 * 1024; // 5 MB
+const FETCH_TIMEOUT_MS = 15_000;
+
 async function extractFromUrl(url: string): Promise<string> {
-  const res = await fetch(url, {
-    headers: { "User-Agent": "Mozilla/5.0 (Orbit Knowledge Ingest)" },
-    redirect: "follow",
-  });
-  if (!res.ok) throw new Error(`fetch_failed: ${res.status}`);
-  const html = await res.text();
+  let current = await assertSafeUrl(url);
+
+  // Manual redirect handling — revalida cada hop contra IP privado.
+  let html = "";
+  for (let hop = 0; hop < 5; hop++) {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await fetch(current.toString(), {
+        headers: { "User-Agent": "Mozilla/5.0 (Orbit Knowledge Ingest)" },
+        redirect: "manual",
+        signal: ac.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get("location");
+      if (!loc) throw new Error(`redirect_without_location_${res.status}`);
+      current = await assertSafeUrl(new URL(loc, current).toString());
+      continue;
+    }
+
+    if (!res.ok) throw new Error(`fetch_failed: ${res.status}`);
+
+    // Cap response size to avoid huge payloads.
+    const reader = res.body?.getReader();
+    if (!reader) {
+      html = await res.text();
+    } else {
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          total += value.byteLength;
+          if (total > MAX_URL_BYTES) {
+            await reader.cancel().catch(() => {});
+            throw new Error("response_too_large");
+          }
+          chunks.push(value);
+        }
+      }
+      const merged = new Uint8Array(total);
+      let off = 0;
+      for (const c of chunks) { merged.set(c, off); off += c.byteLength; }
+      html = new TextDecoder().decode(merged);
+    }
+    break;
+  }
+
   // Extração leve: remove script/style, tira tags, normaliza espaços
   const stripped = html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
