@@ -186,6 +186,9 @@ const AppRoutes = () => (
       <Route path="/terms" element={<TermsPage />} />
     </Route>
 
+    {/* OAuth consent (managed Cloud Auth server) */}
+    <Route path="/.lovable/oauth/consent" element={<OAuthConsentPage />} />
+
     <Route path="/funil" element={<DefaultFunilRedirect />} />
 
     {/* Empresa selector (post-login, when user belongs to >1 empresa) */}
