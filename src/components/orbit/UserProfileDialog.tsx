@@ -75,7 +75,15 @@ export function UserProfileDialog({ open, onOpenChange }: UserProfileDialogProps
     setUploading(true);
     try {
       const ext = file.name.split(".").pop() || "png";
-      const filePath = `signatures/${user.id}/signature.${ext}`;
+      // empresa_id resolvido server-side (profile) — sem input do usuário no path.
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("empresa_id")
+        .eq("id", user.id)
+        .maybeSingle();
+      const empresaId = (prof as any)?.empresa_id;
+      if (!empresaId) throw new Error("Empresa não identificada.");
+      const filePath = `${empresaId}/signatures/${user.id}/signature.${ext}`;
 
       const { error: uploadError } = await supabase.storage
         .from("orbit-media")
