@@ -1456,11 +1456,12 @@ async function processChatbotFlow(
         if (matched.resposta_audio_id) {
           const { data: clip } = await supabase
             .from("orbit_audio_library")
-            .select("url")
+            .select("url, storage_path")
             .eq("id", matched.resposta_audio_id)
             .single();
-          if (clip?.url) {
-            await sendWhatsAppAudio(supabase, telefone, clip.url, conversa_id, empresaId);
+          const clipSource = clip?.storage_path || clip?.url;
+          if (clipSource) {
+            await sendWhatsAppAudio(supabase, telefone, clipSource, conversa_id, empresaId);
           }
         }
 
