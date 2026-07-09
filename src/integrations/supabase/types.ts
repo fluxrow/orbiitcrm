@@ -4539,6 +4539,10 @@ export type Database = {
         }
         Returns: number
       }
+      cancel_scheduled_actions_on_reply: {
+        Args: { _empresa_id: string; _prospect_id: string; _reason?: string }
+        Returns: number
+      }
       claim_scheduled_actions: {
         Args: { _batch?: number }
         Returns: {
@@ -4856,6 +4860,7 @@ export type Database = {
         | "meeting_reminder_24h"
         | "meeting_reminder_1h"
         | "lead_recebido"
+        | "lead_replied"
       orbit_onboarding_status:
         | "rascunho"
         | "enviado"
@@ -5013,6 +5018,7 @@ export const Constants = {
         "meeting_reminder_24h",
         "meeting_reminder_1h",
         "lead_recebido",
+        "lead_replied",
       ],
       orbit_onboarding_status: [
         "rascunho",
