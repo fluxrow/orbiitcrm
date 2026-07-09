@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Plus, Eye, CalendarDays } from "lucide-react";
 import { OportunidadeDialog } from "@/components/pe-admin/OportunidadeDialog";
 import { format, parseISO } from "date-fns";
+import { usePreventHorizontalHistorySwipe } from "@/hooks/usePreventHorizontalHistorySwipe";
 
 const ADMIN_ROLES = ["ORG_ADMIN", "ORG_MANAGER"];
 
@@ -36,6 +37,7 @@ export default function OportunidadesKanbanPage() {
   const { data: produtosMap } = useOportunidadesProdutos(orgId);
   const { data: tarefasMap } = useOportunidadesProximaTarefa(orgId);
   const moveOp = useMoveOportunidade();
+  const preventHorizontalHistorySwipe = usePreventHorizontalHistorySwipe<HTMLDivElement>();
 
   const formatCurrency = (v: number | null) =>
     v != null
@@ -89,7 +91,8 @@ export default function OportunidadesKanbanPage() {
       {/* Board */}
       <div
         className="flex gap-4 overflow-x-auto overscroll-x-contain pb-4"
-        style={{ overscrollBehaviorX: "contain" }}
+        style={{ overscrollBehaviorX: "contain", overscrollBehaviorY: "auto" }}
+        onWheelCapture={preventHorizontalHistorySwipe}
       >
         {(etapas || []).map((etapa: any) => {
           const items = (oportunidades || []).filter((o: any) => o.etapa_id === etapa.id);

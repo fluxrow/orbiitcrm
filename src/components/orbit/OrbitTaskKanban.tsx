@@ -3,6 +3,7 @@ import { OrbitTaskCard } from "./OrbitTaskCard";
 import { isPast, isToday, isTomorrow, isThisWeek, parseISO } from "date-fns";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { usePreventHorizontalHistorySwipe } from "@/hooks/usePreventHorizontalHistorySwipe";
 
 interface OrbitTaskKanbanProps {
   tasks: any[];
@@ -60,6 +61,7 @@ const columnConfig = [
 export function OrbitTaskKanban({ tasks, onComplete, onEdit, onOpenProspect, onMoveTask }: OrbitTaskKanbanProps) {
   const columns = categorizeTasks(tasks);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+  const preventHorizontalHistorySwipe = usePreventHorizontalHistorySwipe<HTMLDivElement>();
 
   const handleDragOver = (e: React.DragEvent, key: string) => {
     e.preventDefault();
@@ -77,7 +79,11 @@ export function OrbitTaskKanban({ tasks, onComplete, onEdit, onOpenProspect, onM
   };
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4 min-h-[500px]">
+    <div
+      className="flex gap-4 overflow-x-auto overscroll-x-contain pb-4 min-h-[500px]"
+      style={{ overscrollBehaviorX: "contain", overscrollBehaviorY: "auto" }}
+      onWheelCapture={preventHorizontalHistorySwipe}
+    >
       {columnConfig.map(({ key, label, color }) => {
         const items = columns[key as keyof typeof columns];
         const isOver = dragOverColumn === key;

@@ -14,6 +14,7 @@ import type { Tables } from "@/integrations/supabase/types";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/contexts/TenantContext";
+import { usePreventHorizontalHistorySwipe } from "@/hooks/usePreventHorizontalHistorySwipe";
 
 export default function FunilPage() {
   const navigate = useNavigate();
@@ -29,6 +30,7 @@ export default function FunilPage() {
   const convertDeal = useConvertDealToClient();
   const queryClient = useQueryClient();
   const { empresaId, basePath } = useTenant();
+  const preventHorizontalHistorySwipe = usePreventHorizontalHistorySwipe<HTMLDivElement>();
 
   // H2.b — Realtime: refletir mudanças em orbit_deals sem precisar dar F5
   useEffect(() => {
@@ -137,7 +139,8 @@ export default function FunilPage() {
         {/* Kanban columns */}
         <div
           className="flex gap-4 overflow-x-auto overscroll-x-contain pb-4"
-          style={{ overscrollBehaviorX: "contain" }}
+          style={{ overscrollBehaviorX: "contain", overscrollBehaviorY: "auto" }}
+          onWheelCapture={preventHorizontalHistorySwipe}
         >
           {dealsGrouped?.map((stage) => {
             const stageDeals = stage.deals || [];
