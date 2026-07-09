@@ -373,6 +373,18 @@ Deno.serve(async (req) => {
       return json({ error: "access_denied" }, 403);
     }
 
+    // ── SSRF pré-validação: URLs devem passar no allowlist http/https + non-private host ──
+    if (payload.tipo === "url") {
+      if (!payload.source_url) return json({ error: "source_url_required" }, 400);
+      try {
+        await assertSafeUrl(payload.source_url);
+      } catch (e) {
+        const m = e instanceof Error ? e.message : String(e);
+        console.warn("[orbit-knowledge-ingest] SSRF blocked:", m, "url:", payload.source_url);
+        return json({ error: `blocked_url: ${m}` }, 400);
+      }
+    }
+
     // Reprocessar?
     let source_id: string;
     if (payload.reprocess_source_id) {
