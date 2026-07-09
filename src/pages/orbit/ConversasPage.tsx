@@ -115,7 +115,19 @@ export default function ConversasPage() {
 
   const uploadFile = async (file: File): Promise<{ url: string; tipo: string }> => {
     const ext = file.name.split(".").pop() || "bin";
-    const filePath = `${crypto.randomUUID()}.${ext}`;
+    // Resolve empresa_id do server-state (conversa ativa ou profile) — NUNCA do input do usuário.
+    let empresaId: string | undefined = (active as any)?.empresa_id;
+    if (!empresaId && user?.id) {
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("empresa_id")
+        .eq("id", user.id)
+        .maybeSingle();
+      empresaId = (prof as any)?.empresa_id;
+    }
+    if (!empresaId) throw new Error("Empresa não identificada para upload.");
+
+    const filePath = `${empresaId}/conversas/${crypto.randomUUID()}.${ext}`;
 
     const { error } = await supabase.storage.from("orbit-media").upload(filePath, file, {
       contentType: file.type,
