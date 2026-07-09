@@ -2139,6 +2139,83 @@ export type Database = {
           },
         ]
       }
+      orbit_flow_scheduled_actions: {
+        Row: {
+          action_config: Json
+          action_id: string | null
+          action_type: string
+          attempts: number
+          canceled_reason: string | null
+          context: Json
+          created_at: string
+          deal_id: string | null
+          empresa_id: string
+          flow_id: string
+          id: string
+          last_error: string | null
+          locked_at: string | null
+          locked_by: string | null
+          ordem: number
+          prospect_id: string | null
+          run_id: string
+          scheduled_for: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          action_config?: Json
+          action_id?: string | null
+          action_type: string
+          attempts?: number
+          canceled_reason?: string | null
+          context?: Json
+          created_at?: string
+          deal_id?: string | null
+          empresa_id: string
+          flow_id: string
+          id?: string
+          last_error?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          ordem?: number
+          prospect_id?: string | null
+          run_id: string
+          scheduled_for: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          action_config?: Json
+          action_id?: string | null
+          action_type?: string
+          attempts?: number
+          canceled_reason?: string | null
+          context?: Json
+          created_at?: string
+          deal_id?: string | null
+          empresa_id?: string
+          flow_id?: string
+          id?: string
+          last_error?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          ordem?: number
+          prospect_id?: string | null
+          run_id?: string
+          scheduled_for?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_flow_scheduled_actions_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_flow_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_flow_templates: {
         Row: {
           ativo: boolean
@@ -4450,6 +4527,46 @@ export type Database = {
         Args: { p_empresa: string; p_stage: string; p_template: Json }
         Returns: Json
       }
+      cancel_scheduled_actions: {
+        Args: {
+          _deal_id?: string
+          _empresa_id: string
+          _prospect_id?: string
+          _reason?: string
+        }
+        Returns: number
+      }
+      claim_scheduled_actions: {
+        Args: { _batch?: number }
+        Returns: {
+          action_config: Json
+          action_id: string | null
+          action_type: string
+          attempts: number
+          canceled_reason: string | null
+          context: Json
+          created_at: string
+          deal_id: string | null
+          empresa_id: string
+          flow_id: string
+          id: string
+          last_error: string | null
+          locked_at: string | null
+          locked_by: string | null
+          ordem: number
+          prospect_id: string | null
+          run_id: string
+          scheduled_for: string
+          status: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "orbit_flow_scheduled_actions"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       ensure_deal_for_prospect: {
         Args: { _prospect_id: string }
         Returns: string
@@ -4662,6 +4779,10 @@ export type Database = {
         Returns: boolean
       }
       pe_user_is_sales_or_sdr: { Args: { p_user_id: string }; Returns: boolean }
+      reschedule_scheduled_action: {
+        Args: { _delay_seconds: number; _error: string; _id: string }
+        Returns: undefined
+      }
       saas_can_use: {
         Args: {
           p_amount?: number
