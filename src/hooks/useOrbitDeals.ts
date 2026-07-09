@@ -53,6 +53,7 @@ export function useOrbitPipelineStages() {
         .from("orbit_pipeline_stages")
         .select("*")
         .eq("empresa_id", empresaId!)
+        .eq("is_archived", false)
         .order("ordem", { ascending: true });
       if (error) throw error;
       return data;
