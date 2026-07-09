@@ -33,28 +33,50 @@ const handler = async (req: Request): Promise<Response> => {
     }
     const userId = claimsRes.claims.sub as string;
 
-    const { to, subject, html, empresa_id, sender_user_id }: EmailRequest = await req.json();
+    const { to, subject, html, empresa_id: bodyEmpresaId, sender_user_id }: EmailRequest = await req.json();
 
     if (!to || !subject || !html) {
       return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios: to, subject, html", 200);
     }
 
-    // ── Authorize empresa membership (super_admin bypass) ──
-    if (empresa_id) {
-      const { data: roleRows } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId);
-      const isSuperAdmin = (roleRows ?? []).some((r: any) => r.role === "super_admin");
-      if (!isSuperAdmin) {
-        const { data: profile } = await supabase
-          .from("profiles")
+    // ── Resolve caller identity (super_admin, profile empresa, memberships) ──
+    const { data: roleRows } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId);
+    const isSuperAdmin = (roleRows ?? []).some((r: any) => r.role === "super_admin");
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("empresa_id")
+      .eq("id", userId)
+      .maybeSingle();
+
+    // ── Resolve empresa_id: prefer body, fall back to user profile ──
+    let empresa_id: string | null = bodyEmpresaId || profile?.empresa_id || null;
+
+    if (!empresa_id) {
+      return fail(
+        ErrorCodes.VALIDATION_ERROR,
+        "empresa_id é obrigatório (não foi possível resolver pelo perfil do usuário)",
+        400,
+      );
+    }
+
+    // ── Unconditional membership check (super_admin bypass) ──
+    if (!isSuperAdmin) {
+      let belongs = profile?.empresa_id === empresa_id;
+      if (!belongs) {
+        const { data: membership } = await supabase
+          .from("user_empresa_memberships")
           .select("empresa_id")
-          .eq("id", userId)
+          .eq("user_id", userId)
+          .eq("empresa_id", empresa_id)
           .maybeSingle();
-        if (profile?.empresa_id !== empresa_id) {
-          return fail(ErrorCodes.UNAUTHORIZED, "Usuário não pertence à empresa", 403);
-        }
+        belongs = !!membership;
+      }
+      if (!belongs) {
+        return fail(ErrorCodes.UNAUTHORIZED, "Usuário não pertence à empresa", 403);
       }
     }
 
@@ -69,20 +91,19 @@ const handler = async (req: Request): Promise<Response> => {
       senderUser = data;
     }
 
-    // ── Plan enforcement ──
-    if (empresa_id) {
+    // ── Plan enforcement (always) ──
+    {
       const { data: canUseResult } = await supabase.rpc("saas_can_use", {
         p_empresa_id: empresa_id,
         p_feature_code: "email_send",
         p_amount: 1,
       });
-
       const planResponse = fromPlanCheck(canUseResult);
       if (planResponse) return planResponse;
     }
 
     // Check if empresa is on demo plan
-    if (empresa_id) {
+    {
       const { data: saasEmpresa } = await supabase
         .from("saas_empresa")
         .select("plan_id, plan:saas_plans(code)")
@@ -90,7 +111,7 @@ const handler = async (req: Request): Promise<Response> => {
         .maybeSingle();
       const planCode = (saasEmpresa?.plan as any)?.code;
       if (planCode === "demo") {
-        console.log("[orbit-send-email] Demo mode: skipping real send");
+        console.log("[orbit-send-email] Demo mode: skipping real send", { empresa_id, userId });
         await supabase.rpc("saas_increment_usage", {
           p_empresa_id: empresa_id,
           p_feature_code: "email_send",
