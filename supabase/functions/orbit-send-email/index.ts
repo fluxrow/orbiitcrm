@@ -221,13 +221,11 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // ── Increment usage after successful send ──
-    if (empresa_id) {
-      await supabase.rpc("saas_increment_usage", {
-        p_empresa_id: empresa_id,
-        p_feature_code: "email_send",
-        p_amount: 1,
-      });
-    }
+    await supabase.rpc("saas_increment_usage", {
+      p_empresa_id: empresa_id,
+      p_feature_code: "email_send",
+      p_amount: 1,
+    });
 
     console.log("Email enviado com sucesso:", result);
     return ok(result);
