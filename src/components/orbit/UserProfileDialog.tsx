@@ -11,7 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Upload, X, Mail, Phone, User, Briefcase, Image } from "lucide-react";
-import { useSignedOrbitMediaUrl } from "@/lib/orbit-media";
+import { useSignedOrbitMedia } from "@/lib/orbit-media";
 
 interface UserProfileDialogProps {
   open: boolean;
