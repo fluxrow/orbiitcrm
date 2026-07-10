@@ -271,38 +271,28 @@ function OnboardingDetailSheet({
             </Button>
             <Button
               variant="outline" size="sm" className="gap-1.5"
-              onClick={() => {
-                const payload = {
-                  exported_at: new Date().toISOString(),
-                  empresa: onboarding.empresa?.nome ?? onboarding.cliente_empresa ?? null,
-                  slug: onboarding.empresa?.slug ?? null,
-                  status: onboarding.status,
-                  cliente: {
-                    nome: onboarding.cliente_nome,
-                    email: onboarding.cliente_email,
-                    empresa: onboarding.cliente_empresa,
-                  },
-                  progress: calculateProgress(onboarding.responses),
-                  responses: onboarding.responses ?? {},
-                  implementation_checklist: checklist,
-                  public_link: link,
-                  raw: onboarding,
-                };
-                const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
+              onClick={async () => {
+                const md = buildImplantacaoMarkdown(onboarding, checklist, link);
                 const safe = (onboarding.empresa?.slug || onboarding.cliente_empresa || onboarding.cliente_nome || "onboarding")
                   .toString().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+                const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
                 a.href = url;
-                a.download = `onboarding-${safe}-${new Date().toISOString().slice(0,10)}.json`;
+                a.download = `implantacao-${safe}-${new Date().toISOString().slice(0,10)}.md`;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-                toast.success("JSON exportado");
+                try {
+                  await navigator.clipboard.writeText(md);
+                  toast.success("Pacote gerado — .md baixado e copiado");
+                } catch {
+                  toast.success("Pacote gerado — .md baixado");
+                }
               }}
             >
-              <Download className="w-3.5 h-3.5" /> Exportar JSON
+              <Download className="w-3.5 h-3.5" /> Gerar pacote de implantação
             </Button>
           </div>
 
@@ -356,4 +346,51 @@ function OnboardingDetailSheet({
       </SheetContent>
     </Sheet>
   );
+}
+
+function buildImplantacaoMarkdown(
+  o: ClientOnboarding,
+  checklist: any[],
+  link: string,
+): string {
+  const lines: string[] = [];
+  const empresa = o.empresa?.nome ?? o.cliente_empresa ?? "—";
+  const slug = o.empresa?.slug ? `/${o.empresa.slug}` : "";
+  lines.push(`# Pacote de implantação — ${empresa}${slug}`);
+  lines.push("");
+  lines.push(`- **Cliente:** ${o.cliente_nome ?? "—"} (${o.cliente_email ?? "—"})`);
+  lines.push(`- **Status:** ${o.status}`);
+  lines.push(`- **Progresso:** ${calculateProgress(o.responses)}%`);
+  lines.push(`- **Link do wizard:** ${link}`);
+  lines.push(`- **Gerado em:** ${new Date().toISOString()}`);
+  lines.push("");
+
+  lines.push("## Respostas do cliente");
+  lines.push("");
+  const responses = o.responses ?? {};
+  if (Object.keys(responses).length === 0) {
+    lines.push("_Nenhuma resposta preenchida ainda._");
+    lines.push("");
+  } else {
+    for (const sec of ONBOARDING_SECTIONS) {
+      const vals = (responses as any)?.[sec.key];
+      if (!vals || Object.keys(vals).length === 0) continue;
+      lines.push(`### ${sec.title}`);
+      lines.push("");
+      for (const f of sec.fields) {
+        const v = vals[f.key];
+        if (v === undefined || v === null || String(v).trim() === "") continue;
+        lines.push(`- **${f.label}:** ${String(v).replace(/\n/g, "\n  ")}`);
+      }
+      lines.push("");
+    }
+  }
+
+  lines.push("## Checklist de implementação");
+  lines.push("");
+  for (const item of checklist) {
+    lines.push(`- [${item.done ? "x" : " "}] ${item.label}`);
+  }
+  lines.push("");
+  return lines.join("\n");
 }
