@@ -78,6 +78,15 @@ export default function ClientOnboardingPage() {
       ...prev,
       [sectionKey]: { ...(prev[sectionKey] ?? {}), [fieldKey]: value },
     }));
+    // Limpa highlight assim que o usuário começa a preencher.
+    const composite = `${sectionKey}.${fieldKey}`;
+    if (missingKeys.has(composite)) {
+      setMissingKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(composite);
+        return next;
+      });
+    }
   };
 
   const persist = async () => {
