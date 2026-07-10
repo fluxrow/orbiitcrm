@@ -85,19 +85,33 @@ export default function ClientOnboardingPage() {
 
   const finish = async () => {
     if (!token) return;
-    // Validate required fields
-    for (const sec of ONBOARDING_SECTIONS) {
+    // Sempre persistir as respostas antes do submit para garantir que
+    // nada preenchido seja perdido, mesmo se algo abaixo falhar.
+    try {
+      await save.mutateAsync({ token, responses });
+    } catch (e: any) {
+      // Persistência é best-effort — não bloqueia o submit final.
+      console.warn("[onboarding] save antes do submit falhou:", e?.message);
+    }
+
+    // Validação soft: apenas avisa sobre campos faltantes, não bloqueia.
+    const missing: { sectionIdx: number; label: string; sectionTitle: string }[] = [];
+    ONBOARDING_SECTIONS.forEach((sec, idx) => {
       for (const f of sec.fields) {
-        if (f.required) {
-          const v = responses?.[sec.key]?.[f.key];
-          if (!v || String(v).trim() === "") {
-            toast.error(`Campo obrigatório vazio: "${f.label}" em ${sec.title}`);
-            setStepIdx(ONBOARDING_SECTIONS.indexOf(sec));
-            return;
-          }
+        if (!f.required) continue;
+        const v = responses?.[sec.key]?.[f.key];
+        if (v === undefined || v === null || String(v).trim() === "") {
+          missing.push({ sectionIdx: idx, label: f.label, sectionTitle: sec.title });
         }
       }
+    });
+
+    if (missing.length > 0) {
+      const preview = missing.slice(0, 3).map((m) => `"${m.label}" (${m.sectionTitle})`).join(", ");
+      const extra = missing.length > 3 ? ` e mais ${missing.length - 3}` : "";
+      toast.warning(`Enviando com ${missing.length} campo(s) recomendado(s) em branco: ${preview}${extra}. Você poderá complementar depois.`);
     }
+
     try {
       await submit.mutateAsync({ token, responses });
       setSubmitted(true);
