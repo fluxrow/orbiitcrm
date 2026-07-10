@@ -146,6 +146,7 @@ function NewOnboardingDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
+  const [dryRunEmail, setDryRunEmail] = useState(false);
   const create = useCreateOnboarding();
 
   const submit = () => {
@@ -165,17 +166,21 @@ function NewOnboardingDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         cliente_email: email,
         cliente_empresa: empresaNome,
         notes,
+        dry_run_email: dryRunEmail,
       },
       {
         onSuccess: (res) => {
+          const skipped = (res as any).email_skipped_reason;
           toast.success(
             res.email_sent
               ? `Empresa "${res.empresa_nome}" criada e email enviado`
-              : `Empresa criada (email falhou — link copiado)`
+              : skipped === "dry_run"
+                ? `Onboarding criado em modo smoke (email não enviado) — link copiado`
+                : `Empresa criada (email falhou — link copiado)`,
           );
           navigator.clipboard.writeText(res.public_link).catch(() => null);
           setEmpresaNome(""); setSlug(""); setMensalidade("1200"); setImplementacao("3000");
-          setNome(""); setEmail(""); setNotes("");
+          setNome(""); setEmail(""); setNotes(""); setDryRunEmail(false);
           onOpenChange(false);
         },
         onError: (e: any) => toast.error(e?.message || "Erro ao criar"),
