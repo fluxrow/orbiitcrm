@@ -1,6 +1,18 @@
-// Onboarding section schema — used by the public wizard and internal preview.
+// Onboarding section schema — used by the public wizard, internal preview
+// and the implementation-package generator.
+//
+// The CURRENT schema is the "high-ticket" version (10 sections).
+// The LEGACY schema (8 sections) is kept for backwards compatibility so
+// old responses still render in the admin detail sheet.
 
-export type FieldType = "text" | "textarea" | "email" | "url" | "select" | "multiselect" | "number";
+export type FieldType =
+  | "text"
+  | "textarea"
+  | "email"
+  | "url"
+  | "select"
+  | "multiselect"
+  | "number";
 
 export interface OnboardingField {
   key: string;
@@ -19,10 +31,13 @@ export interface OnboardingSection {
   fields: OnboardingField[];
 }
 
+// ============================================================
+// Current schema — High-ticket / Orbit inteligente (10 seções)
+// ============================================================
 export const ONBOARDING_SECTIONS: OnboardingSection[] = [
   {
     key: "empresa",
-    title: "Sua empresa",
+    title: "Empresa",
     description: "Quem é o cliente que vamos servir.",
     fields: [
       { key: "razao_social", label: "Razão social", type: "text", required: true },
@@ -33,42 +48,101 @@ export const ONBOARDING_SECTIONS: OnboardingSection[] = [
       { key: "porte", label: "Porte", type: "select", options: ["MEI / Solo", "Até 10 pessoas", "11–50", "51–200", "200+"] },
       { key: "responsavel_nome", label: "Responsável pelo projeto", type: "text", required: true },
       { key: "responsavel_cargo", label: "Cargo do responsável", type: "text" },
+      { key: "responsavel_whatsapp", label: "WhatsApp do responsável", type: "text", placeholder: "+55 11 ..." },
+    ],
+  },
+  {
+    key: "oferta",
+    title: "Oferta e produtos",
+    description: "O que vocês vendem, ticket e diferenciais.",
+    fields: [
+      { key: "oferta_principal", label: "Oferta principal (produto/serviço)", type: "textarea", required: true, helper: "Descreva em 2–3 linhas o que é vendido." },
+      { key: "ofertas_secundarias", label: "Ofertas secundárias / upsell", type: "textarea" },
+      { key: "ticket_medio", label: "Ticket médio (R$)", type: "text", required: true },
+      { key: "ticket_alto", label: "Ticket alto / high-ticket (R$)", type: "text", helper: "Se aplicável, o valor de contratos premium." },
+      { key: "forma_pagamento", label: "Formas de pagamento aceitas", type: "textarea" },
+      { key: "diferenciais", label: "Diferenciais competitivos", type: "textarea", required: true },
+      { key: "prova_social", label: "Cases / provas sociais principais", type: "textarea" },
     ],
   },
   {
     key: "icp",
-    title: "ICP & posicionamento",
-    description: "Quem é o cliente ideal e como vocês se posicionam.",
+    title: "Lead ideal e qualificação",
+    description: "Quem é o cliente ideal e o que qualifica um lead.",
     fields: [
-      { key: "cliente_ideal", label: "Descreva seu cliente ideal", type: "textarea", required: true, helper: "Setor, porte, cargo decisor, dores típicas." },
-      { key: "ticket_medio", label: "Ticket médio (R$)", type: "text" },
-      { key: "ciclo_venda", label: "Ciclo médio de venda", type: "select", options: ["Imediato (até 7 dias)", "Curto (até 30 dias)", "Médio (30–90 dias)", "Longo (90+ dias)"] },
-      { key: "principais_dores", label: "Top 3 dores que vocês resolvem", type: "textarea", required: true },
-      { key: "diferenciais", label: "Diferenciais competitivos", type: "textarea" },
-      { key: "concorrentes", label: "Principais concorrentes", type: "textarea" },
+      { key: "cliente_ideal", label: "Descreva seu cliente ideal (ICP)", type: "textarea", required: true, helper: "Setor, porte, cargo decisor, dores típicas." },
+      { key: "sinais_priority", label: "Sinais de lead PRIORITY (quente/urgente)", type: "textarea", required: true, helper: "Ex: já tem edital aberto, orçamento aprovado, decisor no contato." },
+      { key: "sinais_hot", label: "Sinais de lead HOT (bom fit, sem urgência)", type: "textarea" },
+      { key: "sinais_cold", label: "Sinais de lead COLD (descartar/nutrir)", type: "textarea" },
+      { key: "motivos_desqualificacao", label: "Motivos claros de desqualificação", type: "textarea" },
+      { key: "campos_obrigatorios_lead", label: "Campos obrigatórios que todo lead precisa trazer", type: "textarea", helper: "Ex: nome, whatsapp, empresa, cargo, orçamento." },
+    ],
+  },
+  {
+    key: "formulario",
+    title: "Formulário / Typebot",
+    description: "Como capturamos o lead antes de entrar no funil.",
+    fields: [
+      { key: "canal_captura", label: "Canais principais de captura", type: "textarea", required: true, helper: "Ex: site, Meta Ads, Google Ads, indicação, Typebot, WhatsApp direto." },
+      { key: "campos_typebot", label: "Perguntas que o Typebot deve fazer", type: "textarea", required: true, helper: "Uma por linha. Ex: Nome, WhatsApp, Empresa, Qual seu maior desafio hoje?" },
+      { key: "qualificacao_no_bot", label: "Qual qualificação já deve acontecer no bot?", type: "textarea", helper: "Ex: se ticket < X, mandar para material educativo." },
+      { key: "handoff_bot", label: "Quando o bot deve chamar humano imediatamente?", type: "textarea" },
+      { key: "url_formulario_atual", label: "URL do formulário atual (se houver)", type: "url" },
     ],
   },
   {
     key: "funil",
-    title: "Funil & processo comercial",
-    description: "Como leads avançam até virar cliente.",
+    title: "Jornada comercial",
+    description: "Etapas do funil, gatilhos e time comercial.",
     fields: [
-      { key: "etapas_atuais", label: "Etapas atuais do funil", type: "textarea", required: true, helper: "Liste na ordem, ex: Novo lead → Qualificação → Proposta → Fechado." },
-      { key: "criterios_qualificacao", label: "Critérios para qualificar um lead", type: "textarea", required: true },
-      { key: "gatilhos_avanco", label: "O que faz um lead avançar de etapa?", type: "textarea" },
+      { key: "etapas_atuais", label: "Etapas atuais do funil", type: "textarea", required: true, helper: "Na ordem: Novo lead → Qualificação → Reunião → Proposta → Fechado." },
+      { key: "gatilhos_avanco", label: "Gatilhos para avançar de etapa", type: "textarea", required: true },
       { key: "motivos_perda", label: "Principais motivos de perda", type: "textarea" },
-      { key: "tempo_medio_resposta", label: "Tempo médio de resposta esperado", type: "select", options: ["Imediato", "Até 15 min", "Até 1h", "Mesmo dia", "Próximo dia útil"] },
+      { key: "tempo_medio_resposta", label: "Tempo médio de resposta esperado", type: "select", options: ["Imediato", "Até 15 min", "Até 1h", "Mesmo dia", "Próximo dia útil"], required: true },
+      { key: "vendedores", label: "Vendedores / SDRs (nome + email)", type: "textarea", required: true, helper: "Um por linha: João Silva — joao@empresa.com" },
+      { key: "regras_roteamento", label: "Como leads devem ser distribuídos?", type: "textarea", helper: "Round-robin, por região, por segmento, por score." },
+      { key: "horario_atendimento", label: "Horário de atendimento", type: "text", placeholder: "Ex: Seg–Sex, 9h–18h" },
     ],
   },
   {
-    key: "equipe",
-    title: "Equipe & distribuição",
-    description: "Quem atende os leads e como eles são divididos.",
+    key: "ia",
+    title: "Agente IA",
+    description: "Personalidade e limites do agente que fala com o lead.",
     fields: [
-      { key: "vendedores", label: "Liste vendedores/SDRs (nome + email)", type: "textarea", required: true, helper: "Um por linha: João Silva — joao@empresa.com" },
-      { key: "regras_roteamento", label: "Como leads devem ser distribuídos?", type: "textarea", helper: "Por região, segmento, rodízio, etc." },
-      { key: "metas", label: "Metas e indicadores principais", type: "textarea" },
-      { key: "horario_atendimento", label: "Horário de atendimento", type: "text", placeholder: "Ex: Seg–Sex, 9h–18h" },
+      { key: "tom_voz", label: "Tom de voz da marca", type: "select", options: ["Formal", "Profissional próximo", "Casual amigável", "Descolado"], required: true },
+      { key: "persona_ia", label: "Persona da IA (nome, papel, atitude)", type: "textarea", required: true, helper: "Ex: 'Você é a Marta, consultora sênior da Acme, direta e consultiva.'" },
+      { key: "objetivo_ia", label: "Objetivo principal do agente", type: "textarea", required: true, helper: "Ex: qualificar e agendar reunião de diagnóstico." },
+      { key: "scripts_proibidos", label: "O que a IA NÃO pode falar/prometer", type: "textarea", required: true },
+      { key: "regras_handoff", label: "Quando passar para um humano?", type: "textarea", required: true, helper: "Ex: pedido de desconto, reclamação, lead enterprise." },
+      { key: "fora_horario", label: "Mensagem fora do horário comercial", type: "textarea" },
+      { key: "conhecimento_extra", label: "Documentos / links que a IA deve conhecer", type: "textarea", helper: "URLs, PDFs, FAQs. Um por linha." },
+    ],
+  },
+  {
+    key: "templates",
+    title: "Templates e cadência",
+    description: "Mensagens-padrão e sequências de follow-up.",
+    fields: [
+      { key: "primeira_abordagem", label: "Mensagem de primeira abordagem (WhatsApp)", type: "textarea", required: true, helper: "Use {{nome}}, {{empresa}} como placeholders." },
+      { key: "primeira_abordagem_email", label: "Email de primeira abordagem", type: "textarea" },
+      { key: "cadencia_priority", label: "Cadência para lead PRIORITY", type: "textarea", helper: "Ex: D+0 (imediato), D+0+2h, D+1, D+2." },
+      { key: "cadencia_hot", label: "Cadência para lead HOT", type: "textarea", helper: "Ex: D+0, D+1, D+3, D+7." },
+      { key: "cadencia_cold", label: "Cadência para lead COLD / nutrição", type: "textarea" },
+      { key: "cta_padrao", label: "CTA padrão (o que pedir ao lead)", type: "text", placeholder: "Ex: agendar call de 15min" },
+      { key: "link_agenda", label: "Link de agendamento (Google Calendar/Cal.com)", type: "url" },
+    ],
+  },
+  {
+    key: "midias",
+    title: "Mídias e ativos",
+    description: "Materiais que o time e a IA podem usar.",
+    fields: [
+      { key: "logo_url", label: "Logo (URL ou drive público)", type: "url" },
+      { key: "apresentacao_url", label: "Apresentação comercial (PDF/slides)", type: "url" },
+      { key: "cases_url", label: "Cases / depoimentos (link)", type: "url" },
+      { key: "videos_url", label: "Vídeos de demo / oferta", type: "textarea", helper: "Um link por linha." },
+      { key: "audios", label: "Áudios curtos aprovados para envio", type: "textarea", helper: "Links ou descrição do conteúdo." },
+      { key: "assets_extras", label: "Outros materiais relevantes", type: "textarea" },
     ],
   },
   {
@@ -76,48 +150,56 @@ export const ONBOARDING_SECTIONS: OnboardingSection[] = [
     title: "Integrações",
     description: "O que vamos conectar para a operação rodar.",
     fields: [
-      { key: "whatsapp_numero", label: "Número WhatsApp comercial", type: "text", placeholder: "+55 11 ..." },
+      { key: "whatsapp_numero", label: "Número WhatsApp comercial", type: "text", placeholder: "+55 11 ..." , required: true },
       { key: "whatsapp_provider", label: "Provedor WhatsApp atual", type: "select", options: ["Z-API", "Oficial Meta", "Outro", "Nenhum"] },
       { key: "email_dominio", label: "Domínio de envio de email", type: "text", placeholder: "envio.seudominio.com.br" },
       { key: "calendar_email", label: "Email do Google Calendar para agendamentos", type: "email" },
-      { key: "fontes_lead", label: "Fontes de lead que você usa hoje", type: "textarea", helper: "Site, Meta Ads, Google Ads, indicação, eventos, etc." },
-      { key: "ferramentas_atuais", label: "Ferramentas que usa hoje (CRM, planilhas, etc.)", type: "textarea" },
-    ],
-  },
-  {
-    key: "ia",
-    title: "IA & automação",
-    description: "Como a IA deve falar e quando passar para humano.",
-    fields: [
-      { key: "tom_voz", label: "Tom de voz da marca", type: "select", options: ["Formal", "Profissional próximo", "Casual amigável", "Descolado"], required: true },
-      { key: "scripts_proibidos", label: "O que a IA NÃO pode falar/prometer", type: "textarea", required: true },
-      { key: "regras_handoff", label: "Quando passar para um humano?", type: "textarea", required: true, helper: "Ex: pedido de desconto, reclamação, lead enterprise." },
-      { key: "fora_horario", label: "Mensagem fora do horário comercial", type: "textarea" },
-    ],
-  },
-  {
-    key: "templates",
-    title: "Templates & campanhas",
-    description: "Mensagens-padrão e sequências iniciais.",
-    fields: [
-      { key: "primeira_abordagem", label: "Mensagem de primeira abordagem (WhatsApp)", type: "textarea", required: true },
-      { key: "primeira_abordagem_email", label: "Email de primeira abordagem", type: "textarea" },
-      { key: "follow_up_sequencia", label: "Sequência de follow-up sugerida", type: "textarea", helper: "Ex: D+1, D+3, D+7..." },
-      { key: "cta_padrao", label: "CTA padrão (o que pedir ao lead)", type: "text", placeholder: "Ex: agendar call de 15min" },
+      { key: "fontes_lead", label: "Fontes de lead que você usa hoje", type: "textarea" },
+      { key: "ferramentas_atuais", label: "Ferramentas atuais (CRM, planilhas, etc.)", type: "textarea" },
+      { key: "webhooks_desejados", label: "Webhooks / integrações desejadas", type: "textarea", helper: "Ex: enviar leads para Notion, Slack, ERP X." },
     ],
   },
   {
     key: "go_live",
-    title: "Aprovação & go-live",
+    title: "Go-live",
     description: "Últimos detalhes para a virada.",
     fields: [
       { key: "responsavel_final", label: "Responsável final pela aprovação", type: "text", required: true },
       { key: "data_desejada", label: "Data desejada para go-live", type: "text", placeholder: "DD/MM/AAAA" },
       { key: "pendencias", label: "Pendências ou bloqueios conhecidos", type: "textarea" },
+      { key: "criterios_sucesso", label: "Critérios de sucesso nos primeiros 30 dias", type: "textarea", helper: "Ex: 20 reuniões agendadas, X% de resposta." },
       { key: "observacoes", label: "Observações finais", type: "textarea" },
     ],
   },
 ];
+
+// ============================================================
+// Legacy schema (MVP 8 seções) — mantido apenas para renderizar
+// respostas antigas no admin.
+// ============================================================
+export const LEGACY_ONBOARDING_SECTIONS: OnboardingSection[] = [
+  {
+    key: "equipe",
+    title: "[Legado] Equipe & distribuição",
+    description: "Respostas antigas do MVP.",
+    fields: [
+      { key: "vendedores", label: "Vendedores/SDRs", type: "textarea" },
+      { key: "regras_roteamento", label: "Regras de roteamento", type: "textarea" },
+      { key: "metas", label: "Metas", type: "textarea" },
+      { key: "horario_atendimento", label: "Horário de atendimento", type: "text" },
+    ],
+  },
+];
+
+/** Seções conhecidas (atuais + legado) — usado no admin para exibir respostas antigas. */
+export const ALL_KNOWN_SECTIONS: OnboardingSection[] = [
+  ...ONBOARDING_SECTIONS,
+  ...LEGACY_ONBOARDING_SECTIONS,
+];
+
+// ============================================================
+// Progresso e checklist
+// ============================================================
 
 export function calculateProgress(responses: Record<string, any>): number {
   const total = ONBOARDING_SECTIONS.reduce((acc, s) => acc + s.fields.length, 0);
@@ -142,3 +224,380 @@ export const DEFAULT_CHECKLIST = [
   { key: "calendar", label: "Validar calendário Google", done: false },
   { key: "kickoff", label: "Agendar call de kick-off", done: false },
 ];
+
+// ============================================================
+// Helpers de leitura
+// ============================================================
+
+function getVal(responses: Record<string, any>, section: string, field: string): string {
+  const v = responses?.[section]?.[field];
+  if (v === undefined || v === null) return "";
+  return String(v).trim();
+}
+
+/** Campos required não preenchidos, agrupados por seção. */
+export function getMissingRequiredFields(
+  responses: Record<string, any>,
+): { section: string; label: string; field: string }[] {
+  const out: { section: string; label: string; field: string }[] = [];
+  for (const sec of ONBOARDING_SECTIONS) {
+    for (const f of sec.fields) {
+      if (!f.required) continue;
+      if (!getVal(responses, sec.key, f.key)) {
+        out.push({ section: sec.title, label: f.label, field: `${sec.key}.${f.key}` });
+      }
+    }
+  }
+  return out;
+}
+
+// ============================================================
+// buildImplementationProfile — perfil sintético do tenant
+// ============================================================
+
+export interface ImplementationProfile {
+  empresa: {
+    razao_social: string;
+    nome_fantasia: string;
+    segmento: string;
+    porte: string;
+    responsavel: string;
+    site: string;
+  };
+  oferta: {
+    principal: string;
+    ticket_medio: string;
+    ticket_alto: string;
+    high_ticket: boolean;
+    diferenciais: string;
+  };
+  icp: {
+    resumo: string;
+    priority_signals: string[];
+    hot_signals: string[];
+    cold_signals: string[];
+  };
+  ia: {
+    tom: string;
+    persona: string;
+    objetivo: string;
+    proibicoes: string;
+    handoff: string;
+  };
+  integracoes: {
+    whatsapp_numero: string;
+    whatsapp_provider: string;
+    calendar_email: string;
+    email_dominio: string;
+  };
+  go_live: {
+    responsavel_final: string;
+    data_desejada: string;
+    criterios_sucesso: string;
+  };
+}
+
+function splitLines(v: string): string[] {
+  return v.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+}
+
+function parseCurrency(v: string): number {
+  if (!v) return 0;
+  const cleaned = v.replace(/[^\d,.-]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? 0 : n;
+}
+
+export function buildImplementationProfile(
+  responses: Record<string, any>,
+): ImplementationProfile {
+  const ticketMedio = getVal(responses, "oferta", "ticket_medio");
+  const ticketAlto = getVal(responses, "oferta", "ticket_alto");
+  const highTicket =
+    parseCurrency(ticketAlto) >= 5000 || parseCurrency(ticketMedio) >= 5000;
+
+  return {
+    empresa: {
+      razao_social: getVal(responses, "empresa", "razao_social"),
+      nome_fantasia: getVal(responses, "empresa", "nome_fantasia"),
+      segmento: getVal(responses, "empresa", "segmento"),
+      porte: getVal(responses, "empresa", "porte"),
+      responsavel: getVal(responses, "empresa", "responsavel_nome"),
+      site: getVal(responses, "empresa", "site"),
+    },
+    oferta: {
+      principal: getVal(responses, "oferta", "oferta_principal"),
+      ticket_medio: ticketMedio,
+      ticket_alto: ticketAlto,
+      high_ticket: highTicket,
+      diferenciais: getVal(responses, "oferta", "diferenciais"),
+    },
+    icp: {
+      resumo: getVal(responses, "icp", "cliente_ideal"),
+      priority_signals: splitLines(getVal(responses, "icp", "sinais_priority")),
+      hot_signals: splitLines(getVal(responses, "icp", "sinais_hot")),
+      cold_signals: splitLines(getVal(responses, "icp", "sinais_cold")),
+    },
+    ia: {
+      tom: getVal(responses, "ia", "tom_voz"),
+      persona: getVal(responses, "ia", "persona_ia"),
+      objetivo: getVal(responses, "ia", "objetivo_ia"),
+      proibicoes: getVal(responses, "ia", "scripts_proibidos"),
+      handoff: getVal(responses, "ia", "regras_handoff"),
+    },
+    integracoes: {
+      whatsapp_numero: getVal(responses, "integracoes", "whatsapp_numero"),
+      whatsapp_provider: getVal(responses, "integracoes", "whatsapp_provider"),
+      calendar_email: getVal(responses, "integracoes", "calendar_email"),
+      email_dominio: getVal(responses, "integracoes", "email_dominio"),
+    },
+    go_live: {
+      responsavel_final: getVal(responses, "go_live", "responsavel_final"),
+      data_desejada: getVal(responses, "go_live", "data_desejada"),
+      criterios_sucesso: getVal(responses, "go_live", "criterios_sucesso"),
+    },
+  };
+}
+
+// ============================================================
+// buildRecommendedTypebotBody — corpo Typebot pronto para copiar
+// ============================================================
+
+export function buildRecommendedTypebotBody(
+  responses: Record<string, any>,
+): string {
+  const perguntas = splitLines(getVal(responses, "formulario", "campos_typebot"));
+  const empresa = getVal(responses, "empresa", "nome_fantasia") ||
+    getVal(responses, "empresa", "razao_social") || "sua empresa";
+  const oferta = getVal(responses, "oferta", "oferta_principal") || "nossa solução";
+  const camposObrig = splitLines(getVal(responses, "icp", "campos_obrigatorios_lead"));
+  const handoff = getVal(responses, "formulario", "handoff_bot");
+
+  const baseline = perguntas.length
+    ? perguntas
+    : [
+        "Qual é o seu nome?",
+        "Qual o melhor WhatsApp para contato?",
+        "Qual é a empresa e o seu cargo?",
+        "Qual o principal desafio hoje que te trouxe até aqui?",
+        "Em quanto tempo você precisa resolver isso?",
+      ];
+
+  const linhas: string[] = [];
+  linhas.push(`// Typebot recomendado — ${empresa}`);
+  linhas.push(`// Objetivo: qualificar leads para "${oferta}"`);
+  linhas.push("");
+  linhas.push(`Introdução:`);
+  linhas.push(
+    `"Oi! Aqui é a IA da ${empresa}. Vou fazer perguntas rápidas para entender seu momento e te encaminhar pro time certo."`,
+  );
+  linhas.push("");
+  linhas.push("Perguntas:");
+  baseline.forEach((q, i) => linhas.push(`${i + 1}. ${q}`));
+
+  if (camposObrig.length) {
+    linhas.push("");
+    linhas.push("Campos obrigatórios antes de encerrar:");
+    for (const c of camposObrig) linhas.push(`- ${c}`);
+  }
+
+  linhas.push("");
+  linhas.push("Regras de encerramento:");
+  linhas.push("- Enviar todos os campos para /orbit-lead-ingest com source_slug=typebot.");
+  linhas.push("- Marcar utm_source, utm_medium, utm_campaign quando presentes.");
+  if (handoff) {
+    linhas.push("- Handoff imediato se: " + handoff.replace(/\n+/g, " · "));
+  }
+
+  return linhas.join("\n");
+}
+
+// ============================================================
+// buildImplementationPackageMarkdown
+// ============================================================
+
+export interface ImplementationPackageParams {
+  onboarding: {
+    id?: string;
+    cliente_nome?: string | null;
+    cliente_email?: string | null;
+    cliente_empresa?: string | null;
+    status?: string;
+    responses?: Record<string, any> | null;
+    empresa?: { nome?: string | null; slug?: string | null } | null;
+  };
+  checklist: { key: string; label: string; done?: boolean }[];
+  publicLink: string;
+}
+
+function block(title: string, lines: string[]): string[] {
+  return ["", `## ${title}`, "", ...lines];
+}
+
+export function buildImplementationPackageMarkdown(
+  params: ImplementationPackageParams,
+): string {
+  const { onboarding, checklist, publicLink } = params;
+  const responses = (onboarding.responses ?? {}) as Record<string, any>;
+  const profile = buildImplementationProfile(responses);
+  const missing = getMissingRequiredFields(responses);
+  const empresa = onboarding.empresa?.nome ?? onboarding.cliente_empresa ?? "—";
+  const slug = onboarding.empresa?.slug ? `/${onboarding.empresa.slug}` : "";
+  const progress = calculateProgress(responses);
+
+  const out: string[] = [];
+  out.push(`# Pacote de implantação — ${empresa}${slug}`);
+  out.push("");
+  out.push(`> Gerado em ${new Date().toISOString()} · Progresso ${progress}%`);
+  out.push("");
+
+  // Dados do cliente
+  out.push("## Dados do cliente");
+  out.push("");
+  out.push(`- **Empresa:** ${empresa}${slug}`);
+  out.push(`- **Contato:** ${onboarding.cliente_nome ?? "—"} (${onboarding.cliente_email ?? "—"})`);
+  out.push(`- **Segmento:** ${profile.empresa.segmento || "—"}`);
+  out.push(`- **Porte:** ${profile.empresa.porte || "—"}`);
+  out.push(`- **Site:** ${profile.empresa.site || "—"}`);
+  out.push(`- **Status:** ${onboarding.status ?? "—"}`);
+  out.push(`- **Wizard:** ${publicLink}`);
+
+  // Campos faltantes
+  out.push(...block(
+    "Campos faltantes",
+    missing.length
+      ? missing.map((m) => `- [ ] **${m.section} · ${m.label}** (\`${m.field}\`)`)
+      : ["_Todos os campos obrigatórios preenchidos._"],
+  ));
+
+  // Implementation profile
+  out.push(...block("Implementation profile", [
+    "```json",
+    JSON.stringify(profile, null, 2),
+    "```",
+  ]));
+
+  // Body Typebot recomendado
+  out.push(...block("Body Typebot recomendado", [
+    "```text",
+    buildRecommendedTypebotBody(responses),
+    "```",
+  ]));
+
+  // Treinamento inicial do agente
+  out.push(...block("Treinamento inicial do agente", [
+    `- **Tom de voz:** ${profile.ia.tom || "—"}`,
+    `- **Persona:** ${profile.ia.persona || "—"}`,
+    `- **Objetivo:** ${profile.ia.objetivo || "—"}`,
+    "",
+    "**Restrições (o que a IA NÃO pode fazer):**",
+    profile.ia.proibicoes ? indent(profile.ia.proibicoes) : "_(não definido)_",
+    "",
+    "**Regras de handoff:**",
+    profile.ia.handoff ? indent(profile.ia.handoff) : "_(não definido)_",
+    "",
+    "**Conhecimento extra a ingerir na base RAG:**",
+    indent(getVal(responses, "ia", "conhecimento_extra") || "_(nenhum)_"),
+  ]));
+
+  // Templates em rascunho
+  const primeiraWa = getVal(responses, "templates", "primeira_abordagem");
+  const primeiraEmail = getVal(responses, "templates", "primeira_abordagem_email");
+  out.push(...block("Templates em rascunho", [
+    "### WhatsApp · primeira abordagem",
+    "```text",
+    primeiraWa || "(preencher)",
+    "```",
+    "",
+    "### Email · primeira abordagem",
+    "```text",
+    primeiraEmail || "(preencher)",
+    "```",
+    "",
+    `**CTA padrão:** ${getVal(responses, "templates", "cta_padrao") || "—"}`,
+    `**Link de agenda:** ${getVal(responses, "templates", "link_agenda") || "—"}`,
+  ]));
+
+  // Fluxos sugeridos
+  const cadPrio = getVal(responses, "templates", "cadencia_priority");
+  const cadHot = getVal(responses, "templates", "cadencia_hot");
+  const cadCold = getVal(responses, "templates", "cadencia_cold");
+  out.push(...block("Fluxos sugeridos", [
+    "- **[ORBIT] Novo lead PRIORITY** — resposta imediata + follow-up curto.",
+    "  Cadência: " + (cadPrio || "D+0 imediato · D+0+2h · D+1 · D+2"),
+    "- **[ORBIT] Novo lead HOT** — nutrição comercial padrão.",
+    "  Cadência: " + (cadHot || "D+0 · D+1 · D+3 · D+7"),
+    "- **[ORBIT] Nutrição COLD** — sequência educativa longa.",
+    "  Cadência: " + (cadCold || "D+0 · D+7 · D+14 · D+30"),
+    "- Todas as ações devem começar com `dry_run:true` e `cancel_on_reply:true`.",
+  ]));
+
+  // Lead Score sugerido
+  out.push(...block("Lead Score sugerido", [
+    "**Priority (score >= 80):**",
+    ...(profile.icp.priority_signals.length
+      ? profile.icp.priority_signals.map((s) => `- ${s}`)
+      : ["- (definir com o cliente)"]),
+    "",
+    "**Hot (score 50–79):**",
+    ...(profile.icp.hot_signals.length
+      ? profile.icp.hot_signals.map((s) => `- ${s}`)
+      : ["- (definir)"]),
+    "",
+    "**Cold (score < 50 / desqualificar):**",
+    ...(profile.icp.cold_signals.length
+      ? profile.icp.cold_signals.map((s) => `- ${s}`)
+      : ["- (definir)"]),
+  ]));
+
+  // Ativos e mídias
+  out.push(...block("Ativos e mídias", [
+    `- **Logo:** ${getVal(responses, "midias", "logo_url") || "—"}`,
+    `- **Apresentação comercial:** ${getVal(responses, "midias", "apresentacao_url") || "—"}`,
+    `- **Cases:** ${getVal(responses, "midias", "cases_url") || "—"}`,
+    "",
+    "**Vídeos:**",
+    indent(getVal(responses, "midias", "videos_url") || "—"),
+    "",
+    "**Áudios:**",
+    indent(getVal(responses, "midias", "audios") || "—"),
+    "",
+    "**Outros:**",
+    indent(getVal(responses, "midias", "assets_extras") || "—"),
+  ]));
+
+  // Smoke plan
+  out.push(...block("Smoke plan", [
+    "1. Rodar `orbit-lead-ingest` com 3 leads sintéticos (Low, Medium, High) via `source_slug` do Typebot.",
+    "2. Validar Lead Score em cada caso (cold/hot/priority) e o `meta.lead_score` da resposta.",
+    "3. Confirmar disparo dos fluxos correspondentes com `dry_run:true`.",
+    "4. Conferir agendamento de `orbit_flow_scheduled_actions` (D+1, D+3, etc.).",
+    "5. Simular resposta inbound e validar cancelamento automático da cadência.",
+    "6. Rodar `orbit-onboarding-create` com `dry_run_email:true` para testar o link sem enviar email real.",
+    "7. Cleanup: arquivar prospects/onboardings sintéticos ao final.",
+  ]));
+
+  // Checklist
+  out.push(...block("Checklist de implementação", checklist.map(
+    (c) => `- [${c.done ? "x" : " "}] ${c.label}`,
+  )));
+
+  // Guardrails
+  out.push(...block("Guardrails", [
+    "- **Isolamento por tenant:** toda operação filtra por `empresa_id`. Não usar service role em rotas client-side.",
+    "- **RLS:** nenhuma tabela `public.*` sai sem policy + GRANT explícito.",
+    "- **Z-API:** validar conectividade antes do go-live; alertas ativos no advisor.",
+    "- **Email (Resend):** validar domínio verificado antes do primeiro disparo real.",
+    "- **Fluxos:** subir sempre com `dry_run:true` em ambiente de teste e `cancel_on_reply:true`.",
+    "- **Lead Score:** overrides usam apenas valores escalares (helper `_lead_score_jsonb_values`), nunca chaves.",
+    "- **Advisor:** aplicar mudanças só quando `advisor_playbook_gate` liberar (Z-API + Calendário + prefixos ok).",
+    "- **Secrets:** nunca commitar; usar `add_secret` no Lovable Cloud.",
+  ]));
+
+  out.push("");
+  return out.join("\n");
+}
+
+function indent(s: string): string {
+  return s.split(/\r?\n/).map((l) => (l.trim() ? `  ${l}` : l)).join("\n");
+}
