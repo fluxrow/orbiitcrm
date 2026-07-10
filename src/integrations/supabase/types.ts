@@ -4581,6 +4581,7 @@ export type Database = {
         }
         Returns: string
       }
+      _lead_score_jsonb_values: { Args: { p_data: Json }; Returns: string }
       advisor_apply_gate: {
         Args: { p_empresa: string; p_kind: string; p_target_id: string }
         Returns: Json
