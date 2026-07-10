@@ -20,7 +20,14 @@ import {
   useUpdateChecklist,
   ClientOnboarding,
 } from "@/hooks/useOrbitOnboarding";
-import { ONBOARDING_SECTIONS, calculateProgress, DEFAULT_CHECKLIST } from "@/lib/onboarding-sections";
+import {
+  ONBOARDING_SECTIONS,
+  ALL_KNOWN_SECTIONS,
+  calculateProgress,
+  DEFAULT_CHECKLIST,
+  buildImplementationPackageMarkdown,
+} from "@/lib/onboarding-sections";
+import { Switch } from "@/components/ui/switch";
 
 const STATUS_LABEL: Record<string, { label: string; variant: any }> = {
   rascunho: { label: "Rascunho", variant: "secondary" },
