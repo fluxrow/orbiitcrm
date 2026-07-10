@@ -382,11 +382,65 @@ async function scanEmpresa(
     };
   }
 
-  // Aplicar guardrails por advisor_locked_paths
+  // Aplicar guardrails: (1) advisor_locked_paths, (2) advisor_apply_gate
+  // (playbook do tenant, dependência de Z-API/calendário, envio_real_liberado).
   const blockedByDetector: Record<string, number> = {};
-  const rows = allSuggestions.map((s) => {
-    const tipoBloqueado = lockedSet.has(s.tipo);
-    if (tipoBloqueado) {
+  const GATED_KINDS = new Set(["flow_pause", "flow_variation_propose", "stage_add_followup_task"]);
+
+  const rows: any[] = [];
+  for (const s of allSuggestions) {
+    let status: string = s.status;
+    let blockedReason: string | null = null;
+    let action = { ...s.action } as Record<string, unknown>;
+
+    if (lockedSet.has(s.tipo)) {
+      status = "blocked";
+      blockedReason = "advisor_locked_paths";
+    }
+
+    const kind = String(action?.kind ?? "");
+    const targetId = (action as any)?.target_id;
+    if (GATED_KINDS.has(kind) && targetId) {
+      try {
+        const { data: gate, error: gateErr } = await admin.rpc(
+          "advisor_apply_gate" as any,
+          { p_empresa: empresaId, p_kind: kind, p_target_id: targetId },
+        );
+        if (gateErr) {
+          slog("warn", "gate_call_failed", {
+            run_id: runId, empresa_id: empresaId, kind, error: gateErr.message,
+          });
+        } else if (gate) {
+          const g = gate as any;
+          action = {
+            ...action,
+            flow_id: g.flow_id ?? null,
+            flow_name: g.flow_name ?? null,
+            trigger_type: g.trigger_type ?? null,
+            stage_nome: g.stage_nome ?? null,
+            playbook_ok: g.playbook_ok ?? true,
+            playbook_prefixes: g.playbook_prefixes ?? [],
+            depends_on_whatsapp: g.depends_on_whatsapp ?? false,
+            depends_on_calendar: g.depends_on_calendar ?? false,
+            zapi_available: g.zapi_available ?? false,
+            envio_real_liberado: g.envio_real_liberado ?? false,
+            calendar_ready: g.calendar_ready ?? false,
+            dry_run: g.dry_run ?? true,
+            apply_gate_reasons: Array.isArray(g.reasons) ? g.reasons : [],
+          };
+          if (g.ok === false && status === "pending") {
+            status = "blocked";
+            blockedReason = "advisor_apply_gate:" + ((g.reasons ?? []).join(",") || "unknown");
+          }
+        }
+      } catch (e) {
+        slog("warn", "gate_call_threw", {
+          run_id: runId, empresa_id: empresaId, kind, error: (e as Error).message,
+        });
+      }
+    }
+
+    if (status === "blocked") {
       blockedByDetector[s.tipo] = (blockedByDetector[s.tipo] ?? 0) + 1;
       const m = metrics.get(s.tipo);
       if (m) m.suggestions_blocked += 1;
@@ -395,15 +449,12 @@ async function scanEmpresa(
         empresa_id: empresaId,
         detector: s.tipo,
         dedupe_key: s.dedupe_key,
-        reason: "advisor_locked_paths",
+        reason: blockedReason,
       });
     }
-    return {
-      ...s,
-      status: tipoBloqueado ? "blocked" : s.status,
-      blocked_reason: tipoBloqueado ? "advisor_locked_paths" : null,
-    };
-  });
+
+    rows.push({ ...s, action, status, blocked_reason: blockedReason });
+  }
 
   // Dedup manual (índice único é parcial)
   const dedupeKeys = rows.map((r) => r.dedupe_key);
