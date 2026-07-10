@@ -347,3 +347,50 @@ function OnboardingDetailSheet({
     </Sheet>
   );
 }
+
+function buildImplantacaoMarkdown(
+  o: ClientOnboarding,
+  checklist: any[],
+  link: string,
+): string {
+  const lines: string[] = [];
+  const empresa = o.empresa?.nome ?? o.cliente_empresa ?? "—";
+  const slug = o.empresa?.slug ? `/${o.empresa.slug}` : "";
+  lines.push(`# Pacote de implantação — ${empresa}${slug}`);
+  lines.push("");
+  lines.push(`- **Cliente:** ${o.cliente_nome ?? "—"} (${o.cliente_email ?? "—"})`);
+  lines.push(`- **Status:** ${o.status}`);
+  lines.push(`- **Progresso:** ${calculateProgress(o.responses)}%`);
+  lines.push(`- **Link do wizard:** ${link}`);
+  lines.push(`- **Gerado em:** ${new Date().toISOString()}`);
+  lines.push("");
+
+  lines.push("## Respostas do cliente");
+  lines.push("");
+  const responses = o.responses ?? {};
+  if (Object.keys(responses).length === 0) {
+    lines.push("_Nenhuma resposta preenchida ainda._");
+    lines.push("");
+  } else {
+    for (const sec of ONBOARDING_SECTIONS) {
+      const vals = (responses as any)?.[sec.key];
+      if (!vals || Object.keys(vals).length === 0) continue;
+      lines.push(`### ${sec.title}`);
+      lines.push("");
+      for (const f of sec.fields) {
+        const v = vals[f.key];
+        if (v === undefined || v === null || String(v).trim() === "") continue;
+        lines.push(`- **${f.label}:** ${String(v).replace(/\n/g, "\n  ")}`);
+      }
+      lines.push("");
+    }
+  }
+
+  lines.push("## Checklist de implementação");
+  lines.push("");
+  for (const item of checklist) {
+    lines.push(`- [${item.done ? "x" : " "}] ${item.label}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
