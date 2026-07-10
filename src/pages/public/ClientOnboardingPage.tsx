@@ -114,22 +114,34 @@ export default function ClientOnboardingPage() {
       console.warn("[onboarding] save antes do submit falhou:", e?.message);
     }
 
-    // Validação soft: apenas avisa sobre campos faltantes, não bloqueia.
-    const missing: { sectionIdx: number; label: string; sectionTitle: string }[] = [];
+    // Validação soft: destaca campos faltantes mas não bloqueia o envio.
+    const missing: { sectionIdx: number; label: string; sectionTitle: string; sectionKey: string; fieldKey: string }[] = [];
     ONBOARDING_SECTIONS.forEach((sec, idx) => {
       for (const f of sec.fields) {
         if (!f.required) continue;
         const v = responses?.[sec.key]?.[f.key];
         if (v === undefined || v === null || String(v).trim() === "") {
-          missing.push({ sectionIdx: idx, label: f.label, sectionTitle: sec.title });
+          missing.push({ sectionIdx: idx, label: f.label, sectionTitle: sec.title, sectionKey: sec.key, fieldKey: f.key });
         }
       }
     });
 
+    setMissingKeys(new Set(missing.map((m) => `${m.sectionKey}.${m.fieldKey}`)));
+
     if (missing.length > 0) {
-      const preview = missing.slice(0, 3).map((m) => `"${m.label}" (${m.sectionTitle})`).join(", ");
-      const extra = missing.length > 3 ? ` e mais ${missing.length - 3}` : "";
-      toast.warning(`Enviando com ${missing.length} campo(s) recomendado(s) em branco: ${preview}${extra}. Você poderá complementar depois.`);
+      const first = missing[0];
+      const preview = missing.slice(0, 3).map((m) => `"${m.label}"`).join(", ");
+      const extra = missing.length > 3 ? ` e +${missing.length - 3}` : "";
+      toast.warning(
+        `${missing.length} campo(s) recomendado(s) em branco: ${preview}${extra}. Enviando mesmo assim — você pode complementar depois.`,
+        {
+          duration: 8000,
+          action: {
+            label: `Ir para "${first.sectionTitle}"`,
+            onClick: () => setStepIdx(first.sectionIdx),
+          },
+        },
+      );
     }
 
     try {
