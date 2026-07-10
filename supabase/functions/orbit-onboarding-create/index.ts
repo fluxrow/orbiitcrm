@@ -17,6 +17,8 @@ interface Body {
   cliente_email: string;
   cliente_empresa?: string;
   notes?: string;
+  // Smoke/dry-run: cria o onboarding mas não envia email real pelo Resend
+  dry_run_email?: boolean;
 }
 
 serve(async (req) => {
