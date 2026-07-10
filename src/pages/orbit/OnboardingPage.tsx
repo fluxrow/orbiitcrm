@@ -343,9 +343,11 @@ function OnboardingDetailSheet({
               </p>
             ) : (
               <div className="space-y-4">
-                {ONBOARDING_SECTIONS.map((sec) => {
+                {ALL_KNOWN_SECTIONS.map((sec) => {
                   const vals = onboarding.responses?.[sec.key];
                   if (!vals || Object.keys(vals).length === 0) return null;
+                  const knownKeys = new Set(sec.fields.map((f) => f.key));
+                  const unknownEntries = Object.entries(vals).filter(([k]) => !knownKeys.has(k));
                   return (
                     <div key={sec.key} className="border rounded-lg p-3">
                       <h4 className="font-medium text-sm mb-2">{sec.title}</h4>
@@ -354,12 +356,35 @@ function OnboardingDetailSheet({
                           const v = vals[f.key];
                           if (!v) return null;
                           return (
-                            <div key={f.key} className="grid grid-cols-[140px_1fr] gap-2">
+                            <div key={f.key} className="grid grid-cols-[160px_1fr] gap-2">
                               <dt className="text-muted-foreground">{f.label}</dt>
                               <dd className="whitespace-pre-wrap">{String(v)}</dd>
                             </div>
                           );
                         })}
+                        {unknownEntries.map(([k, v]) => (
+                          <div key={k} className="grid grid-cols-[160px_1fr] gap-2 opacity-70">
+                            <dt className="text-muted-foreground italic">{k}</dt>
+                            <dd className="whitespace-pre-wrap">{String(v)}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                  );
+                })}
+                {Object.entries(onboarding.responses ?? {}).map(([secKey, vals]: [string, any]) => {
+                  if (ALL_KNOWN_SECTIONS.some((s) => s.key === secKey)) return null;
+                  if (!vals || Object.keys(vals).length === 0) return null;
+                  return (
+                    <div key={secKey} className="border border-dashed rounded-lg p-3 opacity-70">
+                      <h4 className="font-medium text-sm mb-2 italic">[Legado] {secKey}</h4>
+                      <dl className="space-y-1.5 text-sm">
+                        {Object.entries(vals).map(([k, v]) => (
+                          <div key={k} className="grid grid-cols-[160px_1fr] gap-2">
+                            <dt className="text-muted-foreground italic">{k}</dt>
+                            <dd className="whitespace-pre-wrap">{String(v)}</dd>
+                          </div>
+                        ))}
                       </dl>
                     </div>
                   );
@@ -373,49 +398,3 @@ function OnboardingDetailSheet({
   );
 }
 
-function buildImplantacaoMarkdown(
-  o: ClientOnboarding,
-  checklist: any[],
-  link: string,
-): string {
-  const lines: string[] = [];
-  const empresa = o.empresa?.nome ?? o.cliente_empresa ?? "—";
-  const slug = o.empresa?.slug ? `/${o.empresa.slug}` : "";
-  lines.push(`# Pacote de implantação — ${empresa}${slug}`);
-  lines.push("");
-  lines.push(`- **Cliente:** ${o.cliente_nome ?? "—"} (${o.cliente_email ?? "—"})`);
-  lines.push(`- **Status:** ${o.status}`);
-  lines.push(`- **Progresso:** ${calculateProgress(o.responses)}%`);
-  lines.push(`- **Link do wizard:** ${link}`);
-  lines.push(`- **Gerado em:** ${new Date().toISOString()}`);
-  lines.push("");
-
-  lines.push("## Respostas do cliente");
-  lines.push("");
-  const responses = o.responses ?? {};
-  if (Object.keys(responses).length === 0) {
-    lines.push("_Nenhuma resposta preenchida ainda._");
-    lines.push("");
-  } else {
-    for (const sec of ONBOARDING_SECTIONS) {
-      const vals = (responses as any)?.[sec.key];
-      if (!vals || Object.keys(vals).length === 0) continue;
-      lines.push(`### ${sec.title}`);
-      lines.push("");
-      for (const f of sec.fields) {
-        const v = vals[f.key];
-        if (v === undefined || v === null || String(v).trim() === "") continue;
-        lines.push(`- **${f.label}:** ${String(v).replace(/\n/g, "\n  ")}`);
-      }
-      lines.push("");
-    }
-  }
-
-  lines.push("## Checklist de implementação");
-  lines.push("");
-  for (const item of checklist) {
-    lines.push(`- [${item.done ? "x" : " "}] ${item.label}`);
-  }
-  lines.push("");
-  return lines.join("\n");
-}
