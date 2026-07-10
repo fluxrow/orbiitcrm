@@ -295,6 +295,40 @@ Deno.serve(async (req) => {
 
   await logWebhook(sourceId, "ok", { prospect_id: prospectId, created });
 
+  // 8.1) Best-effort Lead Score recalc (feature opt-in por tenant; nunca bloqueia ingest)
+  let leadScoreMeta: {
+    attempted: boolean;
+    ok: boolean;
+    skipped: string | null;
+    score: number | null;
+    label: string | null;
+    error: string | null;
+  } = { attempted: true, ok: false, skipped: null, score: null, label: null, error: null };
+  try {
+    const { data: rs, error: rsErr } = await supabase.rpc("recalculate_lead_score", {
+      p_empresa_id: source.empresa_id,
+      p_prospect_id: prospectId,
+    });
+    if (rsErr) {
+      leadScoreMeta.error = rsErr.message;
+      console.error("[lead-ingest] lead_score rpc error", rsErr);
+    } else {
+      const r = (rs ?? {}) as Record<string, unknown>;
+      const skipped = (r.skipped as string | undefined) ?? null;
+      leadScoreMeta = {
+        attempted: true,
+        ok: true,
+        skipped,
+        score: (r.score as number | undefined) ?? null,
+        label: (r.label as string | undefined) ?? null,
+        error: null,
+      };
+    }
+  } catch (e) {
+    leadScoreMeta.error = (e as Error)?.message ?? String(e);
+    console.error("[lead-ingest] lead_score exception", e);
+  }
+
   // 9) Emite evento `lead_recebido` no motor de fluxos (Etapa B)
   const eventPayload = {
     source_id: sourceId,
