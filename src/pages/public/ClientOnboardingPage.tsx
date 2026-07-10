@@ -23,6 +23,17 @@ export default function ClientOnboardingPage() {
   const [responses, setResponses] = useState<Record<string, Record<string, any>>>({});
   const [stepIdx, setStepIdx] = useState(0);
   const [submitted, setSubmitted] = useState(false);
+  // Chaves "sectionKey.fieldKey" marcadas como faltantes na última tentativa de envio.
+  const [missingKeys, setMissingKeys] = useState<Set<string>>(new Set());
+
+  const missingBySection = useMemo(() => {
+    const map: Record<string, number> = {};
+    missingKeys.forEach((k) => {
+      const [sec] = k.split(".");
+      map[sec] = (map[sec] ?? 0) + 1;
+    });
+    return map;
+  }, [missingKeys]);
 
   useEffect(() => {
     if (data?.responses) setResponses(data.responses as any);
@@ -67,6 +78,15 @@ export default function ClientOnboardingPage() {
       ...prev,
       [sectionKey]: { ...(prev[sectionKey] ?? {}), [fieldKey]: value },
     }));
+    // Limpa highlight assim que o usuário começa a preencher.
+    const composite = `${sectionKey}.${fieldKey}`;
+    if (missingKeys.has(composite)) {
+      setMissingKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(composite);
+        return next;
+      });
+    }
   };
 
   const persist = async () => {
@@ -94,22 +114,34 @@ export default function ClientOnboardingPage() {
       console.warn("[onboarding] save antes do submit falhou:", e?.message);
     }
 
-    // Validação soft: apenas avisa sobre campos faltantes, não bloqueia.
-    const missing: { sectionIdx: number; label: string; sectionTitle: string }[] = [];
+    // Validação soft: destaca campos faltantes mas não bloqueia o envio.
+    const missing: { sectionIdx: number; label: string; sectionTitle: string; sectionKey: string; fieldKey: string }[] = [];
     ONBOARDING_SECTIONS.forEach((sec, idx) => {
       for (const f of sec.fields) {
         if (!f.required) continue;
         const v = responses?.[sec.key]?.[f.key];
         if (v === undefined || v === null || String(v).trim() === "") {
-          missing.push({ sectionIdx: idx, label: f.label, sectionTitle: sec.title });
+          missing.push({ sectionIdx: idx, label: f.label, sectionTitle: sec.title, sectionKey: sec.key, fieldKey: f.key });
         }
       }
     });
 
+    setMissingKeys(new Set(missing.map((m) => `${m.sectionKey}.${m.fieldKey}`)));
+
     if (missing.length > 0) {
-      const preview = missing.slice(0, 3).map((m) => `"${m.label}" (${m.sectionTitle})`).join(", ");
-      const extra = missing.length > 3 ? ` e mais ${missing.length - 3}` : "";
-      toast.warning(`Enviando com ${missing.length} campo(s) recomendado(s) em branco: ${preview}${extra}. Você poderá complementar depois.`);
+      const first = missing[0];
+      const preview = missing.slice(0, 3).map((m) => `"${m.label}"`).join(", ");
+      const extra = missing.length > 3 ? ` e +${missing.length - 3}` : "";
+      toast.warning(
+        `${missing.length} campo(s) recomendado(s) em branco: ${preview}${extra}. Enviando mesmo assim — você pode complementar depois.`,
+        {
+          duration: 8000,
+          action: {
+            label: `Ir para "${first.sectionTitle}"`,
+            onClick: () => setStepIdx(first.sectionIdx),
+          },
+        },
+      );
     }
 
     try {
@@ -147,22 +179,33 @@ export default function ClientOnboardingPage() {
                 <p className="text-xs text-muted-foreground">{progress}% preenchido</p>
               </div>
               <nav className="space-y-1">
-                {ONBOARDING_SECTIONS.map((s, i) => (
-                  <button
-                    key={s.key}
-                    onClick={() => setStepIdx(i)}
-                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-left transition ${
-                      i === stepIdx
-                        ? "bg-primary/15 text-primary font-medium"
-                        : "hover:bg-muted/50 text-muted-foreground"
-                    }`}
-                  >
-                    <span className={`w-6 h-6 rounded-full grid place-items-center text-xs font-semibold shrink-0 ${
-                      i === stepIdx ? "bg-primary text-primary-foreground" : "bg-muted"
-                    }`}>{i + 1}</span>
-                    <span className="truncate">{s.title}</span>
-                  </button>
-                ))}
+                {ONBOARDING_SECTIONS.map((s, i) => {
+                  const missCount = missingBySection[s.key] ?? 0;
+                  return (
+                    <button
+                      key={s.key}
+                      onClick={() => setStepIdx(i)}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-left transition ${
+                        i === stepIdx
+                          ? "bg-primary/15 text-primary font-medium"
+                          : "hover:bg-muted/50 text-muted-foreground"
+                      }`}
+                    >
+                      <span className={`w-6 h-6 rounded-full grid place-items-center text-xs font-semibold shrink-0 ${
+                        i === stepIdx ? "bg-primary text-primary-foreground" : "bg-muted"
+                      }`}>{i + 1}</span>
+                      <span className="truncate flex-1">{s.title}</span>
+                      {missCount > 0 && (
+                        <span
+                          className="ml-auto shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-destructive/15 text-destructive text-[10px] font-semibold grid place-items-center"
+                          title={`${missCount} campo(s) obrigatório(s) em branco`}
+                        >
+                          {missCount}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </nav>
             </Card>
           </aside>
@@ -185,6 +228,7 @@ export default function ClientOnboardingPage() {
                     field={f}
                     value={responses?.[section.key]?.[f.key] ?? ""}
                     onChange={(v) => setField(section.key, f.key, v)}
+                    missing={missingKeys.has(`${section.key}.${f.key}`)}
                   />
                 ))}
               </div>
@@ -229,10 +273,13 @@ export default function ClientOnboardingPage() {
 }
 
 function FieldInput({
-  field, value, onChange,
-}: { field: OnboardingField; value: any; onChange: (v: any) => void }) {
+  field, value, onChange, missing,
+}: { field: OnboardingField; value: any; onChange: (v: any) => void; missing?: boolean }) {
+  const invalidCls = missing
+    ? "border-destructive ring-2 ring-destructive/40 focus-visible:ring-destructive/60"
+    : "";
   return (
-    <div>
+    <div className={missing ? "rounded-md" : ""}>
       <Label className="mb-1.5 block">
         {field.label} {field.required && <span className="text-destructive">*</span>}
       </Label>
@@ -242,10 +289,11 @@ function FieldInput({
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder}
           rows={4}
+          className={invalidCls}
         />
       ) : field.type === "select" ? (
         <Select value={value ?? ""} onValueChange={onChange}>
-          <SelectTrigger>
+          <SelectTrigger className={invalidCls}>
             <SelectValue placeholder="Selecione…" />
           </SelectTrigger>
           <SelectContent>
@@ -260,7 +308,11 @@ function FieldInput({
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder}
+          className={invalidCls}
         />
+      )}
+      {missing && (
+        <p className="text-xs text-destructive mt-1">Campo recomendado — em branco no envio.</p>
       )}
       {field.helper && <p className="text-xs text-muted-foreground mt-1">{field.helper}</p>}
     </div>
