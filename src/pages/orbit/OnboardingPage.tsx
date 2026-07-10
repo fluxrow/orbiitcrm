@@ -271,38 +271,28 @@ function OnboardingDetailSheet({
             </Button>
             <Button
               variant="outline" size="sm" className="gap-1.5"
-              onClick={() => {
-                const payload = {
-                  exported_at: new Date().toISOString(),
-                  empresa: onboarding.empresa?.nome ?? onboarding.cliente_empresa ?? null,
-                  slug: onboarding.empresa?.slug ?? null,
-                  status: onboarding.status,
-                  cliente: {
-                    nome: onboarding.cliente_nome,
-                    email: onboarding.cliente_email,
-                    empresa: onboarding.cliente_empresa,
-                  },
-                  progress: calculateProgress(onboarding.responses),
-                  responses: onboarding.responses ?? {},
-                  implementation_checklist: checklist,
-                  public_link: link,
-                  raw: onboarding,
-                };
-                const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
+              onClick={async () => {
+                const md = buildImplantacaoMarkdown(onboarding, checklist, link);
                 const safe = (onboarding.empresa?.slug || onboarding.cliente_empresa || onboarding.cliente_nome || "onboarding")
                   .toString().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+                const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
                 a.href = url;
-                a.download = `onboarding-${safe}-${new Date().toISOString().slice(0,10)}.json`;
+                a.download = `implantacao-${safe}-${new Date().toISOString().slice(0,10)}.md`;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-                toast.success("JSON exportado");
+                try {
+                  await navigator.clipboard.writeText(md);
+                  toast.success("Pacote gerado — .md baixado e copiado");
+                } catch {
+                  toast.success("Pacote gerado — .md baixado");
+                }
               }}
             >
-              <Download className="w-3.5 h-3.5" /> Exportar JSON
+              <Download className="w-3.5 h-3.5" /> Gerar pacote de implantação
             </Button>
           </div>
 
