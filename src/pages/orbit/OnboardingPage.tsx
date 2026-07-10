@@ -229,12 +229,21 @@ function NewOnboardingDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             <Label>Observações internas</Label>
             <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
           </div>
+          <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/20 p-3">
+            <div>
+              <Label className="text-sm">Modo smoke (não enviar email)</Label>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Cria o onboarding e retorna o link, mas não dispara nada pelo Resend. Use para testes.
+              </p>
+            </div>
+            <Switch checked={dryRunEmail} onCheckedChange={setDryRunEmail} />
+          </div>
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button onClick={submit} disabled={create.isPending} className="gap-2">
             <Mail className="w-4 h-4" />
-            {create.isPending ? "Enviando…" : "Criar tenant e enviar email"}
+            {create.isPending ? "Enviando…" : dryRunEmail ? "Criar (sem email)" : "Criar tenant e enviar email"}
           </Button>
         </DialogFooter>
       </DialogContent>
