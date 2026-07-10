@@ -885,6 +885,7 @@ export type Database = {
       orbit_ai_config: {
         Row: {
           advisor_locked_paths: Json
+          advisor_playbook_flow_prefixes: string[] | null
           advisor_thresholds: Json
           campos_qualificacao: Json
           created_at: string | null
@@ -914,6 +915,7 @@ export type Database = {
         }
         Insert: {
           advisor_locked_paths?: Json
+          advisor_playbook_flow_prefixes?: string[] | null
           advisor_thresholds?: Json
           campos_qualificacao?: Json
           created_at?: string | null
@@ -943,6 +945,7 @@ export type Database = {
         }
         Update: {
           advisor_locked_paths?: Json
+          advisor_playbook_flow_prefixes?: string[] | null
           advisor_thresholds?: Json
           campos_qualificacao?: Json
           created_at?: string | null
@@ -4517,6 +4520,10 @@ export type Database = {
       }
       _build_orbit_zapi_runtime_response: {
         Args: { p_config_id: string }
+        Returns: Json
+      }
+      advisor_apply_gate: {
+        Args: { p_empresa: string; p_kind: string; p_target_id: string }
         Returns: Json
       }
       apply_flow_pause: {
