@@ -21,7 +21,6 @@ import {
   ClientOnboarding,
 } from "@/hooks/useOrbitOnboarding";
 import {
-  ONBOARDING_SECTIONS,
   ALL_KNOWN_SECTIONS,
   calculateProgress,
   DEFAULT_CHECKLIST,
