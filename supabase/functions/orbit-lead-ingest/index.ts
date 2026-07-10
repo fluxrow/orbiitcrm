@@ -377,7 +377,7 @@ Deno.serve(async (req) => {
       normalized: { nome, telefone, email, documento: docFinal, tipo_documento: tipoDoc },
       flow_event_emitted: !evErr,
     },
-    { source_tipo: source.tipo },
+    { source_tipo: source.tipo, lead_score: leadScoreMeta },
     req,
   );
 });
