@@ -179,22 +179,33 @@ export default function ClientOnboardingPage() {
                 <p className="text-xs text-muted-foreground">{progress}% preenchido</p>
               </div>
               <nav className="space-y-1">
-                {ONBOARDING_SECTIONS.map((s, i) => (
-                  <button
-                    key={s.key}
-                    onClick={() => setStepIdx(i)}
-                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-left transition ${
-                      i === stepIdx
-                        ? "bg-primary/15 text-primary font-medium"
-                        : "hover:bg-muted/50 text-muted-foreground"
-                    }`}
-                  >
-                    <span className={`w-6 h-6 rounded-full grid place-items-center text-xs font-semibold shrink-0 ${
-                      i === stepIdx ? "bg-primary text-primary-foreground" : "bg-muted"
-                    }`}>{i + 1}</span>
-                    <span className="truncate">{s.title}</span>
-                  </button>
-                ))}
+                {ONBOARDING_SECTIONS.map((s, i) => {
+                  const missCount = missingBySection[s.key] ?? 0;
+                  return (
+                    <button
+                      key={s.key}
+                      onClick={() => setStepIdx(i)}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-left transition ${
+                        i === stepIdx
+                          ? "bg-primary/15 text-primary font-medium"
+                          : "hover:bg-muted/50 text-muted-foreground"
+                      }`}
+                    >
+                      <span className={`w-6 h-6 rounded-full grid place-items-center text-xs font-semibold shrink-0 ${
+                        i === stepIdx ? "bg-primary text-primary-foreground" : "bg-muted"
+                      }`}>{i + 1}</span>
+                      <span className="truncate flex-1">{s.title}</span>
+                      {missCount > 0 && (
+                        <span
+                          className="ml-auto shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-destructive/15 text-destructive text-[10px] font-semibold grid place-items-center"
+                          title={`${missCount} campo(s) obrigatório(s) em branco`}
+                        >
+                          {missCount}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </nav>
             </Card>
           </aside>
