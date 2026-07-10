@@ -136,6 +136,18 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Se confirm=false e não bloqueado, monta preview normal (before/after)
+    if (!confirm) {
+      const preview = await buildPreview(admin, kind, userEmpresa, targetId, sug);
+      slog("info", "apply_preview", { run_id: runId, suggestion_id: suggestionId, kind });
+      return json(cors, 200, {
+        ok: true,
+        data: { preview: { ...preview, gate }, kind, requires_confirm: true },
+      });
+    }
+
+
+
 
     // Confirm=true: chama a RPC apropriada
     const rpcName =
