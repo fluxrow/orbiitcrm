@@ -273,10 +273,13 @@ export default function ClientOnboardingPage() {
 }
 
 function FieldInput({
-  field, value, onChange,
-}: { field: OnboardingField; value: any; onChange: (v: any) => void }) {
+  field, value, onChange, missing,
+}: { field: OnboardingField; value: any; onChange: (v: any) => void; missing?: boolean }) {
+  const invalidCls = missing
+    ? "border-destructive ring-2 ring-destructive/40 focus-visible:ring-destructive/60"
+    : "";
   return (
-    <div>
+    <div className={missing ? "rounded-md" : ""}>
       <Label className="mb-1.5 block">
         {field.label} {field.required && <span className="text-destructive">*</span>}
       </Label>
@@ -286,10 +289,11 @@ function FieldInput({
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder}
           rows={4}
+          className={invalidCls}
         />
       ) : field.type === "select" ? (
         <Select value={value ?? ""} onValueChange={onChange}>
-          <SelectTrigger>
+          <SelectTrigger className={invalidCls}>
             <SelectValue placeholder="Selecione…" />
           </SelectTrigger>
           <SelectContent>
@@ -304,7 +308,11 @@ function FieldInput({
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder}
+          className={invalidCls}
         />
+      )}
+      {missing && (
+        <p className="text-xs text-destructive mt-1">Campo recomendado — em branco no envio.</p>
       )}
       {field.helper && <p className="text-xs text-muted-foreground mt-1">{field.helper}</p>}
     </div>
