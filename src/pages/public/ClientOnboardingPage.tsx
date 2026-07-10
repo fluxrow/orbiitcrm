@@ -23,6 +23,17 @@ export default function ClientOnboardingPage() {
   const [responses, setResponses] = useState<Record<string, Record<string, any>>>({});
   const [stepIdx, setStepIdx] = useState(0);
   const [submitted, setSubmitted] = useState(false);
+  // Chaves "sectionKey.fieldKey" marcadas como faltantes na última tentativa de envio.
+  const [missingKeys, setMissingKeys] = useState<Set<string>>(new Set());
+
+  const missingBySection = useMemo(() => {
+    const map: Record<string, number> = {};
+    missingKeys.forEach((k) => {
+      const [sec] = k.split(".");
+      map[sec] = (map[sec] ?? 0) + 1;
+    });
+    return map;
+  }, [missingKeys]);
 
   useEffect(() => {
     if (data?.responses) setResponses(data.responses as any);
