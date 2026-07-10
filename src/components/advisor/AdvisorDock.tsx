@@ -205,6 +205,7 @@ export function AdvisorDock() {
                     )}
                     {suggestions.map((s) => {
                       const applyable = isApplyable(s);
+                      const reasons = getBlockReasons(s);
                       const riscoColor =
                         s.risco === "alto"
                           ? "border-destructive/50 bg-destructive/5"
@@ -225,18 +226,42 @@ export function AdvisorDock() {
                                 {s.titulo}
                               </p>
                               <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                <Badge
+                                  variant={applyable ? "default" : "secondary"}
+                                  className="text-[9px] uppercase"
+                                >
+                                  {applyable ? "Ação aplicável" : "Diagnóstico"}
+                                </Badge>
                                 <Badge variant="outline" className="text-[9px] uppercase">
                                   {s.risco}
                                 </Badge>
                                 <span className="text-[10px] text-muted-foreground">
                                   {s.action?.kind ?? "sem ação"}
                                 </span>
+                                {s.action?.flow_name && (
+                                  <span className="text-[10px] text-muted-foreground truncate max-w-[160px]">
+                                    · {s.action.flow_name}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
                           <p className="text-xs text-muted-foreground leading-relaxed">
                             {s.racional}
                           </p>
+                          {!applyable && reasons.length > 0 && (
+                            <div className="flex items-center gap-1 flex-wrap pt-1">
+                              {reasons.map((r) => (
+                                <Badge
+                                  key={r}
+                                  variant="outline"
+                                  className="text-[9px] font-mono border-destructive/40 text-destructive/90"
+                                >
+                                  {r}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
                           <div className="flex justify-end pt-1">
                             {applyable ? (
                               <Button
@@ -257,13 +282,14 @@ export function AdvisorDock() {
                                       disabled
                                       className="h-7 text-xs"
                                     >
-                                      <Lock className="h-3 w-3 mr-1" /> Revisão manual
+                                      <Lock className="h-3 w-3 mr-1" /> Somente diagnóstico
                                     </Button>
                                   </span>
                                 </TooltipTrigger>
-                                <TooltipContent side="left" className="text-xs max-w-[220px]">
-                                  Este tipo de ação ainda não é aplicável direto pelo Advisor.
-                                  Abra o item no Orbit para agir manualmente.
+                                <TooltipContent side="left" className="text-xs max-w-[240px]">
+                                  {reasons.length > 0
+                                    ? `O Advisor não aplica esta sugestão porque: ${reasons.join(", ")}. Revise o playbook do tenant, a conexão do WhatsApp (envio_real_liberado) ou a agenda do Google Calendar antes de agir manualmente.`
+                                    : "Este tipo de ação ainda não é aplicável direto pelo Advisor. Abra o item no Orbit para agir manualmente."}
                                 </TooltipContent>
                               </Tooltip>
                             )}
