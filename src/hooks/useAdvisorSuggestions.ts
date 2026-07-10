@@ -9,7 +9,25 @@ export type AdvisorSuggestion = {
   titulo: string;
   racional: string;
   risco: "baixo" | "medio" | "alto";
-  action: { kind?: string; target_id?: string; hint?: string; template?: any } | null;
+  action: {
+    kind?: string;
+    target_id?: string;
+    hint?: string;
+    template?: any;
+    flow_id?: string | null;
+    flow_name?: string | null;
+    trigger_type?: string | null;
+    stage_nome?: string | null;
+    playbook_ok?: boolean;
+    playbook_prefixes?: string[];
+    depends_on_whatsapp?: boolean;
+    depends_on_calendar?: boolean;
+    zapi_available?: boolean;
+    envio_real_liberado?: boolean;
+    calendar_ready?: boolean;
+    dry_run?: boolean;
+    apply_gate_reasons?: string[];
+  } | null;
   status: string;
   gerada_em: string;
   expires_at: string | null;
@@ -21,8 +39,29 @@ const APPLYABLE_KINDS = new Set([
   "flow_variation_propose",
 ]);
 
+/**
+ * Uma sugestão só é oferecida como "aplicável" quando:
+ *  1. A action.kind está na whitelist e
+ *  2. O scan não anexou nenhum `apply_gate_reasons` (playbook do tenant,
+ *     dependência de Z-API sem `envio_real_liberado`, dependência de agenda
+ *     sem Google Calendar conectado, fluxo fora do playbook, etc.).
+ * Sugestões fora dessas condições continuam visíveis como DIAGNÓSTICO,
+ * mas sem o botão "Aplicar".
+ */
 export function isApplyable(s: AdvisorSuggestion): boolean {
-  return APPLYABLE_KINDS.has(String(s.action?.kind ?? ""));
+  const kind = String(s.action?.kind ?? "");
+  if (!APPLYABLE_KINDS.has(kind)) return false;
+  const reasons = s.action?.apply_gate_reasons;
+  if (Array.isArray(reasons) && reasons.length > 0) return false;
+  if (s.action?.playbook_ok === false) return false;
+  if (s.action?.depends_on_whatsapp && s.action?.envio_real_liberado === false) return false;
+  if (s.action?.depends_on_calendar && s.action?.calendar_ready === false) return false;
+  return true;
+}
+
+export function getBlockReasons(s: AdvisorSuggestion): string[] {
+  const reasons = s.action?.apply_gate_reasons;
+  return Array.isArray(reasons) ? reasons : [];
 }
 
 export function useAdvisorSuggestions() {

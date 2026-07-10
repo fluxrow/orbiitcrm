@@ -93,13 +93,61 @@ Deno.serve(async (req) => {
     const targetId: string | undefined = sug.action?.target_id;
     if (!targetId) return json(cors, 400, { ok: false, error: "action_target_id_missing" });
 
-    // Monta preview via mesma RPC quando confirm=false? Simplificação:
-    // — para preview, buscamos o estado atual do target sem escrever.
+    // Guardrail final: revalida o gate (playbook / Z-API / calendário) mesmo
+    // que o scan já tenha marcado a sugestão como pending. Se o cenário mudou
+    // (playbook alterado, envio_real_liberado revogado, etc.), bloqueia aqui.
+    const { data: gateData, error: gateErr } = await admin.rpc("advisor_apply_gate" as any, {
+      p_empresa: userEmpresa,
+      p_kind: kind,
+      p_target_id: targetId,
+    });
+    if (gateErr) {
+      slog("error", "gate_call_failed", { run_id: runId, suggestion_id: suggestionId, kind, error: gateErr.message });
+      return json(cors, 500, { ok: false, error: "gate_call_failed" });
+    }
+    const gate = gateData as any;
+    if (!gate?.ok) {
+      slog("warn", "apply_blocked_by_gate", {
+        run_id: runId, suggestion_id: suggestionId, kind, reasons: gate?.reasons,
+      });
+      if (!confirm) {
+        // Preview de bloqueio: devolve o motivo para a UI mostrar como diagnóstico.
+        return json(cors, 200, {
+          ok: true,
+          data: {
+            preview: {
+              blocked: true,
+              reasons: gate?.reasons ?? ["unknown"],
+              gate,
+              description:
+                "Esta sugestão foi marcada como diagnóstico e não pode ser aplicada automaticamente. " +
+                "Motivos: " + ((gate?.reasons ?? []).join(", ") || "playbook_ou_prontidao"),
+            },
+            kind,
+            requires_confirm: false,
+          },
+        });
+      }
+      return json(cors, 403, {
+        ok: false,
+        error: "blocked_by_gate",
+        reasons: gate?.reasons ?? [],
+        gate,
+      });
+    }
+
+    // Se confirm=false e não bloqueado, monta preview normal (before/after)
     if (!confirm) {
       const preview = await buildPreview(admin, kind, userEmpresa, targetId, sug);
       slog("info", "apply_preview", { run_id: runId, suggestion_id: suggestionId, kind });
-      return json(cors, 200, { ok: true, data: { preview, kind, requires_confirm: true } });
+      return json(cors, 200, {
+        ok: true,
+        data: { preview: { ...preview, gate }, kind, requires_confirm: true },
+      });
     }
+
+
+
 
     // Confirm=true: chama a RPC apropriada
     const rpcName =
