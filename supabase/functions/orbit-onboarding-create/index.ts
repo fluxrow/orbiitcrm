@@ -17,6 +17,8 @@ interface Body {
   cliente_email: string;
   cliente_empresa?: string;
   notes?: string;
+  // Smoke/dry-run: cria o onboarding mas não envia email real pelo Resend
+  dry_run_email?: boolean;
 }
 
 serve(async (req) => {
@@ -137,60 +139,69 @@ serve(async (req) => {
 
     const publicLink = `${APP_BASE_URL}/onboarding-cliente/${inserted.public_token}`;
 
-    // Send emails (best-effort)
-    const { apiKey, fromEmail } = await getSystemEmailConfig(supabase);
+    // Send emails (best-effort). Skip entirely in dry-run mode.
     let emailSent = false;
-    if (apiKey) {
-      const subject = `Onboarding ${empresa?.nome ?? "Orbit CRM"} — vamos começar`;
-      const clientHtml = `
-        <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0f172a">
-          <h1 style="font-size:22px;margin:0 0 12px">Olá, ${escapeHtml(body.cliente_nome)} 👋</h1>
-          <p style="font-size:15px;line-height:1.55;color:#334155">
-            Tudo pronto para começarmos a implantação do <strong>${empresa?.nome ?? "Orbit CRM"}</strong> para
-            ${escapeHtml(body.cliente_empresa ?? "sua empresa")}.
-          </p>
-          <p style="font-size:15px;line-height:1.55;color:#334155">
-            Antes da nossa call de kick-off, preciso que você preencha o onboarding abaixo. São cerca de
-            <strong>15 minutos</strong> e suas respostas vão definir como a IA vai conversar com seus leads,
-            como o funil será estruturado e quais integrações ativaremos.
-          </p>
-          <p style="text-align:center;margin:28px 0">
-            <a href="${publicLink}"
-               style="background:#0f766e;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;display:inline-block">
-              Preencher onboarding
-            </a>
-          </p>
-          <p style="font-size:13px;color:#64748b;line-height:1.5">
-            Pode pausar e retomar quando quiser — suas respostas são salvas automaticamente.
-            Se o botão não funcionar, copie e cole o link no navegador:<br>
-            <span style="word-break:break-all">${publicLink}</span>
-          </p>
-          <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0">
-          <p style="font-size:12px;color:#94a3b8">Orbit CRM · Implantação assistida</p>
-        </div>`;
+    let emailSkippedReason: string | undefined;
 
-      const internalHtml = `
-        <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px">
-          <h2 style="margin:0 0 12px">Novo onboarding criado</h2>
-          <p><strong>Cliente:</strong> ${escapeHtml(body.cliente_nome)} (${escapeHtml(body.cliente_email)})</p>
-          <p><strong>Empresa:</strong> ${escapeHtml(body.cliente_empresa ?? "—")}</p>
-          <p><strong>Link público enviado:</strong><br><a href="${publicLink}">${publicLink}</a></p>
-        </div>`;
+    if (body.dry_run_email === true) {
+      emailSkippedReason = "dry_run";
+    } else {
+      const { apiKey, fromEmail } = await getSystemEmailConfig(supabase);
+      if (!apiKey) {
+        emailSkippedReason = "no_resend_config";
+      } else {
+        const subject = `Onboarding ${empresa?.nome ?? "Orbit CRM"} — vamos começar`;
+        const clientHtml = `
+          <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0f172a">
+            <h1 style="font-size:22px;margin:0 0 12px">Olá, ${escapeHtml(body.cliente_nome)} 👋</h1>
+            <p style="font-size:15px;line-height:1.55;color:#334155">
+              Tudo pronto para começarmos a implantação do <strong>${empresa?.nome ?? "Orbit CRM"}</strong> para
+              ${escapeHtml(body.cliente_empresa ?? "sua empresa")}.
+            </p>
+            <p style="font-size:15px;line-height:1.55;color:#334155">
+              Antes da nossa call de kick-off, preciso que você preencha o onboarding abaixo. São cerca de
+              <strong>15 minutos</strong> e suas respostas vão definir como a IA vai conversar com seus leads,
+              como o funil será estruturado e quais integrações ativaremos.
+            </p>
+            <p style="text-align:center;margin:28px 0">
+              <a href="${publicLink}"
+                 style="background:#0f766e;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;display:inline-block">
+                Preencher onboarding
+              </a>
+            </p>
+            <p style="font-size:13px;color:#64748b;line-height:1.5">
+              Pode pausar e retomar quando quiser — suas respostas são salvas automaticamente.
+              Se o botão não funcionar, copie e cole o link no navegador:<br>
+              <span style="word-break:break-all">${publicLink}</span>
+            </p>
+            <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0">
+            <p style="font-size:12px;color:#94a3b8">Orbit CRM · Implantação assistida</p>
+          </div>`;
 
-      const send = async (to: string, html: string, subj: string) => {
-        const r = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify({ from: fromEmail, to, subject: subj, html }),
-        });
-        return r.ok;
-      };
+        const internalHtml = `
+          <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px">
+            <h2 style="margin:0 0 12px">Novo onboarding criado</h2>
+            <p><strong>Cliente:</strong> ${escapeHtml(body.cliente_nome)} (${escapeHtml(body.cliente_email)})</p>
+            <p><strong>Empresa:</strong> ${escapeHtml(body.cliente_empresa ?? "—")}</p>
+            <p><strong>Link público enviado:</strong><br><a href="${publicLink}">${publicLink}</a></p>
+          </div>`;
 
-      const [a, b] = await Promise.all([
-        send(body.cliente_email, clientHtml, subject),
-        send(INTERNAL_NOTIFY_EMAIL, internalHtml, `[Orbit] Onboarding enviado para ${body.cliente_nome}`),
-      ]);
-      emailSent = a && b;
+        const send = async (to: string, html: string, subj: string) => {
+          const r = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+            body: JSON.stringify({ from: fromEmail, to, subject: subj, html }),
+          });
+          return r.ok;
+        };
+
+        const [a, b] = await Promise.all([
+          send(body.cliente_email, clientHtml, subject),
+          send(INTERNAL_NOTIFY_EMAIL, internalHtml, `[Orbit] Onboarding enviado para ${body.cliente_nome}`),
+        ]);
+        emailSent = a && b;
+        if (!emailSent) emailSkippedReason = "resend_failed";
+      }
     }
 
     return ok({
@@ -201,6 +212,7 @@ serve(async (req) => {
       empresa_nome: empresaNome,
       empresa_slug: empresaSlug,
       email_sent: emailSent,
+      email_skipped_reason: emailSkippedReason,
     }, undefined, req);
   } catch (e) {
     return fail(ErrorCodes.INTERNAL_ERROR, (e as Error).message, 500, undefined, req);

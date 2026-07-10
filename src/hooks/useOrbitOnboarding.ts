@@ -76,6 +76,8 @@ export function useCreateOnboarding() {
       notes?: string;
       // Optional: target an existing empresa instead of creating a new one
       empresa_id?: string;
+      // Smoke/dry-run: cria o onboarding mas não envia email pelo Resend
+      dry_run_email?: boolean;
     }) => {
       const payload: Record<string, unknown> = { ...input };
       // If neither new-tenant name nor explicit empresa_id was provided, fall back to current tenant
@@ -94,6 +96,7 @@ export function useCreateOnboarding() {
         empresa_nome: string;
         empresa_slug: string;
         email_sent: boolean;
+        email_skipped_reason?: string;
       };
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["client-onboardings", empresaId] }),

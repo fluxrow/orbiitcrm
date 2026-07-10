@@ -20,7 +20,13 @@ import {
   useUpdateChecklist,
   ClientOnboarding,
 } from "@/hooks/useOrbitOnboarding";
-import { ONBOARDING_SECTIONS, calculateProgress, DEFAULT_CHECKLIST } from "@/lib/onboarding-sections";
+import {
+  ALL_KNOWN_SECTIONS,
+  calculateProgress,
+  DEFAULT_CHECKLIST,
+  buildImplementationPackageMarkdown,
+} from "@/lib/onboarding-sections";
+import { Switch } from "@/components/ui/switch";
 
 const STATUS_LABEL: Record<string, { label: string; variant: any }> = {
   rascunho: { label: "Rascunho", variant: "secondary" },
@@ -139,6 +145,7 @@ function NewOnboardingDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
+  const [dryRunEmail, setDryRunEmail] = useState(false);
   const create = useCreateOnboarding();
 
   const submit = () => {
@@ -158,17 +165,21 @@ function NewOnboardingDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         cliente_email: email,
         cliente_empresa: empresaNome,
         notes,
+        dry_run_email: dryRunEmail,
       },
       {
         onSuccess: (res) => {
+          const skipped = (res as any).email_skipped_reason;
           toast.success(
             res.email_sent
               ? `Empresa "${res.empresa_nome}" criada e email enviado`
-              : `Empresa criada (email falhou — link copiado)`
+              : skipped === "dry_run"
+                ? `Onboarding criado em modo smoke (email não enviado) — link copiado`
+                : `Empresa criada (email falhou — link copiado)`,
           );
           navigator.clipboard.writeText(res.public_link).catch(() => null);
           setEmpresaNome(""); setSlug(""); setMensalidade("1200"); setImplementacao("3000");
-          setNome(""); setEmail(""); setNotes("");
+          setNome(""); setEmail(""); setNotes(""); setDryRunEmail(false);
           onOpenChange(false);
         },
         onError: (e: any) => toast.error(e?.message || "Erro ao criar"),
@@ -217,12 +228,21 @@ function NewOnboardingDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             <Label>Observações internas</Label>
             <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
           </div>
+          <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/20 p-3">
+            <div>
+              <Label className="text-sm">Modo smoke (não enviar email)</Label>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Cria o onboarding e retorna o link, mas não dispara nada pelo Resend. Use para testes.
+              </p>
+            </div>
+            <Switch checked={dryRunEmail} onCheckedChange={setDryRunEmail} />
+          </div>
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button onClick={submit} disabled={create.isPending} className="gap-2">
             <Mail className="w-4 h-4" />
-            {create.isPending ? "Enviando…" : "Criar tenant e enviar email"}
+            {create.isPending ? "Enviando…" : dryRunEmail ? "Criar (sem email)" : "Criar tenant e enviar email"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -272,7 +292,11 @@ function OnboardingDetailSheet({
             <Button
               variant="outline" size="sm" className="gap-1.5"
               onClick={async () => {
-                const md = buildImplantacaoMarkdown(onboarding, checklist, link);
+                const md = buildImplementationPackageMarkdown({
+                  onboarding,
+                  checklist,
+                  publicLink: link,
+                });
                 const safe = (onboarding.empresa?.slug || onboarding.cliente_empresa || onboarding.cliente_nome || "onboarding")
                   .toString().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
                 const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
@@ -318,9 +342,11 @@ function OnboardingDetailSheet({
               </p>
             ) : (
               <div className="space-y-4">
-                {ONBOARDING_SECTIONS.map((sec) => {
+                {ALL_KNOWN_SECTIONS.map((sec) => {
                   const vals = onboarding.responses?.[sec.key];
                   if (!vals || Object.keys(vals).length === 0) return null;
+                  const knownKeys = new Set(sec.fields.map((f) => f.key));
+                  const unknownEntries = Object.entries(vals).filter(([k]) => !knownKeys.has(k));
                   return (
                     <div key={sec.key} className="border rounded-lg p-3">
                       <h4 className="font-medium text-sm mb-2">{sec.title}</h4>
@@ -329,12 +355,35 @@ function OnboardingDetailSheet({
                           const v = vals[f.key];
                           if (!v) return null;
                           return (
-                            <div key={f.key} className="grid grid-cols-[140px_1fr] gap-2">
+                            <div key={f.key} className="grid grid-cols-[160px_1fr] gap-2">
                               <dt className="text-muted-foreground">{f.label}</dt>
                               <dd className="whitespace-pre-wrap">{String(v)}</dd>
                             </div>
                           );
                         })}
+                        {unknownEntries.map(([k, v]) => (
+                          <div key={k} className="grid grid-cols-[160px_1fr] gap-2 opacity-70">
+                            <dt className="text-muted-foreground italic">{k}</dt>
+                            <dd className="whitespace-pre-wrap">{String(v)}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                  );
+                })}
+                {Object.entries(onboarding.responses ?? {}).map(([secKey, vals]: [string, any]) => {
+                  if (ALL_KNOWN_SECTIONS.some((s) => s.key === secKey)) return null;
+                  if (!vals || Object.keys(vals).length === 0) return null;
+                  return (
+                    <div key={secKey} className="border border-dashed rounded-lg p-3 opacity-70">
+                      <h4 className="font-medium text-sm mb-2 italic">[Legado] {secKey}</h4>
+                      <dl className="space-y-1.5 text-sm">
+                        {Object.entries(vals).map(([k, v]) => (
+                          <div key={k} className="grid grid-cols-[160px_1fr] gap-2">
+                            <dt className="text-muted-foreground italic">{k}</dt>
+                            <dd className="whitespace-pre-wrap">{String(v)}</dd>
+                          </div>
+                        ))}
                       </dl>
                     </div>
                   );
@@ -348,49 +397,3 @@ function OnboardingDetailSheet({
   );
 }
 
-function buildImplantacaoMarkdown(
-  o: ClientOnboarding,
-  checklist: any[],
-  link: string,
-): string {
-  const lines: string[] = [];
-  const empresa = o.empresa?.nome ?? o.cliente_empresa ?? "—";
-  const slug = o.empresa?.slug ? `/${o.empresa.slug}` : "";
-  lines.push(`# Pacote de implantação — ${empresa}${slug}`);
-  lines.push("");
-  lines.push(`- **Cliente:** ${o.cliente_nome ?? "—"} (${o.cliente_email ?? "—"})`);
-  lines.push(`- **Status:** ${o.status}`);
-  lines.push(`- **Progresso:** ${calculateProgress(o.responses)}%`);
-  lines.push(`- **Link do wizard:** ${link}`);
-  lines.push(`- **Gerado em:** ${new Date().toISOString()}`);
-  lines.push("");
-
-  lines.push("## Respostas do cliente");
-  lines.push("");
-  const responses = o.responses ?? {};
-  if (Object.keys(responses).length === 0) {
-    lines.push("_Nenhuma resposta preenchida ainda._");
-    lines.push("");
-  } else {
-    for (const sec of ONBOARDING_SECTIONS) {
-      const vals = (responses as any)?.[sec.key];
-      if (!vals || Object.keys(vals).length === 0) continue;
-      lines.push(`### ${sec.title}`);
-      lines.push("");
-      for (const f of sec.fields) {
-        const v = vals[f.key];
-        if (v === undefined || v === null || String(v).trim() === "") continue;
-        lines.push(`- **${f.label}:** ${String(v).replace(/\n/g, "\n  ")}`);
-      }
-      lines.push("");
-    }
-  }
-
-  lines.push("## Checklist de implementação");
-  lines.push("");
-  for (const item of checklist) {
-    lines.push(`- [${item.done ? "x" : " "}] ${item.label}`);
-  }
-  lines.push("");
-  return lines.join("\n");
-}
