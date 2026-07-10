@@ -228,6 +228,7 @@ export default function ClientOnboardingPage() {
                     field={f}
                     value={responses?.[section.key]?.[f.key] ?? ""}
                     onChange={(v) => setField(section.key, f.key, v)}
+                    missing={missingKeys.has(`${section.key}.${f.key}`)}
                   />
                 ))}
               </div>
