@@ -2575,6 +2575,47 @@ export type Database = {
           },
         ]
       }
+      orbit_lead_score_config: {
+        Row: {
+          created_at: string
+          empresa_id: string
+          enabled: boolean
+          id: string
+          rules: Json
+          thresholds: Json
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          empresa_id: string
+          enabled?: boolean
+          id?: string
+          rules?: Json
+          thresholds?: Json
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          created_at?: string
+          empresa_id?: string
+          enabled?: boolean
+          id?: string
+          rules?: Json
+          thresholds?: Json
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_lead_score_config_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_lead_sources: {
         Row: {
           ativo: boolean
@@ -3075,6 +3116,10 @@ export type Database = {
           empresa_id: string | null
           estado: string | null
           id: string
+          lead_score_label: string | null
+          lead_score_reasons: Json | null
+          lead_score_updated_at: string | null
+          lead_score_version: number | null
           nome_contato: string | null
           nome_fantasia: string | null
           nome_razao: string
@@ -3108,6 +3153,10 @@ export type Database = {
           empresa_id?: string | null
           estado?: string | null
           id?: string
+          lead_score_label?: string | null
+          lead_score_reasons?: Json | null
+          lead_score_updated_at?: string | null
+          lead_score_version?: number | null
           nome_contato?: string | null
           nome_fantasia?: string | null
           nome_razao: string
@@ -3141,6 +3190,10 @@ export type Database = {
           empresa_id?: string | null
           estado?: string | null
           id?: string
+          lead_score_label?: string | null
+          lead_score_reasons?: Json | null
+          lead_score_updated_at?: string | null
+          lead_score_version?: number | null
           nome_contato?: string | null
           nome_fantasia?: string | null
           nome_razao?: string
@@ -4522,6 +4575,12 @@ export type Database = {
         Args: { p_config_id: string }
         Returns: Json
       }
+      _lead_score_haystack: {
+        Args: {
+          p_prospect: Database["public"]["Tables"]["orbit_prospects"]["Row"]
+        }
+        Returns: string
+      }
       advisor_apply_gate: {
         Args: { p_empresa: string; p_kind: string; p_target_id: string }
         Returns: Json
@@ -4802,6 +4861,10 @@ export type Database = {
         Returns: boolean
       }
       pe_user_is_sales_or_sdr: { Args: { p_user_id: string }; Returns: boolean }
+      recalculate_lead_score: {
+        Args: { p_empresa_id: string; p_prospect_id: string }
+        Returns: Json
+      }
       reschedule_scheduled_action: {
         Args: { _delay_seconds: number; _error: string; _id: string }
         Returns: undefined
