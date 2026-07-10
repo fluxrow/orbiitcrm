@@ -202,16 +202,19 @@ export const ALL_KNOWN_SECTIONS: OnboardingSection[] = [
 // ============================================================
 
 export function calculateProgress(responses: Record<string, any>): number {
-  const total = ONBOARDING_SECTIONS.reduce((acc, s) => acc + s.fields.length, 0);
+  const requiredFields = ONBOARDING_SECTIONS.flatMap((s) =>
+    s.fields.filter((f) => f.required).map((f) => ({ section: s.key, key: f.key }))
+  );
+  const pool = requiredFields.length > 0
+    ? requiredFields
+    : ONBOARDING_SECTIONS.flatMap((s) => s.fields.map((f) => ({ section: s.key, key: f.key })));
+  if (pool.length === 0) return 0;
   let filled = 0;
-  for (const section of ONBOARDING_SECTIONS) {
-    const secVals = responses?.[section.key] ?? {};
-    for (const f of section.fields) {
-      const v = secVals?.[f.key];
-      if (v !== undefined && v !== null && String(v).trim() !== "") filled++;
-    }
+  for (const { section, key } of pool) {
+    const v = responses?.[section]?.[key];
+    if (v !== undefined && v !== null && String(v).trim() !== "") filled++;
   }
-  return Math.round((filled / total) * 100);
+  return Math.round((filled / pool.length) * 100);
 }
 
 export const DEFAULT_CHECKLIST = [
