@@ -710,6 +710,34 @@ export function buildRecommendedTypebotBody(
 // buildImplementationPackageMarkdown
 // ============================================================
 
+export interface ImplementationPackageDraft {
+  status?: string;
+  assets_considered?: number;
+  model?: string | null;
+  updated_at?: string | null;
+  tokens_in?: number | null;
+  tokens_out?: number | null;
+  error?: string | null;
+  summary_markdown?: string | null;
+  draft?: {
+    flows?: any[];
+    templates?: any[];
+    cadences?: any[];
+    knowledge?: any[];
+    lead_score?: Record<string, any>;
+    notes?: string;
+  } | null;
+}
+
+export interface ImplementationPackageInsight {
+  asset_id: string;
+  detected_kind?: string | null;
+  summary?: string | null;
+  extracted?: any;
+  error?: string | null;
+  model?: string | null;
+}
+
 export interface ImplementationPackageParams {
   onboarding: {
     id?: string;
@@ -722,6 +750,10 @@ export interface ImplementationPackageParams {
   };
   checklist: { key: string; label: string; done?: boolean }[];
   publicLink: string;
+  /** Fase 4: rascunho inteligente consolidado (opcional). */
+  draft?: ImplementationPackageDraft | null;
+  /** Fase 4: insights por material (opcional). */
+  insights?: ImplementationPackageInsight[] | null;
 }
 
 function block(title: string, lines: string[]): string[] {
@@ -731,7 +763,7 @@ function block(title: string, lines: string[]): string[] {
 export function buildImplementationPackageMarkdown(
   params: ImplementationPackageParams,
 ): string {
-  const { onboarding, checklist, publicLink } = params;
+  const { onboarding, checklist, publicLink, draft, insights } = params;
   const responses = (onboarding.responses ?? {}) as Record<string, any>;
   const profile = buildImplementationProfile(responses);
   const missing = getMissingRequiredFields(responses);
@@ -763,6 +795,30 @@ export function buildImplementationPackageMarkdown(
       ? missing.map((m) => `- [ ] **${m.section} · ${m.label}** (\`${m.field}\`)`)
       : ["_Todos os campos obrigatórios preenchidos._"],
   ));
+
+  // Fase 4 — Pendências operacionais (visão consolidada no topo)
+  const checklistPending = (checklist ?? []).filter((c) => !c.done);
+  const opsLines: string[] = [];
+  opsLines.push(`- **Campos obrigatórios faltantes:** ${missing.length}`);
+  opsLines.push(`- **Itens do checklist pendentes:** ${checklistPending.length}/${(checklist ?? []).length}`);
+  if (checklistPending.length) {
+    opsLines.push("");
+    opsLines.push("**Checklist pendente:**");
+    for (const c of checklistPending) opsLines.push(`- [ ] ${c.label}`);
+  }
+  const materialsAll = profile.assets.structured_materials;
+  const materialsPendingUpload = materialsAll.filter(
+    (m) => m.upload_status && m.upload_status !== "uploaded" && !m.asset_id,
+  );
+  if (materialsPendingUpload.length) {
+    opsLines.push("");
+    opsLines.push(`**Materiais sem upload concluído:** ${materialsPendingUpload.length}`);
+    for (const m of materialsPendingUpload) {
+      opsLines.push(`- ${m.titulo || m.filename || m.tipo || "(sem título)"} — status: ${m.upload_status}`);
+    }
+  }
+  out.push(...block("Pendências operacionais", opsLines));
+
 
   // Implementation profile
   out.push(...block("Implementation profile", [
@@ -880,8 +936,108 @@ export function buildImplementationPackageMarkdown(
     ...materialLines,
   ]));
 
+  // Fase 4 — Draft inteligente (IA)
+  const draftLines: string[] = [];
+  if (!draft) {
+    draftLines.push("_Nenhum rascunho inteligente disponível. Rode \"Processar materiais\" no admin para gerar._");
+  } else {
+    draftLines.push(`- **Status:** ${draft.status ?? "draft"}`);
+    if (typeof draft.assets_considered === "number") draftLines.push(`- **Materiais considerados:** ${draft.assets_considered}`);
+    if (draft.model) draftLines.push(`- **Modelo:** \`${draft.model}\``);
+    if (draft.updated_at) draftLines.push(`- **Atualizado em:** ${draft.updated_at}`);
+    if (draft.tokens_in || draft.tokens_out) {
+      draftLines.push(`- **Tokens:** in=${draft.tokens_in ?? 0} · out=${draft.tokens_out ?? 0}`);
+    }
+    if (draft.error) draftLines.push(`- **Erro:** ${draft.error}`);
+    const d = draft.draft ?? {};
+    if (Array.isArray(d.flows) && d.flows.length) {
+      draftLines.push("", "**Fluxos sugeridos pela IA:**");
+      for (const f of d.flows) {
+        draftLines.push(`- **${f?.name ?? "(sem nome)"}** — trigger: ${f?.trigger ?? "—"}`);
+        if (f?.steps_summary) draftLines.push(`  - ${f.steps_summary}`);
+        if (f?.based_on) draftLines.push(`  - _base:_ ${f.based_on}`);
+      }
+    }
+    if (Array.isArray(d.templates) && d.templates.length) {
+      draftLines.push("", "**Templates sugeridos:**");
+      for (const t of d.templates) {
+        draftLines.push(`- [${t?.channel ?? "?"}] ${t?.purpose ?? "(sem propósito)"}`);
+        if (t?.draft) {
+          draftLines.push("  ```text");
+          for (const l of String(t.draft).split(/\r?\n/)) draftLines.push(`  ${l}`);
+          draftLines.push("  ```");
+        }
+      }
+    }
+    if (Array.isArray(d.cadences) && d.cadences.length) {
+      draftLines.push("", "**Cadências:**");
+      for (const c of d.cadences) draftLines.push(`- **${c?.audience ?? "?"}:** ${(c?.steps ?? []).join(" · ")}`);
+    }
+    if (Array.isArray(d.knowledge) && d.knowledge.length) {
+      draftLines.push("", "**Base de conhecimento sugerida:**");
+      for (const k of d.knowledge) draftLines.push(`- ${k?.title ?? "(sem título)"} — fonte: ${k?.source ?? "—"}${k?.notes ? ` · ${k.notes}` : ""}`);
+    }
+    if (d.lead_score && typeof d.lead_score === "object" && Object.keys(d.lead_score).length) {
+      draftLines.push("", "**Lead score (rascunho IA):**", "```json", JSON.stringify(d.lead_score, null, 2), "```");
+    }
+    if (d.notes) {
+      draftLines.push("", "**Notas da IA:**", indent(String(d.notes)));
+    }
+  }
+  out.push(...block("Rascunho inteligente (IA)", draftLines));
 
-  // Smoke plan
+  // Fase 4 — Insights por material
+  const insightLines: string[] = [];
+  if (!insights || insights.length === 0) {
+    insightLines.push("_Nenhum insight processado. Envie materiais e rode \"Processar materiais\"._");
+  } else {
+    for (const ins of insights) {
+      insightLines.push(`### ${ins.detected_kind || "material"} — \`${ins.asset_id.slice(0, 8)}\``);
+      if (ins.summary) insightLines.push(ins.summary);
+      if (ins.error) insightLines.push(`> ⚠️ Erro: ${ins.error}`);
+      const ex = ins.extracted ?? {};
+      const highlights = Array.isArray(ex?.highlights) ? ex.highlights : [];
+      const questions = Array.isArray(ex?.questions) ? ex.questions : [];
+      const risks = Array.isArray(ex?.risks) ? ex.risks : [];
+      if (highlights.length) {
+        insightLines.push("**Highlights:**");
+        for (const h of highlights) insightLines.push(`- ${h}`);
+      }
+      if (questions.length) {
+        insightLines.push("**Perguntas capturadas:**");
+        for (const q of questions) insightLines.push(`- ${q}`);
+      }
+      if (ex?.cta) insightLines.push(`**CTA identificado:** ${ex.cta}`);
+      if (ex?.tone_hints) insightLines.push(`**Tom detectado:** ${ex.tone_hints}`);
+      if (risks.length) {
+        insightLines.push("**Riscos:**");
+        for (const r of risks) insightLines.push(`- ${r}`);
+      }
+      insightLines.push("");
+    }
+  }
+  out.push(...block("Insights por material", insightLines));
+
+  // Fase 4 — Plano de uso dos ativos
+  const insightByAsset = new Map<string, ImplementationPackageInsight>();
+  for (const ins of insights ?? []) insightByAsset.set(ins.asset_id, ins);
+  const usageLines: string[] = [];
+  const materialsForPlan = profile.assets.structured_materials;
+  if (materialsForPlan.length === 0) {
+    usageLines.push("_Nenhum material estruturado para planejar._");
+  } else {
+    for (const m of materialsForPlan) {
+      const ins = m.asset_id ? insightByAsset.get(m.asset_id) : undefined;
+      const kind = ins?.detected_kind || m.mime || m.tipo || "material";
+      usageLines.push(`- **${m.titulo || m.filename || "(sem título)"}** — tipo: \`${kind}\``);
+      const usage = suggestAssetUsage(kind, m, ins);
+      for (const u of usage) usageLines.push(`  - ${u}`);
+      if (ins?.summary) usageLines.push(`  - _resumo IA:_ ${ins.summary}`);
+    }
+  }
+  out.push(...block("Plano de uso dos ativos", usageLines));
+
+
   out.push(...block("Smoke plan", [
     "1. Rodar `orbit-lead-ingest` com 3 leads sintéticos (Low, Medium, High) via `source_slug` do Typebot.",
     "2. Validar Lead Score em cada caso (cold/hot/priority) e o `meta.lead_score` da resposta.",
@@ -916,3 +1072,38 @@ export function buildImplementationPackageMarkdown(
 function indent(s: string): string {
   return s.split(/\r?\n/).map((l) => (l.trim() ? `  ${l}` : l)).join("\n");
 }
+
+function suggestAssetUsage(
+  kind: string,
+  material: StructuredMaterial,
+  insight?: ImplementationPackageInsight,
+): string[] {
+  const k = (kind || "").toLowerCase();
+  const out: string[] = [];
+  if (k.includes("typebot") || k.includes("flow")) {
+    out.push("Importar como referência para o fluxo de captação inicial (não aplicar automaticamente).");
+    out.push("Extrair perguntas para alimentar `caminho_lead.perguntas_captura` e RAG.");
+  } else if (k.includes("conversation") || k.includes("transcript") || k.includes("treinamento")) {
+    out.push("Ingerir na base RAG do agente (tom de voz + objeções reais).");
+    out.push("Usar para calibrar templates de primeira abordagem e follow-up.");
+  } else if (k.includes("faq")) {
+    out.push("Ingerir na base de conhecimento para respostas automáticas.");
+  } else if (k.includes("audio")) {
+    out.push("Cadastrar em `orbit_audio_library` para envio manual (não subir sem aprovação).");
+  } else if (k.includes("video")) {
+    out.push("Adicionar como link em templates de nutrição/apresentação.");
+  } else if (k.includes("image") || k.includes("logo")) {
+    out.push("Usar em branding e nos templates de email do tenant.");
+  } else if (k.includes("presentation") || k.includes("pdf")) {
+    out.push("Anexar link ao template comercial e ao onboarding do vendedor.");
+    out.push("Ingerir texto na base RAG se houver conteúdo comercial estruturado.");
+  } else if (k.includes("json")) {
+    out.push("Revisar estrutura antes de qualquer importação — não aplicar automaticamente.");
+  } else {
+    out.push("Catalogar no Drive/pasta do cliente; decidir uso na call de kick-off.");
+  }
+  if (material.obs) out.push(`Observação do cliente: ${material.obs}`);
+  if (insight?.extracted?.cta) out.push(`Reforçar CTA detectado: ${insight.extracted.cta}`);
+  return out;
+}
+
