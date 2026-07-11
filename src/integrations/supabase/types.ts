@@ -2957,6 +2957,9 @@ export type Database = {
           id: string
           model: string | null
           onboarding_id: string
+          review_status: string
+          reviewed_at: string | null
+          reviewed_by: string | null
           summary: string | null
           tokens_in: number | null
           tokens_out: number | null
@@ -2972,6 +2975,9 @@ export type Database = {
           id?: string
           model?: string | null
           onboarding_id: string
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           summary?: string | null
           tokens_in?: number | null
           tokens_out?: number | null
@@ -2987,6 +2993,9 @@ export type Database = {
           id?: string
           model?: string | null
           onboarding_id?: string
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           summary?: string | null
           tokens_in?: number | null
           tokens_out?: number | null
