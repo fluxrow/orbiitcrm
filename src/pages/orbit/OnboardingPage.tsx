@@ -261,6 +261,9 @@ function OnboardingDetailSheet({
 }: { onboarding: ClientOnboarding | null; onClose: () => void }) {
   const updateChecklist = useUpdateChecklist();
   const updateResponses = useUpdateOnboardingResponses();
+  const draftQuery = useOnboardingDraft(onboarding?.id);
+  const insightsQuery = useOnboardingInsights(onboarding?.id);
+
 
   const removeMaterial = (sectionKey: string, fieldKey: string, index: number) => {
     if (!onboarding) return;
