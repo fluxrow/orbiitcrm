@@ -347,6 +347,9 @@ function OnboardingDetailSheet({
             </Button>
           </div>
 
+          <IntelligentDraftSection onboardingId={onboarding.id} />
+
+
           <section>
             <h3 className="font-semibold mb-3 flex items-center gap-2">
               <ClipboardList className="w-4 h-4" /> Checklist de implementação
