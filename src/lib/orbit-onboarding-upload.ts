@@ -6,6 +6,8 @@ export interface UploadedOnboardingAsset {
   filename: string;
   mime: string;
   size_bytes: number;
+  /** Signed URL de curta duração (~1h) para preview imediato. Não persistir. */
+  signed_url?: string | null;
 }
 
 async function fileToBase64(file: File): Promise<string> {
