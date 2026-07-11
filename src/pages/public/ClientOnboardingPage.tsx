@@ -7,12 +7,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle2, ChevronLeft, ChevronRight, Save, Send, Sparkles } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, HelpCircle, Lightbulb, Plus, Save, Send, Sparkles, Target, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   usePublicOnboarding, useSavePublicOnboarding, useSubmitPublicOnboarding,
 } from "@/hooks/useOrbitOnboarding";
-import { ONBOARDING_SECTIONS, OnboardingField, calculateProgress } from "@/lib/onboarding-sections";
+import { ONBOARDING_SECTIONS, OnboardingField, OnboardingSection, StructuredMaterial, calculateProgress } from "@/lib/onboarding-sections";
 
 export default function ClientOnboardingPage() {
   const { token } = useParams<{ token: string }>();
