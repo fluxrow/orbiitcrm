@@ -329,3 +329,110 @@ function FieldInput({
 function FullScreen({ children }: { children: React.ReactNode }) {
   return <div className="min-h-screen flex items-center justify-center bg-background p-4">{children}</div>;
 }
+
+function SectionExplainer({ section }: { section: OnboardingSection }) {
+  if (!section.clientPurpose && !section.examples?.length && !section.ifUnsure) return null;
+  return (
+    <Card className="mb-6 border-primary/20 bg-primary/5 p-4">
+      {section.clientPurpose && (
+        <div className="flex gap-2.5 mb-3">
+          <Target className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+          <p className="text-sm text-foreground/90 leading-relaxed">
+            <span className="font-semibold">Por que perguntamos: </span>
+            {section.clientPurpose}
+          </p>
+        </div>
+      )}
+      {section.examples && section.examples.length > 0 && (
+        <div className="flex gap-2.5 mb-3">
+          <Lightbulb className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+          <div className="text-sm text-foreground/85">
+            <span className="font-semibold">Exemplos:</span>
+            <ul className="mt-1 space-y-0.5 list-disc list-inside marker:text-muted-foreground">
+              {section.examples.map((ex, i) => (
+                <li key={i}>{ex}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+      {section.ifUnsure && (
+        <div className="flex gap-2.5">
+          <HelpCircle className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            <span className="font-semibold text-foreground/80">Se não souber: </span>
+            {section.ifUnsure}
+          </p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function AssetListInput({
+  value, onChange,
+}: { value: StructuredMaterial[]; onChange: (v: StructuredMaterial[]) => void }) {
+  const items = Array.isArray(value) ? value : [];
+
+  const update = (idx: number, patch: Partial<StructuredMaterial>) => {
+    const next = items.map((it, i) => (i === idx ? { ...it, ...patch } : it));
+    onChange(next);
+  };
+  const add = () =>
+    onChange([...items, { tipo: "PDF", titulo: "", link: "", obs: "" }]);
+  const remove = (idx: number) => onChange(items.filter((_, i) => i !== idx));
+
+  const TIPO_OPTS = ["PDF", "Vídeo", "Áudio", "Link", "Imagem", "Apresentação", "Planilha", "Outro"];
+
+  return (
+    <div className="space-y-3">
+      {items.length === 0 && (
+        <p className="text-xs text-muted-foreground italic">
+          Nenhum material adicionado. Clique em "Adicionar material" pra listar apresentações, cases, vídeos etc.
+        </p>
+      )}
+      {items.map((it, idx) => (
+        <div key={idx} className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
+          <div className="grid gap-2 md:grid-cols-[140px_1fr_auto]">
+            <Select value={it.tipo || "PDF"} onValueChange={(v) => update(idx, { tipo: v })}>
+              <SelectTrigger><SelectValue placeholder="Tipo" /></SelectTrigger>
+              <SelectContent>
+                {TIPO_OPTS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Input
+              value={it.titulo ?? ""}
+              onChange={(e) => update(idx, { titulo: e.target.value })}
+              placeholder="Título do material (ex: Apresentação comercial 2026)"
+            />
+            <Button
+              type="button" variant="ghost" size="icon"
+              onClick={() => remove(idx)}
+              className="text-muted-foreground hover:text-destructive"
+              aria-label="Remover material"
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          </div>
+          <Input
+            value={it.link ?? ""}
+            onChange={(e) => update(idx, { link: e.target.value })}
+            placeholder="Link (Drive, YouTube, site…) — opcional"
+          />
+          <Textarea
+            value={it.obs ?? ""}
+            onChange={(e) => update(idx, { obs: e.target.value })}
+            placeholder="Observações — quando/como esse material é usado (opcional)"
+            rows={2}
+          />
+        </div>
+      ))}
+      <Button
+        type="button" variant="outline" size="sm" onClick={add}
+        className="gap-1.5"
+      >
+        <Plus className="w-4 h-4" /> Adicionar material
+      </Button>
+    </div>
+  );
+}
