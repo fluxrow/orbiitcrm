@@ -628,18 +628,22 @@ function readStructuredMaterials(responses: Record<string, any>): StructuredMate
 }
 
 // ============================================================
-// buildRecommendedTypebotBody — corpo Typebot pronto para copiar
+// buildRecommendedTypebotBody — corpo de captação recomendado
+// (funciona para Typebot, formulário simples ou script humano)
 // ============================================================
 
 export function buildRecommendedTypebotBody(
   responses: Record<string, any>,
 ): string {
-  const perguntas = splitLines(getVal(responses, "formulario", "campos_typebot"));
+  const perguntas = splitLines(getVal(responses, "caminho_lead", "perguntas_captura"));
+  const canal = getVal(responses, "caminho_lead", "canal_entrada_lead");
+  const descricaoCanal = getVal(responses, "caminho_lead", "descricao_canal");
   const empresa = getVal(responses, "empresa", "nome_fantasia") ||
     getVal(responses, "empresa", "razao_social") || "sua empresa";
   const oferta = getVal(responses, "oferta", "oferta_principal") || "nossa solução";
   const camposObrig = splitLines(getVal(responses, "icp", "campos_obrigatorios_lead"));
-  const handoff = getVal(responses, "formulario", "handoff_bot");
+  const handoff = getVal(responses, "caminho_lead", "handoff_humano");
+  const usesTypebot = /typebot|chatbot|bot/i.test(canal + " " + descricaoCanal);
 
   const baseline = perguntas.length
     ? perguntas
@@ -652,12 +656,14 @@ export function buildRecommendedTypebotBody(
       ];
 
   const linhas: string[] = [];
-  linhas.push(`// Typebot recomendado — ${empresa}`);
+  linhas.push(`// Body de captação recomendado — ${empresa}`);
+  linhas.push(`// Canal principal: ${canal || "não informado"}`);
+  linhas.push(`// Modo: ${usesTypebot ? "Typebot / chatbot" : "WhatsApp direto ou formulário simples"}`);
   linhas.push(`// Objetivo: qualificar leads para "${oferta}"`);
   linhas.push("");
   linhas.push(`Introdução:`);
   linhas.push(
-    `"Oi! Aqui é a IA da ${empresa}. Vou fazer perguntas rápidas para entender seu momento e te encaminhar pro time certo."`,
+    `"Oi! Aqui é a ${empresa}. Vou fazer perguntas rápidas para entender seu momento e te encaminhar pro time certo."`,
   );
   linhas.push("");
   linhas.push("Perguntas:");
@@ -671,7 +677,9 @@ export function buildRecommendedTypebotBody(
 
   linhas.push("");
   linhas.push("Regras de encerramento:");
-  linhas.push("- Enviar todos os campos para /orbit-lead-ingest com source_slug=typebot.");
+  linhas.push(
+    `- Enviar todos os campos para /orbit-lead-ingest com source_slug=${usesTypebot ? "typebot" : "captacao"}.`,
+  );
   linhas.push("- Marcar utm_source, utm_medium, utm_campaign quando presentes.");
   if (handoff) {
     linhas.push("- Handoff imediato se: " + handoff.replace(/\n+/g, " · "));
