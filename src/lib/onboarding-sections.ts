@@ -589,12 +589,42 @@ export function buildImplementationProfile(
       calendar_email: getVal(responses, "integracoes", "calendar_email"),
       email_dominio: getVal(responses, "integracoes", "email_dominio"),
     },
+    lead_entry: {
+      canal: getVal(responses, "caminho_lead", "canal_entrada_lead"),
+      descricao: getVal(responses, "caminho_lead", "descricao_canal"),
+      perguntas: splitLines(getVal(responses, "caminho_lead", "perguntas_captura")),
+      qualificacao_inicial: getVal(responses, "caminho_lead", "qualificacao_inicial"),
+      handoff: getVal(responses, "caminho_lead", "handoff_humano"),
+      url_captura: getVal(responses, "caminho_lead", "url_captura_atual"),
+      uses_typebot: /typebot|chatbot|bot/i.test(
+        getVal(responses, "caminho_lead", "canal_entrada_lead") +
+          " " +
+          getVal(responses, "caminho_lead", "descricao_canal"),
+      ),
+    },
+    assets: {
+      structured_materials: readStructuredMaterials(responses),
+    },
     go_live: {
       responsavel_final: getVal(responses, "go_live", "responsavel_final"),
       data_desejada: getVal(responses, "go_live", "data_desejada"),
       criterios_sucesso: getVal(responses, "go_live", "criterios_sucesso"),
     },
   };
+}
+
+/** Lê a lista estruturada de materiais aceitando array direto ou fallback vazio. */
+function readStructuredMaterials(responses: Record<string, any>): StructuredMaterial[] {
+  const raw = responses?.midias?.materiais_operacao;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((r: any) => ({
+      tipo: String(r?.tipo ?? "").trim(),
+      titulo: String(r?.titulo ?? "").trim(),
+      link: r?.link ? String(r.link).trim() : undefined,
+      obs: r?.obs ? String(r.obs).trim() : undefined,
+    }))
+    .filter((m) => m.tipo || m.titulo || m.link || m.obs);
 }
 
 // ============================================================
