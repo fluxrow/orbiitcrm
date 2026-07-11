@@ -326,6 +326,8 @@ function OnboardingDetailSheet({
                   onboarding,
                   checklist,
                   publicLink: link,
+                  draft: draftQuery.data ?? null,
+                  insights: insightsQuery.data ?? null,
                 });
                 const safe = (onboarding.empresa?.slug || onboarding.cliente_empresa || onboarding.cliente_nome || "onboarding")
                   .toString().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -340,13 +342,13 @@ function OnboardingDetailSheet({
                 URL.revokeObjectURL(url);
                 try {
                   await navigator.clipboard.writeText(md);
-                  toast.success("Pacote gerado — .md baixado e copiado");
+                  toast.success("Pacote completo gerado — .md baixado e copiado");
                 } catch {
-                  toast.success("Pacote gerado — .md baixado");
+                  toast.success("Pacote completo gerado — .md baixado");
                 }
               }}
             >
-              <Download className="w-3.5 h-3.5" /> Gerar pacote de implantação
+              <Download className="w-3.5 h-3.5" /> Gerar pacote completo
             </Button>
           </div>
 
