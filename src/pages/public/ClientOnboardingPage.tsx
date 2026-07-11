@@ -304,6 +304,11 @@ function FieldInput({
             ))}
           </SelectContent>
         </Select>
+      ) : field.type === "asset_list" ? (
+        <AssetListInput
+          value={Array.isArray(value) ? value : []}
+          onChange={onChange}
+        />
       ) : (
         <Input
           type={field.type === "email" ? "email" : field.type === "url" ? "url" : field.type === "number" ? "number" : "text"}
