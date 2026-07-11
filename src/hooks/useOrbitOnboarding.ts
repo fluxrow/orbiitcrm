@@ -133,6 +133,21 @@ export function useUpdateChecklist() {
   });
 }
 
+export function useUpdateOnboardingResponses() {
+  const qc = useQueryClient();
+  const { empresaId } = useTenant();
+  return useMutation({
+    mutationFn: async ({ id, responses }: { id: string; responses: Record<string, any> }) => {
+      const { error } = await supabase
+        .from("orbit_client_onboardings" as any)
+        .update({ responses })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["client-onboardings", empresaId] }),
+  });
+}
+
 // ── Public (token-based) ──
 
 export function usePublicOnboarding(token: string | undefined) {

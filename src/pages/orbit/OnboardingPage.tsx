@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
-import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList, Download, Loader2 } from "lucide-react";
+import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList, Download, Loader2, Trash2 } from "lucide-react";
 import { useSignedOrbitMedia } from "@/lib/orbit-media";
 import { toast } from "sonner";
 import {
@@ -19,6 +19,7 @@ import {
   useCreateOnboarding,
   useArchiveOnboarding,
   useUpdateChecklist,
+  useUpdateOnboardingResponses,
   ClientOnboarding,
 } from "@/hooks/useOrbitOnboarding";
 import {
@@ -255,6 +256,27 @@ function OnboardingDetailSheet({
   onboarding, onClose,
 }: { onboarding: ClientOnboarding | null; onClose: () => void }) {
   const updateChecklist = useUpdateChecklist();
+  const updateResponses = useUpdateOnboardingResponses();
+
+  const removeMaterial = (sectionKey: string, fieldKey: string, index: number) => {
+    if (!onboarding) return;
+    const responses = { ...(onboarding.responses ?? {}) };
+    const sec = { ...(responses[sectionKey] ?? {}) };
+    const arr = Array.isArray(sec[fieldKey]) ? [...sec[fieldKey]] : [];
+    if (index < 0 || index >= arr.length) return;
+    const [removed] = arr.splice(index, 1);
+    sec[fieldKey] = arr;
+    responses[sectionKey] = sec;
+    updateResponses.mutate(
+      { id: onboarding.id, responses },
+      {
+        onSuccess: () => {
+          toast.success(`Material removido${removed?.titulo ? `: ${removed.titulo}` : ""}`);
+        },
+        onError: (e: any) => toast.error(`Falha ao remover: ${e?.message || e}`),
+      },
+    );
+  };
 
   if (!onboarding) return null;
   const checklist =
@@ -359,7 +381,12 @@ function OnboardingDetailSheet({
                           return (
                             <div key={f.key} className="grid grid-cols-[160px_1fr] gap-2">
                               <dt className="text-muted-foreground">{f.label}</dt>
-                              <dd className="whitespace-pre-wrap"><ResponseValue value={v} /></dd>
+                              <dd className="whitespace-pre-wrap">
+                                <ResponseValue
+                                  value={v}
+                                  onRemoveItem={(idx) => removeMaterial(sec.key, f.key, idx)}
+                                />
+                              </dd>
                             </div>
                           );
                         })}
@@ -400,7 +427,7 @@ function OnboardingDetailSheet({
   );
 }
 
-function ResponseValue({ value }: { value: any }) {
+function ResponseValue({ value, onRemoveItem }: { value: any; onRemoveItem?: (index: number) => void }) {
   if (value === null || value === undefined) return <span className="text-muted-foreground">—</span>;
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
     return <>{String(value)}</>;
@@ -413,9 +440,26 @@ function ResponseValue({ value }: { value: any }) {
       return (
         <ul className="space-y-1.5">
           {value.map((m: any, i: number) => (
-            <li key={m?.id ?? i} className="rounded border border-border/60 bg-muted/20 p-2 text-xs space-y-1">
-              <div className="font-medium text-foreground">
-                [{m?.tipo || "Material"}] {m?.titulo || m?.filename || "(sem título)"}
+            <li key={m?.id ?? i} className="rounded border border-border/60 bg-muted/20 p-2 text-xs space-y-1 relative">
+              <div className="flex items-start justify-between gap-2">
+                <div className="font-medium text-foreground">
+                  [{m?.tipo || "Material"}] {m?.titulo || m?.filename || "(sem título)"}
+                </div>
+                {onRemoveItem && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(`Remover material "${m?.titulo || m?.filename || "sem título"}"?`)) {
+                        onRemoveItem(i);
+                      }
+                    }}
+                    className="text-muted-foreground hover:text-destructive shrink-0"
+                    aria-label="Remover material"
+                    title="Remover material"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
               {m?.link && <div>Link: <a href={m.link} target="_blank" rel="noreferrer" className="underline">{m.link}</a></div>}
               {m?.filename && <div>Arquivo: <code>{m.filename}</code>{m?.mime ? ` · ${m.mime}` : ""}{typeof m?.size_bytes === "number" ? ` · ${Math.round(m.size_bytes/1024)} KB` : ""}</div>}
