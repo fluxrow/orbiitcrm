@@ -288,6 +288,38 @@ export function useProcessOnboardingAssets() {
   });
 }
 
+export function useReviewInsight() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      insightId,
+      onboardingId,
+      status,
+    }: {
+      insightId: string;
+      onboardingId: string;
+      status: "pending" | "approved" | "ignored";
+    }) => {
+      const { data: userRes } = await supabase.auth.getUser();
+      const { data, error } = await supabase
+        .from("orbit_onboarding_asset_insights" as any)
+        .update({
+          review_status: status,
+          reviewed_by: userRes.user?.id ?? null,
+          reviewed_at: new Date().toISOString(),
+        })
+        .eq("id", insightId)
+        .select()
+        .maybeSingle();
+      if (error) throw error;
+      return { data, onboardingId };
+    },
+    onSuccess: ({ onboardingId }) => {
+      qc.invalidateQueries({ queryKey: ["onboarding-insights", onboardingId] });
+    },
+  });
+}
+
 export function useSubmitPublicOnboarding() {
   return useMutation({
     mutationFn: async ({ token, responses }: { token: string; responses: Record<string, any> }) => {
