@@ -451,18 +451,25 @@ function AssetPreview({ storagePath, mime, filename }: { storagePath: string; mi
   const isVideo = (mime || "").startsWith("video/");
   const canPreview = isImage || isAudio || isVideo;
 
+  const downloadName = (() => {
+    if (filename && filename.trim()) return filename.trim();
+    const base = (storagePath || "").split("/").pop() || "";
+    const clean = base.split("?")[0].split("#")[0];
+    return clean || "material";
+  })();
+
   return (
     <div className="pt-1 space-y-1">
       <div className="flex flex-wrap gap-2">
         {url ? (
           <a
             href={url}
-            download={filename || undefined}
+            download={downloadName}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1 text-[11px] text-primary underline"
           >
-            <Download className="w-3 h-3" /> Baixar
+            <Download className="w-3 h-3" /> Baixar ({downloadName})
           </a>
         ) : (
           <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
