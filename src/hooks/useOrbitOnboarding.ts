@@ -200,6 +200,9 @@ export interface OnboardingAssetInsight {
   extracted: any;
   error: string | null;
   model: string | null;
+  review_status: "pending" | "approved" | "ignored";
+  reviewed_by: string | null;
+  reviewed_at: string | null;
   created_at: string;
   updated_at: string;
 }
