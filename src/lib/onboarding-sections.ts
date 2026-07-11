@@ -362,7 +362,7 @@ function rawVal(responses: Record<string, any>, section: string, field: string):
 }
 
 function isFilled(v: any): boolean {
-  if (v === undefined || v === null) return "";
+  if (v === undefined || v === null) return false;
   if (Array.isArray(v)) return v.some(isFilled);
   if (typeof v === "object") return Object.values(v).some(isFilled);
   return String(v).trim() !== "";
