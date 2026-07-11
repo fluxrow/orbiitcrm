@@ -256,6 +256,27 @@ function OnboardingDetailSheet({
   onboarding, onClose,
 }: { onboarding: ClientOnboarding | null; onClose: () => void }) {
   const updateChecklist = useUpdateChecklist();
+  const updateResponses = useUpdateOnboardingResponses();
+
+  const removeMaterial = (sectionKey: string, fieldKey: string, index: number) => {
+    if (!onboarding) return;
+    const responses = { ...(onboarding.responses ?? {}) };
+    const sec = { ...(responses[sectionKey] ?? {}) };
+    const arr = Array.isArray(sec[fieldKey]) ? [...sec[fieldKey]] : [];
+    if (index < 0 || index >= arr.length) return;
+    const [removed] = arr.splice(index, 1);
+    sec[fieldKey] = arr;
+    responses[sectionKey] = sec;
+    updateResponses.mutate(
+      { id: onboarding.id, responses },
+      {
+        onSuccess: () => {
+          toast.success(`Material removido${removed?.titulo ? `: ${removed.titulo}` : ""}`);
+        },
+        onError: (e: any) => toast.error(`Falha ao remover: ${e?.message || e}`),
+      },
+    );
+  };
 
   if (!onboarding) return null;
   const checklist =
