@@ -796,6 +796,30 @@ export function buildImplementationPackageMarkdown(
       : ["_Todos os campos obrigatórios preenchidos._"],
   ));
 
+  // Fase 4 — Pendências operacionais (visão consolidada no topo)
+  const checklistPending = (checklist ?? []).filter((c) => !c.done);
+  const opsLines: string[] = [];
+  opsLines.push(`- **Campos obrigatórios faltantes:** ${missing.length}`);
+  opsLines.push(`- **Itens do checklist pendentes:** ${checklistPending.length}/${(checklist ?? []).length}`);
+  if (checklistPending.length) {
+    opsLines.push("");
+    opsLines.push("**Checklist pendente:**");
+    for (const c of checklistPending) opsLines.push(`- [ ] ${c.label}`);
+  }
+  const materialsAll = profile.assets.structured_materials;
+  const materialsPendingUpload = materialsAll.filter(
+    (m) => m.upload_status && m.upload_status !== "uploaded" && !m.asset_id,
+  );
+  if (materialsPendingUpload.length) {
+    opsLines.push("");
+    opsLines.push(`**Materiais sem upload concluído:** ${materialsPendingUpload.length}`);
+    for (const m of materialsPendingUpload) {
+      opsLines.push(`- ${m.titulo || m.filename || m.tipo || "(sem título)"} — status: ${m.upload_status}`);
+    }
+  }
+  out.push(...block("Pendências operacionais", opsLines));
+
+
   // Implementation profile
   out.push(...block("Implementation profile", [
     "```json",
