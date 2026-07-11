@@ -211,8 +211,7 @@ export function calculateProgress(responses: Record<string, any>): number {
   if (pool.length === 0) return 0;
   let filled = 0;
   for (const { section, key } of pool) {
-    const v = responses?.[section]?.[key];
-    if (v !== undefined && v !== null && String(v).trim() !== "") filled++;
+    if (hasVal(responses, section, key)) filled++;
   }
   return Math.round((filled / pool.length) * 100);
 }
@@ -232,10 +231,154 @@ export const DEFAULT_CHECKLIST = [
 // Helpers de leitura
 // ============================================================
 
-function getVal(responses: Record<string, any>, section: string, field: string): string {
-  const v = responses?.[section]?.[field];
+type FieldRef = { section: string; field: string };
+
+const RESPONSE_ALIASES: Record<string, FieldRef[]> = {
+  "empresa.razao_social": [
+    { section: "empresa", field: "nome_empresa" },
+    { section: "empresa", field: "nome_publico" },
+  ],
+  "empresa.responsavel_nome": [
+    { section: "empresa", field: "responsavel_aprovacao" },
+  ],
+  "oferta.oferta_principal": [
+    { section: "oferta", field: "oferta_principal_descricao" },
+    { section: "oferta", field: "oferta_principal_nome" },
+    { section: "oferta", field: "promessa_central" },
+  ],
+  "oferta.ticket_medio": [
+    { section: "oferta", field: "ticket_principal" },
+    { section: "icp", field: "ticket_medio" },
+  ],
+  "oferta.diferenciais": [
+    { section: "icp", field: "diferenciais" },
+    { section: "oferta", field: "resultado_esperado" },
+  ],
+  "icp.cliente_ideal": [
+    { section: "qualificacao", field: "lead_ideal" },
+    { section: "oferta", field: "para_quem_e" },
+  ],
+  "icp.sinais_priority": [
+    { section: "qualificacao", field: "sinais_urgencia" },
+    { section: "qualificacao", field: "sinais_fit_forte" },
+    { section: "qualificacao", field: "faixas_high" },
+  ],
+  "icp.sinais_hot": [
+    { section: "qualificacao", field: "faixas_medium" },
+    { section: "qualificacao", field: "sinais_nutricao" },
+  ],
+  "icp.sinais_cold": [
+    { section: "qualificacao", field: "faixas_low" },
+    { section: "qualificacao", field: "lead_ruim" },
+  ],
+  "formulario.canal_captura": [
+    { section: "lead_form", field: "typebot_link" },
+    { section: "jornada", field: "origem_leads" },
+    { section: "integracoes", field: "fontes_lead" },
+  ],
+  "formulario.campos_typebot": [
+    { section: "lead_form", field: "perguntas_formulario" },
+    { section: "lead_form", field: "variaveis_typebot" },
+    { section: "qualificacao", field: "perguntas_obrigatorias_antes_call" },
+  ],
+  "formulario.qualificacao_no_bot": [
+    { section: "qualificacao", field: "criterio_principal_qualificacao" },
+  ],
+  "funil.gatilhos_avanco": [
+    { section: "funil", field: "criterios_qualificacao" },
+    { section: "jornada", field: "quando_chamar_call" },
+  ],
+  "funil.vendedores": [
+    { section: "equipe", field: "vendedores" },
+    { section: "jornada", field: "quem_faz_call" },
+  ],
+  "ia.persona_ia": [
+    { section: "ia", field: "agente_fala_como_quem" },
+  ],
+  "ia.objetivo_ia": [
+    { section: "jornada", field: "primeiro_contato_desejado" },
+    { section: "ia", field: "como_convidar_call" },
+  ],
+  "ia.scripts_proibidos": [
+    { section: "ia", field: "frases_proibidas" },
+    { section: "qualificacao", field: "promessas_proibidas" },
+  ],
+  "ia.regras_handoff": [
+    { section: "ia", field: "quando_transferir_humano" },
+  ],
+  "ia.conhecimento_extra": [
+    { section: "ativos", field: "materiais_treinamento" },
+    { section: "ativos", field: "link_pasta_materiais" },
+  ],
+  "templates.primeira_abordagem": [
+    { section: "templates", field: "template_primeiro_contato" },
+    { section: "templates", field: "template_convite_call" },
+  ],
+  "templates.cadencia_priority": [
+    { section: "templates", field: "cadencia_followup_high" },
+  ],
+  "templates.cadencia_hot": [
+    { section: "templates", field: "cadencia_followup_medium" },
+  ],
+  "templates.cadencia_cold": [
+    { section: "templates", field: "cadencia_followup_low" },
+  ],
+  "midias.logo_url": [
+    { section: "ativos", field: "link_pasta_materiais" },
+  ],
+  "midias.apresentacao_url": [
+    { section: "ativos", field: "materiais_treinamento" },
+  ],
+  "midias.cases_url": [
+    { section: "ativos", field: "provas_sociais_disponiveis" },
+  ],
+  "midias.videos_url": [
+    { section: "ativos", field: "videos_disponiveis" },
+  ],
+  "midias.audios": [
+    { section: "ativos", field: "audios_disponiveis" },
+  ],
+  "midias.assets_extras": [
+    { section: "ativos", field: "assets_extras" },
+  ],
+  "integracoes.email_dominio": [
+    { section: "integracoes", field: "dominio_email" },
+    { section: "integracoes", field: "email_envio" },
+  ],
+  "go_live.responsavel_final": [
+    { section: "go_live", field: "responsavel_aprovacao_final" },
+    { section: "empresa", field: "responsavel_aprovacao" },
+  ],
+  "go_live.data_desejada": [
+    { section: "go_live", field: "data_desejada_go_live" },
+  ],
+  "go_live.criterios_sucesso": [
+    { section: "go_live", field: "criterios_go_live" },
+  ],
+};
+
+function rawVal(responses: Record<string, any>, section: string, field: string): any {
+  return responses?.[section]?.[field];
+}
+
+function isFilled(v: any): boolean {
   if (v === undefined || v === null) return "";
-  return String(v).trim();
+  if (Array.isArray(v)) return v.some(isFilled);
+  if (typeof v === "object") return Object.values(v).some(isFilled);
+  return String(v).trim() !== "";
+}
+
+function getVal(responses: Record<string, any>, section: string, field: string): string {
+  const refs = [{ section, field }, ...(RESPONSE_ALIASES[`${section}.${field}`] ?? [])];
+  for (const ref of refs) {
+    const v = rawVal(responses, ref.section, ref.field);
+    if (isFilled(v)) return Array.isArray(v) ? v.join("\n") : String(v).trim();
+  }
+  return "";
+}
+
+function hasVal(responses: Record<string, any>, section: string, field: string): boolean {
+  return getVal(responses, section, field) !== "";
 }
 
 /** Campos required não preenchidos, agrupados por seção. */
@@ -246,7 +389,7 @@ export function getMissingRequiredFields(
   for (const sec of ONBOARDING_SECTIONS) {
     for (const f of sec.fields) {
       if (!f.required) continue;
-      if (!getVal(responses, sec.key, f.key)) {
+      if (!hasVal(responses, sec.key, f.key)) {
         out.push({ section: sec.title, label: f.label, field: `${sec.key}.${f.key}` });
       }
     }
