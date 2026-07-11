@@ -353,18 +353,19 @@ function OnboardingDetailSheet({
                       <dl className="space-y-1.5 text-sm">
                         {sec.fields.map((f) => {
                           const v = vals[f.key];
-                          if (!v) return null;
+                          if (v === undefined || v === null || v === "") return null;
+                          if (Array.isArray(v) && v.length === 0) return null;
                           return (
                             <div key={f.key} className="grid grid-cols-[160px_1fr] gap-2">
                               <dt className="text-muted-foreground">{f.label}</dt>
-                              <dd className="whitespace-pre-wrap">{String(v)}</dd>
+                              <dd className="whitespace-pre-wrap"><ResponseValue value={v} /></dd>
                             </div>
                           );
                         })}
                         {unknownEntries.map(([k, v]) => (
                           <div key={k} className="grid grid-cols-[160px_1fr] gap-2 opacity-70">
                             <dt className="text-muted-foreground italic">{k}</dt>
-                            <dd className="whitespace-pre-wrap">{String(v)}</dd>
+                            <dd className="whitespace-pre-wrap"><ResponseValue value={v} /></dd>
                           </div>
                         ))}
                       </dl>
@@ -381,7 +382,7 @@ function OnboardingDetailSheet({
                         {Object.entries(vals).map(([k, v]) => (
                           <div key={k} className="grid grid-cols-[160px_1fr] gap-2">
                             <dt className="text-muted-foreground italic">{k}</dt>
-                            <dd className="whitespace-pre-wrap">{String(v)}</dd>
+                            <dd className="whitespace-pre-wrap"><ResponseValue value={v} /></dd>
                           </div>
                         ))}
                       </dl>
@@ -389,6 +390,7 @@ function OnboardingDetailSheet({
                   );
                 })}
               </div>
+
             )}
           </section>
         </div>
