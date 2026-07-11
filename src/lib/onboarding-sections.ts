@@ -12,7 +12,8 @@ export type FieldType =
   | "url"
   | "select"
   | "multiselect"
-  | "number";
+  | "number"
+  | "asset_list";
 
 export interface OnboardingField {
   key: string;
@@ -28,7 +29,21 @@ export interface OnboardingSection {
   key: string;
   title: string;
   description: string;
+  /** Texto curto, em linguagem de negócio, explicando por que essa seção existe. */
+  clientPurpose?: string;
+  /** Exemplos concretos para o cliente entender rápido. */
+  examples?: string[];
+  /** Orientação quando o cliente não souber responder. */
+  ifUnsure?: string;
   fields: OnboardingField[];
+}
+
+/** Item da lista estruturada de materiais da operação. */
+export interface StructuredMaterial {
+  tipo: string;
+  titulo: string;
+  link?: string;
+  obs?: string;
 }
 
 // ============================================================
