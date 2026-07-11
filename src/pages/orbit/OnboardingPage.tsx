@@ -828,11 +828,23 @@ function MaterialsReviewDrawer({
                       {m.data?.asset_id && <>asset: <code>{String(m.data.asset_id).slice(0, 8)}</code></>}
                     </div>
                   </div>
-                  {insight ? (
-                    <Badge variant="outline">{insight.detected_kind || "processado"}</Badge>
-                  ) : (
-                    <Badge variant="secondary">sem insight</Badge>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {insight ? (
+                      <Badge variant="outline">{insight.detected_kind || "processado"}</Badge>
+                    ) : (
+                      <Badge variant="secondary">sem insight</Badge>
+                    )}
+                    {insight?.review_status === "approved" && (
+                      <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/30" variant="outline">
+                        <Check className="w-3 h-3 mr-1" /> Aprovado
+                      </Badge>
+                    )}
+                    {insight?.review_status === "ignored" && (
+                      <Badge className="bg-muted text-muted-foreground" variant="outline">
+                        <X className="w-3 h-3 mr-1" /> Ignorado
+                      </Badge>
+                    )}
+                  </div>
                 </div>
 
                 {m.data?.storage_path && (
@@ -869,6 +881,57 @@ function MaterialsReviewDrawer({
                         {JSON.stringify(insight.extracted, null, 2)}
                       </pre>
                     </details>
+                  )}
+                  {insight && (
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={insight.review_status === "approved" ? "default" : "outline"}
+                        className="h-7 gap-1 text-xs"
+                        disabled={reviewMutation.isPending}
+                        onClick={() =>
+                          reviewMutation.mutate(
+                            { insightId: insight.id, onboardingId: onboarding.id, status: "approved" },
+                            { onSuccess: () => toast.success("Insight aprovado") },
+                          )
+                        }
+                      >
+                        <Check className="w-3 h-3" /> Aprovar
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={insight.review_status === "ignored" ? "default" : "outline"}
+                        className="h-7 gap-1 text-xs"
+                        disabled={reviewMutation.isPending}
+                        onClick={() =>
+                          reviewMutation.mutate(
+                            { insightId: insight.id, onboardingId: onboarding.id, status: "ignored" },
+                            { onSuccess: () => toast.success("Insight ignorado") },
+                          )
+                        }
+                      >
+                        <X className="w-3 h-3" /> Ignorar
+                      </Button>
+                      {insight.review_status !== "pending" && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 gap-1 text-xs"
+                          disabled={reviewMutation.isPending}
+                          onClick={() =>
+                            reviewMutation.mutate(
+                              { insightId: insight.id, onboardingId: onboarding.id, status: "pending" },
+                              { onSuccess: () => toast.success("Revisão resetada") },
+                            )
+                          }
+                        >
+                          <RotateCcw className="w-3 h-3" /> Resetar
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </div>
 
