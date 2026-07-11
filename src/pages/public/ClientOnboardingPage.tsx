@@ -221,6 +221,8 @@ export default function ClientOnboardingPage() {
                 <p className="text-muted-foreground">{section.description}</p>
               </div>
 
+              <SectionExplainer section={section} />
+
               <div className="space-y-5">
                 {section.fields.map((f) => (
                   <FieldInput
