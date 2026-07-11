@@ -777,11 +777,16 @@ function MaterialsReviewDrawer({
   draft: any | null;
 }) {
   const materials = collectMaterials(onboarding);
+  const reviewMutation = useReviewInsight();
   const insightsByAsset = new Map<string, any>();
   for (const i of insights) if (i?.asset_id) insightsByAsset.set(i.asset_id, i);
 
   const flows = draft?.draft?.flows ?? [];
   const templates = draft?.draft?.templates ?? [];
+
+  const approvedCount = insights.filter((i) => i?.review_status === "approved").length;
+  const ignoredCount = insights.filter((i) => i?.review_status === "ignored").length;
+  const pendingCount = insights.filter((i) => !i?.review_status || i.review_status === "pending").length;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
