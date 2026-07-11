@@ -330,12 +330,15 @@ function OnboardingDetailSheet({
             <Button
               variant="outline" size="sm" className="gap-1.5"
               onClick={async () => {
+                const filteredInsights = (insightsQuery.data ?? []).filter(
+                  (i) => i.review_status !== "ignored",
+                );
                 const md = buildImplementationPackageMarkdown({
                   onboarding,
                   checklist,
                   publicLink: link,
                   draft: draftQuery.data ?? null,
-                  insights: insightsQuery.data ?? null,
+                  insights: filteredInsights,
                 });
                 const safe = (onboarding.empresa?.slug || onboarding.cliente_empresa || onboarding.cliente_nome || "onboarding")
                   .toString().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
