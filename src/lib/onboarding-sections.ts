@@ -596,7 +596,7 @@ export function buildImplementationProfile(
       qualificacao_inicial: getVal(responses, "caminho_lead", "qualificacao_inicial"),
       handoff: getVal(responses, "caminho_lead", "handoff_humano"),
       url_captura: getVal(responses, "caminho_lead", "url_captura_atual"),
-      uses_typebot: /typebot|chatbot|bot/i.test(
+      uses_typebot: /\b(typebot|chatbot)\b/i.test(
         getVal(responses, "caminho_lead", "canal_entrada_lead") +
           " " +
           getVal(responses, "caminho_lead", "descricao_canal"),
@@ -643,7 +643,7 @@ export function buildRecommendedTypebotBody(
   const oferta = getVal(responses, "oferta", "oferta_principal") || "nossa solução";
   const camposObrig = splitLines(getVal(responses, "icp", "campos_obrigatorios_lead"));
   const handoff = getVal(responses, "caminho_lead", "handoff_humano");
-  const usesTypebot = /typebot|chatbot|bot/i.test(canal + " " + descricaoCanal);
+  const usesTypebot = /\b(typebot|chatbot)\b/i.test(canal + " " + descricaoCanal);
 
   const baseline = perguntas.length
     ? perguntas
