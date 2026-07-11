@@ -845,6 +845,23 @@ export function buildImplementationPackageMarkdown(
   ]));
 
   // Ativos e mídias
+  const materials = profile.assets.structured_materials;
+  const materialLines: string[] = [];
+  if (materials.length === 0) {
+    materialLines.push("_(nenhum material estruturado adicionado)_");
+  } else {
+    for (const m of materials) {
+      const head = `- **[${m.tipo || "Material"}]** ${m.titulo || "(sem título)"}`;
+      materialLines.push(head);
+      if (m.link) materialLines.push(`  - Link: ${m.link}`);
+      if (m.filename) {
+        materialLines.push(`  - Arquivo: \`${m.filename}\`${m.mime ? ` (${m.mime}` : ""}${m.size_bytes ? `, ${Math.round(m.size_bytes / 1024)} KB)` : m.mime ? ")" : ""}`);
+      }
+      if (m.asset_id) materialLines.push(`  - \`asset_id\`: ${m.asset_id}`);
+      if (m.storage_path) materialLines.push(`  - \`storage_path\`: \`${m.storage_path}\``);
+      if (m.obs) materialLines.push(`  - Obs: ${m.obs}`);
+    }
+  }
   out.push(...block("Ativos e mídias", [
     `- **Logo:** ${getVal(responses, "midias", "logo_url") || "—"}`,
     `- **Apresentação comercial:** ${getVal(responses, "midias", "apresentacao_url") || "—"}`,
@@ -858,7 +875,11 @@ export function buildImplementationPackageMarkdown(
     "",
     "**Outros:**",
     indent(getVal(responses, "midias", "assets_extras") || "—"),
+    "",
+    "**Materiais estruturados (uploads do wizard):**",
+    ...materialLines,
   ]));
+
 
   // Smoke plan
   out.push(...block("Smoke plan", [
