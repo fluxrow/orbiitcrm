@@ -40,11 +40,21 @@ export interface OnboardingSection {
 
 /** Item da lista estruturada de materiais da operação. */
 export interface StructuredMaterial {
+  id?: string;
   tipo: string;
   titulo: string;
   link?: string;
   obs?: string;
+  // Metadados de upload quando o cliente anexa arquivo direto no wizard.
+  asset_id?: string;
+  storage_path?: string;
+  filename?: string;
+  mime?: string;
+  size_bytes?: number;
+  upload_status?: "idle" | "uploading" | "uploaded" | "error";
+  upload_error?: string;
 }
+
 
 // ============================================================
 // Current schema — High-ticket / Orbit inteligente (10 seções)
