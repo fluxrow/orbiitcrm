@@ -442,6 +442,13 @@ function OnboardingDetailSheet({
           </section>
         </div>
       </SheetContent>
+      <MaterialsReviewDrawer
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        onboarding={onboarding}
+        insights={insightsQuery.data ?? []}
+        draft={draftQuery.data ?? null}
+      />
     </Sheet>
   );
 }
