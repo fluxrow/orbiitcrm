@@ -338,18 +338,31 @@ const RESPONSE_ALIASES: Record<string, FieldRef[]> = {
     { section: "qualificacao", field: "faixas_low" },
     { section: "qualificacao", field: "lead_ruim" },
   ],
-  "formulario.canal_captura": [
+  "caminho_lead.canal_entrada_lead": [
+    { section: "formulario", field: "canal_captura" },
     { section: "lead_form", field: "typebot_link" },
     { section: "jornada", field: "origem_leads" },
     { section: "integracoes", field: "fontes_lead" },
   ],
-  "formulario.campos_typebot": [
+  "caminho_lead.descricao_canal": [
+    { section: "formulario", field: "canal_captura" },
+    { section: "jornada", field: "origem_leads" },
+  ],
+  "caminho_lead.perguntas_captura": [
+    { section: "formulario", field: "campos_typebot" },
     { section: "lead_form", field: "perguntas_formulario" },
     { section: "lead_form", field: "variaveis_typebot" },
     { section: "qualificacao", field: "perguntas_obrigatorias_antes_call" },
   ],
-  "formulario.qualificacao_no_bot": [
+  "caminho_lead.qualificacao_inicial": [
+    { section: "formulario", field: "qualificacao_no_bot" },
     { section: "qualificacao", field: "criterio_principal_qualificacao" },
+  ],
+  "caminho_lead.handoff_humano": [
+    { section: "formulario", field: "handoff_bot" },
+  ],
+  "caminho_lead.url_captura_atual": [
+    { section: "formulario", field: "url_formulario_atual" },
   ],
   "funil.gatilhos_avanco": [
     { section: "funil", field: "criterios_qualificacao" },
