@@ -763,7 +763,7 @@ function block(title: string, lines: string[]): string[] {
 export function buildImplementationPackageMarkdown(
   params: ImplementationPackageParams,
 ): string {
-  const { onboarding, checklist, publicLink } = params;
+  const { onboarding, checklist, publicLink, draft, insights } = params;
   const responses = (onboarding.responses ?? {}) as Record<string, any>;
   const profile = buildImplementationProfile(responses);
   const missing = getMissingRequiredFields(responses);
