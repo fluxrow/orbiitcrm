@@ -427,7 +427,7 @@ function OnboardingDetailSheet({
   );
 }
 
-function ResponseValue({ value }: { value: any }) {
+function ResponseValue({ value, onRemoveItem }: { value: any; onRemoveItem?: (index: number) => void }) {
   if (value === null || value === undefined) return <span className="text-muted-foreground">—</span>;
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
     return <>{String(value)}</>;
@@ -440,9 +440,26 @@ function ResponseValue({ value }: { value: any }) {
       return (
         <ul className="space-y-1.5">
           {value.map((m: any, i: number) => (
-            <li key={m?.id ?? i} className="rounded border border-border/60 bg-muted/20 p-2 text-xs space-y-1">
-              <div className="font-medium text-foreground">
-                [{m?.tipo || "Material"}] {m?.titulo || m?.filename || "(sem título)"}
+            <li key={m?.id ?? i} className="rounded border border-border/60 bg-muted/20 p-2 text-xs space-y-1 relative">
+              <div className="flex items-start justify-between gap-2">
+                <div className="font-medium text-foreground">
+                  [{m?.tipo || "Material"}] {m?.titulo || m?.filename || "(sem título)"}
+                </div>
+                {onRemoveItem && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(`Remover material "${m?.titulo || m?.filename || "sem título"}"?`)) {
+                        onRemoveItem(i);
+                      }
+                    }}
+                    className="text-muted-foreground hover:text-destructive shrink-0"
+                    aria-label="Remover material"
+                    title="Remover material"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
               {m?.link && <div>Link: <a href={m.link} target="_blank" rel="noreferrer" className="underline">{m.link}</a></div>}
               {m?.filename && <div>Arquivo: <code>{m.filename}</code>{m?.mime ? ` · ${m.mime}` : ""}{typeof m?.size_bytes === "number" ? ` · ${Math.round(m.size_bytes/1024)} KB` : ""}</div>}
