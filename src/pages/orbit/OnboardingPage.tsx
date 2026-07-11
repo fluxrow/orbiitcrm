@@ -381,7 +381,12 @@ function OnboardingDetailSheet({
                           return (
                             <div key={f.key} className="grid grid-cols-[160px_1fr] gap-2">
                               <dt className="text-muted-foreground">{f.label}</dt>
-                              <dd className="whitespace-pre-wrap"><ResponseValue value={v} /></dd>
+                              <dd className="whitespace-pre-wrap">
+                                <ResponseValue
+                                  value={v}
+                                  onRemoveItem={(idx) => removeMaterial(sec.key, f.key, idx)}
+                                />
+                              </dd>
                             </div>
                           );
                         })}
