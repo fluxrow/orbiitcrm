@@ -753,8 +753,8 @@ export function buildImplementationPackageMarkdown(
     "```",
   ]));
 
-  // Body Typebot recomendado
-  out.push(...block("Body Typebot recomendado", [
+  // Body de captação recomendado
+  out.push(...block("Body de captação recomendado", [
     "```text",
     buildRecommendedTypebotBody(responses),
     "```",
