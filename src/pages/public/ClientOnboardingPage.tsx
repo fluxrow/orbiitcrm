@@ -310,7 +310,11 @@ function FieldInput({
         <AssetListInput
           value={Array.isArray(value) ? value : []}
           onChange={onChange}
+          token={(field as any)._token}
+          sectionKey={(field as any)._sectionKey}
+          fieldKey={field.key}
         />
+
       ) : (
         <Input
           type={field.type === "email" ? "email" : field.type === "url" ? "url" : field.type === "number" ? "number" : "text"}
