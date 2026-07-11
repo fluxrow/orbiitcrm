@@ -531,6 +531,41 @@ function AssetListInput({
                 {typeof it.size_bytes === "number" && ` · ${Math.round(it.size_bytes / 1024)} KB`}
               </span>
             )}
+            {(it.upload_status === "uploaded" || it.upload_status === "error" || it.filename || it.asset_id) && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[11px] text-muted-foreground hover:text-destructive gap-1"
+                disabled={it.upload_status === "uploading"}
+                onClick={() => {
+                  if (!window.confirm("Remover o arquivo enviado? O material continua na lista, mas sem anexo.")) return;
+                  const itemId = it.id;
+                  if (itemId) {
+                    setPreviews((p) => {
+                      const next = { ...p };
+                      const url = next[itemId];
+                      if (url && url.startsWith("blob:")) URL.revokeObjectURL(url);
+                      delete next[itemId];
+                      return next;
+                    });
+                  }
+                  update(idx, {
+                    asset_id: undefined,
+                    storage_path: undefined,
+                    filename: undefined,
+                    mime: undefined,
+                    size_bytes: undefined,
+                    upload_status: undefined,
+                    upload_error: undefined,
+                  });
+                  toast.success("Arquivo removido");
+                }}
+                aria-label="Remover arquivo"
+              >
+                <Trash2 className="w-3 h-3" /> Remover arquivo
+              </Button>
+            )}
             {it.upload_status === "error" && it.upload_error && (
               <span className="text-[11px] text-destructive">{it.upload_error}</span>
             )}
