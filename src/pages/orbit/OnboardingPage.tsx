@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
-import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList, Download, Loader2, Trash2, Sparkles, FileSearch, LayoutList } from "lucide-react";
+import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList, Download, Loader2, Trash2, Sparkles, FileSearch, LayoutList, Check, X, RotateCcw } from "lucide-react";
 import { useSignedOrbitMedia } from "@/lib/orbit-media";
 import { toast } from "sonner";
 import {
@@ -23,6 +23,7 @@ import {
   useProcessOnboardingAssets,
   useOnboardingInsights,
   useOnboardingDraft,
+  useReviewInsight,
   ClientOnboarding,
 } from "@/hooks/useOrbitOnboarding";
 import {
@@ -329,12 +330,15 @@ function OnboardingDetailSheet({
             <Button
               variant="outline" size="sm" className="gap-1.5"
               onClick={async () => {
+                const filteredInsights = (insightsQuery.data ?? []).filter(
+                  (i) => i.review_status !== "ignored",
+                );
                 const md = buildImplementationPackageMarkdown({
                   onboarding,
                   checklist,
                   publicLink: link,
                   draft: draftQuery.data ?? null,
-                  insights: insightsQuery.data ?? null,
+                  insights: filteredInsights,
                 });
                 const safe = (onboarding.empresa?.slug || onboarding.cliente_empresa || onboarding.cliente_nome || "onboarding")
                   .toString().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -776,11 +780,16 @@ function MaterialsReviewDrawer({
   draft: any | null;
 }) {
   const materials = collectMaterials(onboarding);
+  const reviewMutation = useReviewInsight();
   const insightsByAsset = new Map<string, any>();
   for (const i of insights) if (i?.asset_id) insightsByAsset.set(i.asset_id, i);
 
   const flows = draft?.draft?.flows ?? [];
   const templates = draft?.draft?.templates ?? [];
+
+  const approvedCount = insights.filter((i) => i?.review_status === "approved").length;
+  const ignoredCount = insights.filter((i) => i?.review_status === "ignored").length;
+  const pendingCount = insights.filter((i) => !i?.review_status || i.review_status === "pending").length;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -794,7 +803,19 @@ function MaterialsReviewDrawer({
           </p>
         </SheetHeader>
 
-        <div className="mt-6 space-y-4">
+        {insights.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+            <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/30" variant="outline">
+              <Check className="w-3 h-3 mr-1" /> {approvedCount} aprovados
+            </Badge>
+            <Badge className="bg-muted text-muted-foreground" variant="outline">
+              <X className="w-3 h-3 mr-1" /> {ignoredCount} ignorados
+            </Badge>
+            <Badge variant="secondary">{pendingCount} pendentes</Badge>
+          </div>
+        )}
+
+        <div className="mt-4 space-y-4">
           {materials.length === 0 && (
             <Card className="glass-card p-4 text-sm text-muted-foreground">
               Nenhum material enviado ainda.
@@ -827,11 +848,23 @@ function MaterialsReviewDrawer({
                       {m.data?.asset_id && <>asset: <code>{String(m.data.asset_id).slice(0, 8)}</code></>}
                     </div>
                   </div>
-                  {insight ? (
-                    <Badge variant="outline">{insight.detected_kind || "processado"}</Badge>
-                  ) : (
-                    <Badge variant="secondary">sem insight</Badge>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {insight ? (
+                      <Badge variant="outline">{insight.detected_kind || "processado"}</Badge>
+                    ) : (
+                      <Badge variant="secondary">sem insight</Badge>
+                    )}
+                    {insight?.review_status === "approved" && (
+                      <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/30" variant="outline">
+                        <Check className="w-3 h-3 mr-1" /> Aprovado
+                      </Badge>
+                    )}
+                    {insight?.review_status === "ignored" && (
+                      <Badge className="bg-muted text-muted-foreground" variant="outline">
+                        <X className="w-3 h-3 mr-1" /> Ignorado
+                      </Badge>
+                    )}
+                  </div>
                 </div>
 
                 {m.data?.storage_path && (
@@ -868,6 +901,57 @@ function MaterialsReviewDrawer({
                         {JSON.stringify(insight.extracted, null, 2)}
                       </pre>
                     </details>
+                  )}
+                  {insight && (
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={insight.review_status === "approved" ? "default" : "outline"}
+                        className="h-7 gap-1 text-xs"
+                        disabled={reviewMutation.isPending}
+                        onClick={() =>
+                          reviewMutation.mutate(
+                            { insightId: insight.id, onboardingId: onboarding.id, status: "approved" },
+                            { onSuccess: () => toast.success("Insight aprovado") },
+                          )
+                        }
+                      >
+                        <Check className="w-3 h-3" /> Aprovar
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={insight.review_status === "ignored" ? "default" : "outline"}
+                        className="h-7 gap-1 text-xs"
+                        disabled={reviewMutation.isPending}
+                        onClick={() =>
+                          reviewMutation.mutate(
+                            { insightId: insight.id, onboardingId: onboarding.id, status: "ignored" },
+                            { onSuccess: () => toast.success("Insight ignorado") },
+                          )
+                        }
+                      >
+                        <X className="w-3 h-3" /> Ignorar
+                      </Button>
+                      {insight.review_status !== "pending" && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 gap-1 text-xs"
+                          disabled={reviewMutation.isPending}
+                          onClick={() =>
+                            reviewMutation.mutate(
+                              { insightId: insight.id, onboardingId: onboarding.id, status: "pending" },
+                              { onSuccess: () => toast.success("Revisão resetada") },
+                            )
+                          }
+                        >
+                          <RotateCcw className="w-3 h-3" /> Resetar
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </div>
 

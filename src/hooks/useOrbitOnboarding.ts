@@ -200,6 +200,9 @@ export interface OnboardingAssetInsight {
   extracted: any;
   error: string | null;
   model: string | null;
+  review_status: "pending" | "approved" | "ignored";
+  reviewed_by: string | null;
+  reviewed_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -281,6 +284,38 @@ export function useProcessOnboardingAssets() {
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["onboarding-insights", res.onboarding_id] });
       qc.invalidateQueries({ queryKey: ["onboarding-draft", res.onboarding_id] });
+    },
+  });
+}
+
+export function useReviewInsight() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      insightId,
+      onboardingId,
+      status,
+    }: {
+      insightId: string;
+      onboardingId: string;
+      status: "pending" | "approved" | "ignored";
+    }) => {
+      const { data: userRes } = await supabase.auth.getUser();
+      const { data, error } = await supabase
+        .from("orbit_onboarding_asset_insights" as any)
+        .update({
+          review_status: status,
+          reviewed_by: userRes.user?.id ?? null,
+          reviewed_at: new Date().toISOString(),
+        })
+        .eq("id", insightId)
+        .select()
+        .maybeSingle();
+      if (error) throw error;
+      return { data, onboardingId };
+    },
+    onSuccess: ({ onboardingId }) => {
+      qc.invalidateQueries({ queryKey: ["onboarding-insights", onboardingId] });
     },
   });
 }
