@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
-import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList, Download, Loader2, Trash2, Sparkles, FileSearch } from "lucide-react";
+import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList, Download, Loader2, Trash2, Sparkles, FileSearch, LayoutList } from "lucide-react";
 import { useSignedOrbitMedia } from "@/lib/orbit-media";
 import { toast } from "sonner";
 import {
@@ -263,6 +263,7 @@ function OnboardingDetailSheet({
   const updateResponses = useUpdateOnboardingResponses();
   const draftQuery = useOnboardingDraft(onboarding?.id);
   const insightsQuery = useOnboardingInsights(onboarding?.id);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
 
   const removeMaterial = (sectionKey: string, fieldKey: string, index: number) => {
@@ -318,6 +319,12 @@ function OnboardingDetailSheet({
               onClick={() => { navigator.clipboard.writeText(link); toast.success("Link copiado"); }}
             >
               <Copy className="w-3.5 h-3.5" /> Copiar link
+            </Button>
+            <Button
+              variant="outline" size="sm" className="gap-1.5"
+              onClick={() => setReviewOpen(true)}
+            >
+              <LayoutList className="w-3.5 h-3.5" /> Revisar por material
             </Button>
             <Button
               variant="outline" size="sm" className="gap-1.5"
@@ -435,6 +442,13 @@ function OnboardingDetailSheet({
           </section>
         </div>
       </SheetContent>
+      <MaterialsReviewDrawer
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        onboarding={onboarding}
+        insights={insightsQuery.data ?? []}
+        draft={draftQuery.data ?? null}
+      />
     </Sheet>
   );
 }
@@ -701,5 +715,205 @@ function IntelligentDraftSection({ onboardingId }: { onboardingId: string }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────
+// Drawer de revisão por material (antes de gerar o pacote)
+// ─────────────────────────────────────────────────────────────
+type MaterialRef = {
+  sectionKey: string;
+  sectionTitle: string;
+  fieldKey: string;
+  fieldLabel: string;
+  index: number;
+  data: any;
+};
 
+function collectMaterials(onboarding: ClientOnboarding): MaterialRef[] {
+  const out: MaterialRef[] = [];
+  const responses = onboarding.responses ?? {};
+  for (const sec of ALL_KNOWN_SECTIONS) {
+    const vals = responses[sec.key];
+    if (!vals) continue;
+    for (const f of sec.fields) {
+      const v = (vals as any)[f.key];
+      if (!Array.isArray(v)) continue;
+      v.forEach((m: any, i: number) => {
+        if (m && typeof m === "object" && (m.titulo || m.filename || m.asset_id || m.link || m.tipo)) {
+          out.push({
+            sectionKey: sec.key,
+            sectionTitle: sec.title,
+            fieldKey: f.key,
+            fieldLabel: f.label,
+            index: i,
+            data: m,
+          });
+        }
+      });
+    }
+  }
+  return out;
+}
+
+function matchesMaterial(m: MaterialRef, text: string | undefined | null): boolean {
+  if (!text) return false;
+  const hay = String(text).toLowerCase();
+  const needles = [m.data?.asset_id, m.data?.titulo, m.data?.filename, m.data?.link]
+    .filter(Boolean)
+    .map((x: any) => String(x).toLowerCase());
+  return needles.some((n) => n && hay.includes(n));
+}
+
+function MaterialsReviewDrawer({
+  open,
+  onOpenChange,
+  onboarding,
+  insights,
+  draft,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onboarding: ClientOnboarding;
+  insights: any[];
+  draft: any | null;
+}) {
+  const materials = collectMaterials(onboarding);
+  const insightsByAsset = new Map<string, any>();
+  for (const i of insights) if (i?.asset_id) insightsByAsset.set(i.asset_id, i);
+
+  const flows = draft?.draft?.flows ?? [];
+  const templates = draft?.draft?.templates ?? [];
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            <LayoutList className="w-4 h-4" /> Revisão por material
+          </SheetTitle>
+          <p className="text-sm text-muted-foreground">
+            Revise insights e sugestões vinculadas a cada material antes de gerar o pacote completo.
+          </p>
+        </SheetHeader>
+
+        <div className="mt-6 space-y-4">
+          {materials.length === 0 && (
+            <Card className="glass-card p-4 text-sm text-muted-foreground">
+              Nenhum material enviado ainda.
+            </Card>
+          )}
+
+          {materials.map((m) => {
+            const insight = m.data?.asset_id ? insightsByAsset.get(m.data.asset_id) : null;
+            const relatedFlows = flows.filter(
+              (f: any) => matchesMaterial(m, f?.based_on) || matchesMaterial(m, f?.steps_summary) || matchesMaterial(m, f?.name),
+            );
+            const relatedTemplates = templates.filter(
+              (t: any) => matchesMaterial(m, t?.based_on) || matchesMaterial(m, t?.draft) || matchesMaterial(m, t?.purpose),
+            );
+            const title = m.data?.titulo || m.data?.filename || "(sem título)";
+
+            return (
+              <Card key={`${m.sectionKey}-${m.fieldKey}-${m.index}`} className="glass-card p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-[11px] text-muted-foreground">
+                      {m.sectionTitle} · {m.fieldLabel}
+                    </div>
+                    <div className="font-medium truncate">
+                      [{m.data?.tipo || "Material"}] {title}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground truncate">
+                      {m.data?.filename && <>arquivo: <code>{m.data.filename}</code> · </>}
+                      {m.data?.mime && <>mime: {m.data.mime} · </>}
+                      {m.data?.asset_id && <>asset: <code>{String(m.data.asset_id).slice(0, 8)}</code></>}
+                    </div>
+                  </div>
+                  {insight ? (
+                    <Badge variant="outline">{insight.detected_kind || "processado"}</Badge>
+                  ) : (
+                    <Badge variant="secondary">sem insight</Badge>
+                  )}
+                </div>
+
+                {m.data?.storage_path && (
+                  <AssetPreview
+                    storagePath={m.data.storage_path}
+                    mime={m.data.mime}
+                    filename={m.data.filename}
+                  />
+                )}
+
+                <div>
+                  <h5 className="text-xs font-semibold mb-1 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" /> Insight da IA
+                  </h5>
+                  {!insight && (
+                    <p className="text-xs text-muted-foreground">
+                      Ainda não processado. Use "Processar materiais" na aba principal.
+                    </p>
+                  )}
+                  {insight?.error && (
+                    <div className="text-xs text-destructive border border-destructive/40 rounded p-2">
+                      Erro: {insight.error}
+                    </div>
+                  )}
+                  {insight?.summary && (
+                    <p className="text-xs whitespace-pre-wrap">{insight.summary}</p>
+                  )}
+                  {insight?.extracted && (
+                    <details className="mt-1">
+                      <summary className="text-[11px] text-muted-foreground cursor-pointer">
+                        Ver dados extraídos
+                      </summary>
+                      <pre className="text-[11px] bg-muted/30 rounded p-2 overflow-x-auto mt-1">
+                        {JSON.stringify(insight.extracted, null, 2)}
+                      </pre>
+                    </details>
+                  )}
+                </div>
+
+                <div>
+                  <h5 className="text-xs font-semibold mb-1">Sugestões vinculadas</h5>
+                  {relatedFlows.length === 0 && relatedTemplates.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Nenhum fluxo ou template do rascunho menciona este material.
+                    </p>
+                  )}
+                  {relatedFlows.length > 0 && (
+                    <div className="mt-1">
+                      <div className="text-[11px] text-muted-foreground mb-1">Fluxos</div>
+                      <ul className="space-y-1">
+                        {relatedFlows.map((f: any, i: number) => (
+                          <li key={i} className="border rounded p-2 text-xs">
+                            <div className="font-medium">{f.name}</div>
+                            {f.trigger && <div className="text-muted-foreground">Trigger: {f.trigger}</div>}
+                            {f.steps_summary && <div>{f.steps_summary}</div>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {relatedTemplates.length > 0 && (
+                    <div className="mt-2">
+                      <div className="text-[11px] text-muted-foreground mb-1">Templates</div>
+                      <ul className="space-y-1">
+                        {relatedTemplates.map((t: any, i: number) => (
+                          <li key={i} className="border rounded p-2 text-xs">
+                            <div className="font-medium">[{t.channel}] {t.purpose}</div>
+                            {t.draft && (
+                              <pre className="whitespace-pre-wrap text-[11px] mt-1">{t.draft}</pre>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
 
