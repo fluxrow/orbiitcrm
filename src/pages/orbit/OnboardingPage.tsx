@@ -19,6 +19,7 @@ import {
   useCreateOnboarding,
   useArchiveOnboarding,
   useUpdateChecklist,
+  useUpdateOnboardingResponses,
   ClientOnboarding,
 } from "@/hooks/useOrbitOnboarding";
 import {
