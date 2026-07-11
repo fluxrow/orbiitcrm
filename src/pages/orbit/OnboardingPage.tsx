@@ -263,6 +263,7 @@ function OnboardingDetailSheet({
   const updateResponses = useUpdateOnboardingResponses();
   const draftQuery = useOnboardingDraft(onboarding?.id);
   const insightsQuery = useOnboardingInsights(onboarding?.id);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
 
   const removeMaterial = (sectionKey: string, fieldKey: string, index: number) => {
