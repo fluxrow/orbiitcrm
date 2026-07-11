@@ -280,8 +280,15 @@ export default function ClientOnboardingPage() {
 }
 
 function FieldInput({
-  field, value, onChange, missing,
-}: { field: OnboardingField; value: any; onChange: (v: any) => void; missing?: boolean }) {
+  field, value, onChange, missing, token, sectionKey,
+}: {
+  field: OnboardingField;
+  value: any;
+  onChange: (v: any) => void;
+  missing?: boolean;
+  token?: string;
+  sectionKey?: string;
+}) {
   const invalidCls = missing
     ? "border-destructive ring-2 ring-destructive/40 focus-visible:ring-destructive/60"
     : "";
@@ -313,10 +320,11 @@ function FieldInput({
         <AssetListInput
           value={Array.isArray(value) ? value : []}
           onChange={onChange}
-          token={(field as any)._token}
-          sectionKey={(field as any)._sectionKey}
+          token={token}
+          sectionKey={sectionKey ?? ""}
           fieldKey={field.key}
         />
+
 
       ) : (
         <Input
