@@ -516,6 +516,18 @@ export interface ImplementationProfile {
     calendar_email: string;
     email_dominio: string;
   };
+  lead_entry: {
+    canal: string;
+    descricao: string;
+    perguntas: string[];
+    qualificacao_inicial: string;
+    handoff: string;
+    url_captura: string;
+    uses_typebot: boolean;
+  };
+  assets: {
+    structured_materials: StructuredMaterial[];
+  };
   go_live: {
     responsavel_final: string;
     data_desejada: string;
