@@ -629,13 +629,21 @@ function readStructuredMaterials(responses: Record<string, any>): StructuredMate
   if (!Array.isArray(raw)) return [];
   return raw
     .map((r: any) => ({
+      id: r?.id ? String(r.id) : undefined,
       tipo: String(r?.tipo ?? "").trim(),
       titulo: String(r?.titulo ?? "").trim(),
       link: r?.link ? String(r.link).trim() : undefined,
       obs: r?.obs ? String(r.obs).trim() : undefined,
+      asset_id: r?.asset_id ? String(r.asset_id) : undefined,
+      storage_path: r?.storage_path ? String(r.storage_path) : undefined,
+      filename: r?.filename ? String(r.filename) : undefined,
+      mime: r?.mime ? String(r.mime) : undefined,
+      size_bytes: typeof r?.size_bytes === "number" ? r.size_bytes : undefined,
+      upload_status: r?.upload_status,
     }))
-    .filter((m) => m.tipo || m.titulo || m.link || m.obs);
+    .filter((m) => m.tipo || m.titulo || m.link || m.obs || m.asset_id);
 }
+
 
 // ============================================================
 // buildRecommendedTypebotBody — corpo de captação recomendado
