@@ -710,6 +710,34 @@ export function buildRecommendedTypebotBody(
 // buildImplementationPackageMarkdown
 // ============================================================
 
+export interface ImplementationPackageDraft {
+  status?: string;
+  assets_considered?: number;
+  model?: string | null;
+  updated_at?: string | null;
+  tokens_in?: number | null;
+  tokens_out?: number | null;
+  error?: string | null;
+  summary_markdown?: string | null;
+  draft?: {
+    flows?: any[];
+    templates?: any[];
+    cadences?: any[];
+    knowledge?: any[];
+    lead_score?: Record<string, any>;
+    notes?: string;
+  } | null;
+}
+
+export interface ImplementationPackageInsight {
+  asset_id: string;
+  detected_kind?: string | null;
+  summary?: string | null;
+  extracted?: any;
+  error?: string | null;
+  model?: string | null;
+}
+
 export interface ImplementationPackageParams {
   onboarding: {
     id?: string;
@@ -722,6 +750,10 @@ export interface ImplementationPackageParams {
   };
   checklist: { key: string; label: string; done?: boolean }[];
   publicLink: string;
+  /** Fase 4: rascunho inteligente consolidado (opcional). */
+  draft?: ImplementationPackageDraft | null;
+  /** Fase 4: insights por material (opcional). */
+  insights?: ImplementationPackageInsight[] | null;
 }
 
 function block(title: string, lines: string[]): string[] {
