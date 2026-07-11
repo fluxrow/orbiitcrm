@@ -7,12 +7,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle2, ChevronLeft, ChevronRight, HelpCircle, Lightbulb, Plus, Save, Send, Sparkles, Target, Trash2 } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, HelpCircle, Lightbulb, Plus, Save, Send, Sparkles, Target, Trash2, Upload, FileCheck2, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import {
   usePublicOnboarding, useSavePublicOnboarding, useSubmitPublicOnboarding,
 } from "@/hooks/useOrbitOnboarding";
 import { ONBOARDING_SECTIONS, OnboardingField, OnboardingSection, StructuredMaterial, calculateProgress } from "@/lib/onboarding-sections";
+import { uploadPublicOnboardingAsset } from "@/lib/orbit-onboarding-upload";
+
 
 export default function ClientOnboardingPage() {
   const { token } = useParams<{ token: string }>();
@@ -231,8 +233,11 @@ export default function ClientOnboardingPage() {
                     value={responses?.[section.key]?.[f.key] ?? ""}
                     onChange={(v) => setField(section.key, f.key, v)}
                     missing={missingKeys.has(`${section.key}.${f.key}`)}
+                    token={token}
+                    sectionKey={section.key}
                   />
                 ))}
+
               </div>
 
               <div className="flex items-center justify-between mt-8 pt-6 border-t">
@@ -275,8 +280,15 @@ export default function ClientOnboardingPage() {
 }
 
 function FieldInput({
-  field, value, onChange, missing,
-}: { field: OnboardingField; value: any; onChange: (v: any) => void; missing?: boolean }) {
+  field, value, onChange, missing, token, sectionKey,
+}: {
+  field: OnboardingField;
+  value: any;
+  onChange: (v: any) => void;
+  missing?: boolean;
+  token?: string;
+  sectionKey?: string;
+}) {
   const invalidCls = missing
     ? "border-destructive ring-2 ring-destructive/40 focus-visible:ring-destructive/60"
     : "";
@@ -308,7 +320,12 @@ function FieldInput({
         <AssetListInput
           value={Array.isArray(value) ? value : []}
           onChange={onChange}
+          token={token}
+          sectionKey={sectionKey ?? ""}
+          fieldKey={field.key}
         />
+
+
       ) : (
         <Input
           type={field.type === "email" ? "email" : field.type === "url" ? "url" : field.type === "number" ? "number" : "text"}
@@ -370,17 +387,60 @@ function SectionExplainer({ section }: { section: OnboardingSection }) {
 }
 
 function AssetListInput({
-  value, onChange,
-}: { value: StructuredMaterial[]; onChange: (v: StructuredMaterial[]) => void }) {
+  value, onChange, token, sectionKey, fieldKey,
+}: {
+  value: StructuredMaterial[];
+  onChange: (v: StructuredMaterial[]) => void;
+  token?: string;
+  sectionKey: string;
+  fieldKey: string;
+}) {
   const items = Array.isArray(value) ? value : [];
 
   const update = (idx: number, patch: Partial<StructuredMaterial>) => {
     const next = items.map((it, i) => (i === idx ? { ...it, ...patch } : it));
     onChange(next);
   };
+  const genId = () =>
+    (typeof crypto !== "undefined" && "randomUUID" in crypto)
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2);
   const add = () =>
-    onChange([...items, { tipo: "PDF", titulo: "", link: "", obs: "" }]);
+    onChange([...items, { id: genId(), tipo: "PDF", titulo: "", link: "", obs: "" }]);
   const remove = (idx: number) => onChange(items.filter((_, i) => i !== idx));
+
+  const handleUpload = async (idx: number, file: File) => {
+    if (!token) {
+      toast.error("Token de onboarding ausente — recarregue a página.");
+      return;
+    }
+    const item = items[idx];
+    const itemId = item?.id ?? genId();
+    update(idx, { id: itemId, upload_status: "uploading", upload_error: undefined, filename: file.name });
+    try {
+      const res = await uploadPublicOnboardingAsset({
+        token,
+        section_key: sectionKey,
+        field_key: fieldKey,
+        item_id: itemId,
+        file,
+      });
+      update(idx, {
+        id: itemId,
+        asset_id: res.asset_id,
+        storage_path: res.storage_path,
+        filename: res.filename,
+        mime: res.mime,
+        size_bytes: res.size_bytes,
+        upload_status: "uploaded",
+        titulo: item?.titulo || res.filename,
+      });
+      toast.success(`Arquivo enviado: ${res.filename}`);
+    } catch (e: any) {
+      update(idx, { upload_status: "error", upload_error: e?.message || String(e) });
+      toast.error(`Falha no upload: ${e?.message || e}`);
+    }
+  };
 
   const TIPO_OPTS = ["PDF", "Vídeo", "Áudio", "Link", "Imagem", "Apresentação", "Planilha", "Outro"];
 
@@ -392,7 +452,7 @@ function AssetListInput({
         </p>
       )}
       {items.map((it, idx) => (
-        <div key={idx} className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
+        <div key={it.id ?? idx} className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
           <div className="grid gap-2 md:grid-cols-[140px_1fr_auto]">
             <Select value={it.tipo || "PDF"} onValueChange={(v) => update(idx, { tipo: v })}>
               <SelectTrigger><SelectValue placeholder="Tipo" /></SelectTrigger>
@@ -425,6 +485,45 @@ function AssetListInput({
             placeholder="Observações — quando/como esse material é usado (opcional)"
             rows={2}
           />
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer rounded-md border border-input px-2.5 py-1.5 hover:bg-muted/60">
+              {it.upload_status === "uploading" ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : it.upload_status === "uploaded" ? (
+                <FileCheck2 className="w-3.5 h-3.5 text-primary" />
+              ) : it.upload_status === "error" ? (
+                <AlertCircle className="w-3.5 h-3.5 text-destructive" />
+              ) : (
+                <Upload className="w-3.5 h-3.5" />
+              )}
+              <span>
+                {it.upload_status === "uploading"
+                  ? "Enviando…"
+                  : it.upload_status === "uploaded"
+                    ? "Trocar arquivo"
+                    : "Anexar arquivo"}
+              </span>
+              <input
+                type="file"
+                className="hidden"
+                disabled={it.upload_status === "uploading"}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleUpload(idx, f);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            {it.filename && (
+              <span className="text-[11px] text-muted-foreground truncate max-w-[280px]" title={it.storage_path || it.filename}>
+                📎 {it.filename}
+                {typeof it.size_bytes === "number" && ` · ${Math.round(it.size_bytes / 1024)} KB`}
+              </span>
+            )}
+            {it.upload_status === "error" && it.upload_error && (
+              <span className="text-[11px] text-destructive">{it.upload_error}</span>
+            )}
+          </div>
         </div>
       ))}
       <Button
@@ -436,3 +535,4 @@ function AssetListInput({
     </div>
   );
 }
+

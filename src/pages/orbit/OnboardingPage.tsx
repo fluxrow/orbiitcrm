@@ -353,18 +353,19 @@ function OnboardingDetailSheet({
                       <dl className="space-y-1.5 text-sm">
                         {sec.fields.map((f) => {
                           const v = vals[f.key];
-                          if (!v) return null;
+                          if (v === undefined || v === null || v === "") return null;
+                          if (Array.isArray(v) && v.length === 0) return null;
                           return (
                             <div key={f.key} className="grid grid-cols-[160px_1fr] gap-2">
                               <dt className="text-muted-foreground">{f.label}</dt>
-                              <dd className="whitespace-pre-wrap">{String(v)}</dd>
+                              <dd className="whitespace-pre-wrap"><ResponseValue value={v} /></dd>
                             </div>
                           );
                         })}
                         {unknownEntries.map(([k, v]) => (
                           <div key={k} className="grid grid-cols-[160px_1fr] gap-2 opacity-70">
                             <dt className="text-muted-foreground italic">{k}</dt>
-                            <dd className="whitespace-pre-wrap">{String(v)}</dd>
+                            <dd className="whitespace-pre-wrap"><ResponseValue value={v} /></dd>
                           </div>
                         ))}
                       </dl>
@@ -381,7 +382,7 @@ function OnboardingDetailSheet({
                         {Object.entries(vals).map(([k, v]) => (
                           <div key={k} className="grid grid-cols-[160px_1fr] gap-2">
                             <dt className="text-muted-foreground italic">{k}</dt>
-                            <dd className="whitespace-pre-wrap">{String(v)}</dd>
+                            <dd className="whitespace-pre-wrap"><ResponseValue value={v} /></dd>
                           </div>
                         ))}
                       </dl>
@@ -389,6 +390,7 @@ function OnboardingDetailSheet({
                   );
                 })}
               </div>
+
             )}
           </section>
         </div>
@@ -396,4 +398,41 @@ function OnboardingDetailSheet({
     </Sheet>
   );
 }
+
+function ResponseValue({ value }: { value: any }) {
+  if (value === null || value === undefined) return <span className="text-muted-foreground">—</span>;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return <>{String(value)}</>;
+  }
+  // Lista estruturada de materiais / arrays de objetos
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span className="text-muted-foreground">—</span>;
+    const isMaterials = value.every((v) => v && typeof v === "object" && ("titulo" in v || "tipo" in v || "asset_id" in v));
+    if (isMaterials) {
+      return (
+        <ul className="space-y-1.5">
+          {value.map((m: any, i: number) => (
+            <li key={m?.id ?? i} className="rounded border border-border/60 bg-muted/20 p-2 text-xs">
+              <div className="font-medium text-foreground">
+                [{m?.tipo || "Material"}] {m?.titulo || m?.filename || "(sem título)"}
+              </div>
+              {m?.link && <div>Link: <a href={m.link} target="_blank" rel="noreferrer" className="underline">{m.link}</a></div>}
+              {m?.filename && <div>Arquivo: <code>{m.filename}</code>{m?.mime ? ` · ${m.mime}` : ""}{typeof m?.size_bytes === "number" ? ` · ${Math.round(m.size_bytes/1024)} KB` : ""}</div>}
+              {m?.asset_id && <div><code>asset_id:</code> {m.asset_id}</div>}
+              {m?.storage_path && <div><code>storage_path:</code> {m.storage_path}</div>}
+              {m?.upload_status && <div>Status: {m.upload_status}</div>}
+              {m?.obs && <div className="text-muted-foreground">Obs: {m.obs}</div>}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    return <pre className="text-xs bg-muted/30 rounded p-2 overflow-x-auto">{JSON.stringify(value, null, 2)}</pre>;
+  }
+  if (typeof value === "object") {
+    return <pre className="text-xs bg-muted/30 rounded p-2 overflow-x-auto">{JSON.stringify(value, null, 2)}</pre>;
+  }
+  return <>{String(value)}</>;
+}
+
 

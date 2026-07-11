@@ -2946,6 +2946,69 @@ export type Database = {
           },
         ]
       }
+      orbit_onboarding_assets: {
+        Row: {
+          created_at: string
+          empresa_id: string
+          field_key: string
+          filename: string
+          id: string
+          item_id: string | null
+          mime: string | null
+          onboarding_id: string
+          section_key: string
+          size_bytes: number | null
+          storage_path: string
+          updated_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          empresa_id: string
+          field_key: string
+          filename: string
+          id?: string
+          item_id?: string | null
+          mime?: string | null
+          onboarding_id: string
+          section_key: string
+          size_bytes?: number | null
+          storage_path: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          empresa_id?: string
+          field_key?: string
+          filename?: string
+          id?: string
+          item_id?: string | null
+          mime?: string | null
+          onboarding_id?: string
+          section_key?: string
+          size_bytes?: number | null
+          storage_path?: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_onboarding_assets_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_onboarding_assets_onboarding_id_fkey"
+            columns: ["onboarding_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_client_onboardings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_pe_links: {
         Row: {
           cliente_id: string | null

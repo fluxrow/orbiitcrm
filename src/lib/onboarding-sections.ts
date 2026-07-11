@@ -40,11 +40,21 @@ export interface OnboardingSection {
 
 /** Item da lista estruturada de materiais da operação. */
 export interface StructuredMaterial {
+  id?: string;
   tipo: string;
   titulo: string;
   link?: string;
   obs?: string;
+  // Metadados de upload quando o cliente anexa arquivo direto no wizard.
+  asset_id?: string;
+  storage_path?: string;
+  filename?: string;
+  mime?: string;
+  size_bytes?: number;
+  upload_status?: "idle" | "uploading" | "uploaded" | "error";
+  upload_error?: string;
 }
+
 
 // ============================================================
 // Current schema — High-ticket / Orbit inteligente (10 seções)
@@ -619,13 +629,21 @@ function readStructuredMaterials(responses: Record<string, any>): StructuredMate
   if (!Array.isArray(raw)) return [];
   return raw
     .map((r: any) => ({
+      id: r?.id ? String(r.id) : undefined,
       tipo: String(r?.tipo ?? "").trim(),
       titulo: String(r?.titulo ?? "").trim(),
       link: r?.link ? String(r.link).trim() : undefined,
       obs: r?.obs ? String(r.obs).trim() : undefined,
+      asset_id: r?.asset_id ? String(r.asset_id) : undefined,
+      storage_path: r?.storage_path ? String(r.storage_path) : undefined,
+      filename: r?.filename ? String(r.filename) : undefined,
+      mime: r?.mime ? String(r.mime) : undefined,
+      size_bytes: typeof r?.size_bytes === "number" ? r.size_bytes : undefined,
+      upload_status: r?.upload_status,
     }))
-    .filter((m) => m.tipo || m.titulo || m.link || m.obs);
+    .filter((m) => m.tipo || m.titulo || m.link || m.obs || m.asset_id);
 }
+
 
 // ============================================================
 // buildRecommendedTypebotBody — corpo de captação recomendado
@@ -827,6 +845,23 @@ export function buildImplementationPackageMarkdown(
   ]));
 
   // Ativos e mídias
+  const materials = profile.assets.structured_materials;
+  const materialLines: string[] = [];
+  if (materials.length === 0) {
+    materialLines.push("_(nenhum material estruturado adicionado)_");
+  } else {
+    for (const m of materials) {
+      const head = `- **[${m.tipo || "Material"}]** ${m.titulo || "(sem título)"}`;
+      materialLines.push(head);
+      if (m.link) materialLines.push(`  - Link: ${m.link}`);
+      if (m.filename) {
+        materialLines.push(`  - Arquivo: \`${m.filename}\`${m.mime ? ` (${m.mime}` : ""}${m.size_bytes ? `, ${Math.round(m.size_bytes / 1024)} KB)` : m.mime ? ")" : ""}`);
+      }
+      if (m.asset_id) materialLines.push(`  - \`asset_id\`: ${m.asset_id}`);
+      if (m.storage_path) materialLines.push(`  - \`storage_path\`: \`${m.storage_path}\``);
+      if (m.obs) materialLines.push(`  - Obs: ${m.obs}`);
+    }
+  }
   out.push(...block("Ativos e mídias", [
     `- **Logo:** ${getVal(responses, "midias", "logo_url") || "—"}`,
     `- **Apresentação comercial:** ${getVal(responses, "midias", "apresentacao_url") || "—"}`,
@@ -840,7 +875,11 @@ export function buildImplementationPackageMarkdown(
     "",
     "**Outros:**",
     indent(getVal(responses, "midias", "assets_extras") || "—"),
+    "",
+    "**Materiais estruturados (uploads do wizard):**",
+    ...materialLines,
   ]));
+
 
   // Smoke plan
   out.push(...block("Smoke plan", [

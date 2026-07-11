@@ -108,5 +108,10 @@ verify_jwt = false
 [functions.orbit-flow-scheduler-tick]
 verify_jwt = false
 
+[functions.orbit-onboarding-asset-upload]
+verify_jwt = false
+
+
+
 
 
