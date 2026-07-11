@@ -413,7 +413,7 @@ function ResponseValue({ value }: { value: any }) {
       return (
         <ul className="space-y-1.5">
           {value.map((m: any, i: number) => (
-            <li key={m?.id ?? i} className="rounded border border-border/60 bg-muted/20 p-2 text-xs">
+            <li key={m?.id ?? i} className="rounded border border-border/60 bg-muted/20 p-2 text-xs space-y-1">
               <div className="font-medium text-foreground">
                 [{m?.tipo || "Material"}] {m?.titulo || m?.filename || "(sem título)"}
               </div>
@@ -423,11 +423,13 @@ function ResponseValue({ value }: { value: any }) {
               {m?.storage_path && <div><code>storage_path:</code> {m.storage_path}</div>}
               {m?.upload_status && <div>Status: {m.upload_status}</div>}
               {m?.obs && <div className="text-muted-foreground">Obs: {m.obs}</div>}
+              {m?.storage_path && <AssetPreview storagePath={m.storage_path} mime={m.mime} filename={m.filename} />}
             </li>
           ))}
         </ul>
       );
     }
+
     return <pre className="text-xs bg-muted/30 rounded p-2 overflow-x-auto">{JSON.stringify(value, null, 2)}</pre>;
   }
   if (typeof value === "object") {
