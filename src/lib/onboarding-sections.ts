@@ -1072,3 +1072,38 @@ export function buildImplementationPackageMarkdown(
 function indent(s: string): string {
   return s.split(/\r?\n/).map((l) => (l.trim() ? `  ${l}` : l)).join("\n");
 }
+
+function suggestAssetUsage(
+  kind: string,
+  material: StructuredMaterial,
+  insight?: ImplementationPackageInsight,
+): string[] {
+  const k = (kind || "").toLowerCase();
+  const out: string[] = [];
+  if (k.includes("typebot") || k.includes("flow")) {
+    out.push("Importar como referência para o fluxo de captação inicial (não aplicar automaticamente).");
+    out.push("Extrair perguntas para alimentar `caminho_lead.perguntas_captura` e RAG.");
+  } else if (k.includes("conversation") || k.includes("transcript") || k.includes("treinamento")) {
+    out.push("Ingerir na base RAG do agente (tom de voz + objeções reais).");
+    out.push("Usar para calibrar templates de primeira abordagem e follow-up.");
+  } else if (k.includes("faq")) {
+    out.push("Ingerir na base de conhecimento para respostas automáticas.");
+  } else if (k.includes("audio")) {
+    out.push("Cadastrar em `orbit_audio_library` para envio manual (não subir sem aprovação).");
+  } else if (k.includes("video")) {
+    out.push("Adicionar como link em templates de nutrição/apresentação.");
+  } else if (k.includes("image") || k.includes("logo")) {
+    out.push("Usar em branding e nos templates de email do tenant.");
+  } else if (k.includes("presentation") || k.includes("pdf")) {
+    out.push("Anexar link ao template comercial e ao onboarding do vendedor.");
+    out.push("Ingerir texto na base RAG se houver conteúdo comercial estruturado.");
+  } else if (k.includes("json")) {
+    out.push("Revisar estrutura antes de qualquer importação — não aplicar automaticamente.");
+  } else {
+    out.push("Catalogar no Drive/pasta do cliente; decidir uso na call de kick-off.");
+  }
+  if (material.obs) out.push(`Observação do cliente: ${material.obs}`);
+  if (insight?.extracted?.cta) out.push(`Reforçar CTA detectado: ${insight.extracted.cta}`);
+  return out;
+}
+
