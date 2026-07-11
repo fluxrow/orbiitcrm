@@ -437,7 +437,7 @@ function ResponseValue({ value }: { value: any }) {
   }
   return <>{String(value)}</>;
 }
-}
+
 
 /**
  * Preview + download admin via signed URL do bucket privado orbit-media.
