@@ -800,7 +800,19 @@ function MaterialsReviewDrawer({
           </p>
         </SheetHeader>
 
-        <div className="mt-6 space-y-4">
+        {insights.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+            <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/30" variant="outline">
+              <Check className="w-3 h-3 mr-1" /> {approvedCount} aprovados
+            </Badge>
+            <Badge className="bg-muted text-muted-foreground" variant="outline">
+              <X className="w-3 h-3 mr-1" /> {ignoredCount} ignorados
+            </Badge>
+            <Badge variant="secondary">{pendingCount} pendentes</Badge>
+          </div>
+        )}
+
+        <div className="mt-4 space-y-4">
           {materials.length === 0 && (
             <Card className="glass-card p-4 text-sm text-muted-foreground">
               Nenhum material enviado ainda.
