@@ -479,10 +479,16 @@ function AssetListInput({
             <Button
               type="button" variant="ghost" size="icon"
               onClick={() => remove(idx)}
-              className="text-muted-foreground hover:text-destructive"
-              aria-label="Remover material"
+              disabled={it.upload_status === "uploading"}
+              className="text-muted-foreground hover:text-destructive disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label={it.upload_status === "uploading" ? "Aguarde: upload em andamento" : "Remover material"}
+              title={it.upload_status === "uploading" ? "Aguarde o upload terminar para remover" : "Remover material"}
             >
-              <Trash2 className="w-4 h-4" />
+              {it.upload_status === "uploading" ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
             </Button>
           </div>
           <Input
