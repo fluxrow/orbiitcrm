@@ -233,8 +233,11 @@ export default function ClientOnboardingPage() {
                     value={responses?.[section.key]?.[f.key] ?? ""}
                     onChange={(v) => setField(section.key, f.key, v)}
                     missing={missingKeys.has(`${section.key}.${f.key}`)}
+                    token={token}
+                    sectionKey={section.key}
                   />
                 ))}
+
               </div>
 
               <div className="flex items-center justify-between mt-8 pt-6 border-t">
