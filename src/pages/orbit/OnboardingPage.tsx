@@ -322,6 +322,12 @@ function OnboardingDetailSheet({
             </Button>
             <Button
               variant="outline" size="sm" className="gap-1.5"
+              onClick={() => setReviewOpen(true)}
+            >
+              <LayoutList className="w-3.5 h-3.5" /> Revisar por material
+            </Button>
+            <Button
+              variant="outline" size="sm" className="gap-1.5"
               onClick={async () => {
                 const md = buildImplementationPackageMarkdown({
                   onboarding,
