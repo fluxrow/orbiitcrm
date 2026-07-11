@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
-import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList, Download, Loader2, Trash2 } from "lucide-react";
+import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList, Download, Loader2, Trash2, Sparkles, FileSearch } from "lucide-react";
 import { useSignedOrbitMedia } from "@/lib/orbit-media";
 import { toast } from "sonner";
 import {
@@ -20,6 +20,9 @@ import {
   useArchiveOnboarding,
   useUpdateChecklist,
   useUpdateOnboardingResponses,
+  useProcessOnboardingAssets,
+  useOnboardingInsights,
+  useOnboardingDraft,
   ClientOnboarding,
 } from "@/hooks/useOrbitOnboarding";
 import {
@@ -29,6 +32,7 @@ import {
   buildImplementationPackageMarkdown,
 } from "@/lib/onboarding-sections";
 import { Switch } from "@/components/ui/switch";
+
 
 const STATUS_LABEL: Record<string, { label: string; variant: any }> = {
   rascunho: { label: "Rascunho", variant: "secondary" },
@@ -343,6 +347,9 @@ function OnboardingDetailSheet({
             </Button>
           </div>
 
+          <IntelligentDraftSection onboardingId={onboarding.id} />
+
+
           <section>
             <h3 className="font-semibold mb-3 flex items-center gap-2">
               <ClipboardList className="w-4 h-4" /> Checklist de implementação
@@ -555,5 +562,139 @@ function AssetPreview({ storagePath, mime, filename }: { storagePath: string; mi
     </div>
   );
 }
+
+// ─────────────────────────────────────────────────────────────
+// Fase 3 — Rascunho inteligente (processamento de materiais)
+// ─────────────────────────────────────────────────────────────
+function IntelligentDraftSection({ onboardingId }: { onboardingId: string }) {
+  const process = useProcessOnboardingAssets();
+  const insights = useOnboardingInsights(onboardingId);
+  const draftQuery = useOnboardingDraft(onboardingId);
+  const draft = draftQuery.data;
+
+  const run = () => {
+    process.mutate(onboardingId, {
+      onSuccess: (res) => {
+        toast.success(
+          `Processados ${res.assets_processed} material(is)${res.ai_enabled ? "" : " (IA desativada)"} — rascunho atualizado.`,
+        );
+      },
+      onError: (e: any) => toast.error(e?.message || "Falha ao processar materiais"),
+    });
+  };
+
+  return (
+    <section>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <h3 className="font-semibold flex items-center gap-2">
+          <Sparkles className="w-4 h-4" /> Rascunho inteligente
+        </h3>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          onClick={run}
+          disabled={process.isPending}
+        >
+          {process.isPending ? (
+            <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Processando…</>
+          ) : (
+            <><FileSearch className="w-3.5 h-3.5" /> Processar materiais</>
+          )}
+        </Button>
+      </div>
+
+      <p className="text-[11px] text-muted-foreground mb-3">
+        Lê os materiais enviados e as respostas para gerar sugestões de fluxos, templates e cadências.
+        <strong> Nada é aplicado automaticamente</strong> — é só um rascunho para revisão.
+      </p>
+
+      {!draft && !process.isPending && (
+        <Card className="glass-card p-4 text-sm text-muted-foreground">
+          Nenhum rascunho ainda. Clique em <em>Processar materiais</em> para gerar.
+        </Card>
+      )}
+
+      {draft && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <Badge variant="outline">{draft.status}</Badge>
+            <span>{draft.assets_considered} material(is)</span>
+            {draft.model && <span>· modelo: <code>{draft.model}</code></span>}
+            {draft.updated_at && <span>· atualizado em {new Date(draft.updated_at).toLocaleString()}</span>}
+          </div>
+          {draft.error && (
+            <div className="text-xs text-destructive border border-destructive/40 rounded p-2">
+              {draft.error}
+            </div>
+          )}
+          {draft.draft?.flows && draft.draft.flows.length > 0 && (
+            <div>
+              <h4 className="text-sm font-medium mb-1">Fluxos sugeridos</h4>
+              <ul className="text-xs space-y-1">
+                {draft.draft.flows.map((f: any, i: number) => (
+                  <li key={i} className="border rounded p-2">
+                    <div className="font-medium">{f.name}</div>
+                    {f.trigger && <div className="text-muted-foreground">Trigger: {f.trigger}</div>}
+                    {f.steps_summary && <div>{f.steps_summary}</div>}
+                    {f.based_on && <div className="text-muted-foreground italic">Base: {f.based_on}</div>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {draft.draft?.templates && draft.draft.templates.length > 0 && (
+            <div>
+              <h4 className="text-sm font-medium mb-1">Templates sugeridos</h4>
+              <ul className="text-xs space-y-1">
+                {draft.draft.templates.map((t: any, i: number) => (
+                  <li key={i} className="border rounded p-2">
+                    <div className="font-medium">[{t.channel}] {t.purpose}</div>
+                    {t.draft && <pre className="whitespace-pre-wrap text-[11px] mt-1">{t.draft}</pre>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {draft.draft?.cadences && draft.draft.cadences.length > 0 && (
+            <div>
+              <h4 className="text-sm font-medium mb-1">Cadências</h4>
+              <ul className="text-xs space-y-1">
+                {draft.draft.cadences.map((c: any, i: number) => (
+                  <li key={i}><strong>{c.audience}:</strong> {(c.steps || []).join(" · ")}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {draft.draft?.notes && (
+            <div>
+              <h4 className="text-sm font-medium mb-1">Notas</h4>
+              <pre className="text-xs whitespace-pre-wrap bg-muted/30 rounded p-2">{draft.draft.notes}</pre>
+            </div>
+          )}
+        </div>
+      )}
+
+      {insights.data && insights.data.length > 0 && (
+        <details className="mt-4 text-xs">
+          <summary className="cursor-pointer text-muted-foreground">Ver insights por material ({insights.data.length})</summary>
+          <ul className="space-y-2 mt-2">
+            {insights.data.map((ins) => (
+              <li key={ins.id} className="border rounded p-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="outline">{ins.detected_kind || "?"}</Badge>
+                  <code className="text-[11px]">{ins.asset_id.slice(0, 8)}</code>
+                </div>
+                {ins.summary && <div className="mt-1">{ins.summary}</div>}
+                {ins.error && <div className="text-destructive">Erro: {ins.error}</div>}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
+  );
+}
+
 
 

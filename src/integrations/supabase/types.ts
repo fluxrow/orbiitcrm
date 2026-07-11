@@ -2946,6 +2946,76 @@ export type Database = {
           },
         ]
       }
+      orbit_onboarding_asset_insights: {
+        Row: {
+          asset_id: string
+          created_at: string
+          detected_kind: string | null
+          empresa_id: string
+          error: string | null
+          extracted: Json
+          id: string
+          model: string | null
+          onboarding_id: string
+          summary: string | null
+          tokens_in: number | null
+          tokens_out: number | null
+          updated_at: string
+        }
+        Insert: {
+          asset_id: string
+          created_at?: string
+          detected_kind?: string | null
+          empresa_id: string
+          error?: string | null
+          extracted?: Json
+          id?: string
+          model?: string | null
+          onboarding_id: string
+          summary?: string | null
+          tokens_in?: number | null
+          tokens_out?: number | null
+          updated_at?: string
+        }
+        Update: {
+          asset_id?: string
+          created_at?: string
+          detected_kind?: string | null
+          empresa_id?: string
+          error?: string | null
+          extracted?: Json
+          id?: string
+          model?: string | null
+          onboarding_id?: string
+          summary?: string | null
+          tokens_in?: number | null
+          tokens_out?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_onboarding_asset_insights_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: true
+            referencedRelation: "orbit_onboarding_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_onboarding_asset_insights_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_onboarding_asset_insights_onboarding_id_fkey"
+            columns: ["onboarding_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_client_onboardings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_onboarding_assets: {
         Row: {
           created_at: string
@@ -3004,6 +3074,72 @@ export type Database = {
             foreignKeyName: "orbit_onboarding_assets_onboarding_id_fkey"
             columns: ["onboarding_id"]
             isOneToOne: false
+            referencedRelation: "orbit_client_onboardings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_onboarding_implementation_drafts: {
+        Row: {
+          assets_considered: number
+          created_at: string
+          created_by: string | null
+          draft: Json
+          empresa_id: string
+          error: string | null
+          id: string
+          model: string | null
+          onboarding_id: string
+          status: string
+          summary_markdown: string | null
+          tokens_in: number | null
+          tokens_out: number | null
+          updated_at: string
+        }
+        Insert: {
+          assets_considered?: number
+          created_at?: string
+          created_by?: string | null
+          draft?: Json
+          empresa_id: string
+          error?: string | null
+          id?: string
+          model?: string | null
+          onboarding_id: string
+          status?: string
+          summary_markdown?: string | null
+          tokens_in?: number | null
+          tokens_out?: number | null
+          updated_at?: string
+        }
+        Update: {
+          assets_considered?: number
+          created_at?: string
+          created_by?: string | null
+          draft?: Json
+          empresa_id?: string
+          error?: string | null
+          id?: string
+          model?: string | null
+          onboarding_id?: string
+          status?: string
+          summary_markdown?: string | null
+          tokens_in?: number | null
+          tokens_out?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_onboarding_implementation_drafts_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_onboarding_implementation_drafts_onboarding_id_fkey"
+            columns: ["onboarding_id"]
+            isOneToOne: true
             referencedRelation: "orbit_client_onboardings"
             referencedColumns: ["id"]
           },
