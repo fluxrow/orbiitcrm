@@ -11,7 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
-import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList, Download } from "lucide-react";
+import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList, Download, Loader2 } from "lucide-react";
+import { useSignedOrbitMedia } from "@/lib/orbit-media";
 import { toast } from "sonner";
 import {
   useClientOnboardings,
@@ -412,7 +413,7 @@ function ResponseValue({ value }: { value: any }) {
       return (
         <ul className="space-y-1.5">
           {value.map((m: any, i: number) => (
-            <li key={m?.id ?? i} className="rounded border border-border/60 bg-muted/20 p-2 text-xs">
+            <li key={m?.id ?? i} className="rounded border border-border/60 bg-muted/20 p-2 text-xs space-y-1">
               <div className="font-medium text-foreground">
                 [{m?.tipo || "Material"}] {m?.titulo || m?.filename || "(sem título)"}
               </div>
@@ -422,17 +423,86 @@ function ResponseValue({ value }: { value: any }) {
               {m?.storage_path && <div><code>storage_path:</code> {m.storage_path}</div>}
               {m?.upload_status && <div>Status: {m.upload_status}</div>}
               {m?.obs && <div className="text-muted-foreground">Obs: {m.obs}</div>}
+              {m?.storage_path && <AssetPreview storagePath={m.storage_path} mime={m.mime} filename={m.filename} />}
             </li>
           ))}
         </ul>
       );
     }
+
     return <pre className="text-xs bg-muted/30 rounded p-2 overflow-x-auto">{JSON.stringify(value, null, 2)}</pre>;
   }
   if (typeof value === "object") {
     return <pre className="text-xs bg-muted/30 rounded p-2 overflow-x-auto">{JSON.stringify(value, null, 2)}</pre>;
   }
   return <>{String(value)}</>;
+}
+
+
+/**
+ * Preview + download admin via signed URL do bucket privado orbit-media.
+ * Regenera a signed URL sob demanda a partir do storage_path (nunca persiste).
+ */
+function AssetPreview({ storagePath, mime, filename }: { storagePath: string; mime?: string; filename?: string }) {
+  const { url, refresh } = useSignedOrbitMedia(storagePath, 60 * 60);
+  const [showPreview, setShowPreview] = useState(false);
+  const isImage = (mime || "").startsWith("image/");
+  const isAudio = (mime || "").startsWith("audio/");
+  const isVideo = (mime || "").startsWith("video/");
+  const canPreview = isImage || isAudio || isVideo;
+
+  return (
+    <div className="pt-1 space-y-1">
+      <div className="flex flex-wrap gap-2">
+        {url ? (
+          <a
+            href={url}
+            download={filename || undefined}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-[11px] text-primary underline"
+          >
+            <Download className="w-3 h-3" /> Baixar
+          </a>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+            <Loader2 className="w-3 h-3 animate-spin" /> Gerando link…
+          </span>
+        )}
+        {canPreview && url && (
+          <button
+            type="button"
+            onClick={() => setShowPreview((s) => !s)}
+            className="inline-flex items-center gap-1 text-[11px] text-primary underline"
+          >
+            <Eye className="w-3 h-3" /> {showPreview ? "Ocultar" : "Pré-visualizar"}
+          </button>
+        )}
+      </div>
+      {showPreview && url && (
+        <div className="pt-1">
+          {isImage && (
+            <img
+              src={url}
+              alt={filename || "preview"}
+              onError={refresh}
+              className="max-h-56 rounded-md border border-border object-contain bg-background"
+            />
+          )}
+          {isAudio && <audio src={url} controls className="w-full" preload="metadata" onError={refresh} />}
+          {isVideo && (
+            <video
+              src={url}
+              controls
+              className="w-full max-h-72 rounded-md border border-border bg-black"
+              preload="metadata"
+              onError={refresh}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 

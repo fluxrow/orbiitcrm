@@ -396,6 +396,8 @@ function AssetListInput({
   fieldKey: string;
 }) {
   const items = Array.isArray(value) ? value : [];
+  // Signed URLs em memória (não persistidas). Chave = item.id.
+  const [previews, setPreviews] = useState<Record<string, string>>({});
 
   const update = (idx: number, patch: Partial<StructuredMaterial>) => {
     const next = items.map((it, i) => (i === idx ? { ...it, ...patch } : it));
@@ -416,7 +418,10 @@ function AssetListInput({
     }
     const item = items[idx];
     const itemId = item?.id ?? genId();
-    update(idx, { id: itemId, upload_status: "uploading", upload_error: undefined, filename: file.name });
+    // Preview otimista via ObjectURL enquanto o upload roda.
+    const localUrl = URL.createObjectURL(file);
+    setPreviews((p) => ({ ...p, [itemId]: localUrl }));
+    update(idx, { id: itemId, upload_status: "uploading", upload_error: undefined, filename: file.name, mime: file.type });
     try {
       const res = await uploadPublicOnboardingAsset({
         token,
@@ -435,12 +440,18 @@ function AssetListInput({
         upload_status: "uploaded",
         titulo: item?.titulo || res.filename,
       });
+      // Substitui preview local pela signed URL persistente.
+      if (res.signed_url) {
+        setPreviews((p) => ({ ...p, [itemId]: res.signed_url! }));
+        URL.revokeObjectURL(localUrl);
+      }
       toast.success(`Arquivo enviado: ${res.filename}`);
     } catch (e: any) {
       update(idx, { upload_status: "error", upload_error: e?.message || String(e) });
       toast.error(`Falha no upload: ${e?.message || e}`);
     }
   };
+
 
   const TIPO_OPTS = ["PDF", "Vídeo", "Áudio", "Link", "Imagem", "Apresentação", "Planilha", "Outro"];
 
@@ -524,6 +535,31 @@ function AssetListInput({
               <span className="text-[11px] text-destructive">{it.upload_error}</span>
             )}
           </div>
+          {(() => {
+            const url = it.id ? previews[it.id] : undefined;
+            if (!url) return null;
+            const mime = it.mime || "";
+            if (mime.startsWith("image/")) {
+              return (
+                <div className="pt-1">
+                  <img src={url} alt={it.filename || "preview"} className="max-h-48 rounded-md border border-border object-contain bg-background" />
+                </div>
+              );
+            }
+            if (mime.startsWith("audio/")) {
+              return <audio src={url} controls className="w-full pt-1" preload="metadata" />;
+            }
+            if (mime.startsWith("video/")) {
+              return (
+                <video src={url} controls className="w-full max-h-64 rounded-md border border-border bg-black" preload="metadata" />
+              );
+            }
+            return (
+              <a href={url} target="_blank" rel="noreferrer" className="text-xs underline text-primary pt-1 inline-block">
+                Abrir arquivo em nova aba
+              </a>
+            );
+          })()}
         </div>
       ))}
       <Button

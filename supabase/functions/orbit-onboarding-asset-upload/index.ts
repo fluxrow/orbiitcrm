@@ -105,6 +105,16 @@ serve(async (req) => {
       return fail(ErrorCodes.INTERNAL_ERROR, insErr?.message || "Falha ao registrar asset", 500, undefined, req);
     }
 
+    // Assina URL temporária (1h) só para preview imediato no wizard —
+    // não é persistida no responses; admin regenera sob demanda.
+    let signed_url: string | null = null;
+    try {
+      const { data: sig } = await supabase.storage
+        .from("orbit-media")
+        .createSignedUrl(inserted.storage_path, 60 * 60);
+      signed_url = sig?.signedUrl ?? null;
+    } catch (_e) { /* preview é best-effort */ }
+
     return ok(
       {
         asset_id: inserted.id,
@@ -112,10 +122,12 @@ serve(async (req) => {
         filename: inserted.filename,
         mime: inserted.mime,
         size_bytes: inserted.size_bytes,
+        signed_url,
       },
       undefined,
       req,
     );
+
   } catch (e) {
     return fail(ErrorCodes.INTERNAL_ERROR, (e as Error).message, 500, undefined, req);
   }
