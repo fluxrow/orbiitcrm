@@ -479,10 +479,16 @@ function AssetListInput({
             <Button
               type="button" variant="ghost" size="icon"
               onClick={() => remove(idx)}
-              className="text-muted-foreground hover:text-destructive"
-              aria-label="Remover material"
+              disabled={it.upload_status === "uploading"}
+              className="text-muted-foreground hover:text-destructive disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label={it.upload_status === "uploading" ? "Aguarde: upload em andamento" : "Remover material"}
+              title={it.upload_status === "uploading" ? "Aguarde o upload terminar para remover" : "Remover material"}
             >
-              <Trash2 className="w-4 h-4" />
+              {it.upload_status === "uploading" ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
             </Button>
           </div>
           <Input
@@ -536,9 +542,11 @@ function AssetListInput({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2 text-[11px] text-muted-foreground hover:text-destructive gap-1"
+                className="h-7 px-2 text-[11px] text-muted-foreground hover:text-destructive gap-1 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-muted-foreground"
                 disabled={it.upload_status === "uploading"}
+                title={it.upload_status === "uploading" ? "Aguarde o upload terminar para remover" : "Remover apenas o arquivo (mantém título e observações)"}
                 onClick={() => {
+                  if (it.upload_status === "uploading") return;
                   if (!window.confirm("Remover o arquivo enviado? O material continua na lista, mas sem anexo.")) return;
                   const itemId = it.id;
                   if (itemId) {
@@ -561,9 +569,17 @@ function AssetListInput({
                   });
                   toast.success("Arquivo removido");
                 }}
-                aria-label="Remover arquivo"
+                aria-label={it.upload_status === "uploading" ? "Aguarde: upload em andamento" : "Remover arquivo"}
               >
-                <Trash2 className="w-3 h-3" /> Remover arquivo
+                {it.upload_status === "uploading" ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" /> Enviando…
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3 h-3" /> Remover arquivo
+                  </>
+                )}
               </Button>
             )}
             {it.upload_status === "error" && it.upload_error && (
