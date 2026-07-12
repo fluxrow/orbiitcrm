@@ -43,7 +43,11 @@ export function EditUserDialog({ open, onOpenChange, user, roles, orgId }: EditU
 
   const handleSave = async () => {
     if (!user) return;
-    await updateUser.mutateAsync({ userId: user.id, orgId, ...form });
+    // Only super admins can change role_id. Strip it for everyone else so the
+    // RPC isn't invoked (it would raise 42501) and the direct UPDATE succeeds.
+    const payload: any = { userId: user.id, orgId, ...form };
+    if (!isSuperAdmin) delete payload.role_id;
+    await updateUser.mutateAsync(payload);
     onOpenChange(false);
   };
 
