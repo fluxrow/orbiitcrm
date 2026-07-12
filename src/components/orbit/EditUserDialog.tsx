@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useUpdateOrgUser } from "@/hooks/useOrgUsers";
+import { usePeAuth } from "@/hooks/usePeAuth";
 
 interface EditUserDialogProps {
   open: boolean;
