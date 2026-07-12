@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useUpdateOrgUser } from "@/hooks/useOrgUsers";
+import { usePeAuth } from "@/hooks/usePeAuth";
 
 interface EditUserDialogProps {
   open: boolean;
@@ -17,6 +18,7 @@ interface EditUserDialogProps {
 
 export function EditUserDialog({ open, onOpenChange, user, roles, orgId }: EditUserDialogProps) {
   const updateUser = useUpdateOrgUser();
+  const { isSuperAdmin } = usePeAuth();
   const [form, setForm] = useState({
     full_name: "",
     phone: "",
@@ -41,7 +43,11 @@ export function EditUserDialog({ open, onOpenChange, user, roles, orgId }: EditU
 
   const handleSave = async () => {
     if (!user) return;
-    await updateUser.mutateAsync({ userId: user.id, orgId, ...form });
+    // Only super admins can change role_id. Strip it for everyone else so the
+    // RPC isn't invoked (it would raise 42501) and the direct UPDATE succeeds.
+    const payload: any = { userId: user.id, orgId, ...form };
+    if (!isSuperAdmin) delete payload.role_id;
+    await updateUser.mutateAsync(payload);
     onOpenChange(false);
   };
 
@@ -78,7 +84,11 @@ export function EditUserDialog({ open, onOpenChange, user, roles, orgId }: EditU
           </div>
           <div>
             <Label>Papel *</Label>
-            <Select value={form.role_id} onValueChange={(v) => setForm({ ...form, role_id: v })}>
+            <Select
+              value={form.role_id}
+              onValueChange={(v) => setForm({ ...form, role_id: v })}
+              disabled={!isSuperAdmin}
+            >
               <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
               <SelectContent>
                 {roles?.map((r: any) => (
@@ -86,6 +96,11 @@ export function EditUserDialog({ open, onOpenChange, user, roles, orgId }: EditU
                 ))}
               </SelectContent>
             </Select>
+            {!isSuperAdmin && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Apenas super admins podem alterar o papel de um usuário.
+              </p>
+            )}
           </div>
           <div className="flex items-center justify-between">
             <Label>Ativo</Label>

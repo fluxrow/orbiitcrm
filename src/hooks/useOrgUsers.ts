@@ -27,13 +27,27 @@ export function useUpdateOrgUser() {
 
   return useMutation({
     mutationFn: async ({ userId, orgId, ...updates }: { userId: string; orgId: string; role_id?: string; is_active?: boolean; full_name?: string; phone?: string; whatsapp?: string; cargo?: string; avatar_url?: string; email_signature?: string }) => {
-      const { error } = await supabase
-        .from("pe_users" as any)
-        .update(updates)
-        .eq("id", userId);
-      if (error) throw error;
+      // Route role_id changes through the super-admin RPC. Non-privileged columns
+      // go through a direct UPDATE (blocked at column-grant level for privileged ones).
+      const { role_id, ...safeUpdates } = updates;
 
-      const action = updates.role_id ? "ROLE_CHANGED" : updates.is_active !== undefined ? "USER_STATUS_CHANGED" : "USER_UPDATED";
+      if (role_id !== undefined) {
+        const { error: rpcError } = await supabase.rpc(
+          "pe_super_admin_update_user_role" as any,
+          { target_user_id: userId, new_role_id: role_id } as any,
+        );
+        if (rpcError) throw rpcError;
+      }
+
+      if (Object.keys(safeUpdates).length > 0) {
+        const { error } = await supabase
+          .from("pe_users" as any)
+          .update(safeUpdates)
+          .eq("id", userId);
+        if (error) throw error;
+      }
+
+      const action = role_id ? "ROLE_CHANGED" : updates.is_active !== undefined ? "USER_STATUS_CHANGED" : "USER_UPDATED";
 
       await supabase.from("pe_audit_log" as any).insert({
         organization_id: orgId,

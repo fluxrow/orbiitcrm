@@ -5055,6 +5055,19 @@ export type Database = {
         }
         Returns: Json
       }
+      pe_super_admin_set_user_privileges: {
+        Args: {
+          new_is_super_admin?: boolean
+          new_organization_id?: string
+          new_role_id?: string
+          target_user_id: string
+        }
+        Returns: undefined
+      }
+      pe_super_admin_update_user_role: {
+        Args: { new_role_id: string; target_user_id: string }
+        Returns: undefined
+      }
       pe_upsert_tenant_map: {
         Args: { p_empresa_id: string; p_organization_id: string }
         Returns: Json
