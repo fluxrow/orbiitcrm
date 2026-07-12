@@ -18,6 +18,7 @@ interface EditUserDialogProps {
 
 export function EditUserDialog({ open, onOpenChange, user, roles, orgId }: EditUserDialogProps) {
   const updateUser = useUpdateOrgUser();
+  const { isSuperAdmin } = usePeAuth();
   const [form, setForm] = useState({
     full_name: "",
     phone: "",
