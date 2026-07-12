@@ -84,7 +84,11 @@ export function EditUserDialog({ open, onOpenChange, user, roles, orgId }: EditU
           </div>
           <div>
             <Label>Papel *</Label>
-            <Select value={form.role_id} onValueChange={(v) => setForm({ ...form, role_id: v })}>
+            <Select
+              value={form.role_id}
+              onValueChange={(v) => setForm({ ...form, role_id: v })}
+              disabled={!isSuperAdmin}
+            >
               <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
               <SelectContent>
                 {roles?.map((r: any) => (
@@ -92,6 +96,11 @@ export function EditUserDialog({ open, onOpenChange, user, roles, orgId }: EditU
                 ))}
               </SelectContent>
             </Select>
+            {!isSuperAdmin && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Apenas super admins podem alterar o papel de um usuário.
+              </p>
+            )}
           </div>
           <div className="flex items-center justify-between">
             <Label>Ativo</Label>
