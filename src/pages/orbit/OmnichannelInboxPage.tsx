@@ -1,7 +1,7 @@
 import { Inbox, MessageSquare, Mail, Phone, Instagram } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import OrbitLayout from "@/components/orbit/OrbitLayout";
+import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 
 export default function OmnichannelInboxPage() {
   return (
