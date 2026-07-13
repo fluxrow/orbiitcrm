@@ -76,10 +76,11 @@ export function OrbitSidebar() {
 
   const { canUseFeature } = usePlanGuard();
 
-  const navigation: Array<{ name: string; href: string; icon: LucideIcon; badge?: number; featured?: boolean }> = [
+  const navigation: Array<{ name: string; href: string; icon: LucideIcon; badge?: number; badgeLabel?: string; featured?: boolean }> = [
     { name: "Funil", href: `${basePath}/funil`, icon: Kanban, featured: true },
     { name: "Prospects", href: `${basePath}/prospects`, icon: Users },
     { name: "Conversas", href: `${basePath}/conversas`, icon: MessageSquare },
+    { name: "Omnichannel", href: `${basePath}/omnichannel`, icon: Inbox, badgeLabel: "Em breve" },
     { name: "Tarefas", href: `${basePath}/tarefas`, icon: CheckSquare, badge: pendingCount > 0 ? pendingCount : undefined },
     ...(isMasterTenant ? [{ name: "Onboarding", href: `${basePath}/onboarding`, icon: ClipboardList }] : []),
     ...(isMasterTenant ? [{ name: "Admin Fluxrow", href: `/pe-admin`, icon: Shield }] : []),
