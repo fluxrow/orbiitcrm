@@ -35,6 +35,7 @@ import FunilPage from "./pages/orbit/FunilPage";
 import CampanhasPage from "./pages/orbit/CampanhasPage";
 import TemplatesPage from "./pages/orbit/TemplatesPage";
 import EmailTemplateEditorPage from "./pages/orbit/EmailTemplateEditorPage";
+import OmnichannelInboxPage from "./pages/orbit/OmnichannelInboxPage";
 
 import ConfigPage from "./pages/orbit/ConfigPage";
 import AnalyticsPage from "./pages/orbit/AnalyticsPage";
