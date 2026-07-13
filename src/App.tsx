@@ -35,6 +35,7 @@ import FunilPage from "./pages/orbit/FunilPage";
 import CampanhasPage from "./pages/orbit/CampanhasPage";
 import TemplatesPage from "./pages/orbit/TemplatesPage";
 import EmailTemplateEditorPage from "./pages/orbit/EmailTemplateEditorPage";
+import OmnichannelInboxPage from "./pages/orbit/OmnichannelInboxPage";
 
 import ConfigPage from "./pages/orbit/ConfigPage";
 import AnalyticsPage from "./pages/orbit/AnalyticsPage";
@@ -152,6 +153,7 @@ function OrbitRoutes() {
       <Route path="prospects" element={<ProspectsPage />} />
       <Route path="prospects/:id" element={<ProspectsPage />} />
       <Route path="conversas" element={<ConversasPage />} />
+      <Route path="omnichannel" element={<OmnichannelInboxPage />} />
       <Route path="funil" element={<FunilPage />} />
       <Route path="campanhas" element={<CampanhasPage />} />
       <Route path="campanhas/nova" element={<NovaCampanhaPage />} />

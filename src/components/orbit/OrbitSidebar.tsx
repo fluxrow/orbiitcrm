@@ -7,7 +7,7 @@ import {
   Mail,
   FileText,
   Settings,
-  
+  Inbox,
   BarChart3,
   LogOut,
   CreditCard,
@@ -76,10 +76,11 @@ export function OrbitSidebar() {
 
   const { canUseFeature } = usePlanGuard();
 
-  const navigation: Array<{ name: string; href: string; icon: LucideIcon; badge?: number; featured?: boolean }> = [
+  const navigation: Array<{ name: string; href: string; icon: LucideIcon; badge?: number; badgeLabel?: string; featured?: boolean }> = [
     { name: "Funil", href: `${basePath}/funil`, icon: Kanban, featured: true },
     { name: "Prospects", href: `${basePath}/prospects`, icon: Users },
     { name: "Conversas", href: `${basePath}/conversas`, icon: MessageSquare },
+    { name: "Omnichannel", href: `${basePath}/omnichannel`, icon: Inbox, badgeLabel: "Em breve" },
     { name: "Tarefas", href: `${basePath}/tarefas`, icon: CheckSquare, badge: pendingCount > 0 ? pendingCount : undefined },
     ...(isMasterTenant ? [{ name: "Onboarding", href: `${basePath}/onboarding`, icon: ClipboardList }] : []),
     ...(isMasterTenant ? [{ name: "Admin Fluxrow", href: `/pe-admin`, icon: Shield }] : []),
@@ -154,8 +155,13 @@ export function OrbitSidebar() {
                     {item.badge > 99 ? "99+" : item.badge}
                   </span>
                 )}
-                {item.badge && !isExpanded && (
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-destructive" />
+                {item.badgeLabel && isExpanded && (
+                  <span className="ml-auto h-5 flex items-center rounded-full bg-primary/15 text-primary text-[10px] font-semibold px-2 border border-primary/30">
+                    {item.badgeLabel}
+                  </span>
+                )}
+                {(item.badge || item.badgeLabel) && !isExpanded && (
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-primary" />
                 )}
               </Link>
             );
