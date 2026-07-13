@@ -155,8 +155,13 @@ export function OrbitSidebar() {
                     {item.badge > 99 ? "99+" : item.badge}
                   </span>
                 )}
-                {item.badge && !isExpanded && (
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-destructive" />
+                {item.badgeLabel && isExpanded && (
+                  <span className="ml-auto h-5 flex items-center rounded-full bg-primary/15 text-primary text-[10px] font-semibold px-2 border border-primary/30">
+                    {item.badgeLabel}
+                  </span>
+                )}
+                {(item.badge || item.badgeLabel) && !isExpanded && (
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-primary" />
                 )}
               </Link>
             );
