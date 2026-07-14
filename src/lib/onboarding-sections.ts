@@ -1073,6 +1073,79 @@ function indent(s: string): string {
   return s.split(/\r?\n/).map((l) => (l.trim() ? `  ${l}` : l)).join("\n");
 }
 
+// ─── Helpers para o "Resumo para cliente" ─────────────────────────────
+// Normaliza texto do onboarding antes de renderizar no .md do cliente.
+function normalizeClientText(value: string | null | undefined): string {
+  if (!value) return "";
+  return String(value)
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\bCatão\b/gi, "Cartão")
+    .replace(/\bsesta[- ]?feira\b/gi, "sexta-feira")
+    .replace(/\bsesta\b/gi, "sexta")
+    .replace(/\bmany\s*chat\b/gi, "ManyChat")
+    .replace(/\bwhats(app)?\b/gi, "WhatsApp")
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .trim();
+}
+
+// Detecta respostas do tipo "não sei", vazio, "—", "n/a" etc.
+function isUnknownValue(value: string | null | undefined): boolean {
+  const v = (value ?? "").trim().toLowerCase();
+  if (!v) return true;
+  if (/^[—\-–_.\s]+$/.test(v)) return true;
+  return /^(n[ãa]o\s+sei|n[ãa]o\s+sabe(mos)?|nsa|n\/a|desconhecid[oa]|a\s+definir|a\s+confirmar|indefinid[oa])[.\s]*$/i.test(v);
+}
+
+// Divide texto livre em bullets curtos e limpos.
+function toBulletsFromFreeText(value: string, maxBullets = 6): string[] {
+  const norm = normalizeClientText(value);
+  if (!norm) return [];
+  return norm
+    .split(/\n+|(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÂÊÔÃÕÇ])/)
+    .map((p) => p.replace(/^[\-•*·]\s*/, "").trim())
+    .filter((p) => p.length > 3)
+    .slice(0, maxBullets);
+}
+
+// Heurística: o cliente descreveu o funil como grande/confuso/muitas etapas?
+function looksLikeConfusedFunnel(etapasRaw: string): boolean {
+  const t = etapasRaw.toLowerCase();
+  if (/enorme|muitas?\s+(etapas|fases)|confus[oa]|complicad[oa]|bagun[çc]ad[oa]/.test(t)) return true;
+  const lines = etapasRaw.split(/\n+/).filter((l) => l.trim().length > 2);
+  if (lines.length > 8) return true;
+  const arrows = (etapasRaw.match(/→|->/g) ?? []).length;
+  return arrows > 6;
+}
+
+// Descobre se email/calendário/base inicial fazem sentido para este cliente.
+function derivedPendingContext(
+  responses: Record<string, any>,
+  profile: ImplementationProfile,
+): { needsEmail: boolean; needsCalendar: boolean; hasInitialBase: boolean } {
+  const primeiraEmail = getVal(responses, "templates", "primeira_abordagem_email");
+  const cadencias = [
+    getVal(responses, "templates", "cadencia_priority"),
+    getVal(responses, "templates", "cadencia_hot"),
+    getVal(responses, "templates", "cadencia_cold"),
+  ].join(" ").toLowerCase();
+  const needsEmail =
+    !!primeiraEmail || !!profile.integracoes.email_dominio || /e-?mail/.test(cadencias);
+  const needsCalendar =
+    !!profile.integracoes.calendar_email ||
+    !!getVal(responses, "templates", "link_agenda") ||
+    /agenda|calend[áa]rio|reuni[ãa]o|\bcall\b/.test(
+      (profile.lead_entry.descricao + " " + profile.ia.objetivo + " " + cadencias).toLowerCase(),
+    );
+  const baseInicial =
+    getVal(responses, "integracoes", "base_inicial") ||
+    getVal(responses, "go_live", "base_inicial");
+  const hasInitialBase = !!baseInicial && !isUnknownValue(baseInicial);
+  return { needsEmail, needsCalendar, hasInitialBase };
+}
+
 function suggestAssetUsage(
   kind: string,
   material: StructuredMaterial,
