@@ -26,7 +26,7 @@ const TEXT_LIKE_MIMES = [
 ];
 const MODEL = "google/gemini-2.5-flash";
 
-interface Body { onboarding_id: string }
+interface Body { onboarding_id: string; asset_id?: string }
 
 function isTextLike(mime: string | null | undefined): boolean {
   const m = (mime || "").toLowerCase();
