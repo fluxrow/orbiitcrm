@@ -632,9 +632,15 @@ function IntelligentDraftSection({ onboardingId }: { onboardingId: string }) {
   const run = () => {
     process.mutate(onboardingId, {
       onSuccess: (res) => {
-        toast.success(
-          `Processados ${res.assets_processed} material(is)${res.ai_enabled ? "" : " (IA desativada)"} — rascunho atualizado.`,
-        );
+        if (res.assets_processed > 0) {
+          toast.success(
+            `Materiais processados: ${res.assets_processed}${res.ai_enabled ? "" : " (IA desativada)"}.`,
+          );
+        } else {
+          toast.info(
+            'Nenhum material enviado com upload concluído foi encontrado. Verifique se os arquivos aparecem em "Revisar por material".',
+          );
+        }
       },
       onError: (e: any) => toast.error(e?.message || "Falha ao processar materiais"),
     });
