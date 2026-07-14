@@ -31,6 +31,7 @@ import {
   calculateProgress,
   DEFAULT_CHECKLIST,
   buildImplementationPackageMarkdown,
+  buildClientStatusMarkdown,
 } from "@/lib/onboarding-sections";
 import { Switch } from "@/components/ui/switch";
 
