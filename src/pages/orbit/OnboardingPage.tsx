@@ -334,6 +334,35 @@ function OnboardingDetailSheet({
                 const filteredInsights = (insightsQuery.data ?? []).filter(
                   (i) => i.review_status !== "ignored",
                 );
+                const md = buildClientStatusMarkdown({
+                  onboarding,
+                  checklist,
+                  publicLink: link,
+                  draft: draftQuery.data ?? null,
+                  insights: filteredInsights,
+                });
+                const safe = (onboarding.empresa?.slug || onboarding.cliente_empresa || onboarding.cliente_nome || "cliente")
+                  .toString().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+                const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `status-cliente-${safe}-${new Date().toISOString().slice(0,10)}.md`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                toast.success("Resumo para cliente gerado — .md baixado");
+              }}
+            >
+              <Download className="w-3.5 h-3.5" /> Gerar resumo para cliente
+            </Button>
+            <Button
+              variant="outline" size="sm" className="gap-1.5"
+              onClick={async () => {
+                const filteredInsights = (insightsQuery.data ?? []).filter(
+                  (i) => i.review_status !== "ignored",
+                );
                 const md = buildImplementationPackageMarkdown({
                   onboarding,
                   checklist,
@@ -362,6 +391,7 @@ function OnboardingDetailSheet({
             >
               <Download className="w-3.5 h-3.5" /> Gerar pacote completo
             </Button>
+
           </div>
 
           <IntelligentDraftSection onboardingId={onboarding.id} />
