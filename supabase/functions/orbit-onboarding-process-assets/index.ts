@@ -279,7 +279,11 @@ ${raw}
     let draftModel: string | undefined;
     let draftError: string | undefined;
 
-    if (lovableKey) {
+    // Se for um run parcial (asset_id específico), NÃO recompute o draft consolidado
+    // — evita sobrescrever o rascunho completo com base em apenas 1 material.
+    const skipDraft = !!body.asset_id;
+
+    if (!skipDraft && lovableKey) {
       const consolidatedPrompt = `Você é o assistente de implantação Orbit. Consolide um RASCUNHO de plano de implantação a partir:
 1) das respostas do onboarding (JSON abaixo),
 2) dos insights extraídos de cada material (JSON abaixo).
