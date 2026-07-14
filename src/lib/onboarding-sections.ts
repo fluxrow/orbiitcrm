@@ -1107,3 +1107,262 @@ function suggestAssetUsage(
   return out;
 }
 
+// ============================================================
+// buildClientStatusMarkdown
+// Resumo curto, em linguagem de negócio, para o cliente final.
+// Não expõe jargão técnico (dry_run, RLS, scheduler, webhooks…).
+// ============================================================
+
+export function buildClientStatusMarkdown(
+  params: ImplementationPackageParams,
+): string {
+  const { onboarding, checklist, draft, insights } = params;
+  const responses = (onboarding.responses ?? {}) as Record<string, any>;
+  const profile = buildImplementationProfile(responses);
+  const missing = getMissingRequiredFields(responses);
+  const empresa = onboarding.empresa?.nome ?? onboarding.cliente_empresa ?? "sua empresa";
+
+  const out: string[] = [];
+  const dataHoje = new Date().toLocaleDateString("pt-BR");
+  out.push(`# Status da implantação — ${empresa}`);
+  out.push("");
+  out.push(`_Documento preparado em ${dataHoje} para revisão do cliente._`);
+  out.push("");
+  out.push(
+    "Este resumo mostra, em linguagem simples, como sua operação comercial foi configurada até aqui, o que já está pronto para testes e o que ainda precisa da sua validação antes de entrarmos no ar.",
+  );
+
+  // 1. Entrada dos leads
+  const canal = profile.lead_entry.canal || "—";
+  const descricaoCanal = profile.lead_entry.descricao;
+  out.push(...block("1. Entrada dos leads", [
+    `- **Canal principal informado:** ${canal}`,
+    descricaoCanal ? `- **Como o lead chega hoje:** ${descricaoCanal}` : "- **Como o lead chega hoje:** _(a confirmar com você)_",
+    profile.lead_entry.url_captura ? `- **Formulário/bot atual:** ${profile.lead_entry.url_captura}` : "",
+    profile.lead_entry.handoff ? `- **Quando passa direto para humano:** ${profile.lead_entry.handoff}` : "",
+  ].filter(Boolean)));
+
+  // 2. Funil configurado
+  const etapas = getVal(responses, "funil", "etapas_atuais");
+  const tempoResp = getVal(responses, "funil", "tempo_medio_resposta");
+  const horario = getVal(responses, "funil", "horario_atendimento");
+  out.push(...block("2. Funil configurado", [
+    "As etapas comerciais foram desenhadas seguindo exatamente o processo que você descreveu:",
+    "",
+    etapas ? indent(etapas) : "- _(etapas ainda a confirmar)_",
+    "",
+    tempoResp ? `- **Tempo médio de resposta esperado:** ${tempoResp}` : "",
+    horario ? `- **Horário de atendimento:** ${horario}` : "",
+  ].filter(Boolean)));
+
+  // 3. Separação dos leads / caminhos principais
+  const roteamento = getVal(responses, "funil", "regras_roteamento");
+  out.push(...block("3. Separação dos leads e caminhos principais", [
+    "Os leads são separados automaticamente em três caminhos, para que o time trate cada um do jeito certo:",
+    "",
+    "- **Leads prioritários (mais quentes e urgentes):**",
+    ...(profile.icp.priority_signals.length
+      ? profile.icp.priority_signals.map((s) => `  - ${s}`)
+      : ["  - _(critérios ainda a confirmar com você)_"]),
+    "- **Leads bons, mas sem urgência:**",
+    ...(profile.icp.hot_signals.length
+      ? profile.icp.hot_signals.map((s) => `  - ${s}`)
+      : ["  - _(critérios ainda a confirmar)_"]),
+    "- **Leads frios ou fora do perfil (entram em nutrição ou são descartados):**",
+    ...(profile.icp.cold_signals.length
+      ? profile.icp.cold_signals.map((s) => `  - ${s}`)
+      : ["  - _(critérios ainda a confirmar)_"]),
+    "",
+    roteamento ? `**Distribuição no time:** ${roteamento}` : "",
+  ].filter(Boolean)));
+
+  // 4. Produtos e ofertas
+  const ofertasSec = getVal(responses, "oferta", "ofertas_secundarias");
+  const pagamento = getVal(responses, "oferta", "forma_pagamento");
+  const provaSocial = getVal(responses, "oferta", "prova_social");
+  out.push(...block("4. Produtos e ofertas", [
+    profile.oferta.principal ? `**Oferta principal:** ${profile.oferta.principal}` : "**Oferta principal:** _(a confirmar)_",
+    "",
+    profile.oferta.ticket_medio ? `- **Ticket médio:** R$ ${profile.oferta.ticket_medio}` : "",
+    profile.oferta.ticket_alto ? `- **Ticket alto (high-ticket):** R$ ${profile.oferta.ticket_alto}` : "",
+    ofertasSec ? `- **Ofertas secundárias / upsell:** ${ofertasSec.replace(/\n+/g, " · ")}` : "",
+    pagamento ? `- **Formas de pagamento:** ${pagamento.replace(/\n+/g, " · ")}` : "",
+    profile.oferta.diferenciais ? `\n**Diferenciais que a IA vai reforçar nas conversas:**\n${indent(profile.oferta.diferenciais)}` : "",
+    provaSocial ? `\n**Cases e provas sociais que serão usados:**\n${indent(provaSocial)}` : "",
+  ].filter(Boolean)));
+
+  // 5. Conversa e tom da IA
+  out.push(...block("5. Conversa e tom da IA", [
+    "Configuramos o agente que fala com seu lead nos primeiros contatos com as diretrizes abaixo:",
+    "",
+    `- **Tom de voz:** ${profile.ia.tom || "_(a confirmar)_"}`,
+    profile.ia.persona ? `- **Como ela se apresenta:** ${profile.ia.persona}` : "",
+    profile.ia.objetivo ? `- **O que ela busca em cada conversa:** ${profile.ia.objetivo}` : "",
+    "",
+    profile.ia.proibicoes ? "**O que a IA NÃO pode dizer ou prometer:**" : "",
+    profile.ia.proibicoes ? indent(profile.ia.proibicoes) : "",
+    "",
+    profile.ia.handoff ? "**Quando ela transfere para um vendedor humano:**" : "",
+    profile.ia.handoff ? indent(profile.ia.handoff) : "",
+  ].filter(Boolean)));
+
+  // 6. Templates e mensagens previstas
+  const primeiraWa = getVal(responses, "templates", "primeira_abordagem");
+  const primeiraEmail = getVal(responses, "templates", "primeira_abordagem_email");
+  const cta = getVal(responses, "templates", "cta_padrao");
+  const linkAgenda = getVal(responses, "templates", "link_agenda");
+  const templateLines: string[] = [
+    "As mensagens abaixo já estão preparadas em rascunho e passarão pela sua aprovação antes de qualquer envio real:",
+    "",
+  ];
+  if (primeiraWa) {
+    templateLines.push("**Primeira abordagem (WhatsApp):**", "```", primeiraWa, "```", "");
+  }
+  if (primeiraEmail) {
+    templateLines.push("**Primeira abordagem (email):**", "```", primeiraEmail, "```", "");
+  }
+  if (!primeiraWa && !primeiraEmail) {
+    templateLines.push("_Rascunhos das mensagens ainda serão finalizados junto com você._", "");
+  }
+  if (cta) templateLines.push(`- **O que pedimos ao lead (CTA padrão):** ${cta}`);
+  if (linkAgenda) templateLines.push(`- **Link de agendamento:** ${linkAgenda}`);
+  // Cadências
+  const cadPrio = getVal(responses, "templates", "cadencia_priority");
+  const cadHot = getVal(responses, "templates", "cadencia_hot");
+  const cadCold = getVal(responses, "templates", "cadencia_cold");
+  if (cadPrio || cadHot || cadCold) {
+    templateLines.push("", "**Sequência de follow-ups planejada:**");
+    if (cadPrio) templateLines.push(`- Leads prioritários: ${cadPrio.replace(/\n+/g, " · ")}`);
+    if (cadHot) templateLines.push(`- Leads bons sem urgência: ${cadHot.replace(/\n+/g, " · ")}`);
+    if (cadCold) templateLines.push(`- Leads frios / nutrição: ${cadCold.replace(/\n+/g, " · ")}`);
+  }
+  out.push(...block("6. Templates e mensagens previstas", templateLines));
+
+  // 7. Mídias e ativos
+  const materials = profile.assets.structured_materials;
+  const midiaLines: string[] = [];
+  const logo = getVal(responses, "midias", "logo_url");
+  const apres = getVal(responses, "midias", "apresentacao_url");
+  const cases = getVal(responses, "midias", "cases_url");
+  const videos = getVal(responses, "midias", "videos_url");
+  if (logo) midiaLines.push(`- **Logo:** ${logo}`);
+  if (apres) midiaLines.push(`- **Apresentação comercial:** ${apres}`);
+  if (cases) midiaLines.push(`- **Cases / depoimentos:** ${cases}`);
+  if (videos) midiaLines.push(`- **Vídeos:** ${videos.replace(/\n+/g, " · ")}`);
+  if (materials.length) {
+    midiaLines.push("", "**Materiais recebidos e catalogados:**");
+    for (const m of materials) {
+      const titulo = m.titulo || m.filename || "(sem título)";
+      midiaLines.push(`- ${titulo}${m.tipo ? ` — ${m.tipo}` : ""}${m.obs ? ` · ${m.obs}` : ""}`);
+    }
+  }
+  if (midiaLines.length === 0) {
+    midiaLines.push("_Ainda não recebemos materiais estruturados. Assim que enviar, incluímos aqui._");
+  }
+  out.push(...block("7. Mídias e ativos", midiaLines));
+
+  // 8. Follow-ups e retomadas
+  out.push(...block("8. Follow-ups e retomadas", [
+    "O sistema vai lembrar automaticamente de retomar cada lead que não responder, respeitando os prazos acima. Se o lead responder no meio do caminho, a sequência de follow-up é interrompida — para não parecer robô insistente.",
+    "",
+    "Você não precisa se preocupar em controlar isso manualmente: a IA e o time recebem os avisos na hora certa.",
+  ]));
+
+  // 9. O que acontece em cada etapa
+  const gatilhos = getVal(responses, "funil", "gatilhos_avanco");
+  out.push(...block("9. O que acontece em cada etapa", [
+    "Resumindo o fluxo real do lead:",
+    "",
+    "1. Lead entra pelo canal principal configurado.",
+    "2. A IA faz uma qualificação inicial e classifica em prioritário, bom sem urgência ou frio.",
+    "3. Leads prioritários são passados para o vendedor humano imediatamente.",
+    "4. Os demais recebem a sequência de mensagens combinada, até responderem ou saírem do funil.",
+    "5. Toda interação fica registrada no CRM, com histórico completo por lead.",
+    "",
+    gatilhos ? `**Gatilhos combinados para avançar de etapa:**\n${indent(gatilhos)}` : "",
+  ].filter(Boolean)));
+
+  // 10. O que já foi validado em teste
+  const validadoLines: string[] = [];
+  const checkDone = (checklist ?? []).filter((c) => c.done);
+  if (checkDone.length) {
+    validadoLines.push("Já validamos internamente, em modo de teste seguro (sem envio real ao seu lead):");
+    validadoLines.push("");
+    for (const c of checkDone) validadoLines.push(`- ${c.label}`);
+  } else {
+    validadoLines.push("_Ainda estamos na fase inicial de configuração. Os testes internos começam nos próximos dias._");
+  }
+  if (draft?.assets_considered && draft.assets_considered > 0) {
+    validadoLines.push("");
+    validadoLines.push(`Além disso, analisamos **${draft.assets_considered}** dos materiais enviados por você para calibrar as mensagens e a base de conhecimento da IA.`);
+  }
+  const insightsAprovados = (insights ?? []).filter((i: any) => i?.review_status === "approved");
+  if (insightsAprovados.length) {
+    validadoLines.push("");
+    validadoLines.push(`**${insightsAprovados.length}** materiais foram revisados e aprovados para uso na operação.`);
+  }
+  out.push(...block("10. O que já foi validado em teste", validadoLines));
+
+  // 11. O que falta validar antes do go-live
+  const pendencias = getVal(responses, "go_live", "pendencias");
+  const checkPending = (checklist ?? []).filter((c) => !c.done);
+  const pendenciaLines: string[] = [];
+  if (checkPending.length) {
+    pendenciaLines.push("Antes de entrarmos no ar de verdade, precisamos fechar os itens abaixo — a maioria depende só de um alinhamento rápido entre nós:");
+    pendenciaLines.push("");
+    for (const c of checkPending) pendenciaLines.push(`- ${c.label}`);
+  }
+  if (pendencias) {
+    pendenciaLines.push("");
+    pendenciaLines.push("**Pendências que você mesmo apontou:**");
+    pendenciaLines.push(indent(pendencias));
+  }
+  if (pendenciaLines.length === 0) {
+    pendenciaLines.push("_Nenhuma pendência estruturada até o momento — vamos revisar juntos na próxima call._");
+  }
+  out.push(...block("11. O que falta validar antes do go-live", pendenciaLines));
+
+  // 11.b Pontos que ainda precisamos confirmar (missing required)
+  if (missing.length) {
+    const missLines: string[] = [
+      "Para deixar sua operação 100% pronta, ainda precisamos que você confirme alguns pontos:",
+      "",
+    ];
+    for (const m of missing) missLines.push(`- ${m.section} · ${m.label}`);
+    out.push(...block("Pontos que ainda precisamos confirmar", missLines));
+  }
+
+  // 12. Próximo passo recomendado
+  const dataDesejada = profile.go_live.data_desejada;
+  const responsavelFinal = profile.go_live.responsavel_final;
+  const criterios = profile.go_live.criterios_sucesso;
+  out.push(...block("12. Próximo passo recomendado", [
+    "1. Você revisa este documento e sinaliza qualquer ajuste em oferta, tom de voz, mensagens ou critérios de qualificação.",
+    "2. Fechamos os itens pendentes listados acima.",
+    "3. Marcamos uma call curta para aprovar as mensagens finais e liberar o primeiro disparo real.",
+    "",
+    responsavelFinal ? `- **Quem aprova a virada:** ${responsavelFinal}` : "",
+    dataDesejada ? `- **Data desejada de go-live:** ${dataDesejada}` : "",
+    criterios ? `- **Como vamos medir sucesso nos primeiros 30 dias:**\n${indent(criterios)}` : "",
+  ].filter(Boolean)));
+
+  // 13. Resumo
+  const resumoLinhas: string[] = [];
+  resumoLinhas.push(`- Oferta principal mapeada: ${profile.oferta.principal ? "sim" : "pendente"}.`);
+  resumoLinhas.push(`- Critérios de lead ideal definidos: ${profile.icp.priority_signals.length ? "sim" : "pendente"}.`);
+  resumoLinhas.push(`- Tom de voz e regras da IA configurados: ${profile.ia.tom && profile.ia.persona ? "sim" : "pendente"}.`);
+  resumoLinhas.push(`- Mensagens de primeiro contato em rascunho: ${primeiraWa || primeiraEmail ? "sim" : "pendente"}.`);
+  resumoLinhas.push(`- Materiais recebidos: ${materials.length}.`);
+  resumoLinhas.push(`- Itens pendentes antes do go-live: ${checkPending.length}.`);
+  out.push(...block("13. Resumo", resumoLinhas));
+
+  out.push("");
+  out.push("---");
+  out.push("");
+  out.push("_Qualquer ajuste que você quiser fazer neste documento vira input direto na configuração. É só nos responder com os pontos revisados._");
+  out.push("");
+
+  return out.join("\n");
+}
+
+
