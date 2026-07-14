@@ -297,9 +297,13 @@ export function useOnboardingDraft(onboardingId: string | undefined) {
 export function useProcessOnboardingAssets() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (onboardingId: string) => {
+    mutationFn: async (
+      input: string | { onboardingId: string; assetId?: string },
+    ) => {
+      const onboardingId = typeof input === "string" ? input : input.onboardingId;
+      const assetId = typeof input === "string" ? undefined : input.assetId;
       const { data, error } = await supabase.functions.invoke("orbit-onboarding-process-assets", {
-        body: { onboarding_id: onboardingId },
+        body: { onboarding_id: onboardingId, asset_id: assetId },
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error?.message || "Falha ao processar materiais");
@@ -314,8 +318,10 @@ export function useProcessOnboardingAssets() {
       };
     },
     onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["onboarding-assets", res.onboarding_id] });
       qc.invalidateQueries({ queryKey: ["onboarding-insights", res.onboarding_id] });
       qc.invalidateQueries({ queryKey: ["onboarding-draft", res.onboarding_id] });
+      qc.invalidateQueries({ queryKey: ["client-onboardings"] });
     },
   });
 }
