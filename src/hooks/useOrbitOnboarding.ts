@@ -230,6 +230,38 @@ export interface OnboardingImplementationDraft {
   updated_at: string;
 }
 
+export interface OnboardingAsset {
+  id: string;
+  empresa_id: string;
+  onboarding_id: string;
+  section_key: string;
+  field_key: string;
+  item_id: string | null;
+  storage_path: string;
+  filename: string;
+  mime: string | null;
+  size_bytes: number | null;
+  uploaded_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function useOnboardingAssets(onboardingId: string | undefined) {
+  return useQuery({
+    queryKey: ["onboarding-assets", onboardingId],
+    enabled: !!onboardingId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("orbit_onboarding_assets" as any)
+        .select("*")
+        .eq("onboarding_id", onboardingId!)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as unknown as OnboardingAsset[];
+    },
+  });
+}
+
 export function useOnboardingInsights(onboardingId: string | undefined) {
   return useQuery({
     queryKey: ["onboarding-insights", onboardingId],
