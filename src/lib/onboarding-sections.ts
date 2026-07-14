@@ -747,6 +747,7 @@ export interface ImplementationPackageParams {
     status?: string;
     responses?: Record<string, any> | null;
     empresa?: { nome?: string | null; slug?: string | null } | null;
+    sent_at?: string | null;
   };
   checklist: { key: string; label: string; done?: boolean }[];
   publicLink: string;
