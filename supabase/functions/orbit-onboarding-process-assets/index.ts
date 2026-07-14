@@ -143,13 +143,15 @@ serve(async (req) => {
       return fail(ErrorCodes.FORBIDDEN, "Usuário não pertence ao tenant do onboarding", 403, undefined, req);
     }
 
-    // Assets do onboarding
-    const { data: assets, error: asErr } = await admin
+    // Assets do onboarding (opcionalmente filtrando por asset_id específico)
+    let assetsQuery = admin
       .from("orbit_onboarding_assets")
       .select("id, storage_path, filename, mime, size_bytes, section_key, field_key")
       .eq("onboarding_id", ob.id)
       .order("created_at", { ascending: true })
       .limit(MAX_ASSETS);
+    if (body.asset_id) assetsQuery = assetsQuery.eq("id", body.asset_id);
+    const { data: assets, error: asErr } = await assetsQuery;
     if (asErr) return fail(ErrorCodes.INTERNAL_ERROR, asErr.message, 500, undefined, req);
 
     const insightsSummary: Array<{
