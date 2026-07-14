@@ -316,49 +316,51 @@ ${JSON.stringify(insightsSummary, null, 2).slice(0, 20_000)}`;
       }
       if (ai.tokens_in) totalTokensIn += ai.tokens_in;
       if (ai.tokens_out) totalTokensOut += ai.tokens_out;
-    } else {
+    } else if (!skipDraft) {
       draft.notes = "Rascunho gerado sem IA (LOVABLE_API_KEY ausente). Apenas metadados dos materiais foram catalogados.";
     }
 
-    // Markdown de resumo (best-effort)
-    try {
-      const lines: string[] = [];
-      lines.push(`# Rascunho inteligente — ${ob.cliente_empresa ?? ob.cliente_nome ?? "Onboarding"}`);
-      lines.push("");
-      lines.push(`Materiais analisados: ${insightsSummary.length}`);
-      if (draft.flows?.length) {
-        lines.push("\n## Fluxos sugeridos");
-        for (const f of draft.flows) lines.push(`- **${f.name}** — ${f.trigger}: ${f.steps_summary}`);
-      }
-      if (draft.templates?.length) {
-        lines.push("\n## Templates sugeridos");
-        for (const t of draft.templates) lines.push(`- [${t.channel}] ${t.purpose}`);
-      }
-      if (draft.cadences?.length) {
-        lines.push("\n## Cadências");
-        for (const c of draft.cadences) lines.push(`- ${c.audience}: ${(c.steps || []).join(" · ")}`);
-      }
-      if (draft.notes) { lines.push("\n## Notas"); lines.push(String(draft.notes)); }
-      summaryMd = lines.join("\n");
-    } catch (_) { /* ignore */ }
+    if (!skipDraft) {
+      // Markdown de resumo (best-effort)
+      try {
+        const lines: string[] = [];
+        lines.push(`# Rascunho inteligente — ${ob.cliente_empresa ?? ob.cliente_nome ?? "Onboarding"}`);
+        lines.push("");
+        lines.push(`Materiais analisados: ${insightsSummary.length}`);
+        if (draft.flows?.length) {
+          lines.push("\n## Fluxos sugeridos");
+          for (const f of draft.flows) lines.push(`- **${f.name}** — ${f.trigger}: ${f.steps_summary}`);
+        }
+        if (draft.templates?.length) {
+          lines.push("\n## Templates sugeridos");
+          for (const t of draft.templates) lines.push(`- [${t.channel}] ${t.purpose}`);
+        }
+        if (draft.cadences?.length) {
+          lines.push("\n## Cadências");
+          for (const c of draft.cadences) lines.push(`- ${c.audience}: ${(c.steps || []).join(" · ")}`);
+        }
+        if (draft.notes) { lines.push("\n## Notas"); lines.push(String(draft.notes)); }
+        summaryMd = lines.join("\n");
+      } catch (_) { /* ignore */ }
 
-    const { error: draftErr } = await admin
-      .from("orbit_onboarding_implementation_drafts")
-      .upsert({
-        empresa_id: ob.empresa_id,
-        onboarding_id: ob.id,
-        status: "draft",
-        draft,
-        summary_markdown: summaryMd,
-        assets_considered: insightsSummary.length,
-        model: draftModel ?? null,
-        tokens_in: totalTokensIn || null,
-        tokens_out: totalTokensOut || null,
-        error: draftError ?? null,
-        created_by: userId,
-      }, { onConflict: "onboarding_id" });
+      const { error: draftErr } = await admin
+        .from("orbit_onboarding_implementation_drafts")
+        .upsert({
+          empresa_id: ob.empresa_id,
+          onboarding_id: ob.id,
+          status: "draft",
+          draft,
+          summary_markdown: summaryMd,
+          assets_considered: insightsSummary.length,
+          model: draftModel ?? null,
+          tokens_in: totalTokensIn || null,
+          tokens_out: totalTokensOut || null,
+          error: draftError ?? null,
+          created_by: userId,
+        }, { onConflict: "onboarding_id" });
 
-    if (draftErr) return fail(ErrorCodes.INTERNAL_ERROR, `Falha ao gravar draft: ${draftErr.message}`, 500, undefined, req);
+      if (draftErr) return fail(ErrorCodes.INTERNAL_ERROR, `Falha ao gravar draft: ${draftErr.message}`, 500, undefined, req);
+    }
 
     return ok({
       onboarding_id: ob.id,
