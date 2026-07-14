@@ -22,9 +22,12 @@ import {
   useUpdateOnboardingResponses,
   useProcessOnboardingAssets,
   useOnboardingInsights,
+  useOnboardingAssets,
   useOnboardingDraft,
   useReviewInsight,
   ClientOnboarding,
+  OnboardingAsset,
+  OnboardingAssetInsight,
 } from "@/hooks/useOrbitOnboarding";
 import {
   ALL_KNOWN_SECTIONS,
