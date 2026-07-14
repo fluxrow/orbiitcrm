@@ -1195,6 +1195,127 @@ export function buildClientStatusMarkdown(
   const missing = getMissingRequiredFields(responses);
   const empresa = onboarding.empresa?.nome ?? onboarding.cliente_empresa ?? "sua empresa";
 
+  // Pontos que ainda precisam de confirmação (respostas "não sei", vazias, contraditórias)
+  const unknowns: string[] = [];
+  const addUnknown = (label: string, raw?: string) => {
+    if (isUnknownValue(raw ?? "")) unknowns.push(label);
+  };
+
+  const out: string[] = [];
+  const dataHoje = new Date().toLocaleDateString("pt-BR");
+  out.push(`# Status da implantação — ${empresa}`);
+  out.push("");
+  out.push(`_Documento preparado em ${dataHoje} para revisão do cliente._`);
+  out.push("");
+  out.push(
+    "Este resumo mostra, em linguagem simples, como sua operação comercial foi desenhada até aqui, o que já está pronto para testes e o que ainda precisa da sua validação antes de entrarmos no ar.",
+  );
+
+  // 1. Entrada dos leads
+  const canal = normalizeClientText(profile.lead_entry.canal) || "—";
+  const descricaoCanalRaw = profile.lead_entry.descricao;
+  const descricaoBullets = toBulletsFromFreeText(descricaoCanalRaw);
+  const leadLines: string[] = [`- **Canal principal informado:** ${canal}`];
+  if (descricaoBullets.length > 1) {
+    leadLines.push("- **Como o lead chega hoje (interpretação):**");
+    for (const b of descricaoBullets) leadLines.push(`  - ${b}`);
+    leadLines.push(`- **Observação da cliente:** _${normalizeClientText(descricaoCanalRaw)}_`);
+  } else if (descricaoBullets.length === 1) {
+    leadLines.push(`- **Como o lead chega hoje:** ${descricaoBullets[0]}`);
+  } else {
+    leadLines.push("- **Como o lead chega hoje:** _(a confirmar com você)_");
+  }
+  if (profile.lead_entry.url_captura) {
+    leadLines.push(`- **Formulário/bot atual:** ${profile.lead_entry.url_captura}`);
+  }
+  if (profile.lead_entry.handoff && !isUnknownValue(profile.lead_entry.handoff)) {
+    leadLines.push(`- **Quando passa direto para humano:** ${normalizeClientText(profile.lead_entry.handoff)}`);
+  } else {
+    addUnknown("Quando o lead deve passar direto para atendimento humano", profile.lead_entry.handoff);
+  }
+  out.push(...block("1. Entrada dos leads", leadLines));
+
+  // 2. Funil (proposto / em validação / configurado)
+  const etapas = normalizeClientText(getVal(responses, "funil", "etapas_atuais"));
+  const tempoResp = normalizeClientText(getVal(responses, "funil", "tempo_medio_resposta"));
+  const horario = normalizeClientText(getVal(responses, "funil", "horario_atendimento"));
+  const funilConfuso = etapas && looksLikeConfusedFunnel(etapas);
+  const funilValidado = (checklist ?? []).some((c) =>
+    c.done && /funil|pipeline|etapas/i.test(c.label ?? ""),
+  );
+  const funilTitulo = funilValidado
+    ? "2. Funil configurado"
+    : funilConfuso
+      ? "2. Funil proposto (em validação)"
+      : "2. Funil em validação";
+  const funilLines: string[] = [];
+  if (funilConfuso) {
+    funilLines.push(
+      "Hoje existem muitas microetapas no acompanhamento comercial. A recomendação é consolidar em um funil mais simples e usar as microetapas como **sinais internos** (tags, observações ou motivos de parada) em vez de novas colunas do funil.",
+      "",
+      "**Funil base recomendado:**",
+      "1. Novo lead",
+      "2. Em qualificação",
+      "3. Reunião/oferta enviada",
+      "4. Negociação",
+      "5. Fechado (ganho ou perdido)",
+      "",
+      "**Microetapas informadas pela cliente (serão tratadas como sinais):**",
+    );
+    for (const linha of etapas.split(/\n+/).filter((l) => l.trim())) {
+      funilLines.push(`- ${linha.trim()}`);
+    }
+  } else {
+    funilLines.push("As etapas comerciais foram desenhadas seguindo o processo que você descreveu:", "");
+    funilLines.push(etapas ? indent(etapas) : "- _(etapas ainda a confirmar)_");
+  }
+  funilLines.push("");
+  if (tempoResp && !isUnknownValue(tempoResp)) {
+    funilLines.push(`- **Tempo médio de resposta esperado:** ${tempoResp}`);
+  } else {
+    addUnknown("Tempo médio de resposta esperado ao lead", tempoResp);
+  }
+  if (horario && !isUnknownValue(horario)) {
+    funilLines.push(`- **Horário de atendimento:** ${horario}`);
+  } else {
+    addUnknown("Horário de atendimento comercial", horario);
+  }
+  out.push(...block(funilTitulo, funilLines.filter(Boolean)));
+
+  // 3. Separação dos leads / caminhos principais
+  const roteamento = normalizeClientText(getVal(responses, "funil", "regras_roteamento"));
+  const sep3: string[] = [
+    "Os leads são separados automaticamente em três caminhos, para que o time trate cada um do jeito certo:",
+    "",
+    "- **Leads prioritários (mais quentes e urgentes):**",
+    ...(profile.icp.priority_signals.length
+      ? profile.icp.priority_signals.map((s) => `  - ${s}`)
+      : ["  - _(critérios ainda a confirmar com você)_"]),
+    "- **Leads bons, mas sem urgência:**",
+    ...(profile.icp.hot_signals.length
+      ? profile.icp.hot_signals.map((s) => `  - ${s}`)
+      : ["  - _(critérios ainda a confirmar)_"]),
+    "- **Leads frios ou fora do perfil (entram em nutrição ou são descartados):**",
+    ...(profile.icp.cold_signals.length
+      ? profile.icp.cold_signals.map((s) => `  - ${s}`)
+      : ["  - _(critérios ainda a confirmar)_"]),
+    "",
+  ];
+  if (roteamento && !isUnknownValue(roteamento)) {
+    sep3.push(`**Distribuição no time:** ${roteamento}`);
+  } else {
+    addUnknown("Como os leads são distribuídos entre o time (regras de roteamento)", roteamento);
+  }
+  out.push(...block("3. Separação dos leads e caminhos principais", sep3));
+
+  params: ImplementationPackageParams,
+): string {
+  const { onboarding, checklist, draft, insights } = params;
+  const responses = (onboarding.responses ?? {}) as Record<string, any>;
+  const profile = buildImplementationProfile(responses);
+  const missing = getMissingRequiredFields(responses);
+  const empresa = onboarding.empresa?.nome ?? onboarding.cliente_empresa ?? "sua empresa";
+
   const out: string[] = [];
   const dataHoje = new Date().toLocaleDateString("pt-BR");
   out.push(`# Status da implantação — ${empresa}`);
