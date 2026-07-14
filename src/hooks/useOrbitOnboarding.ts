@@ -230,6 +230,38 @@ export interface OnboardingImplementationDraft {
   updated_at: string;
 }
 
+export interface OnboardingAsset {
+  id: string;
+  empresa_id: string;
+  onboarding_id: string;
+  section_key: string;
+  field_key: string;
+  item_id: string | null;
+  storage_path: string;
+  filename: string;
+  mime: string | null;
+  size_bytes: number | null;
+  uploaded_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function useOnboardingAssets(onboardingId: string | undefined) {
+  return useQuery({
+    queryKey: ["onboarding-assets", onboardingId],
+    enabled: !!onboardingId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("orbit_onboarding_assets" as any)
+        .select("*")
+        .eq("onboarding_id", onboardingId!)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as unknown as OnboardingAsset[];
+    },
+  });
+}
+
 export function useOnboardingInsights(onboardingId: string | undefined) {
   return useQuery({
     queryKey: ["onboarding-insights", onboardingId],
@@ -265,9 +297,13 @@ export function useOnboardingDraft(onboardingId: string | undefined) {
 export function useProcessOnboardingAssets() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (onboardingId: string) => {
+    mutationFn: async (
+      input: string | { onboardingId: string; assetId?: string },
+    ) => {
+      const onboardingId = typeof input === "string" ? input : input.onboardingId;
+      const assetId = typeof input === "string" ? undefined : input.assetId;
       const { data, error } = await supabase.functions.invoke("orbit-onboarding-process-assets", {
-        body: { onboarding_id: onboardingId },
+        body: { onboarding_id: onboardingId, asset_id: assetId },
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error?.message || "Falha ao processar materiais");
@@ -282,8 +318,10 @@ export function useProcessOnboardingAssets() {
       };
     },
     onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["onboarding-assets", res.onboarding_id] });
       qc.invalidateQueries({ queryKey: ["onboarding-insights", res.onboarding_id] });
       qc.invalidateQueries({ queryKey: ["onboarding-draft", res.onboarding_id] });
+      qc.invalidateQueries({ queryKey: ["client-onboardings"] });
     },
   });
 }

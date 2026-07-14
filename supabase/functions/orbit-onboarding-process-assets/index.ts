@@ -26,7 +26,7 @@ const TEXT_LIKE_MIMES = [
 ];
 const MODEL = "google/gemini-2.5-flash";
 
-interface Body { onboarding_id: string }
+interface Body { onboarding_id: string; asset_id?: string }
 
 function isTextLike(mime: string | null | undefined): boolean {
   const m = (mime || "").toLowerCase();
@@ -143,13 +143,15 @@ serve(async (req) => {
       return fail(ErrorCodes.FORBIDDEN, "Usuário não pertence ao tenant do onboarding", 403, undefined, req);
     }
 
-    // Assets do onboarding
-    const { data: assets, error: asErr } = await admin
+    // Assets do onboarding (opcionalmente filtrando por asset_id específico)
+    let assetsQuery = admin
       .from("orbit_onboarding_assets")
       .select("id, storage_path, filename, mime, size_bytes, section_key, field_key")
       .eq("onboarding_id", ob.id)
       .order("created_at", { ascending: true })
       .limit(MAX_ASSETS);
+    if (body.asset_id) assetsQuery = assetsQuery.eq("id", body.asset_id);
+    const { data: assets, error: asErr } = await assetsQuery;
     if (asErr) return fail(ErrorCodes.INTERNAL_ERROR, asErr.message, 500, undefined, req);
 
     const insightsSummary: Array<{
@@ -277,7 +279,11 @@ ${raw}
     let draftModel: string | undefined;
     let draftError: string | undefined;
 
-    if (lovableKey) {
+    // Se for um run parcial (asset_id específico), NÃO recompute o draft consolidado
+    // — evita sobrescrever o rascunho completo com base em apenas 1 material.
+    const skipDraft = !!body.asset_id;
+
+    if (!skipDraft && lovableKey) {
       const consolidatedPrompt = `Você é o assistente de implantação Orbit. Consolide um RASCUNHO de plano de implantação a partir:
 1) das respostas do onboarding (JSON abaixo),
 2) dos insights extraídos de cada material (JSON abaixo).
@@ -310,49 +316,51 @@ ${JSON.stringify(insightsSummary, null, 2).slice(0, 20_000)}`;
       }
       if (ai.tokens_in) totalTokensIn += ai.tokens_in;
       if (ai.tokens_out) totalTokensOut += ai.tokens_out;
-    } else {
+    } else if (!skipDraft) {
       draft.notes = "Rascunho gerado sem IA (LOVABLE_API_KEY ausente). Apenas metadados dos materiais foram catalogados.";
     }
 
-    // Markdown de resumo (best-effort)
-    try {
-      const lines: string[] = [];
-      lines.push(`# Rascunho inteligente — ${ob.cliente_empresa ?? ob.cliente_nome ?? "Onboarding"}`);
-      lines.push("");
-      lines.push(`Materiais analisados: ${insightsSummary.length}`);
-      if (draft.flows?.length) {
-        lines.push("\n## Fluxos sugeridos");
-        for (const f of draft.flows) lines.push(`- **${f.name}** — ${f.trigger}: ${f.steps_summary}`);
-      }
-      if (draft.templates?.length) {
-        lines.push("\n## Templates sugeridos");
-        for (const t of draft.templates) lines.push(`- [${t.channel}] ${t.purpose}`);
-      }
-      if (draft.cadences?.length) {
-        lines.push("\n## Cadências");
-        for (const c of draft.cadences) lines.push(`- ${c.audience}: ${(c.steps || []).join(" · ")}`);
-      }
-      if (draft.notes) { lines.push("\n## Notas"); lines.push(String(draft.notes)); }
-      summaryMd = lines.join("\n");
-    } catch (_) { /* ignore */ }
+    if (!skipDraft) {
+      // Markdown de resumo (best-effort)
+      try {
+        const lines: string[] = [];
+        lines.push(`# Rascunho inteligente — ${ob.cliente_empresa ?? ob.cliente_nome ?? "Onboarding"}`);
+        lines.push("");
+        lines.push(`Materiais analisados: ${insightsSummary.length}`);
+        if (draft.flows?.length) {
+          lines.push("\n## Fluxos sugeridos");
+          for (const f of draft.flows) lines.push(`- **${f.name}** — ${f.trigger}: ${f.steps_summary}`);
+        }
+        if (draft.templates?.length) {
+          lines.push("\n## Templates sugeridos");
+          for (const t of draft.templates) lines.push(`- [${t.channel}] ${t.purpose}`);
+        }
+        if (draft.cadences?.length) {
+          lines.push("\n## Cadências");
+          for (const c of draft.cadences) lines.push(`- ${c.audience}: ${(c.steps || []).join(" · ")}`);
+        }
+        if (draft.notes) { lines.push("\n## Notas"); lines.push(String(draft.notes)); }
+        summaryMd = lines.join("\n");
+      } catch (_) { /* ignore */ }
 
-    const { error: draftErr } = await admin
-      .from("orbit_onboarding_implementation_drafts")
-      .upsert({
-        empresa_id: ob.empresa_id,
-        onboarding_id: ob.id,
-        status: "draft",
-        draft,
-        summary_markdown: summaryMd,
-        assets_considered: insightsSummary.length,
-        model: draftModel ?? null,
-        tokens_in: totalTokensIn || null,
-        tokens_out: totalTokensOut || null,
-        error: draftError ?? null,
-        created_by: userId,
-      }, { onConflict: "onboarding_id" });
+      const { error: draftErr } = await admin
+        .from("orbit_onboarding_implementation_drafts")
+        .upsert({
+          empresa_id: ob.empresa_id,
+          onboarding_id: ob.id,
+          status: "draft",
+          draft,
+          summary_markdown: summaryMd,
+          assets_considered: insightsSummary.length,
+          model: draftModel ?? null,
+          tokens_in: totalTokensIn || null,
+          tokens_out: totalTokensOut || null,
+          error: draftError ?? null,
+          created_by: userId,
+        }, { onConflict: "onboarding_id" });
 
-    if (draftErr) return fail(ErrorCodes.INTERNAL_ERROR, `Falha ao gravar draft: ${draftErr.message}`, 500, undefined, req);
+      if (draftErr) return fail(ErrorCodes.INTERNAL_ERROR, `Falha ao gravar draft: ${draftErr.message}`, 500, undefined, req);
+    }
 
     return ok({
       onboarding_id: ob.id,

@@ -22,9 +22,12 @@ import {
   useUpdateOnboardingResponses,
   useProcessOnboardingAssets,
   useOnboardingInsights,
+  useOnboardingAssets,
   useOnboardingDraft,
   useReviewInsight,
   ClientOnboarding,
+  OnboardingAsset,
+  OnboardingAssetInsight,
 } from "@/hooks/useOrbitOnboarding";
 import {
   ALL_KNOWN_SECTIONS,
@@ -629,9 +632,15 @@ function IntelligentDraftSection({ onboardingId }: { onboardingId: string }) {
   const run = () => {
     process.mutate(onboardingId, {
       onSuccess: (res) => {
-        toast.success(
-          `Processados ${res.assets_processed} material(is)${res.ai_enabled ? "" : " (IA desativada)"} — rascunho atualizado.`,
-        );
+        if (res.assets_processed > 0) {
+          toast.success(
+            `Materiais processados: ${res.assets_processed}${res.ai_enabled ? "" : " (IA desativada)"}.`,
+          );
+        } else {
+          toast.info(
+            'Nenhum material enviado com upload concluído foi encontrado. Verifique se os arquivos aparecem em "Revisar por material".',
+          );
+        }
       },
       onError: (e: any) => toast.error(e?.message || "Falha ao processar materiais"),
     });
@@ -753,17 +762,19 @@ function IntelligentDraftSection({ onboardingId }: { onboardingId: string }) {
 // ─────────────────────────────────────────────────────────────
 // Drawer de revisão por material (antes de gerar o pacote)
 // ─────────────────────────────────────────────────────────────
-type MaterialRef = {
+
+// Metadados vindos da seção `responses` (para exibir título/tipo/obs
+// declarados pelo cliente, mesmo quando o asset ainda não foi processado).
+type ResponseMaterial = {
   sectionKey: string;
   sectionTitle: string;
   fieldKey: string;
   fieldLabel: string;
-  index: number;
   data: any;
 };
 
-function collectMaterials(onboarding: ClientOnboarding): MaterialRef[] {
-  const out: MaterialRef[] = [];
+function collectResponseMaterials(onboarding: ClientOnboarding): ResponseMaterial[] {
+  const out: ResponseMaterial[] = [];
   const responses = onboarding.responses ?? {};
   for (const sec of ALL_KNOWN_SECTIONS) {
     const vals = responses[sec.key];
@@ -771,14 +782,13 @@ function collectMaterials(onboarding: ClientOnboarding): MaterialRef[] {
     for (const f of sec.fields) {
       const v = (vals as any)[f.key];
       if (!Array.isArray(v)) continue;
-      v.forEach((m: any, i: number) => {
+      v.forEach((m: any) => {
         if (m && typeof m === "object" && (m.titulo || m.filename || m.asset_id || m.link || m.tipo)) {
           out.push({
             sectionKey: sec.key,
             sectionTitle: sec.title,
             fieldKey: f.key,
             fieldLabel: f.label,
-            index: i,
             data: m,
           });
         }
@@ -788,13 +798,27 @@ function collectMaterials(onboarding: ClientOnboarding): MaterialRef[] {
   return out;
 }
 
-function matchesMaterial(m: MaterialRef, text: string | undefined | null): boolean {
+function matchesAsset(asset: OnboardingAsset, text: string | undefined | null): boolean {
   if (!text) return false;
   const hay = String(text).toLowerCase();
-  const needles = [m.data?.asset_id, m.data?.titulo, m.data?.filename, m.data?.link]
-    .filter(Boolean)
-    .map((x: any) => String(x).toLowerCase());
+  const needles = [asset.id, asset.filename].filter(Boolean).map((x) => String(x).toLowerCase());
   return needles.some((n) => n && hay.includes(n));
+}
+
+function formatBytes(n: number | null | undefined): string {
+  if (!n || n <= 0) return "";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function fieldLabelFor(sectionKey: string, fieldKey: string): { sectionTitle: string; fieldLabel: string } {
+  const sec = ALL_KNOWN_SECTIONS.find((s) => s.key === sectionKey);
+  const field = sec?.fields.find((f) => f.key === fieldKey);
+  return {
+    sectionTitle: sec?.title || sectionKey,
+    fieldLabel: field?.label || fieldKey,
+  };
 }
 
 function MaterialsReviewDrawer({
@@ -807,13 +831,25 @@ function MaterialsReviewDrawer({
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onboarding: ClientOnboarding;
-  insights: any[];
+  insights: OnboardingAssetInsight[];
   draft: any | null;
 }) {
-  const materials = collectMaterials(onboarding);
+  const assetsQuery = useOnboardingAssets(open ? onboarding.id : undefined);
+  const assets = assetsQuery.data ?? [];
   const reviewMutation = useReviewInsight();
-  const insightsByAsset = new Map<string, any>();
+  const process = useProcessOnboardingAssets();
+
+  const insightsByAsset = new Map<string, OnboardingAssetInsight>();
   for (const i of insights) if (i?.asset_id) insightsByAsset.set(i.asset_id, i);
+
+  // Metadados extras vindos das respostas (título/tipo/obs), casados por asset_id
+  const responseMaterials = collectResponseMaterials(onboarding);
+  const respByAssetId = new Map<string, ResponseMaterial>();
+  const respWithoutAsset: ResponseMaterial[] = [];
+  for (const rm of responseMaterials) {
+    if (rm.data?.asset_id) respByAssetId.set(rm.data.asset_id, rm);
+    else respWithoutAsset.push(rm);
+  }
 
   const flows = draft?.draft?.flows ?? [];
   const templates = draft?.draft?.templates ?? [];
@@ -821,6 +857,13 @@ function MaterialsReviewDrawer({
   const approvedCount = insights.filter((i) => i?.review_status === "approved").length;
   const ignoredCount = insights.filter((i) => i?.review_status === "ignored").length;
   const pendingCount = insights.filter((i) => !i?.review_status || i.review_status === "pending").length;
+  const unprocessedCount = assets.filter((a) => !insightsByAsset.get(a.id)).length;
+
+  const processingAssetId =
+    process.isPending && typeof process.variables === "object" && process.variables
+      ? (process.variables as any).assetId
+      : undefined;
+  const processingAll = process.isPending && !processingAssetId;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -830,61 +873,124 @@ function MaterialsReviewDrawer({
             <LayoutList className="w-4 h-4" /> Revisão por material
           </SheetTitle>
           <p className="text-sm text-muted-foreground">
-            Revise insights e sugestões vinculadas a cada material antes de gerar o pacote completo.
+            Todos os materiais enviados pelo cliente, com status de processamento e ações por item.
           </p>
         </SheetHeader>
 
-        {insights.length > 0 && (
-          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
-            <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/30" variant="outline">
-              <Check className="w-3 h-3 mr-1" /> {approvedCount} aprovados
-            </Badge>
-            <Badge className="bg-muted text-muted-foreground" variant="outline">
-              <X className="w-3 h-3 mr-1" /> {ignoredCount} ignorados
-            </Badge>
-            <Badge variant="secondary">{pendingCount} pendentes</Badge>
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+          <Badge variant="outline">{assets.length} enviados</Badge>
+          {unprocessedCount > 0 && (
+            <Badge variant="secondary">{unprocessedCount} pendentes</Badge>
+          )}
+          {insights.length > 0 && (
+            <>
+              <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/30" variant="outline">
+                <Check className="w-3 h-3 mr-1" /> {approvedCount} aprovados
+              </Badge>
+              <Badge className="bg-muted text-muted-foreground" variant="outline">
+                <X className="w-3 h-3 mr-1" /> {ignoredCount} ignorados
+              </Badge>
+              <Badge variant="secondary">{pendingCount} sem revisão</Badge>
+            </>
+          )}
+          <div className="ml-auto">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1 text-xs"
+              disabled={process.isPending || assets.length === 0}
+              onClick={() =>
+                process.mutate(onboarding.id, {
+                  onSuccess: (res) =>
+                    toast.success(
+                      `Materiais processados: ${res.assets_processed}${res.ai_enabled ? "" : " (IA desativada)"}.`,
+                    ),
+                  onError: (e: any) => toast.error(e?.message || "Falha ao processar"),
+                })
+              }
+            >
+              {processingAll ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Sparkles className="w-3 h-3" />
+              )}
+              Processar todos
+            </Button>
           </div>
-        )}
+        </div>
 
         <div className="mt-4 space-y-4">
-          {materials.length === 0 && (
-            <Card className="glass-card p-4 text-sm text-muted-foreground">
-              Nenhum material enviado ainda.
+          {assetsQuery.isLoading && (
+            <Card className="glass-card p-4 text-sm text-muted-foreground flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" /> Carregando materiais…
             </Card>
           )}
 
-          {materials.map((m) => {
-            const insight = m.data?.asset_id ? insightsByAsset.get(m.data.asset_id) : null;
+          {!assetsQuery.isLoading && assets.length === 0 && respWithoutAsset.length === 0 && (
+            <Card className="glass-card p-4 text-sm text-muted-foreground">
+              Nenhum material enviado ainda. O cliente pode anexar arquivos e adicionar links no wizard público.
+            </Card>
+          )}
+
+          {assets.map((asset) => {
+            const insight = insightsByAsset.get(asset.id);
+            const rm = respByAssetId.get(asset.id);
+            const { sectionTitle, fieldLabel } = fieldLabelFor(
+              asset.section_key,
+              asset.field_key,
+            );
+            const title = rm?.data?.titulo || asset.filename || "(sem título)";
+            const tipo = rm?.data?.tipo || "Material";
+
             const relatedFlows = flows.filter(
-              (f: any) => matchesMaterial(m, f?.based_on) || matchesMaterial(m, f?.steps_summary) || matchesMaterial(m, f?.name),
+              (f: any) =>
+                matchesAsset(asset, f?.based_on) ||
+                matchesAsset(asset, f?.steps_summary) ||
+                matchesAsset(asset, f?.name),
             );
             const relatedTemplates = templates.filter(
-              (t: any) => matchesMaterial(m, t?.based_on) || matchesMaterial(m, t?.draft) || matchesMaterial(m, t?.purpose),
+              (t: any) =>
+                matchesAsset(asset, t?.based_on) ||
+                matchesAsset(asset, t?.draft) ||
+                matchesAsset(asset, t?.purpose),
             );
-            const title = m.data?.titulo || m.data?.filename || "(sem título)";
+
+            let statusBadge: JSX.Element;
+            if (insight?.error) {
+              statusBadge = (
+                <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
+                  Erro
+                </Badge>
+              );
+            } else if (insight?.detected_kind === "unknown") {
+              statusBadge = <Badge variant="outline">Sem extração</Badge>;
+            } else if (insight) {
+              statusBadge = <Badge variant="outline">{insight.detected_kind || "processado"}</Badge>;
+            } else {
+              statusBadge = <Badge variant="secondary">Pendente</Badge>;
+            }
+
+            const isProcessingThis = processingAssetId === asset.id;
 
             return (
-              <Card key={`${m.sectionKey}-${m.fieldKey}-${m.index}`} className="glass-card p-4 space-y-3">
+              <Card key={asset.id} className="glass-card p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="text-[11px] text-muted-foreground">
-                      {m.sectionTitle} · {m.fieldLabel}
+                      {sectionTitle} · {fieldLabel}
                     </div>
                     <div className="font-medium truncate">
-                      [{m.data?.tipo || "Material"}] {title}
+                      [{tipo}] {title}
                     </div>
                     <div className="text-[11px] text-muted-foreground truncate">
-                      {m.data?.filename && <>arquivo: <code>{m.data.filename}</code> · </>}
-                      {m.data?.mime && <>mime: {m.data.mime} · </>}
-                      {m.data?.asset_id && <>asset: <code>{String(m.data.asset_id).slice(0, 8)}</code></>}
+                      <code>{asset.filename}</code>
+                      {asset.mime ? ` · ${asset.mime}` : ""}
+                      {asset.size_bytes ? ` · ${formatBytes(asset.size_bytes)}` : ""}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    {insight ? (
-                      <Badge variant="outline">{insight.detected_kind || "processado"}</Badge>
-                    ) : (
-                      <Badge variant="secondary">sem insight</Badge>
-                    )}
+                  <div className="flex flex-col items-end gap-1.5">
+                    {statusBadge}
                     {insight?.review_status === "approved" && (
                       <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/30" variant="outline">
                         <Check className="w-3 h-3 mr-1" /> Aprovado
@@ -898,21 +1004,49 @@ function MaterialsReviewDrawer({
                   </div>
                 </div>
 
-                {m.data?.storage_path && (
-                  <AssetPreview
-                    storagePath={m.data.storage_path}
-                    mime={m.data.mime}
-                    filename={m.data.filename}
-                  />
-                )}
+                <AssetPreview
+                  storagePath={asset.storage_path}
+                  mime={asset.mime ?? undefined}
+                  filename={asset.filename}
+                />
 
                 <div>
-                  <h5 className="text-xs font-semibold mb-1 flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" /> Insight da IA
-                  </h5>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <h5 className="text-xs font-semibold flex items-center gap-1">
+                      <Sparkles className="w-3 h-3" /> Insight da IA
+                    </h5>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 gap-1 text-[11px]"
+                      disabled={process.isPending}
+                      onClick={() =>
+                        process.mutate(
+                          { onboardingId: onboarding.id, assetId: asset.id },
+                          {
+                            onSuccess: (res) =>
+                              toast.success(
+                                res.assets_processed > 0
+                                  ? "Material processado."
+                                  : "Material registrado, mas sem extração de conteúdo.",
+                              ),
+                            onError: (e: any) => toast.error(e?.message || "Falha ao processar"),
+                          },
+                        )
+                      }
+                    >
+                      {isProcessingThis ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <RotateCcw className="w-3 h-3" />
+                      )}
+                      {insight ? "Reprocessar" : "Processar"}
+                    </Button>
+                  </div>
                   {!insight && (
                     <p className="text-xs text-muted-foreground">
-                      Ainda não processado. Use "Processar materiais" na aba principal.
+                      Ainda não processado.
                     </p>
                   )}
                   {insight?.error && (
@@ -986,49 +1120,79 @@ function MaterialsReviewDrawer({
                   )}
                 </div>
 
-                <div>
-                  <h5 className="text-xs font-semibold mb-1">Sugestões vinculadas</h5>
-                  {relatedFlows.length === 0 && relatedTemplates.length === 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      Nenhum fluxo ou template do rascunho menciona este material.
-                    </p>
-                  )}
-                  {relatedFlows.length > 0 && (
-                    <div className="mt-1">
-                      <div className="text-[11px] text-muted-foreground mb-1">Fluxos</div>
-                      <ul className="space-y-1">
-                        {relatedFlows.map((f: any, i: number) => (
-                          <li key={i} className="border rounded p-2 text-xs">
-                            <div className="font-medium">{f.name}</div>
-                            {f.trigger && <div className="text-muted-foreground">Trigger: {f.trigger}</div>}
-                            {f.steps_summary && <div>{f.steps_summary}</div>}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {relatedTemplates.length > 0 && (
-                    <div className="mt-2">
-                      <div className="text-[11px] text-muted-foreground mb-1">Templates</div>
-                      <ul className="space-y-1">
-                        {relatedTemplates.map((t: any, i: number) => (
-                          <li key={i} className="border rounded p-2 text-xs">
-                            <div className="font-medium">[{t.channel}] {t.purpose}</div>
-                            {t.draft && (
-                              <pre className="whitespace-pre-wrap text-[11px] mt-1">{t.draft}</pre>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
+                {(relatedFlows.length > 0 || relatedTemplates.length > 0) && (
+                  <div>
+                    <h5 className="text-xs font-semibold mb-1">Sugestões vinculadas</h5>
+                    {relatedFlows.length > 0 && (
+                      <div className="mt-1">
+                        <div className="text-[11px] text-muted-foreground mb-1">Fluxos</div>
+                        <ul className="space-y-1">
+                          {relatedFlows.map((f: any, i: number) => (
+                            <li key={i} className="border rounded p-2 text-xs">
+                              <div className="font-medium">{f.name}</div>
+                              {f.trigger && <div className="text-muted-foreground">Trigger: {f.trigger}</div>}
+                              {f.steps_summary && <div>{f.steps_summary}</div>}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {relatedTemplates.length > 0 && (
+                      <div className="mt-2">
+                        <div className="text-[11px] text-muted-foreground mb-1">Templates</div>
+                        <ul className="space-y-1">
+                          {relatedTemplates.map((t: any, i: number) => (
+                            <li key={i} className="border rounded p-2 text-xs">
+                              <div className="font-medium">[{t.channel}] {t.purpose}</div>
+                              {t.draft && (
+                                <pre className="whitespace-pre-wrap text-[11px] mt-1">{t.draft}</pre>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
               </Card>
             );
           })}
+
+          {respWithoutAsset.length > 0 && (
+            <Card className="glass-card p-4 space-y-2">
+              <h5 className="text-xs font-semibold">Links e materiais sem upload</h5>
+              <p className="text-[11px] text-muted-foreground">
+                Materiais declarados pelo cliente que não têm arquivo anexado (apenas link ou descrição).
+              </p>
+              <ul className="space-y-1.5">
+                {respWithoutAsset.map((rm, i) => (
+                  <li key={`${rm.sectionKey}-${rm.fieldKey}-${i}`} className="border rounded p-2 text-xs space-y-0.5">
+                    <div className="text-[11px] text-muted-foreground">
+                      {rm.sectionTitle} · {rm.fieldLabel}
+                    </div>
+                    <div className="font-medium">
+                      [{rm.data?.tipo || "Material"}] {rm.data?.titulo || "(sem título)"}
+                    </div>
+                    {rm.data?.link && (
+                      <div>
+                        Link:{" "}
+                        <a href={rm.data.link} target="_blank" rel="noreferrer" className="underline">
+                          {rm.data.link}
+                        </a>
+                      </div>
+                    )}
+                    {rm.data?.obs && (
+                      <div className="text-muted-foreground">Obs: {rm.data.obs}</div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
         </div>
       </SheetContent>
     </Sheet>
   );
 }
+
 
