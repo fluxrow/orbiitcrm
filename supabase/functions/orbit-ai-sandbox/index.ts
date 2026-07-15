@@ -35,7 +35,7 @@ interface SandboxRequest {
   trigger?: "inbound_webhook" | "manual" | "follow_up";
 }
 
-function buildSystemPrompt(cfg: SandboxAIConfig, mockLead?: MockLead | null, trigger?: string): string {
+export function buildSystemPrompt(cfg: SandboxAIConfig, mockLead?: MockLead | null, trigger?: string): string {
   const identidade = (cfg.prompt_identidade && cfg.prompt_identidade.trim())
     || "Você é um(a) SDR profissional, consultivo(a) e direto(a), atendendo via WhatsApp.";
   const roteiro = (cfg.prompt_roteiro && cfg.prompt_roteiro.trim()) || "";
