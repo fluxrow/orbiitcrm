@@ -60,7 +60,7 @@ function buildSystemPrompt(cfg: SandboxAIConfig, mockLead?: MockLead | null, tri
     : "";
 
   const triggerCtx = trigger === "inbound_webhook"
-    ? `\n=== GATILHO ===\nO lead acabou de entrar via formulário/webhook. Inicie a conversa com uma mensagem de abordagem curta, personalizada e que abra espaço para resposta. Não envie blocos longos. Faça UMA pergunta por mensagem.\n=== FIM ===\n`
+    ? `\n=== GATILHO ===\nO lead acabou de entrar via formulário/webhook. Inicie a conversa com uma mensagem de abordagem curta, personalizada e que abra espaço para resposta. Não envie blocos longos. Faça UMA pergunta por mensagem.\n\nNao diga que o lead veio do site, a menos que a origem do contexto diga literalmente "site".\nSe a origem for Typebot, formulario, captacao ou webhook, fale "respostas do formulario" ou "respostas que voce enviou".\nNao use emojis.\nNao chame o lead de "Lead" se o nome estiver vazio; use "Oi, tudo bem?".\n=== FIM ===\n`
     : "";
 
   return [
@@ -73,6 +73,7 @@ function buildSystemPrompt(cfg: SandboxAIConfig, mockLead?: MockLead | null, tri
     triggerCtx,
     regras ? `\n=== REGRAS INVIOLÁVEIS ===\n${regras}\n=== FIM ===` : "",
     `\nResponda como mensagens curtas de WhatsApp. Uma ideia por mensagem.`,
+    `Nao use emojis nas respostas, salvo se o prompt do tenant pedir explicitamente.`,
   ].filter(Boolean).join("\n");
 }
 

@@ -34,13 +34,14 @@ interface SandboxMsg {
 }
 
 const MOCK_LEAD = {
-  nome: "Lead Teste",
-  origem: "Formulário Site",
-  telefone: "+55 11 99999-0000",
+  nome: "Teste Viver",
+  origem: "Typebot - Captacao Meta",
+  telefone: "+55 49 99951-3060",
   email: "lead.teste@exemplo.com",
-  cidade: "São Paulo",
-  segmento: "Tecnologia",
-  observacoes: "Veio de campanha de teste no sandbox.",
+  cidade: "Chapeco",
+  segmento: "Semijoias",
+  observacoes:
+    "Respondeu ao formulario do Typebot da Viver Semijoias. Capital disponivel: De R$ 7.000,00 a R$ 9.000,00. Momento: quer crescer com semijoias.",
 };
 
 export function AgentSandbox({ open, onOpenChange, aiConfig }: AgentSandboxProps) {
