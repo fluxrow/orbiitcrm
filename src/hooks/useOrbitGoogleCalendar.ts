@@ -35,8 +35,12 @@ export function useGoogleCalendarStatus(empresaId: string | null | undefined) {
 export function useConnectGoogleCalendar() {
   return useMutation({
     mutationFn: async (empresaId: string) => {
+      const redirectAfter =
+        typeof window !== "undefined"
+          ? `${window.location.origin}${window.location.pathname}${window.location.search || ""}`
+          : undefined;
       const { data, error } = await supabase.functions.invoke("orbit-google-auth", {
-        body: { empresa_id: empresaId },
+        body: { empresa_id: empresaId, redirect_after: redirectAfter },
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error?.message ?? "Falha ao iniciar conexão");
