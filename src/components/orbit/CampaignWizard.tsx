@@ -21,6 +21,7 @@ import { useOrbitSendGroups, useCreateSendGroup, useDeleteSendGroup } from "@/ho
 import { RecipientSelector } from "./RecipientSelector";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/contexts/TenantContext";
+import { uploadCampaignImage } from "@/lib/campaignImages";
 import { toast } from "sonner";
 
 interface CampaignWizardProps {
@@ -347,14 +348,13 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
   const handleImageUpload = async (file: File) => {
     try {
       setIsUploadingImage(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Usuário não autenticado");
-      const ext = file.name.split(".").pop();
-      const path = `${user.id}/${Date.now()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("campaign-images").upload(path, file);
-      if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from("campaign-images").getPublicUrl(path);
-      setNewTemplate(prev => ({ ...prev, imagem_url: urlData.publicUrl }));
+      if (!tenantEmpresaId) throw new Error("Empresa não encontrada");
+      const { public_url } = await uploadCampaignImage({
+        file,
+        empresaId: tenantEmpresaId,
+        context: "campaigns",
+      });
+      setNewTemplate(prev => ({ ...prev, imagem_url: public_url }));
       toast.success("Imagem enviada!");
     } catch (err: any) {
       toast.error(err.message || "Erro ao enviar imagem");

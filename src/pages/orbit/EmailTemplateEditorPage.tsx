@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useOrbitTemplates, useCreateTemplate, useUpdateTemplate } from "@/hooks/useOrbitTemplates";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/contexts/TenantContext";
+import { uploadCampaignImage } from "@/lib/campaignImages";
 import { toast } from "sonner";
 
 const CATEGORIAS = [
@@ -120,18 +121,15 @@ export default function EmailTemplateEditorPage() {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) { toast.error("Selecione um arquivo de imagem"); return; }
-    if (file.size > 5 * 1024 * 1024) { toast.error("Imagem deve ter no máximo 5MB"); return; }
     try {
       setIsUploading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Não autenticado");
-      const ext = file.name.split(".").pop();
-      const path = `${user.id}/${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from("campaign-images").upload(path, file);
-      if (error) throw error;
-      const { data: { publicUrl } } = supabase.storage.from("campaign-images").getPublicUrl(path);
-      setForm((prev) => ({ ...prev, imagem_url: publicUrl }));
+      if (!tenantEmpresaId) throw new Error("Empresa não encontrada");
+      const { public_url } = await uploadCampaignImage({
+        file,
+        empresaId: tenantEmpresaId,
+        context: "email_template",
+      });
+      setForm((prev) => ({ ...prev, imagem_url: public_url }));
       toast.success("Imagem carregada!");
     } catch (err: any) {
       toast.error(err.message || "Erro ao fazer upload");
