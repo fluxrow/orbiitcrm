@@ -88,9 +88,16 @@ Deno.serve(async (req) => {
       return fail(ErrorCodes.INTERNAL_ERROR, upErr.message, 500, undefined, req);
     }
 
-    const { data: pub } = svc.storage.from("campaign-images").getPublicUrl(storagePath);
+    // Bucket is private (workspace policy blocks public buckets). Return a
+    // long-lived signed URL so <img src=…> keeps rendering in campaigns/templates.
+    const { data: signed, error: signErr } = await svc.storage
+      .from("campaign-images")
+      .createSignedUrl(storagePath, 60 * 60 * 24 * 365 * 5); // 5 years
+    if (signErr || !signed?.signedUrl) {
+      return fail(ErrorCodes.INTERNAL_ERROR, signErr?.message ?? "falha ao assinar URL", 500, undefined, req);
+    }
 
-    return ok({ storage_path: storagePath, public_url: pub.publicUrl }, undefined, req);
+    return ok({ storage_path: storagePath, public_url: signed.signedUrl }, undefined, req);
   } catch (e) {
     console.error("[orbit-campaign-image-upload]", e);
     return fail(ErrorCodes.INTERNAL_ERROR, (e as Error).message, 500, undefined, req);
