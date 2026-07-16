@@ -27,12 +27,16 @@ Deno.serve(async (req) => {
     const empresaId = (body.empresa_id ?? "").toString();
     if (!empresaId) return fail(ErrorCodes.VALIDATION_ERROR, "empresa_id obrigatório", 400, undefined, req);
 
-    // Autorização: super_admin ou pertencente à empresa
+    // Autorização: super_admin OR profile.empresa_id OR active membership
     const svc = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const { data: profile } = await svc.from("profiles").select("empresa_id").eq("id", userId).maybeSingle();
-    const { data: roles } = await svc.from("user_roles").select("role").eq("user_id", userId);
-    const isSuper = (roles ?? []).some((r: any) => r.role === "super_admin");
-    if (!isSuper && profile?.empresa_id !== empresaId) {
+    const [{ data: profile }, { data: roles }, { data: peSuper }, { data: membership }] = await Promise.all([
+      svc.from("profiles").select("empresa_id").eq("id", userId).maybeSingle(),
+      svc.from("user_roles").select("role").eq("user_id", userId),
+      svc.rpc("pe_is_super_admin", { p_user_id: userId }),
+      svc.from("user_empresa_memberships").select("empresa_id").eq("user_id", userId).eq("empresa_id", empresaId).maybeSingle(),
+    ]);
+    const isSuper = !!peSuper || (roles ?? []).some((r: any) => r.role === "super_admin");
+    if (!isSuper && profile?.empresa_id !== empresaId && !membership) {
       return fail(ErrorCodes.FORBIDDEN, "usuário não pertence à empresa", 403, undefined, req);
     }
 
