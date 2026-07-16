@@ -15,6 +15,7 @@ import { Plus, Sparkles, Copy, Trash2, Pencil, MessageSquare, Mail, Loader2, Ima
 import { useOrbitTemplates, useCreateTemplate, useDeleteTemplate } from "@/hooks/useOrbitTemplates";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/contexts/TenantContext";
+import { uploadCampaignImage } from "@/lib/campaignImages";
 import { toast } from "sonner";
 
 const ALLOWED_VARS = ["{{nome}}", "{{empresa}}", "{{nome_fantasia}}", "{{email}}", "{{telefone}}", "{{cidade}}", "{{segmento}}"];
