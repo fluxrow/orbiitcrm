@@ -21,6 +21,7 @@ import { useOrbitSendGroups, useCreateSendGroup, useDeleteSendGroup } from "@/ho
 import { RecipientSelector } from "./RecipientSelector";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/contexts/TenantContext";
+import { uploadCampaignImage } from "@/lib/campaignImages";
 import { toast } from "sonner";
 
 interface CampaignWizardProps {
