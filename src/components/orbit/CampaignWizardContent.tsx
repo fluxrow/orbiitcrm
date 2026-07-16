@@ -20,6 +20,7 @@ import { RecipientSelector } from "./RecipientSelector";
 import { CampaignRecipientsPreviewDrawer } from "./CampaignRecipientsPreviewDrawer";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/contexts/TenantContext";
+import { uploadCampaignImage } from "@/lib/campaignImages";
 import { toast } from "sonner";
 import { orbitCampaignKeys } from "@/lib/query-keys";
 import { buildCampaignAudienceFilters } from "@/lib/orbit/campaign-audience";
