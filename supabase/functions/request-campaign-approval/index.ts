@@ -89,8 +89,12 @@ const handler = async (req: Request): Promise<Response> => {
       .limit(10);
 
     const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, campaign.empresa_id);
+    const approvalBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
+    if (approvalBlockReason) {
+      console.warn("[request-campaign-approval] Notificação WhatsApp pulada:", approvalBlockReason);
+    }
 
-    if (zapiConfig && admins && admins.length > 0) {
+    if (!approvalBlockReason && zapiConfig && admins && admins.length > 0) {
       const mensagem = `📋 *Solicitação de Aprovação de Campanha*\n\n` +
         `Campanha: *${campaign.nome}*\n` +
         `Canal: ${campaign.canal === "email" ? "📧 Email" : "📱 WhatsApp"}\n` +
