@@ -127,6 +127,16 @@ function randomDelay(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1) + min);
 }
 
+function getEffectiveDelayWindow(config: SendingConfig, delayMultiplier: number) {
+  const warmupMinDelay = Math.round(config.min_delay_ms * delayMultiplier);
+  const warmupMaxDelay = Math.round(config.max_delay_ms * delayMultiplier);
+  const maxPerMinute = Math.max(1, config.max_per_minute || DEFAULT_CONFIG.max_per_minute);
+  const perMinuteMinDelay = Math.ceil(60_000 / maxPerMinute);
+  const minDelay = Math.max(warmupMinDelay, perMinuteMinDelay);
+  const maxDelay = Math.max(warmupMaxDelay, minDelay);
+  return { minDelay, maxDelay, perMinuteMinDelay };
+}
+
 function toTitleCase(str: string): string {
   if (!str) return "";
   const lower = ["de", "da", "do", "das", "dos", "e", "em", "na", "no", "nas", "nos", "a", "o", "as", "os", "com", "para", "por"];
