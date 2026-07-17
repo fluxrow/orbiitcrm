@@ -80,6 +80,7 @@ Deno.serve(async (req) => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "Authorization": `Bearer ${SERVICE_KEY}`,
             "x-campaign-scheduler-token": CRON_TOKEN,
           },
           body: JSON.stringify({ campaign_id: c.id }),
