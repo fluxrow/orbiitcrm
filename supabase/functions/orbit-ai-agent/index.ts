@@ -844,28 +844,36 @@ ${regrasBlock}`;
       : {};
 
     // ── Calcular próximo estado da conversa ──
-    const isHandoff = parsed.cadastro_completo === true || parsed.intencao === "falar_humano";
+    // Handoff APENAS quando há sinal comercial real: agendamento de call, venda ou pedido explícito de humano.
+    const intencaoNormalizada = String(parsed.intencao || "outro");
+    const isCommercialSignal =
+      intencaoNormalizada === "agendar_call" ||
+      intencaoNormalizada === "venda_fechada" ||
+      intencaoNormalizada === "falar_humano";
+    const isHandoff = isCommercialSignal;
     const nextState = computeNextState(
       leadContext.conversation.state,
-      parsed.intencao || "outro",
+      intencaoNormalizada,
       parsed.cadastro_completo || false,
       false, // handoff será determinado abaixo
       msgClassification
     );
 
-    // ── Notificação comercial no primeiro sinal humano ──
+    // ── Notificação comercial: SOMENTE em sinal comercial real ──
+    // Não notificar em "primeiro sinal humano" (saudação, resposta natural, pedido de orçamento).
     const alreadyNotified = aiContexto.commercial_notified === true;
-    if (msgClassification === "human_probable" && !alreadyNotified) {
-      console.log("[orbit-ai-agent] Primeiro sinal humano detectado, notificando comercial...");
+    if (isCommercialSignal && !alreadyNotified) {
+      console.log("[orbit-ai-agent] Sinal comercial detectado:", intencaoNormalizada, "— notificando responsável...");
       await notifyCommercialHumanDetected(supabase, {
         prospect,
         telefone_lead: telefone,
         mensagem: mensagemAgregada,
-        classification: msgClassification,
+        classification: intencaoNormalizada,
         empresa_id: empresaId || null,
         isDemo,
       });
     }
+
 
     // Atualizar contexto da conversa com estado e classificação
     const novoContexto = {
