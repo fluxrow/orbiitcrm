@@ -888,6 +888,15 @@ const handler = async (req: Request): Promise<Response> => {
         falhas,
         pausada_por_limite,
         remaining_pending: remainingPending || 0,
+        rate_limit: campaign.canal === "whatsapp" ? {
+          daily_limit: effectiveDailyLimit,
+          daily_sent_count: dailySentCount,
+          max_per_minute: sendingConfig.max_per_minute,
+          min_delay_ms: effectiveMinDelay,
+          max_delay_ms: effectiveMaxDelay,
+          per_minute_min_delay_ms: perMinuteMinDelay,
+          warmup_enabled: sendingConfig.warmup_enabled,
+        } : null,
       },
       { simulated: isDemo },
       req
