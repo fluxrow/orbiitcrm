@@ -13,6 +13,7 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const FUNCTIONS_BASE = `${SUPABASE_URL}/functions/v1`;
 
 import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
+import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { getTokenForEmpresa, ensureFreshAccessToken, checkAvailability } from "../_shared/google-calendar.ts";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -235,12 +236,31 @@ async function resolveProspectPhone(prospectId: string): Promise<string | null> 
 
 async function sendZapi(empresaId: string, telefone: string, kind: "text" | "image" | "audio" | "document" | "video", payload: Json) {
   const zapi = await getOrbitZapiRuntimeConfig(supabase, empresaId);
-  if (!zapi?.instance_id || !zapi?.token) return { ok: false, error: "Z-API não configurado" };
+  if (!zapi?.instance_id || !zapi?.token) {
+    await auditZapiSendAttempt(supabase, {
+      empresa_id: empresaId,
+      function_name: "orbit-flow-executor",
+      action: `flow_send_${kind}`,
+      blocked: true,
+      block_reason: "ZAPI_NOT_CONFIGURED",
+      payload_summary: { kind, telefone },
+    });
+    return { ok: false, error: "Z-API não configurado" };
+  }
 
   // ── Trava global/por tenant: envio real só se explicitamente liberado ──
   const blockReason = getOrbitZapiRealSendBlockReason(zapi);
   if (blockReason) {
     console.warn("[executor] envio real bloqueado", { empresaId, kind, reason: blockReason });
+    await auditZapiSendAttempt(supabase, {
+      empresa_id: empresaId,
+      function_name: "orbit-flow-executor",
+      action: `flow_send_${kind}`,
+      blocked: true,
+      block_reason: "ZAPI_REAL_SEND_BLOCKED",
+      zapi_config_id: zapi.id,
+      payload_summary: { kind, telefone },
+    });
     return { ok: false, error: blockReason };
   }
 
