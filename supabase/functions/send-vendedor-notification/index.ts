@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
-import { getOrbitZapiRuntimeConfig } from "../_shared/orbit-zapi.ts";
+import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
 
 interface NotificationRequest {
   prospect_id: string;
@@ -80,6 +80,12 @@ const handler = async (req: Request): Promise<Response> => {
       (prospect.cidade ? `📍 *Cidade:* ${prospect.cidade}${prospect.estado ? ` - ${prospect.estado}` : ""}\n` : "") +
       (prospect.segmento ? `🏷️ *Segmento:* ${prospect.segmento}\n` : "") +
       `\nAcesse o Orbit CRM para mais detalhes.`;
+
+    const vendedorBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
+    if (vendedorBlockReason) {
+      console.warn("[send-vendedor-notification] Envio real bloqueado:", { empresa_id, reason: vendedorBlockReason });
+      return fail(ErrorCodes.PROVIDER_NOT_CONFIGURED, vendedorBlockReason, 403, { code: "ZAPI_REAL_SEND_BLOCKED" });
+    }
 
     const phone = vendedor.telefone.replace(/\D/g, "");
     const zapiRes = await fetch(

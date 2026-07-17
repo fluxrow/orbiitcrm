@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
-import { getOrbitZapiRuntimeConfig } from "../_shared/orbit-zapi.ts";
+import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
 
 interface ApprovalRequest {
   campaign_id: string;
@@ -89,8 +89,12 @@ const handler = async (req: Request): Promise<Response> => {
       .limit(10);
 
     const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, campaign.empresa_id);
+    const approvalBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
+    if (approvalBlockReason) {
+      console.warn("[request-campaign-approval] Notificação WhatsApp pulada:", approvalBlockReason);
+    }
 
-    if (zapiConfig && admins && admins.length > 0) {
+    if (!approvalBlockReason && zapiConfig && admins && admins.length > 0) {
       const mensagem = `📋 *Solicitação de Aprovação de Campanha*\n\n` +
         `Campanha: *${campaign.nome}*\n` +
         `Canal: ${campaign.canal === "email" ? "📧 Email" : "📱 WhatsApp"}\n` +

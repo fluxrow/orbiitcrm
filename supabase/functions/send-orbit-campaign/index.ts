@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, fromPlanCheck, ErrorCodes } from "../_shared/responses.ts";
 import { resolveCtaConfig, buildCtaButtonHtml, injectCta } from "../_shared/whatsapp-cta.ts";
-import { getOrbitZapiRuntimeConfig } from "../_shared/orbit-zapi.ts";
+import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
 import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 
 interface CampaignRequest {
@@ -353,6 +353,22 @@ const handler = async (req: Request): Promise<Response> => {
 
     // ── Pré-check da instância Z-API (apenas WhatsApp) ──
     if (campaign.canal === "whatsapp" && zapiConfig?.instance_id && zapiConfig?.token) {
+      const campaignBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
+      if (campaignBlockReason) {
+        console.error(`[send-campaign] Envio real bloqueado — aborting campaign ${campaign_id}`);
+        await supabase
+          .from("orbit_campaigns")
+          .update({ status: "falha", motivo_reprovacao: "ZAPI_REAL_SEND_BLOCKED" })
+          .eq("id", campaign_id);
+        return fail(
+          ErrorCodes.PROVIDER_NOT_CONFIGURED,
+          campaignBlockReason,
+          403,
+          { code: "ZAPI_REAL_SEND_BLOCKED" },
+          req,
+        );
+      }
+
       const status = await checkZapiInstanceStatus(zapiBaseUrl, zapiHeaders);
       if (!status.connected) {
         console.error(`[send-campaign] Z-API instance not connected — aborting campaign ${campaign_id}`);

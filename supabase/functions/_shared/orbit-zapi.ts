@@ -9,6 +9,7 @@ export interface OrbitZapiRuntimeConfig {
   ativo: boolean | null;
   token: string | null;
   client_token: string | null;
+  envio_real_liberado?: boolean | null;
 }
 
 export async function getOrbitZapiRuntimeConfig(
@@ -52,5 +53,36 @@ export async function getOrbitZapiRuntimeConfig(
     throw error;
   }
 
-  return (data as OrbitZapiRuntimeConfig | null) ?? null;
+  let config = (data as OrbitZapiRuntimeConfig | null) ?? null;
+
+  // Fallback: se a RPC ainda não expõe envio_real_liberado, buscar direto na tabela.
+  if (config && (config.envio_real_liberado === undefined || config.envio_real_liberado === null)) {
+    try {
+      const { data: gate } = await supabase
+        .from("orbit_zapi_config")
+        .select("envio_real_liberado")
+        .eq("id", config.id)
+        .maybeSingle();
+      config = { ...config, envio_real_liberado: (gate as any)?.envio_real_liberado ?? false };
+    } catch {
+      config = { ...config, envio_real_liberado: false };
+    }
+  }
+
+  return config;
+}
+
+/**
+ * Trava global de envio real via Z-API.
+ * Retorna null se o envio real está liberado; caso contrário retorna a
+ * mensagem de bloqueio que deve ser registrada/retornada ao chamador.
+ *
+ * NUNCA fazer fetch em endpoints send-text / send-image / send-audio /
+ * send-document / send-video da Z-API sem passar por essa checagem.
+ */
+export function getOrbitZapiRealSendBlockReason(
+  config: Pick<OrbitZapiRuntimeConfig, "envio_real_liberado"> | null | undefined,
+): string | null {
+  if (config?.envio_real_liberado === true) return null;
+  return "Envio real via Z-API bloqueado para este tenant. Valide a instância e libere envio_real_liberado antes do go-live.";
 }

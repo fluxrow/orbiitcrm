@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
-import { getOrbitZapiRuntimeConfig } from "../_shared/orbit-zapi.ts";
+import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
 import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 import { callAnthropic, toAnthropicMessages, ANTHROPIC_DEFAULT_MODEL } from "../_shared/anthropic.ts";
 
@@ -234,6 +234,11 @@ async function notifyCommercialHumanDetected(
   }
 
   const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresa_id);
+  const notifyBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
+  if (notifyBlockReason) {
+    console.warn("[orbit-ai-agent] Notificação comercial bloqueada:", notifyBlockReason);
+    return;
+  }
 
   if (zapiConfig?.instance_id && zapiConfig?.token) {
     const response = await fetch(
@@ -361,6 +366,11 @@ async function sendWhatsAppAudio(
     const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresaId);
     if (!zapiConfig?.instance_id || !zapiConfig?.token) {
       console.log("[orbit-ai-agent] Z-API não configurado para envio de áudio de biblioteca");
+      return;
+    }
+    const audioBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
+    if (audioBlockReason) {
+      console.warn("[orbit-ai-agent] Áudio biblioteca bloqueado:", audioBlockReason);
       return;
     }
     // audioSource pode ser storage_path puro ou URL antiga; helper cobre ambos.
@@ -1212,8 +1222,11 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
       await supabase.from("orbit_handoffs").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", handoff.id);
     } else {
       const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresa_id);
-
-      if (zapiConfig?.instance_id && zapiConfig?.token) {
+      const handoffBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
+      if (handoffBlockReason) {
+        console.warn("[orbit-ai-agent] Handoff bloqueado:", handoffBlockReason);
+        await supabase.from("orbit_handoffs").update({ status: "failed" }).eq("id", handoff.id);
+      } else if (zapiConfig?.instance_id && zapiConfig?.token) {
         const response = await fetch(
           `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-text`,
           {
@@ -1272,8 +1285,20 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: st
     }
 
     const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresaId);
+    const replyBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
 
-    if (zapiConfig?.instance_id && zapiConfig?.token) {
+    if (replyBlockReason) {
+      console.warn("[orbit-ai-agent] Resposta automática bloqueada:", replyBlockReason);
+      await supabase.from("orbit_mensagens").insert({
+        conversa_id,
+        direcao: "OUT",
+        mensagem,
+        canal: "whatsapp",
+        status: "falhou",
+        erro: replyBlockReason,
+        empresa_id: empresaId,
+      });
+    } else if (zapiConfig?.instance_id && zapiConfig?.token) {
       const response = await fetch(
         `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-text`,
         {
