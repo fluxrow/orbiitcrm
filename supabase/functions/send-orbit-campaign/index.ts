@@ -158,20 +158,27 @@ const handler = async (req: Request): Promise<Response> => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // ── JWT auth ──
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return fail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401, undefined, req);
+    // ── Auth: JWT (usuário) OU token interno de scheduler ──
+    const schedulerToken = Deno.env.get("CAMPAIGN_SCHEDULER_CRON_TOKEN") ?? "";
+    const schedulerHeader = req.headers.get("x-campaign-scheduler-token") ?? "";
+    const isSchedulerCall = !!schedulerToken && schedulerHeader === schedulerToken;
+
+    let callerUserId = "";
+    if (!isSchedulerCall) {
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader?.startsWith("Bearer ")) {
+        return fail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401, undefined, req);
+      }
+      const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const token = authHeader.replace("Bearer ", "");
+      const { data: claimsRes, error: claimsErr } = await userClient.auth.getClaims(token);
+      if (claimsErr || !claimsRes?.claims) {
+        return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401, undefined, req);
+      }
+      callerUserId = claimsRes.claims.sub as string;
     }
-    const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsRes, error: claimsErr } = await userClient.auth.getClaims(token);
-    if (claimsErr || !claimsRes?.claims) {
-      return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401, undefined, req);
-    }
-    const callerUserId = claimsRes.claims.sub as string;
 
     const { campaign_id }: CampaignRequest = await req.json();
 
