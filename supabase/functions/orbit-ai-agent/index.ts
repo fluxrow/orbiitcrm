@@ -1285,8 +1285,20 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: st
     }
 
     const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresaId);
+    const replyBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
 
-    if (zapiConfig?.instance_id && zapiConfig?.token) {
+    if (replyBlockReason) {
+      console.warn("[orbit-ai-agent] Resposta automática bloqueada:", replyBlockReason);
+      await supabase.from("orbit_mensagens").insert({
+        conversa_id,
+        direcao: "OUT",
+        mensagem,
+        canal: "whatsapp",
+        status: "falhou",
+        erro: replyBlockReason,
+        empresa_id: empresaId,
+      });
+    } else if (zapiConfig?.instance_id && zapiConfig?.token) {
       const response = await fetch(
         `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-text`,
         {
