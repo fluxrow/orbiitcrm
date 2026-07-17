@@ -1222,8 +1222,11 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
       await supabase.from("orbit_handoffs").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", handoff.id);
     } else {
       const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresa_id);
-
-      if (zapiConfig?.instance_id && zapiConfig?.token) {
+      const handoffBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
+      if (handoffBlockReason) {
+        console.warn("[orbit-ai-agent] Handoff bloqueado:", handoffBlockReason);
+        await supabase.from("orbit_handoffs").update({ status: "failed" }).eq("id", handoff.id);
+      } else if (zapiConfig?.instance_id && zapiConfig?.token) {
         const response = await fetch(
           `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-text`,
           {
