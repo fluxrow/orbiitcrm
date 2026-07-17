@@ -213,6 +213,7 @@ const AppRoutes = () => (
       <Route path="audit" element={<PeAuditLogPage />} />
       <Route path="advisor-scan" element={<AdvisorScanStatusPage />} />
       <Route path="zapi-go-live" element={<ZapiGoLivePage />} />
+      <Route path="tenant-health" element={<TenantHealthPage />} />
       <Route path="documentacao" element={<PeAdminDocPage />} />
       <Route path="*" element={<Navigate to="/pe-admin/cadastros" replace />} />
     </Route>
