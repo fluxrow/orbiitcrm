@@ -13,9 +13,11 @@ import { Plus, MessageSquare, Mail, Loader2, Play, Pause, X, Send, Trash2, Info,
 import { useOrbitCampaigns, useUpdateCampaign, useDeleteCampaign } from "@/hooks/useOrbitCampaigns";
 import { supabase } from "@/integrations/supabase/client";
 import { handleApiResponse } from "@/lib/api-envelope";
-import { format } from "date-fns";
+import { format, isPast } from "date-fns";
 import { toast } from "sonner";
 import { orbitCampaignKeys } from "@/lib/query-keys";
+import { usePeAuth } from "@/hooks/usePeAuth";
+import { CheckCircle2 } from "lucide-react";
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   rascunho: { label: "Rascunho", className: "bg-muted text-muted-foreground" },
