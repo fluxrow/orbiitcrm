@@ -194,6 +194,43 @@ export default function CampanhasPage() {
     }
   };
 
+  const handleApproveDispatch = async () => {
+    if (!approveDialog.id) return;
+    const campaignId = approveDialog.id;
+    try {
+      setActionLoading(campaignId);
+      const { data: { user } } = await supabase.auth.getUser();
+      // Aprovação sem forçar envio: mantém o status atual (agendada/em_revisao/rascunho)
+      // e apenas marca aprovacao_status='aprovada'. O scheduler faz o resto.
+      await updateCampaign.mutateAsync({
+        id: campaignId,
+        aprovacao_status: "aprovada",
+        aprovado_por: user?.id,
+        aprovado_em: new Date().toISOString(),
+      });
+      const { data: campaign } = await supabase
+        .from("orbit_campaigns")
+        .select("empresa_id")
+        .eq("id", campaignId)
+        .single();
+      if (campaign) {
+        await supabase.from("orbit_campaign_approvals").insert({
+          campaign_id: campaignId,
+          empresa_id: campaign.empresa_id,
+          acao: "aprovada_para_envio",
+          user_id: user?.id,
+        });
+      }
+      toast.success("Disparo aprovado. O scheduler cuidará do envio no próximo tick, se o envio real estiver liberado.");
+      setApproveDialog({ open: false, id: null });
+      refetch();
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao aprovar disparo");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteDialog.id) return;
     try {
@@ -205,6 +242,10 @@ export default function CampanhasPage() {
       toast.error(error.message);
     }
   };
+
+  const approveTarget = campaigns?.find((c) => c.id === approveDialog.id) || null;
+  const approveAgendaVencida = !!approveTarget?.agendada_para && isPast(new Date(approveTarget.agendada_para));
+
 
   return (
     <OrbitLayout>
