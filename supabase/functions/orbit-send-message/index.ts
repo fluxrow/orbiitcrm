@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, fromPlanCheck, ErrorCodes } from "../_shared/responses.ts";
 import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
 import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
+import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse(req);
