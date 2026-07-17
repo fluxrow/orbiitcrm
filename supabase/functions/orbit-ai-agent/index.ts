@@ -498,14 +498,18 @@ serve(async (req) => {
     });
   }
 
+  let conversaIdForCleanup: string | null = null;
+  let supabaseForCleanup: ReturnType<typeof createClient> | null = null;
   try {
     const { conversa_id, prospect_id, mensagem, telefone } = await req.json();
+    conversaIdForCleanup = conversa_id ?? null;
     console.log("[orbit-ai-agent] Processando:", { conversa_id, prospect_id, mensagem: mensagem?.substring(0, 50) });
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+    supabaseForCleanup = supabase;
 
     // ── LOCK: marcar conversa como em processamento ──
     await supabase
