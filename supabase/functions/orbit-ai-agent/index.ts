@@ -213,19 +213,19 @@ async function notifyCommercialHumanDetected(
     return (isPhone || isPlaceholder) ? (p?.nome_fantasia || "Não informado") : (nome || "Não informado");
   };
 
+  const motivo = (classification || "").toString();
+  const titulo =
+    motivo === "venda_fechada" ? "Venda confirmada"
+    : motivo === "agendar_call" ? "Call agendada"
+    : motivo === "falar_humano" ? "Lead pediu atendimento humano"
+    : "Novo sinal comercial";
+
   const notificacao = [
-    `🟢 *Novo sinal de interação humana detectado*`,
-    ``,
-    `👤 Prospect: ${getDisplayName(prospect)}`,
-    `📱 Telefone: ${telefone_lead || "Não informado"}`,
-    prospect?.nome_fantasia ? `🏢 Empresa: ${prospect.nome_fantasia}` : null,
-    `💬 Mensagem: "${mensagem?.substring(0, 200)}"`,
-    `🏷️ Classificação: ${classification}`,
-    `📊 Status: possível interesse inicial`,
-    `🕐 ${dataHora}`,
-    ``,
-    `👉 Conversa: ${waLink}`,
-  ].filter(Boolean).join("\n");
+    `${titulo} — ${getDisplayName(prospect)}`,
+    `Mensagem: "${(mensagem || "").substring(0, 200)}"`,
+    `Conversa: ${waLink}`,
+    `${dataHora}`,
+  ].join("\n");
 
   const vendedorPhone = vendedorWhatsapp.replace(/\D/g, "");
 
