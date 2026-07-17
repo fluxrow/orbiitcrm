@@ -157,7 +157,12 @@ serve(async (req) => {
         telefone: telefone || "EMPTY",
       }));
 
-      if (zapiConfig?.instance_id && zapiConfig?.token && telefone) {
+      const realSendBlock = getOrbitZapiRealSendBlockReason(zapiConfig);
+      if (realSendBlock) {
+        messageStatus = "falhou";
+        failReason = realSendBlock;
+        console.warn("[orbit-send-message] Envio real bloqueado:", { empresa_id: profile?.empresa_id, reason: realSendBlock });
+      } else if (zapiConfig?.instance_id && zapiConfig?.token && telefone) {
         try {
           const zapiBase = `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}`;
           const zapiHeaders = {
