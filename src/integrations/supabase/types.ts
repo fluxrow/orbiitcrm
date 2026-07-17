@@ -5127,6 +5127,21 @@ export type Database = {
         Args: { new_role_id: string; target_user_id: string }
         Returns: undefined
       }
+      pe_tenant_health_report: {
+        Args: never
+        Returns: {
+          distribuicao_ativos: number
+          empresa_id: string
+          empresa_nome: string
+          empresa_slug: string
+          prospects_sem_responsavel: number
+          prospects_total: number
+          vendedores_com_telefone: number
+          vendedores_total: number
+          zapi_configurado: boolean
+          zapi_envio_real_liberado: boolean
+        }[]
+      }
       pe_upsert_tenant_map: {
         Args: { p_empresa_id: string; p_organization_id: string }
         Returns: Json
