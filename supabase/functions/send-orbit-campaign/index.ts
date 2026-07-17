@@ -310,8 +310,26 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const { limit: effectiveDailyLimit, delayMultiplier } = getEffectiveLimit(sendingConfig);
-    const effectiveMinDelay = Math.round(sendingConfig.min_delay_ms * delayMultiplier);
-    const effectiveMaxDelay = Math.round(sendingConfig.max_delay_ms * delayMultiplier);
+    const {
+      minDelay: effectiveMinDelay,
+      maxDelay: effectiveMaxDelay,
+      perMinuteMinDelay,
+    } = getEffectiveDelayWindow(sendingConfig, delayMultiplier);
+
+    // ── Ritmo desativado: bloquear campanha WhatsApp antes de qualquer envio ──
+    if (campaign.canal === "whatsapp" && !sendingConfig.enabled) {
+      await supabase
+        .from("orbit_campaigns")
+        .update({ status: "pausada", motivo_reprovacao: "WHATSAPP_RHYTHM_DISABLED" })
+        .eq("id", campaign_id);
+      return fail(
+        ErrorCodes.VALIDATION_ERROR,
+        "Controle de ritmo do WhatsApp está desativado para esta empresa. Reative antes de enviar campanhas.",
+        409,
+        { blocked: true, reason: "WHATSAPP_RHYTHM_DISABLED" },
+        req,
+      );
+    }
 
     // ── Load/create daily usage ──
     let dailySentCount = 0;
