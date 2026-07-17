@@ -449,17 +449,20 @@ interface CampaignActionsProps {
   totalRecipients: number;
   pendingRecipients: number;
   hasTemplate: boolean;
+  aprovacaoStatus?: string | null;
+  canApproveDispatch?: boolean;
   onReview: (id: string) => void;
   onSend: (id: string) => void;
   onPause: (id: string) => void;
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
   onAnalytics: () => void;
+  onApproveDispatch?: (id: string) => void;
 }
 
 function CampaignActions({
   status, campaignId, campaignCanal, loading, totalRecipients, pendingRecipients,
-  hasTemplate, onReview, onSend, onPause, onCancel, onDelete, onAnalytics,
+  hasTemplate, aprovacaoStatus, canApproveDispatch, onReview, onSend, onPause, onCancel, onDelete, onAnalytics, onApproveDispatch,
 }: CampaignActionsProps) {
   const canReview = ["rascunho", "em_revisao"].includes(status) && hasTemplate && totalRecipients > 0;
   const canSend = status === "aprovada_para_envio" && pendingRecipients > 0;
@@ -468,6 +471,13 @@ function CampaignActions({
   const canCancel = !["concluida", "falha", "cancelada"].includes(status);
   const canDelete = status === "rascunho";
   const canAnalytics = ["enviando", "concluida", "falha", "pausada", "pausada_por_limite"].includes(status);
+  const canApprove =
+    !!canApproveDispatch &&
+    !!onApproveDispatch &&
+    ["rascunho", "em_revisao", "agendada", "pausada"].includes(status) &&
+    aprovacaoStatus !== "aprovada" &&
+    hasTemplate &&
+    totalRecipients > 0;
 
   return (
     <div className="border-t pt-4">
@@ -476,6 +486,19 @@ function CampaignActions({
           <Button size="sm" onClick={() => onReview(campaignId)} disabled={loading}>
             <Eye className="h-4 w-4 mr-2" />
             Revisar Campanha
+          </Button>
+        )}
+
+        {canApprove && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-emerald-500/50 text-emerald-500 hover:bg-emerald-500/10"
+            onClick={() => onApproveDispatch!(campaignId)}
+            disabled={loading}
+          >
+            <CheckCircle2 className="h-4 w-4 mr-2" />
+            Aprovar disparo
           </Button>
         )}
 
