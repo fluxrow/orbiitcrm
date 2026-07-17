@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
-import { getOrbitZapiRuntimeConfig } from "../_shared/orbit-zapi.ts";
+import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
 
 interface ApprovalRequest {
   campaign_id: string;
