@@ -574,6 +574,15 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
 
     // 6. If AI active and human_talk = false and incoming message, call AI agent
     if (!fromMe && !conversa.human_talk) {
+      // Safety-net: reclamar lock stale (>3min) — evita conversa travada por falha anterior
+      const staleThreshold = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+      await supabase
+        .from("orbit_conversas")
+        .update({ ai_processing: false })
+        .eq("id", conversa.id)
+        .eq("ai_processing", true)
+        .lt("updated_at", staleThreshold);
+
       // Atomic lock: só dispara AI se conseguir adquirir o lock
       const { data: lockResult } = await supabase
         .from("orbit_conversas")
