@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, fromPlanCheck, ErrorCodes } from "../_shared/responses.ts";
 import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
 import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
+import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse(req);
@@ -162,6 +163,17 @@ serve(async (req) => {
         messageStatus = "falhou";
         failReason = realSendBlock;
         console.warn("[orbit-send-message] Envio real bloqueado:", { empresa_id: profile?.empresa_id, reason: realSendBlock });
+        await auditZapiSendAttempt(supabase, {
+          empresa_id: conversaEmpresaId || profile?.empresa_id || null,
+          function_name: "orbit-send-message",
+          action: "conversa_send",
+          blocked: true,
+          block_reason: "ZAPI_REAL_SEND_BLOCKED",
+          zapi_config_id: zapiConfig?.id ?? null,
+          conversa_id,
+          created_by: userId,
+          payload_summary: { canal: canal || "whatsapp", tipo_midia: tipo_midia || "text", telefone },
+        });
       } else if (zapiConfig?.instance_id && zapiConfig?.token && telefone) {
         try {
           const zapiBase = `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}`;

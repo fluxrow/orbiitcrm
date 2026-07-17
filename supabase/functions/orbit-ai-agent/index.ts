@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
+import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 import { callAnthropic, toAnthropicMessages, ANTHROPIC_DEFAULT_MODEL } from "../_shared/anthropic.ts";
 
@@ -237,6 +238,15 @@ async function notifyCommercialHumanDetected(
   const notifyBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
   if (notifyBlockReason) {
     console.warn("[orbit-ai-agent] Notificação comercial bloqueada:", notifyBlockReason);
+    await auditZapiSendAttempt(supabase, {
+      empresa_id,
+      function_name: "orbit-ai-agent",
+      action: "notify_vendedor",
+      blocked: true,
+      block_reason: "ZAPI_REAL_SEND_BLOCKED",
+      zapi_config_id: zapiConfig?.id ?? null,
+      payload_summary: { telefone: vendedorPhone },
+    });
     return;
   }
 

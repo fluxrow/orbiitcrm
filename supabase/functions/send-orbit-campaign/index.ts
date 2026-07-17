@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, fromPlanCheck, ErrorCodes } from "../_shared/responses.ts";
 import { resolveCtaConfig, buildCtaButtonHtml, injectCta } from "../_shared/whatsapp-cta.ts";
 import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
+import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 
 interface CampaignRequest {
@@ -322,6 +323,15 @@ const handler = async (req: Request): Promise<Response> => {
         .from("orbit_campaigns")
         .update({ status: "pausada", motivo_reprovacao: "WHATSAPP_RHYTHM_DISABLED" })
         .eq("id", campaign_id);
+      await auditZapiSendAttempt(supabase, {
+        empresa_id: campaign.empresa_id,
+        function_name: "send-orbit-campaign",
+        action: "campaign_send",
+        blocked: true,
+        block_reason: "WHATSAPP_RHYTHM_DISABLED",
+        campaign_id,
+        payload_summary: { canal: campaign.canal, template_id: campaign.template_id ?? null },
+      });
       return fail(
         ErrorCodes.VALIDATION_ERROR,
         "Controle de ritmo do WhatsApp está desativado para esta empresa. Reative antes de enviar campanhas.",
@@ -395,6 +405,16 @@ const handler = async (req: Request): Promise<Response> => {
           .from("orbit_campaigns")
           .update({ status: "falha", motivo_reprovacao: "ZAPI_REAL_SEND_BLOCKED" })
           .eq("id", campaign_id);
+        await auditZapiSendAttempt(supabase, {
+          empresa_id: campaign.empresa_id,
+          function_name: "send-orbit-campaign",
+          action: "campaign_send",
+          blocked: true,
+          block_reason: "ZAPI_REAL_SEND_BLOCKED",
+          campaign_id,
+          zapi_config_id: zapiConfig?.id ?? null,
+          payload_summary: { canal: campaign.canal, template_id: campaign.template_id ?? null },
+        });
         return fail(
           ErrorCodes.PROVIDER_NOT_CONFIGURED,
           campaignBlockReason,
