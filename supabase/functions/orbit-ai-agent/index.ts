@@ -773,7 +773,7 @@ REGRA DE ATUALIZAÇÃO CADASTRAL: ${isStaleProspect && isReturningContact ? `Cad
 
 IMPORTANTE: Responda em JSON com esta estrutura:
 {
-  "intencao": "saudacao|orcamento|duvida|reclamacao|agradecimento|falar_humano|outro",
+  "intencao": "saudacao|orcamento|duvida|reclamacao|agradecimento|agendar_call|venda_fechada|falar_humano|outro",
   "mensagem": "sua resposta ao cliente em linguagem natural",
   "iniciar_coleta_orcamento": true|false,
   "dados_extraidos": { "nome_fantasia": "...", "cidade": "...", "email_principal": "...", "segmento": "...", "nome_contato": "...", "nome_razao": "..." },
@@ -781,6 +781,12 @@ IMPORTANTE: Responda em JSON com esta estrutura:
   "campo_solicitado": "nome_do_campo ou null",
   "cadastro_completo": true|false
 }
+
+Regras de "intencao":
+- "agendar_call": use APENAS quando o cliente confirmar explicitamente data/horário para uma call/reunião (ex.: "pode ser terça às 15h", "fechado, amanhã 10h").
+- "venda_fechada": use APENAS quando o cliente confirmar explicitamente a compra/contratação (ex.: "fechado, pode gerar o pedido", "quero fechar").
+- "falar_humano": use APENAS quando o cliente pedir para falar com uma pessoa/vendedor humano.
+- Nas demais situações (incluindo pedido de orçamento, dúvidas, respostas naturais, saudações), NUNCA use esses três valores — mantenha a qualificação normalmente.
 
 Inclua em "dados_adicionais" SOMENTE chaves listadas em PERGUNTAS DE QUALIFICAÇÃO DINÂMICAS, e apenas as que a mensagem do cliente realmente responde. Não invente valores.
 ${regrasBlock}`;
