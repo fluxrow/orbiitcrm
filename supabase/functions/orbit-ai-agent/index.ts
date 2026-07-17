@@ -368,6 +368,11 @@ async function sendWhatsAppAudio(
       console.log("[orbit-ai-agent] Z-API não configurado para envio de áudio de biblioteca");
       return;
     }
+    const audioBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
+    if (audioBlockReason) {
+      console.warn("[orbit-ai-agent] Áudio biblioteca bloqueado:", audioBlockReason);
+      return;
+    }
     // audioSource pode ser storage_path puro ou URL antiga; helper cobre ambos.
     const signedAudioUrl = await signOrbitMediaUrl(supabase, audioSource, 3600) || audioSource;
     const response = await fetch(
