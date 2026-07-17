@@ -197,7 +197,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // ── Authorize: caller must belong to campaign.empresa_id (or be super_admin) ──
-    if (campaign.empresa_id) {
+    if (campaign.empresa_id && !isSchedulerCall) {
       const { data: roleRows } = await supabase
         .from("user_roles")
         .select("role")
