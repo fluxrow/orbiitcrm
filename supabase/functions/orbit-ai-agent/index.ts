@@ -213,19 +213,19 @@ async function notifyCommercialHumanDetected(
     return (isPhone || isPlaceholder) ? (p?.nome_fantasia || "Não informado") : (nome || "Não informado");
   };
 
+  const motivo = (classification || "").toString();
+  const titulo =
+    motivo === "venda_fechada" ? "Venda confirmada"
+    : motivo === "agendar_call" ? "Call agendada"
+    : motivo === "falar_humano" ? "Lead pediu atendimento humano"
+    : "Novo sinal comercial";
+
   const notificacao = [
-    `🟢 *Novo sinal de interação humana detectado*`,
-    ``,
-    `👤 Prospect: ${getDisplayName(prospect)}`,
-    `📱 Telefone: ${telefone_lead || "Não informado"}`,
-    prospect?.nome_fantasia ? `🏢 Empresa: ${prospect.nome_fantasia}` : null,
-    `💬 Mensagem: "${mensagem?.substring(0, 200)}"`,
-    `🏷️ Classificação: ${classification}`,
-    `📊 Status: possível interesse inicial`,
-    `🕐 ${dataHora}`,
-    ``,
-    `👉 Conversa: ${waLink}`,
-  ].filter(Boolean).join("\n");
+    `${titulo} — ${getDisplayName(prospect)}`,
+    `Mensagem: "${(mensagem || "").substring(0, 200)}"`,
+    `Conversa: ${waLink}`,
+    `${dataHora}`,
+  ].join("\n");
 
   const vendedorPhone = vendedorWhatsapp.replace(/\D/g, "");
 
@@ -773,7 +773,7 @@ REGRA DE ATUALIZAÇÃO CADASTRAL: ${isStaleProspect && isReturningContact ? `Cad
 
 IMPORTANTE: Responda em JSON com esta estrutura:
 {
-  "intencao": "saudacao|orcamento|duvida|reclamacao|agradecimento|falar_humano|outro",
+  "intencao": "saudacao|orcamento|duvida|reclamacao|agradecimento|agendar_call|venda_fechada|falar_humano|outro",
   "mensagem": "sua resposta ao cliente em linguagem natural",
   "iniciar_coleta_orcamento": true|false,
   "dados_extraidos": { "nome_fantasia": "...", "cidade": "...", "email_principal": "...", "segmento": "...", "nome_contato": "...", "nome_razao": "..." },
@@ -781,6 +781,12 @@ IMPORTANTE: Responda em JSON com esta estrutura:
   "campo_solicitado": "nome_do_campo ou null",
   "cadastro_completo": true|false
 }
+
+Regras de "intencao":
+- "agendar_call": use APENAS quando o cliente confirmar explicitamente data/horário para uma call/reunião (ex.: "pode ser terça às 15h", "fechado, amanhã 10h").
+- "venda_fechada": use APENAS quando o cliente confirmar explicitamente a compra/contratação (ex.: "fechado, pode gerar o pedido", "quero fechar").
+- "falar_humano": use APENAS quando o cliente pedir para falar com uma pessoa/vendedor humano.
+- Nas demais situações (incluindo pedido de orçamento, dúvidas, respostas naturais, saudações), NUNCA use esses três valores — mantenha a qualificação normalmente.
 
 Inclua em "dados_adicionais" SOMENTE chaves listadas em PERGUNTAS DE QUALIFICAÇÃO DINÂMICAS, e apenas as que a mensagem do cliente realmente responde. Não invente valores.
 ${regrasBlock}`;
@@ -838,28 +844,36 @@ ${regrasBlock}`;
       : {};
 
     // ── Calcular próximo estado da conversa ──
-    const isHandoff = parsed.cadastro_completo === true || parsed.intencao === "falar_humano";
+    // Handoff APENAS quando há sinal comercial real: agendamento de call, venda ou pedido explícito de humano.
+    const intencaoNormalizada = String(parsed.intencao || "outro");
+    const isCommercialSignal =
+      intencaoNormalizada === "agendar_call" ||
+      intencaoNormalizada === "venda_fechada" ||
+      intencaoNormalizada === "falar_humano";
+    const isHandoff = isCommercialSignal;
     const nextState = computeNextState(
       leadContext.conversation.state,
-      parsed.intencao || "outro",
+      intencaoNormalizada,
       parsed.cadastro_completo || false,
       false, // handoff será determinado abaixo
       msgClassification
     );
 
-    // ── Notificação comercial no primeiro sinal humano ──
+    // ── Notificação comercial: SOMENTE em sinal comercial real ──
+    // Não notificar em "primeiro sinal humano" (saudação, resposta natural, pedido de orçamento).
     const alreadyNotified = aiContexto.commercial_notified === true;
-    if (msgClassification === "human_probable" && !alreadyNotified) {
-      console.log("[orbit-ai-agent] Primeiro sinal humano detectado, notificando comercial...");
+    if (isCommercialSignal && !alreadyNotified) {
+      console.log("[orbit-ai-agent] Sinal comercial detectado:", intencaoNormalizada, "— notificando responsável...");
       await notifyCommercialHumanDetected(supabase, {
         prospect,
         telefone_lead: telefone,
         mensagem: mensagemAgregada,
-        classification: msgClassification,
+        classification: intencaoNormalizada,
         empresa_id: empresaId || null,
         isDemo,
       });
     }
+
 
     // Atualizar contexto da conversa com estado e classificação
     const novoContexto = {
@@ -874,7 +888,7 @@ ${regrasBlock}`;
       message_classification: msgClassification,
       human_detected: aiContexto.human_detected || msgClassification === "human_probable",
       auto_reply_detected: aiContexto.auto_reply_detected || msgClassification === "auto_reply",
-      commercial_notified: alreadyNotified || msgClassification === "human_probable",
+      commercial_notified: alreadyNotified || isCommercialSignal,
       first_human_response_at: (!aiContexto.first_human_response_at && msgClassification === "human_probable")
         ? new Date().toISOString()
         : aiContexto.first_human_response_at || null,
