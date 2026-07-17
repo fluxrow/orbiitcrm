@@ -107,6 +107,66 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── Auto-resume: campanhas 'enviando' órfãs (função caiu por timeout) ──
+    // Critério: status='enviando', com destinatários pendentes, e sem atividade
+    // (nenhum envio nos últimos 90s). Reinvoca send-orbit-campaign para retomar.
+    let resumed = 0;
+    try {
+      const staleCutoffIso = new Date(Date.now() - 90_000).toISOString();
+      const { data: enviando } = await supabase
+        .from("orbit_campaigns")
+        .select("id, empresa_id, canal")
+        .eq("status", "enviando")
+        .limit(20);
+
+      for (const c of (enviando ?? [])) {
+        // Tem pendentes?
+        const { count: pending } = await supabase
+          .from("orbit_campaign_recipients")
+          .select("*", { count: "exact", head: true })
+          .eq("campaign_id", c.id)
+          .eq("status", "pendente");
+        if (!pending || pending === 0) continue;
+
+        // Último envio recente? Se sim, ainda está rodando — pular.
+        const { data: lastSent } = await supabase
+          .from("orbit_campaign_recipients")
+          .select("enviado_em")
+          .eq("campaign_id", c.id)
+          .eq("status", "enviado")
+          .order("enviado_em", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (lastSent?.enviado_em && lastSent.enviado_em > staleCutoffIso) continue;
+
+        try {
+          const resp = await fetch(`${FUNCTIONS_BASE}/send-orbit-campaign`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${SERVICE_KEY}`,
+              "x-campaign-scheduler-token": CRON_TOKEN,
+            },
+            body: JSON.stringify({ campaign_id: c.id }),
+          });
+          const json = await resp.json().catch(() => ({}));
+          const okResp = resp.ok && (json?.ok === true);
+          if (okResp) resumed++;
+          else errors++;
+          results.push({ id: c.id, resumed: okResp, http: resp.status, pending });
+          console.log(JSON.stringify({
+            scope: "campaign_scheduler_resume", tick_id: tickId, campaign_id: c.id,
+            empresa_id: c.empresa_id, ok: okResp, http: resp.status, pending,
+          }));
+        } catch (e: any) {
+          errors++;
+          results.push({ id: c.id, resumed: false, error: String(e?.message ?? e).slice(0, 300) });
+        }
+      }
+    } catch (e: any) {
+      console.error("auto_resume_error", e?.message ?? e);
+    }
+
     const summary = { tick_id: tickId, claimed, dispatched, errors, duration_ms: Date.now() - t0 };
     console.log(JSON.stringify({ scope: "campaign_scheduler_tick_summary", ...summary }));
     return new Response(JSON.stringify({ ok: true, data: { ...summary, results } }), {
