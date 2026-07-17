@@ -13,9 +13,11 @@ import { Plus, MessageSquare, Mail, Loader2, Play, Pause, X, Send, Trash2, Info,
 import { useOrbitCampaigns, useUpdateCampaign, useDeleteCampaign } from "@/hooks/useOrbitCampaigns";
 import { supabase } from "@/integrations/supabase/client";
 import { handleApiResponse } from "@/lib/api-envelope";
-import { format } from "date-fns";
+import { format, isPast } from "date-fns";
 import { toast } from "sonner";
 import { orbitCampaignKeys } from "@/lib/query-keys";
+import { usePeAuth } from "@/hooks/usePeAuth";
+import { CheckCircle2 } from "lucide-react";
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   rascunho: { label: "Rascunho", className: "bg-muted text-muted-foreground" },
@@ -36,8 +38,10 @@ export default function CampanhasPage() {
   const [canalFilter, setCanalFilter] = useState("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+  const [approveDialog, setApproveDialog] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [reviewCampaignId, setReviewCampaignId] = useState<string | null>(null);
   const [analyticsCampaign, setAnalyticsCampaign] = useState<{ id: string; nome: string } | null>(null);
+  const { isSuperAdmin } = usePeAuth();
 
   const { data: campaigns, isLoading, refetch } = useOrbitCampaigns({ status: statusFilter, canal: canalFilter });
   const updateCampaign = useUpdateCampaign();
@@ -190,6 +194,43 @@ export default function CampanhasPage() {
     }
   };
 
+  const handleApproveDispatch = async () => {
+    if (!approveDialog.id) return;
+    const campaignId = approveDialog.id;
+    try {
+      setActionLoading(campaignId);
+      const { data: { user } } = await supabase.auth.getUser();
+      // Aprovação sem forçar envio: mantém o status atual (agendada/em_revisao/rascunho)
+      // e apenas marca aprovacao_status='aprovada'. O scheduler faz o resto.
+      await updateCampaign.mutateAsync({
+        id: campaignId,
+        aprovacao_status: "aprovada",
+        aprovado_por: user?.id,
+        aprovado_em: new Date().toISOString(),
+      });
+      const { data: campaign } = await supabase
+        .from("orbit_campaigns")
+        .select("empresa_id")
+        .eq("id", campaignId)
+        .single();
+      if (campaign) {
+        await supabase.from("orbit_campaign_approvals").insert({
+          campaign_id: campaignId,
+          empresa_id: campaign.empresa_id,
+          acao: "aprovada_para_envio",
+          user_id: user?.id,
+        });
+      }
+      toast.success("Disparo aprovado. O scheduler cuidará do envio no próximo tick, se o envio real estiver liberado.");
+      setApproveDialog({ open: false, id: null });
+      refetch();
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao aprovar disparo");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteDialog.id) return;
     try {
@@ -201,6 +242,10 @@ export default function CampanhasPage() {
       toast.error(error.message);
     }
   };
+
+  const approveTarget = campaigns?.find((c) => c.id === approveDialog.id) || null;
+  const approveAgendaVencida = !!approveTarget?.agendada_para && isPast(new Date(approveTarget.agendada_para));
+
 
   return (
     <OrbitLayout>
@@ -331,12 +376,15 @@ export default function CampanhasPage() {
                   totalRecipients={totalRecipients}
                   pendingRecipients={pendingRecipients}
                   hasTemplate={hasTemplate}
+                  aprovacaoStatus={c.aprovacao_status}
+                  canApproveDispatch={isSuperAdmin}
                   onReview={handleReview}
                   onSend={handleSend}
                   onPause={handlePause}
                   onCancel={handleCancel}
                   onDelete={(id) => setDeleteDialog({ open: true, id })}
                   onAnalytics={() => setAnalyticsCampaign({ id: c.id, nome: c.nome })}
+                  onApproveDispatch={(id) => setApproveDialog({ open: true, id })}
                 />
               </div>
             );
@@ -387,6 +435,41 @@ export default function CampanhasPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog
+        open={approveDialog.open}
+        onOpenChange={(open) => setApproveDialog({ open, id: open ? approveDialog.id : null })}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Aprovar disparo da campanha</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm">
+                <p>
+                  Esta ação apenas <strong>aprova</strong> o disparo e registra o histórico.
+                  Nenhuma mensagem é enviada agora — o scheduler cuidará do envio quando
+                  o horário chegar e o envio real Z-API estiver liberado.
+                </p>
+                {approveAgendaVencida && (
+                  <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-amber-600 dark:text-amber-400">
+                    ⚠️ Se a campanha estiver agendada para horário vencido, o scheduler
+                    poderá iniciar no próximo tick quando o envio real estiver liberado.
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleApproveDispatch}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              Aprovar disparo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </OrbitLayout>
   );
 }
@@ -401,17 +484,20 @@ interface CampaignActionsProps {
   totalRecipients: number;
   pendingRecipients: number;
   hasTemplate: boolean;
+  aprovacaoStatus?: string | null;
+  canApproveDispatch?: boolean;
   onReview: (id: string) => void;
   onSend: (id: string) => void;
   onPause: (id: string) => void;
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
   onAnalytics: () => void;
+  onApproveDispatch?: (id: string) => void;
 }
 
 function CampaignActions({
   status, campaignId, campaignCanal, loading, totalRecipients, pendingRecipients,
-  hasTemplate, onReview, onSend, onPause, onCancel, onDelete, onAnalytics,
+  hasTemplate, aprovacaoStatus, canApproveDispatch, onReview, onSend, onPause, onCancel, onDelete, onAnalytics, onApproveDispatch,
 }: CampaignActionsProps) {
   const canReview = ["rascunho", "em_revisao"].includes(status) && hasTemplate && totalRecipients > 0;
   const canSend = status === "aprovada_para_envio" && pendingRecipients > 0;
@@ -420,6 +506,13 @@ function CampaignActions({
   const canCancel = !["concluida", "falha", "cancelada"].includes(status);
   const canDelete = status === "rascunho";
   const canAnalytics = ["enviando", "concluida", "falha", "pausada", "pausada_por_limite"].includes(status);
+  const canApprove =
+    !!canApproveDispatch &&
+    !!onApproveDispatch &&
+    ["rascunho", "em_revisao", "agendada", "pausada"].includes(status) &&
+    aprovacaoStatus !== "aprovada" &&
+    hasTemplate &&
+    totalRecipients > 0;
 
   return (
     <div className="border-t pt-4">
@@ -428,6 +521,19 @@ function CampaignActions({
           <Button size="sm" onClick={() => onReview(campaignId)} disabled={loading}>
             <Eye className="h-4 w-4 mr-2" />
             Revisar Campanha
+          </Button>
+        )}
+
+        {canApprove && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-emerald-500/50 text-emerald-500 hover:bg-emerald-500/10"
+            onClick={() => onApproveDispatch!(campaignId)}
+            disabled={loading}
+          >
+            <CheckCircle2 className="h-4 w-4 mr-2" />
+            Aprovar disparo
           </Button>
         )}
 
