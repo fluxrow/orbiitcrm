@@ -3885,6 +3885,65 @@ export type Database = {
           },
         ]
       }
+      orbit_zapi_send_audit: {
+        Row: {
+          action: string
+          block_reason: string | null
+          blocked: boolean
+          campaign_id: string | null
+          conversa_id: string | null
+          created_at: string
+          created_by: string | null
+          empresa_id: string | null
+          function_name: string
+          id: string
+          mensagem_id: string | null
+          payload_summary: Json
+          prospect_id: string | null
+          zapi_config_id: string | null
+        }
+        Insert: {
+          action: string
+          block_reason?: string | null
+          blocked?: boolean
+          campaign_id?: string | null
+          conversa_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          empresa_id?: string | null
+          function_name: string
+          id?: string
+          mensagem_id?: string | null
+          payload_summary?: Json
+          prospect_id?: string | null
+          zapi_config_id?: string | null
+        }
+        Update: {
+          action?: string
+          block_reason?: string | null
+          blocked?: boolean
+          campaign_id?: string | null
+          conversa_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          empresa_id?: string | null
+          function_name?: string
+          id?: string
+          mensagem_id?: string | null
+          payload_summary?: Json
+          prospect_id?: string | null
+          zapi_config_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_zapi_send_audit_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations: {
         Row: {
           cnpj: string | null
