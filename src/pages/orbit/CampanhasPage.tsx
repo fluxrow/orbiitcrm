@@ -38,8 +38,10 @@ export default function CampanhasPage() {
   const [canalFilter, setCanalFilter] = useState("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+  const [approveDialog, setApproveDialog] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [reviewCampaignId, setReviewCampaignId] = useState<string | null>(null);
   const [analyticsCampaign, setAnalyticsCampaign] = useState<{ id: string; nome: string } | null>(null);
+  const { isSuperAdmin } = usePeAuth();
 
   const { data: campaigns, isLoading, refetch } = useOrbitCampaigns({ status: statusFilter, canal: canalFilter });
   const updateCampaign = useUpdateCampaign();
