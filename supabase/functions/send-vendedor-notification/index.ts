@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
 import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
+import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 
 interface NotificationRequest {
   prospect_id: string;
@@ -84,6 +85,17 @@ const handler = async (req: Request): Promise<Response> => {
     const vendedorBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
     if (vendedorBlockReason) {
       console.warn("[send-vendedor-notification] Envio real bloqueado:", { empresa_id, reason: vendedorBlockReason });
+      await auditZapiSendAttempt(supabase, {
+        empresa_id,
+        function_name: "send-vendedor-notification",
+        action: "vendedor_notify",
+        blocked: true,
+        block_reason: "ZAPI_REAL_SEND_BLOCKED",
+        zapi_config_id: zapiConfig?.id ?? null,
+        prospect_id,
+        created_by: callerUserId,
+        payload_summary: { tipo, telefone: vendedor.telefone },
+      });
       return fail(ErrorCodes.PROVIDER_NOT_CONFIGURED, vendedorBlockReason, 403, { code: "ZAPI_REAL_SEND_BLOCKED" });
     }
 
