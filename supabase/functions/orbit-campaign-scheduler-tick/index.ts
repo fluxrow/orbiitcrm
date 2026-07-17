@@ -1,0 +1,123 @@
+// orbit-campaign-scheduler-tick
+// Cron worker que dispara campanhas agendadas.
+// Autenticado exclusivamente pelo CAMPAIGN_SCHEDULER_CRON_TOKEN.
+// Delega o envio para send-orbit-campaign em modo interno (header x-campaign-scheduler-token).
+
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const CRON_TOKEN = Deno.env.get("CAMPAIGN_SCHEDULER_CRON_TOKEN") ?? "";
+const FUNCTIONS_BASE = `${SUPABASE_URL}/functions/v1`;
+
+const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
+  auth: { autoRefreshToken: false, persistSession: false },
+});
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (!CRON_TOKEN || token !== CRON_TOKEN) {
+    return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const tickId = crypto.randomUUID();
+  const t0 = Date.now();
+  const results: any[] = [];
+  let claimed = 0, dispatched = 0, errors = 0;
+
+  try {
+    let body: any = {};
+    try { body = await req.json(); } catch { /* empty */ }
+    const batch = Math.max(1, Math.min(50, Number(body?.batch ?? 10)));
+
+    const nowIso = new Date().toISOString();
+
+    const { data: candidates, error: qErr } = await supabase
+      .from("orbit_campaigns")
+      .select("id, empresa_id, canal, agendada_para, status, aprovacao_status")
+      .eq("status", "agendada")
+      .eq("aprovacao_status", "aprovada")
+      .lte("agendada_para", nowIso)
+      .order("agendada_para", { ascending: true })
+      .limit(batch);
+
+    if (qErr) throw new Error(qErr.message);
+
+    for (const c of (candidates ?? [])) {
+      // Claim idempotente: UPDATE ... WHERE id=? AND status='agendada' RETURNING id
+      const { data: claimed_row, error: claimErr } = await supabase
+        .from("orbit_campaigns")
+        .update({ status: "aprovada_para_envio" })
+        .eq("id", c.id)
+        .eq("status", "agendada")
+        .select("id")
+        .maybeSingle();
+
+      if (claimErr) {
+        errors++;
+        results.push({ id: c.id, ok: false, error: `claim: ${claimErr.message}` });
+        continue;
+      }
+      if (!claimed_row) {
+        // Outro tick já pegou.
+        continue;
+      }
+      claimed++;
+
+      try {
+        const resp = await fetch(`${FUNCTIONS_BASE}/send-orbit-campaign`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${SERVICE_KEY}`,
+            "x-campaign-scheduler-token": CRON_TOKEN,
+          },
+          body: JSON.stringify({ campaign_id: c.id }),
+        });
+        const json = await resp.json().catch(() => ({}));
+        const ok = resp.ok && (json?.ok === true);
+        if (ok) dispatched++;
+        else errors++;
+        results.push({ id: c.id, ok, http: resp.status, error: json?.error ?? null });
+        console.log(JSON.stringify({
+          scope: "campaign_scheduler_tick", tick_id: tickId, campaign_id: c.id,
+          empresa_id: c.empresa_id, canal: c.canal, ok, http: resp.status,
+        }));
+      } catch (e: any) {
+        errors++;
+        const msg = String(e?.message ?? e).slice(0, 500);
+        results.push({ id: c.id, ok: false, error: msg });
+        // Volta para 'agendada' para nova tentativa no próximo tick.
+        await supabase
+          .from("orbit_campaigns")
+          .update({ status: "agendada" })
+          .eq("id", c.id)
+          .eq("status", "aprovada_para_envio");
+      }
+    }
+
+    const summary = { tick_id: tickId, claimed, dispatched, errors, duration_ms: Date.now() - t0 };
+    console.log(JSON.stringify({ scope: "campaign_scheduler_tick_summary", ...summary }));
+    return new Response(JSON.stringify({ ok: true, data: { ...summary, results } }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (e: any) {
+    console.error("campaign-scheduler-tick fatal", e);
+    return new Response(JSON.stringify({ ok: false, error: String(e?.message ?? e), tick_id: tickId }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});

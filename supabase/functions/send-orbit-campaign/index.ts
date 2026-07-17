@@ -127,6 +127,16 @@ function randomDelay(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1) + min);
 }
 
+function getEffectiveDelayWindow(config: SendingConfig, delayMultiplier: number) {
+  const warmupMinDelay = Math.round(config.min_delay_ms * delayMultiplier);
+  const warmupMaxDelay = Math.round(config.max_delay_ms * delayMultiplier);
+  const maxPerMinute = Math.max(1, config.max_per_minute || DEFAULT_CONFIG.max_per_minute);
+  const perMinuteMinDelay = Math.ceil(60_000 / maxPerMinute);
+  const minDelay = Math.max(warmupMinDelay, perMinuteMinDelay);
+  const maxDelay = Math.max(warmupMaxDelay, minDelay);
+  return { minDelay, maxDelay, perMinuteMinDelay };
+}
+
 function toTitleCase(str: string): string {
   if (!str) return "";
   const lower = ["de", "da", "do", "das", "dos", "e", "em", "na", "no", "nas", "nos", "a", "o", "as", "os", "com", "para", "por"];
@@ -148,20 +158,27 @@ const handler = async (req: Request): Promise<Response> => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // ── JWT auth ──
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return fail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401, undefined, req);
+    // ── Auth: JWT (usuário) OU token interno de scheduler ──
+    const schedulerToken = Deno.env.get("CAMPAIGN_SCHEDULER_CRON_TOKEN") ?? "";
+    const schedulerHeader = req.headers.get("x-campaign-scheduler-token") ?? "";
+    const isSchedulerCall = !!schedulerToken && schedulerHeader === schedulerToken;
+
+    let callerUserId = "";
+    if (!isSchedulerCall) {
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader?.startsWith("Bearer ")) {
+        return fail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401, undefined, req);
+      }
+      const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const token = authHeader.replace("Bearer ", "");
+      const { data: claimsRes, error: claimsErr } = await userClient.auth.getClaims(token);
+      if (claimsErr || !claimsRes?.claims) {
+        return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401, undefined, req);
+      }
+      callerUserId = claimsRes.claims.sub as string;
     }
-    const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsRes, error: claimsErr } = await userClient.auth.getClaims(token);
-    if (claimsErr || !claimsRes?.claims) {
-      return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401, undefined, req);
-    }
-    const callerUserId = claimsRes.claims.sub as string;
 
     const { campaign_id }: CampaignRequest = await req.json();
 
@@ -180,7 +197,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // ── Authorize: caller must belong to campaign.empresa_id (or be super_admin) ──
-    if (campaign.empresa_id) {
+    if (campaign.empresa_id && !isSchedulerCall) {
       const { data: roleRows } = await supabase
         .from("user_roles")
         .select("role")
@@ -293,8 +310,26 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const { limit: effectiveDailyLimit, delayMultiplier } = getEffectiveLimit(sendingConfig);
-    const effectiveMinDelay = Math.round(sendingConfig.min_delay_ms * delayMultiplier);
-    const effectiveMaxDelay = Math.round(sendingConfig.max_delay_ms * delayMultiplier);
+    const {
+      minDelay: effectiveMinDelay,
+      maxDelay: effectiveMaxDelay,
+      perMinuteMinDelay,
+    } = getEffectiveDelayWindow(sendingConfig, delayMultiplier);
+
+    // ── Ritmo desativado: bloquear campanha WhatsApp antes de qualquer envio ──
+    if (campaign.canal === "whatsapp" && !sendingConfig.enabled) {
+      await supabase
+        .from("orbit_campaigns")
+        .update({ status: "pausada", motivo_reprovacao: "WHATSAPP_RHYTHM_DISABLED" })
+        .eq("id", campaign_id);
+      return fail(
+        ErrorCodes.VALIDATION_ERROR,
+        "Controle de ritmo do WhatsApp está desativado para esta empresa. Reative antes de enviar campanhas.",
+        409,
+        { blocked: true, reason: "WHATSAPP_RHYTHM_DISABLED" },
+        req,
+      );
+    }
 
     // ── Load/create daily usage ──
     let dailySentCount = 0;
@@ -853,6 +888,15 @@ const handler = async (req: Request): Promise<Response> => {
         falhas,
         pausada_por_limite,
         remaining_pending: remainingPending || 0,
+        rate_limit: campaign.canal === "whatsapp" ? {
+          daily_limit: effectiveDailyLimit,
+          daily_sent_count: dailySentCount,
+          max_per_minute: sendingConfig.max_per_minute,
+          min_delay_ms: effectiveMinDelay,
+          max_delay_ms: effectiveMaxDelay,
+          per_minute_min_delay_ms: perMinuteMinDelay,
+          warmup_enabled: sendingConfig.warmup_enabled,
+        } : null,
       },
       { simulated: isDemo },
       req
