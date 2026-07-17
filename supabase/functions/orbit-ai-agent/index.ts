@@ -888,7 +888,7 @@ ${regrasBlock}`;
       message_classification: msgClassification,
       human_detected: aiContexto.human_detected || msgClassification === "human_probable",
       auto_reply_detected: aiContexto.auto_reply_detected || msgClassification === "auto_reply",
-      commercial_notified: alreadyNotified || msgClassification === "human_probable",
+      commercial_notified: alreadyNotified || isCommercialSignal,
       first_human_response_at: (!aiContexto.first_human_response_at && msgClassification === "human_probable")
         ? new Date().toISOString()
         : aiContexto.first_human_response_at || null,
