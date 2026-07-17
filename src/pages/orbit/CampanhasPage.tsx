@@ -376,12 +376,15 @@ export default function CampanhasPage() {
                   totalRecipients={totalRecipients}
                   pendingRecipients={pendingRecipients}
                   hasTemplate={hasTemplate}
+                  aprovacaoStatus={c.aprovacao_status}
+                  canApproveDispatch={isSuperAdmin}
                   onReview={handleReview}
                   onSend={handleSend}
                   onPause={handlePause}
                   onCancel={handleCancel}
                   onDelete={(id) => setDeleteDialog({ open: true, id })}
                   onAnalytics={() => setAnalyticsCampaign({ id: c.id, nome: c.nome })}
+                  onApproveDispatch={(id) => setApproveDialog({ open: true, id })}
                 />
               </div>
             );
