@@ -1103,31 +1103,40 @@ ${regrasBlock}`;
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
     } finally {
-      // ── UNLOCK: sempre resetar ai_processing ──
-      await supabase
-        .from("orbit_conversas")
-        .update({ ai_processing: false })
-        .eq("id", conversa_id);
-      console.log("[orbit-ai-agent] Lock liberado para conversa:", conversa_id);
+      // ── UNLOCK: sempre resetar ai_processing (best effort) ──
+      try {
+        await supabase
+          .from("orbit_conversas")
+          .update({ ai_processing: false })
+          .eq("id", conversa_id);
+        console.log("[orbit-ai-agent] Lock liberado para conversa:", conversa_id);
+      } catch (unlockErr) {
+        console.error("[orbit-ai-agent] Falha ao liberar lock no finally:", unlockErr);
+      }
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[orbit-ai-agent] Erro:", message);
-    try {
-      const supabaseCleanup = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-      );
-      const body = await req.clone().json().catch(() => ({}));
-      if (body.conversa_id) {
-        await supabaseCleanup.from("orbit_conversas").update({ ai_processing: false }).eq("id", body.conversa_id);
+    // Cleanup usando conversa_id já capturado no escopo externo (req.json foi consumido)
+    if (conversaIdForCleanup) {
+      try {
+        const cleanupClient = supabaseForCleanup ?? createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+        );
+        await cleanupClient
+          .from("orbit_conversas")
+          .update({ ai_processing: false })
+          .eq("id", conversaIdForCleanup);
+        console.log("[orbit-ai-agent] Lock liberado no catch para:", conversaIdForCleanup);
+      } catch (cleanupErr) {
+        console.error("[orbit-ai-agent] Falha no cleanup do lock:", cleanupErr);
       }
-    } catch (_) { /* best effort */ }
+    }
     return new Response(JSON.stringify({ error: "internal_error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-
   }
 });
 
