@@ -234,6 +234,11 @@ async function notifyCommercialHumanDetected(
   }
 
   const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresa_id);
+  const notifyBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
+  if (notifyBlockReason) {
+    console.warn("[orbit-ai-agent] Notificação comercial bloqueada:", notifyBlockReason);
+    return;
+  }
 
   if (zapiConfig?.instance_id && zapiConfig?.token) {
     const response = await fetch(
