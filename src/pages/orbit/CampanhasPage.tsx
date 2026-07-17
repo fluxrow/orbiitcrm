@@ -435,6 +435,41 @@ export default function CampanhasPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog
+        open={approveDialog.open}
+        onOpenChange={(open) => setApproveDialog({ open, id: open ? approveDialog.id : null })}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Aprovar disparo da campanha</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm">
+                <p>
+                  Esta ação apenas <strong>aprova</strong> o disparo e registra o histórico.
+                  Nenhuma mensagem é enviada agora — o scheduler cuidará do envio quando
+                  o horário chegar e o envio real Z-API estiver liberado.
+                </p>
+                {approveAgendaVencida && (
+                  <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-amber-600 dark:text-amber-400">
+                    ⚠️ Se a campanha estiver agendada para horário vencido, o scheduler
+                    poderá iniciar no próximo tick quando o envio real estiver liberado.
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleApproveDispatch}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              Aprovar disparo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </OrbitLayout>
   );
 }
