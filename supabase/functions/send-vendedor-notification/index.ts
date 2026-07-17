@@ -81,6 +81,12 @@ const handler = async (req: Request): Promise<Response> => {
       (prospect.segmento ? `🏷️ *Segmento:* ${prospect.segmento}\n` : "") +
       `\nAcesse o Orbit CRM para mais detalhes.`;
 
+    const vendedorBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
+    if (vendedorBlockReason) {
+      console.warn("[send-vendedor-notification] Envio real bloqueado:", { empresa_id, reason: vendedorBlockReason });
+      return fail(ErrorCodes.PROVIDER_NOT_CONFIGURED, vendedorBlockReason, 403, { code: "ZAPI_REAL_SEND_BLOCKED" });
+    }
+
     const phone = vendedor.telefone.replace(/\D/g, "");
     const zapiRes = await fetch(
       `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-text`,
