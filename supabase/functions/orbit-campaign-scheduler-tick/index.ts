@@ -167,7 +167,7 @@ Deno.serve(async (req) => {
       console.error("auto_resume_error", e?.message ?? e);
     }
 
-    const summary = { tick_id: tickId, claimed, dispatched, errors, duration_ms: Date.now() - t0 };
+    const summary = { tick_id: tickId, claimed, dispatched, resumed, errors, duration_ms: Date.now() - t0 };
     console.log(JSON.stringify({ scope: "campaign_scheduler_tick_summary", ...summary }));
     return new Response(JSON.stringify({ ok: true, data: { ...summary, results } }), {
       status: 200,
