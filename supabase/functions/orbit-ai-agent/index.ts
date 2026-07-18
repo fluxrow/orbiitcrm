@@ -853,7 +853,7 @@ ${regrasBlock}`;
       parsed = { mensagem: content };
     }
 
-    const resposta = parsed.mensagem || content;
+    let resposta = parsed.mensagem || content;
     console.log("[orbit-ai-agent] Resposta gerada:", resposta.substring(0, 100));
 
     // ── Validar dados extraídos antes de salvar ──
