@@ -5,6 +5,12 @@ import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_
 import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 import { callAnthropic, toAnthropicMessages, ANTHROPIC_DEFAULT_MODEL } from "../_shared/anthropic.ts";
+import {
+  getTokenForEmpresa,
+  ensureFreshAccessToken,
+  checkAvailability,
+  createCalendarEvent,
+} from "../_shared/google-calendar.ts";
 
 // ── Estado da conversa (máquina de estados) ──
 type ConversationState = "novo" | "aguardando_resposta" | "auto_reply_detected" | "human_detected" | "qualificando" | "qualificado" | "handoff" | "encerrado";
@@ -779,16 +785,28 @@ IMPORTANTE: Responda em JSON com esta estrutura:
   "dados_extraidos": { "nome_fantasia": "...", "cidade": "...", "email_principal": "...", "segmento": "...", "nome_contato": "...", "nome_razao": "..." },
   "dados_adicionais": { ${camposQualificacao.map(c => `"${c.key}": "..."`).join(", ")} },
   "campo_solicitado": "nome_do_campo ou null",
-  "cadastro_completo": true|false
+  "cadastro_completo": true|false,
+  "agendamento": { "data_iso": "ISO-8601 com timezone ou null", "tem_horario": true|false, "duracao_min": 60, "titulo": "Call com ..." }
 }
 
 Regras de "intencao":
-- "agendar_call": use APENAS quando o cliente confirmar explicitamente data/horário para uma call/reunião (ex.: "pode ser terça às 15h", "fechado, amanhã 10h").
+- "agendar_call": use quando o cliente demonstrar intenção de marcar uma call/reunião/agendamento/diagnóstico, mesmo que só mencione o dia (ex.: "podemos agendar quinta-feira", "quero uma call amanhã", "pode ser terça às 15h").
 - "venda_fechada": use APENAS quando o cliente confirmar explicitamente a compra/contratação (ex.: "fechado, pode gerar o pedido", "quero fechar").
 - "falar_humano": use APENAS quando o cliente pedir para falar com uma pessoa/vendedor humano.
 - Nas demais situações (incluindo pedido de orçamento, dúvidas, respostas naturais, saudações), NUNCA use esses três valores — mantenha a qualificação normalmente.
 
+Regras de "agendamento":
+- Preencha SEMPRE que "intencao" for "agendar_call".
+- Se o cliente informou dia + horário: data_iso = ISO completo com timezone (ex.: "2026-07-23T15:00:00-03:00"), tem_horario=true.
+- Se o cliente informou apenas o dia (sem horário claro): data_iso = ISO desse dia às 09:00 no timezone, tem_horario=false. O sistema vai propor 2 horários livres da agenda.
+- Se o cliente estiver ESCOLHENDO um horário sugerido em mensagem anterior (ex.: "o primeiro", "às 10h", "pode ser o segundo"), leia SUGESTOES_ANTERIORES abaixo e devolva o data_iso escolhido com tem_horario=true.
+- NUNCA invente horários que não foram citados nem sugeridos.
+- "titulo" curto (ex.: "Call comercial com <nome>"); duracao_min padrão = 60.
+
 Inclua em "dados_adicionais" SOMENTE chaves listadas em PERGUNTAS DE QUALIFICAÇÃO DINÂMICAS, e apenas as que a mensagem do cliente realmente responde. Não invente valores.
+${(Array.isArray(aiContexto?.agendamento_sugestoes) && aiContexto.agendamento_sugestoes.length)
+  ? `\nSUGESTOES_ANTERIORES (o cliente pode estar escolhendo uma):\n${aiContexto.agendamento_sugestoes.map((s: any, i: number) => `${i + 1}) ${s.label_full || s.label} — data_iso=${s.start}`).join("\n")}\n`
+  : ""}
 ${regrasBlock}`;
 
     // Chamar Anthropic Claude (chave mestra SaaS via ANTHROPIC_API_KEY)
@@ -835,7 +853,7 @@ ${regrasBlock}`;
       parsed = { mensagem: content };
     }
 
-    const resposta = parsed.mensagem || content;
+    let resposta = parsed.mensagem || content;
     console.log("[orbit-ai-agent] Resposta gerada:", resposta.substring(0, 100));
 
     // ── Validar dados extraídos antes de salvar ──
@@ -850,7 +868,40 @@ ${regrasBlock}`;
       intencaoNormalizada === "agendar_call" ||
       intencaoNormalizada === "venda_fechada" ||
       intencaoNormalizada === "falar_humano";
-    const isHandoff = isCommercialSignal;
+
+    // ── Auto-agendamento: se lead pediu agendar_call, tentar via Google Calendar antes do handoff ──
+    let scheduleOutcome: {
+      handled: boolean;
+      created?: boolean;
+      response_override?: string;
+      suggestions?: any[];
+      deal_id?: string | null;
+      meeting_id?: string | null;
+      not_connected?: boolean;
+      error?: string;
+    } = { handled: false };
+    if (intencaoNormalizada === "agendar_call" && empresaId) {
+      try {
+        scheduleOutcome = await tryAutoScheduleMeeting(supabase, {
+          empresaId,
+          prospect,
+          prospect_id,
+          conversa_id,
+          telefone,
+          agendamento: parsed.agendamento || {},
+        });
+      } catch (schedErr) {
+        console.error("[orbit-ai-agent] tryAutoScheduleMeeting erro:", schedErr);
+        scheduleOutcome = { handled: false, error: (schedErr as Error).message };
+      }
+      if (scheduleOutcome.response_override) {
+        resposta = scheduleOutcome.response_override;
+      }
+    }
+
+    // Só fazer handoff se NÃO houve auto-agendamento resolvido pela IA (sugestão ou evento criado).
+    const suppressHandoff = scheduleOutcome.handled === true;
+    const isHandoff = isCommercialSignal && !suppressHandoff;
     const nextState = computeNextState(
       leadContext.conversation.state,
       intencaoNormalizada,
@@ -859,10 +910,10 @@ ${regrasBlock}`;
       msgClassification
     );
 
-    // ── Notificação comercial: SOMENTE em sinal comercial real ──
-    // Não notificar em "primeiro sinal humano" (saudação, resposta natural, pedido de orçamento).
+    // ── Notificação comercial: SOMENTE em sinal comercial real e sem auto-agendamento ──
     const alreadyNotified = aiContexto.commercial_notified === true;
-    if (isCommercialSignal && !alreadyNotified) {
+    const shouldNotifyCommercial = isCommercialSignal && !alreadyNotified && !suppressHandoff;
+    if (shouldNotifyCommercial) {
       console.log("[orbit-ai-agent] Sinal comercial detectado:", intencaoNormalizada, "— notificando responsável...");
       await notifyCommercialHumanDetected(supabase, {
         prospect,
@@ -878,7 +929,7 @@ ${regrasBlock}`;
     // Atualizar contexto da conversa com estado e classificação
     const novoContexto = {
       ...aiContexto,
-      estado: isHandoff ? "handoff" : nextState,
+      estado: isHandoff ? "handoff" : (scheduleOutcome.created ? "qualificado" : nextState),
       em_coleta_orcamento: parsed.iniciar_coleta_orcamento || emColetaOrcamento,
       campos_coletados: { ...camposColetados, ...dadosValidados },
       cadastro_completo: parsed.cadastro_completo,
@@ -888,10 +939,15 @@ ${regrasBlock}`;
       message_classification: msgClassification,
       human_detected: aiContexto.human_detected || msgClassification === "human_probable",
       auto_reply_detected: aiContexto.auto_reply_detected || msgClassification === "auto_reply",
-      commercial_notified: alreadyNotified || isCommercialSignal,
+      commercial_notified: alreadyNotified || shouldNotifyCommercial,
       first_human_response_at: (!aiContexto.first_human_response_at && msgClassification === "human_probable")
         ? new Date().toISOString()
         : aiContexto.first_human_response_at || null,
+      // Sugestões de horário pendentes para a próxima resposta do lead
+      agendamento_sugestoes: scheduleOutcome.suggestions && scheduleOutcome.suggestions.length
+        ? scheduleOutcome.suggestions
+        : (scheduleOutcome.created ? [] : (aiContexto.agendamento_sugestoes ?? [])),
+      agendamento_ultimo_meeting_id: scheduleOutcome.meeting_id || aiContexto.agendamento_ultimo_meeting_id || null,
     };
 
     await supabase
@@ -1595,4 +1651,258 @@ async function processChatbotFlow(
   }
 
   return false;
+}
+
+// ── Auto-agendamento via Google Calendar ──
+function getTzOffsetMinutes(tz: string, date: Date): number {
+  try {
+    const dtf = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz, hour12: false,
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+    });
+    const parts = dtf.formatToParts(date).reduce((acc: any, p) => { if (p.type !== "literal") acc[p.type] = p.value; return acc; }, {});
+    const asUTC = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+    return (asUTC - date.getTime()) / 60000;
+  } catch {
+    return -180; // fallback UTC-3
+  }
+}
+
+function isoWithOffset(dayStr: string, hour: number, minute: number, tz: string): string {
+  const probe = new Date(`${dayStr}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00Z`);
+  const offMin = getTzOffsetMinutes(tz, probe);
+  const utcMs = probe.getTime() - offMin * 60000;
+  return new Date(utcMs).toISOString();
+}
+
+interface AutoScheduleParams {
+  empresaId: string;
+  prospect: any;
+  prospect_id: string;
+  conversa_id: string;
+  telefone: string;
+  agendamento: any;
+}
+
+async function tryAutoScheduleMeeting(supabase: any, params: AutoScheduleParams): Promise<{
+  handled: boolean;
+  created?: boolean;
+  response_override?: string;
+  suggestions?: any[];
+  deal_id?: string | null;
+  meeting_id?: string | null;
+  not_connected?: boolean;
+  error?: string;
+}> {
+  const ag = params.agendamento || {};
+  const token = await getTokenForEmpresa(params.empresaId).catch(() => null);
+  if (!token) {
+    console.log("[orbit-ai-agent] Google Calendar não conectado — fallback para handoff manual", { empresaId: params.empresaId });
+    return { handled: false, not_connected: true };
+  }
+  if (!ag.data_iso) {
+    console.log("[orbit-ai-agent] AI marcou agendar_call sem data_iso — fallback para handoff manual");
+    return { handled: false, error: "sem data_iso" };
+  }
+
+  let startDate = new Date(ag.data_iso);
+  if (isNaN(startDate.getTime())) {
+    return { handled: false, error: "data_iso inválida" };
+  }
+
+  const tz = token.timezone || "America/Sao_Paulo";
+  const calId = token.calendar_id;
+  const duracaoMin = Math.max(15, Math.min(240, Number(ag.duracao_min) || 60));
+  const titulo = String(ag.titulo || `Call com ${params.prospect?.nome_razao || params.prospect?.nome_fantasia || "lead"}`).slice(0, 200);
+  const temHorario = ag.tem_horario === true;
+
+  const access = await ensureFreshAccessToken(token);
+
+  // Extrair yyyy-mm-dd no timezone da agenda
+  const dayStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(startDate); // "YYYY-MM-DD"
+
+  if (!temHorario) {
+    const timeMin = isoWithOffset(dayStr, 9, 0, tz);
+    const timeMax = isoWithOffset(dayStr, 18, 0, tz);
+    let busy: { start: string; end: string }[] = [];
+    try {
+      const av = await checkAvailability(access, calId, timeMin, timeMax, tz);
+      busy = av.busy || [];
+    } catch (e) {
+      console.error("[orbit-ai-agent] freeBusy falhou:", e);
+      return { handled: false, error: "freeBusy falhou" };
+    }
+
+    const durMs = duracaoMin * 60 * 1000;
+    const stepMs = 30 * 60 * 1000;
+    const endMs = new Date(timeMax).getTime();
+    const suggestions: { start: string; end: string; label: string; label_full: string }[] = [];
+    let cursor = new Date(timeMin).getTime();
+    while (cursor + durMs <= endMs && suggestions.length < 2) {
+      const slotEnd = cursor + durMs;
+      const overlap = busy.some((b) => {
+        const bs = new Date(b.start).getTime();
+        const be = new Date(b.end).getTime();
+        return cursor < be && slotEnd > bs;
+      });
+      if (!overlap) {
+        const hhmm = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, hour: "2-digit", minute: "2-digit" }).format(new Date(cursor));
+        const dayFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, weekday: "long", day: "2-digit", month: "long" }).format(new Date(cursor));
+        suggestions.push({
+          start: new Date(cursor).toISOString(),
+          end: new Date(slotEnd).toISOString(),
+          label: hhmm,
+          label_full: `${dayFmt} às ${hhmm}`,
+        });
+      }
+      cursor += stepMs;
+    }
+
+    if (!suggestions.length) {
+      console.log("[orbit-ai-agent] Nenhum horário livre no dia — pedir outra data ao lead");
+      const dayFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, weekday: "long", day: "2-digit", month: "long" }).format(startDate);
+      return {
+        handled: true,
+        response_override: `Infelizmente não tenho horários livres em ${dayFmt}. Pode me passar outra data?`,
+        suggestions: [],
+      };
+    }
+
+    const dayFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, weekday: "long", day: "2-digit", month: "long" }).format(new Date(suggestions[0].start));
+    const listStr = suggestions.map((s) => s.label).join(" ou ");
+    return {
+      handled: true,
+      response_override: `Perfeito! Tenho ${listStr} livres na ${dayFmt}. Qual prefere?`,
+      suggestions,
+    };
+  }
+
+  // Tem data + hora → criar evento no Google Calendar
+  const startISO = startDate.toISOString();
+  const endISO = new Date(startDate.getTime() + duracaoMin * 60 * 1000).toISOString();
+  const attendees: string[] = [];
+  if (params.prospect?.email_principal && /@/.test(params.prospect.email_principal)) {
+    attendees.push(params.prospect.email_principal);
+  }
+
+  let event: any = null;
+  try {
+    event = await createCalendarEvent(access, calId, {
+      summary: titulo,
+      description: `Call agendada automaticamente pelo agente Orbit.\nLead: ${params.prospect?.nome_razao || "-"}\nWhatsApp: ${params.telefone}`,
+      start: startISO,
+      end: endISO,
+      timezone: tz,
+      attendees,
+      addMeet: true,
+      source: "orbit-ai-agent",
+    });
+  } catch (e) {
+    console.error("[orbit-ai-agent] createCalendarEvent falhou:", e);
+    return { handled: false, error: "createCalendarEvent falhou" };
+  }
+
+  const meetingUrl: string | null =
+    event?.hangoutLink ||
+    event?.conferenceData?.entryPoints?.find?.((p: any) => p.entryPointType === "video")?.uri ||
+    null;
+
+  const { data: meetingRow, error: meetErr } = await supabase
+    .from("orbit_meetings")
+    .insert({
+      empresa_id: params.empresaId,
+      prospect_id: params.prospect_id,
+      conversa_id: params.conversa_id,
+      titulo,
+      scheduled_at: startISO,
+      duration_minutes: duracaoMin,
+      meeting_url: meetingUrl,
+      status: "scheduled",
+      google_event_id: event?.id ?? null,
+      metadata: { source: "orbit-ai-agent", event_link: event?.htmlLink ?? null },
+    })
+    .select("id")
+    .maybeSingle();
+  if (meetErr) console.warn("[orbit-ai-agent] orbit_meetings insert error:", meetErr.message);
+
+  // Garantir deal
+  let dealId: string | null = null;
+  try {
+    const { data: dId } = await supabase.rpc("ensure_deal_for_prospect", { _prospect_id: params.prospect_id });
+    dealId = (dId as string) ?? null;
+  } catch (e) {
+    console.warn("[orbit-ai-agent] ensure_deal_for_prospect erro:", e);
+  }
+
+  if (dealId && meetingRow?.id) {
+    await supabase.from("orbit_meetings").update({ deal_id: dealId }).eq("id", meetingRow.id);
+  }
+
+  // Mover deal para etapa "Agendado" (se existir)
+  if (dealId) {
+    const { data: agStage } = await supabase
+      .from("orbit_pipeline_stages")
+      .select("id, nome")
+      .eq("empresa_id", params.empresaId)
+      .eq("is_archived", false)
+      .ilike("nome", "%agendad%")
+      .order("ordem", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (agStage?.id) {
+      const { data: currentDeal } = await supabase
+        .from("orbit_deals")
+        .select("etapa_id")
+        .eq("id", dealId)
+        .maybeSingle();
+      const fromStageId = currentDeal?.etapa_id ?? null;
+      if (fromStageId !== agStage.id) {
+        const { error: mvErr } = await supabase
+          .from("orbit_deals")
+          .update({ etapa_id: agStage.id })
+          .eq("id", dealId);
+        if (mvErr) {
+          console.warn("[orbit-ai-agent] mover deal para Agendado falhou:", mvErr.message);
+        } else {
+          try {
+            await supabase.from("orbit_flow_events").insert({
+              empresa_id: params.empresaId,
+              event_type: "deal_stage_changed",
+              entity_type: "deal",
+              entity_id: dealId,
+              dedupe_key: `deal_stage_changed:${dealId}:${agStage.id}:${startISO}`,
+              payload: {
+                deal_id: dealId,
+                from_stage_id: fromStageId,
+                to_stage_id: agStage.id,
+                to_stage_nome: agStage.nome,
+                meeting_id: meetingRow?.id ?? null,
+                scheduled_at: startISO,
+                source: "orbit-ai-agent",
+              },
+            });
+          } catch (e) {
+            console.warn("[orbit-ai-agent] flow_events deal_stage_changed erro:", e);
+          }
+        }
+      }
+    }
+  }
+
+  const humanTime = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: tz, weekday: "long", day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit",
+  }).format(startDate);
+  const respostaOverride = meetingUrl
+    ? `Agendado! Nossa call está marcada para ${humanTime}. Link da reunião: ${meetingUrl}. Até lá!`
+    : `Agendado! Nossa call está marcada para ${humanTime}. Envio o link logo em seguida.`;
+
+  return {
+    handled: true,
+    created: true,
+    response_override: respostaOverride,
+    deal_id: dealId,
+    meeting_id: meetingRow?.id ?? null,
+  };
 }
