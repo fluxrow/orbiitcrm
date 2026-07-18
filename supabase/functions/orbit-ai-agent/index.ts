@@ -785,16 +785,28 @@ IMPORTANTE: Responda em JSON com esta estrutura:
   "dados_extraidos": { "nome_fantasia": "...", "cidade": "...", "email_principal": "...", "segmento": "...", "nome_contato": "...", "nome_razao": "..." },
   "dados_adicionais": { ${camposQualificacao.map(c => `"${c.key}": "..."`).join(", ")} },
   "campo_solicitado": "nome_do_campo ou null",
-  "cadastro_completo": true|false
+  "cadastro_completo": true|false,
+  "agendamento": { "data_iso": "ISO-8601 com timezone ou null", "tem_horario": true|false, "duracao_min": 60, "titulo": "Call com ..." }
 }
 
 Regras de "intencao":
-- "agendar_call": use APENAS quando o cliente confirmar explicitamente data/horário para uma call/reunião (ex.: "pode ser terça às 15h", "fechado, amanhã 10h").
+- "agendar_call": use quando o cliente demonstrar intenção de marcar uma call/reunião/agendamento/diagnóstico, mesmo que só mencione o dia (ex.: "podemos agendar quinta-feira", "quero uma call amanhã", "pode ser terça às 15h").
 - "venda_fechada": use APENAS quando o cliente confirmar explicitamente a compra/contratação (ex.: "fechado, pode gerar o pedido", "quero fechar").
 - "falar_humano": use APENAS quando o cliente pedir para falar com uma pessoa/vendedor humano.
 - Nas demais situações (incluindo pedido de orçamento, dúvidas, respostas naturais, saudações), NUNCA use esses três valores — mantenha a qualificação normalmente.
 
+Regras de "agendamento":
+- Preencha SEMPRE que "intencao" for "agendar_call".
+- Se o cliente informou dia + horário: data_iso = ISO completo com timezone (ex.: "2026-07-23T15:00:00-03:00"), tem_horario=true.
+- Se o cliente informou apenas o dia (sem horário claro): data_iso = ISO desse dia às 09:00 no timezone, tem_horario=false. O sistema vai propor 2 horários livres da agenda.
+- Se o cliente estiver ESCOLHENDO um horário sugerido em mensagem anterior (ex.: "o primeiro", "às 10h", "pode ser o segundo"), leia SUGESTOES_ANTERIORES abaixo e devolva o data_iso escolhido com tem_horario=true.
+- NUNCA invente horários que não foram citados nem sugeridos.
+- "titulo" curto (ex.: "Call comercial com <nome>"); duracao_min padrão = 60.
+
 Inclua em "dados_adicionais" SOMENTE chaves listadas em PERGUNTAS DE QUALIFICAÇÃO DINÂMICAS, e apenas as que a mensagem do cliente realmente responde. Não invente valores.
+${(Array.isArray(aiContexto?.agendamento_sugestoes) && aiContexto.agendamento_sugestoes.length)
+  ? `\nSUGESTOES_ANTERIORES (o cliente pode estar escolhendo uma):\n${aiContexto.agendamento_sugestoes.map((s: any, i: number) => `${i + 1}) ${s.label_full || s.label} — data_iso=${s.start}`).join("\n")}\n`
+  : ""}
 ${regrasBlock}`;
 
     // Chamar Anthropic Claude (chave mestra SaaS via ANTHROPIC_API_KEY)
