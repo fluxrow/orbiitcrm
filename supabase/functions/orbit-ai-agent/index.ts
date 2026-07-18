@@ -868,7 +868,40 @@ ${regrasBlock}`;
       intencaoNormalizada === "agendar_call" ||
       intencaoNormalizada === "venda_fechada" ||
       intencaoNormalizada === "falar_humano";
-    const isHandoff = isCommercialSignal;
+
+    // ── Auto-agendamento: se lead pediu agendar_call, tentar via Google Calendar antes do handoff ──
+    let scheduleOutcome: {
+      handled: boolean;
+      created?: boolean;
+      response_override?: string;
+      suggestions?: any[];
+      deal_id?: string | null;
+      meeting_id?: string | null;
+      not_connected?: boolean;
+      error?: string;
+    } = { handled: false };
+    if (intencaoNormalizada === "agendar_call" && empresaId) {
+      try {
+        scheduleOutcome = await tryAutoScheduleMeeting(supabase, {
+          empresaId,
+          prospect,
+          prospect_id,
+          conversa_id,
+          telefone,
+          agendamento: parsed.agendamento || {},
+        });
+      } catch (schedErr) {
+        console.error("[orbit-ai-agent] tryAutoScheduleMeeting erro:", schedErr);
+        scheduleOutcome = { handled: false, error: (schedErr as Error).message };
+      }
+      if (scheduleOutcome.response_override) {
+        resposta = scheduleOutcome.response_override;
+      }
+    }
+
+    // Só fazer handoff se NÃO houve auto-agendamento resolvido pela IA (sugestão ou evento criado).
+    const suppressHandoff = scheduleOutcome.handled === true;
+    const isHandoff = isCommercialSignal && !suppressHandoff;
     const nextState = computeNextState(
       leadContext.conversation.state,
       intencaoNormalizada,
@@ -877,10 +910,10 @@ ${regrasBlock}`;
       msgClassification
     );
 
-    // ── Notificação comercial: SOMENTE em sinal comercial real ──
-    // Não notificar em "primeiro sinal humano" (saudação, resposta natural, pedido de orçamento).
+    // ── Notificação comercial: SOMENTE em sinal comercial real e sem auto-agendamento ──
     const alreadyNotified = aiContexto.commercial_notified === true;
-    if (isCommercialSignal && !alreadyNotified) {
+    const shouldNotifyCommercial = isCommercialSignal && !alreadyNotified && !suppressHandoff;
+    if (shouldNotifyCommercial) {
       console.log("[orbit-ai-agent] Sinal comercial detectado:", intencaoNormalizada, "— notificando responsável...");
       await notifyCommercialHumanDetected(supabase, {
         prospect,
@@ -896,7 +929,7 @@ ${regrasBlock}`;
     // Atualizar contexto da conversa com estado e classificação
     const novoContexto = {
       ...aiContexto,
-      estado: isHandoff ? "handoff" : nextState,
+      estado: isHandoff ? "handoff" : (scheduleOutcome.created ? "qualificado" : nextState),
       em_coleta_orcamento: parsed.iniciar_coleta_orcamento || emColetaOrcamento,
       campos_coletados: { ...camposColetados, ...dadosValidados },
       cadastro_completo: parsed.cadastro_completo,
@@ -906,10 +939,15 @@ ${regrasBlock}`;
       message_classification: msgClassification,
       human_detected: aiContexto.human_detected || msgClassification === "human_probable",
       auto_reply_detected: aiContexto.auto_reply_detected || msgClassification === "auto_reply",
-      commercial_notified: alreadyNotified || isCommercialSignal,
+      commercial_notified: alreadyNotified || shouldNotifyCommercial,
       first_human_response_at: (!aiContexto.first_human_response_at && msgClassification === "human_probable")
         ? new Date().toISOString()
         : aiContexto.first_human_response_at || null,
+      // Sugestões de horário pendentes para a próxima resposta do lead
+      agendamento_sugestoes: scheduleOutcome.suggestions && scheduleOutcome.suggestions.length
+        ? scheduleOutcome.suggestions
+        : (scheduleOutcome.created ? [] : (aiContexto.agendamento_sugestoes ?? [])),
+      agendamento_ultimo_meeting_id: scheduleOutcome.meeting_id || aiContexto.agendamento_ultimo_meeting_id || null,
     };
 
     await supabase
