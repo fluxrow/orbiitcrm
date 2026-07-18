@@ -1652,3 +1652,257 @@ async function processChatbotFlow(
 
   return false;
 }
+
+// ── Auto-agendamento via Google Calendar ──
+function getTzOffsetMinutes(tz: string, date: Date): number {
+  try {
+    const dtf = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz, hour12: false,
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+    });
+    const parts = dtf.formatToParts(date).reduce((acc: any, p) => { if (p.type !== "literal") acc[p.type] = p.value; return acc; }, {});
+    const asUTC = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+    return (asUTC - date.getTime()) / 60000;
+  } catch {
+    return -180; // fallback UTC-3
+  }
+}
+
+function isoWithOffset(dayStr: string, hour: number, minute: number, tz: string): string {
+  const probe = new Date(`${dayStr}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00Z`);
+  const offMin = getTzOffsetMinutes(tz, probe);
+  const utcMs = probe.getTime() - offMin * 60000;
+  return new Date(utcMs).toISOString();
+}
+
+interface AutoScheduleParams {
+  empresaId: string;
+  prospect: any;
+  prospect_id: string;
+  conversa_id: string;
+  telefone: string;
+  agendamento: any;
+}
+
+async function tryAutoScheduleMeeting(supabase: any, params: AutoScheduleParams): Promise<{
+  handled: boolean;
+  created?: boolean;
+  response_override?: string;
+  suggestions?: any[];
+  deal_id?: string | null;
+  meeting_id?: string | null;
+  not_connected?: boolean;
+  error?: string;
+}> {
+  const ag = params.agendamento || {};
+  const token = await getTokenForEmpresa(params.empresaId).catch(() => null);
+  if (!token) {
+    console.log("[orbit-ai-agent] Google Calendar não conectado — fallback para handoff manual", { empresaId: params.empresaId });
+    return { handled: false, not_connected: true };
+  }
+  if (!ag.data_iso) {
+    console.log("[orbit-ai-agent] AI marcou agendar_call sem data_iso — fallback para handoff manual");
+    return { handled: false, error: "sem data_iso" };
+  }
+
+  let startDate = new Date(ag.data_iso);
+  if (isNaN(startDate.getTime())) {
+    return { handled: false, error: "data_iso inválida" };
+  }
+
+  const tz = token.timezone || "America/Sao_Paulo";
+  const calId = token.calendar_id;
+  const duracaoMin = Math.max(15, Math.min(240, Number(ag.duracao_min) || 60));
+  const titulo = String(ag.titulo || `Call com ${params.prospect?.nome_razao || params.prospect?.nome_fantasia || "lead"}`).slice(0, 200);
+  const temHorario = ag.tem_horario === true;
+
+  const access = await ensureFreshAccessToken(token);
+
+  // Extrair yyyy-mm-dd no timezone da agenda
+  const dayStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(startDate); // "YYYY-MM-DD"
+
+  if (!temHorario) {
+    const timeMin = isoWithOffset(dayStr, 9, 0, tz);
+    const timeMax = isoWithOffset(dayStr, 18, 0, tz);
+    let busy: { start: string; end: string }[] = [];
+    try {
+      const av = await checkAvailability(access, calId, timeMin, timeMax, tz);
+      busy = av.busy || [];
+    } catch (e) {
+      console.error("[orbit-ai-agent] freeBusy falhou:", e);
+      return { handled: false, error: "freeBusy falhou" };
+    }
+
+    const durMs = duracaoMin * 60 * 1000;
+    const stepMs = 30 * 60 * 1000;
+    const endMs = new Date(timeMax).getTime();
+    const suggestions: { start: string; end: string; label: string; label_full: string }[] = [];
+    let cursor = new Date(timeMin).getTime();
+    while (cursor + durMs <= endMs && suggestions.length < 2) {
+      const slotEnd = cursor + durMs;
+      const overlap = busy.some((b) => {
+        const bs = new Date(b.start).getTime();
+        const be = new Date(b.end).getTime();
+        return cursor < be && slotEnd > bs;
+      });
+      if (!overlap) {
+        const hhmm = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, hour: "2-digit", minute: "2-digit" }).format(new Date(cursor));
+        const dayFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, weekday: "long", day: "2-digit", month: "long" }).format(new Date(cursor));
+        suggestions.push({
+          start: new Date(cursor).toISOString(),
+          end: new Date(slotEnd).toISOString(),
+          label: hhmm,
+          label_full: `${dayFmt} às ${hhmm}`,
+        });
+      }
+      cursor += stepMs;
+    }
+
+    if (!suggestions.length) {
+      console.log("[orbit-ai-agent] Nenhum horário livre no dia — pedir outra data ao lead");
+      const dayFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, weekday: "long", day: "2-digit", month: "long" }).format(startDate);
+      return {
+        handled: true,
+        response_override: `Infelizmente não tenho horários livres em ${dayFmt}. Pode me passar outra data?`,
+        suggestions: [],
+      };
+    }
+
+    const dayFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, weekday: "long", day: "2-digit", month: "long" }).format(new Date(suggestions[0].start));
+    const listStr = suggestions.map((s) => s.label).join(" ou ");
+    return {
+      handled: true,
+      response_override: `Perfeito! Tenho ${listStr} livres na ${dayFmt}. Qual prefere?`,
+      suggestions,
+    };
+  }
+
+  // Tem data + hora → criar evento no Google Calendar
+  const startISO = startDate.toISOString();
+  const endISO = new Date(startDate.getTime() + duracaoMin * 60 * 1000).toISOString();
+  const attendees: string[] = [];
+  if (params.prospect?.email_principal && /@/.test(params.prospect.email_principal)) {
+    attendees.push(params.prospect.email_principal);
+  }
+
+  let event: any = null;
+  try {
+    event = await createCalendarEvent(access, calId, {
+      summary: titulo,
+      description: `Call agendada automaticamente pelo agente Orbit.\nLead: ${params.prospect?.nome_razao || "-"}\nWhatsApp: ${params.telefone}`,
+      start: startISO,
+      end: endISO,
+      timezone: tz,
+      attendees,
+      addMeet: true,
+      source: "orbit-ai-agent",
+    });
+  } catch (e) {
+    console.error("[orbit-ai-agent] createCalendarEvent falhou:", e);
+    return { handled: false, error: "createCalendarEvent falhou" };
+  }
+
+  const meetingUrl: string | null =
+    event?.hangoutLink ||
+    event?.conferenceData?.entryPoints?.find?.((p: any) => p.entryPointType === "video")?.uri ||
+    null;
+
+  const { data: meetingRow, error: meetErr } = await supabase
+    .from("orbit_meetings")
+    .insert({
+      empresa_id: params.empresaId,
+      prospect_id: params.prospect_id,
+      conversa_id: params.conversa_id,
+      titulo,
+      scheduled_at: startISO,
+      duration_minutes: duracaoMin,
+      meeting_url: meetingUrl,
+      status: "scheduled",
+      google_event_id: event?.id ?? null,
+      metadata: { source: "orbit-ai-agent", event_link: event?.htmlLink ?? null },
+    })
+    .select("id")
+    .maybeSingle();
+  if (meetErr) console.warn("[orbit-ai-agent] orbit_meetings insert error:", meetErr.message);
+
+  // Garantir deal
+  let dealId: string | null = null;
+  try {
+    const { data: dId } = await supabase.rpc("ensure_deal_for_prospect", { _prospect_id: params.prospect_id });
+    dealId = (dId as string) ?? null;
+  } catch (e) {
+    console.warn("[orbit-ai-agent] ensure_deal_for_prospect erro:", e);
+  }
+
+  if (dealId && meetingRow?.id) {
+    await supabase.from("orbit_meetings").update({ deal_id: dealId }).eq("id", meetingRow.id);
+  }
+
+  // Mover deal para etapa "Agendado" (se existir)
+  if (dealId) {
+    const { data: agStage } = await supabase
+      .from("orbit_pipeline_stages")
+      .select("id, nome")
+      .eq("empresa_id", params.empresaId)
+      .eq("is_archived", false)
+      .ilike("nome", "%agendad%")
+      .order("ordem", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (agStage?.id) {
+      const { data: currentDeal } = await supabase
+        .from("orbit_deals")
+        .select("etapa_id")
+        .eq("id", dealId)
+        .maybeSingle();
+      const fromStageId = currentDeal?.etapa_id ?? null;
+      if (fromStageId !== agStage.id) {
+        const { error: mvErr } = await supabase
+          .from("orbit_deals")
+          .update({ etapa_id: agStage.id })
+          .eq("id", dealId);
+        if (mvErr) {
+          console.warn("[orbit-ai-agent] mover deal para Agendado falhou:", mvErr.message);
+        } else {
+          try {
+            await supabase.from("orbit_flow_events").insert({
+              empresa_id: params.empresaId,
+              event_type: "deal_stage_changed",
+              entity_type: "deal",
+              entity_id: dealId,
+              dedupe_key: `deal_stage_changed:${dealId}:${agStage.id}:${startISO}`,
+              payload: {
+                deal_id: dealId,
+                from_stage_id: fromStageId,
+                to_stage_id: agStage.id,
+                to_stage_nome: agStage.nome,
+                meeting_id: meetingRow?.id ?? null,
+                scheduled_at: startISO,
+                source: "orbit-ai-agent",
+              },
+            });
+          } catch (e) {
+            console.warn("[orbit-ai-agent] flow_events deal_stage_changed erro:", e);
+          }
+        }
+      }
+    }
+  }
+
+  const humanTime = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: tz, weekday: "long", day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit",
+  }).format(startDate);
+  const respostaOverride = meetingUrl
+    ? `Agendado! Nossa call está marcada para ${humanTime}. Link da reunião: ${meetingUrl}. Até lá!`
+    : `Agendado! Nossa call está marcada para ${humanTime}. Envio o link logo em seguida.`;
+
+  return {
+    handled: true,
+    created: true,
+    response_override: respostaOverride,
+    deal_id: dealId,
+    meeting_id: meetingRow?.id ?? null,
+  };
+}
