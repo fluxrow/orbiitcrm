@@ -203,6 +203,17 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
   return { eligible: reasons.length === 0, reasons, idempotency_key };
 }
 
+/** Lê a flag global outbox_adapter_enabled do tenant. Default false. */
+export async function isAdapterEnabled(supabase: any, empresa_id: string | null | undefined): Promise<boolean> {
+  if (!empresa_id) return false;
+  const { data } = await supabase
+    .from("orbit_whatsapp_sending_config")
+    .select("outbox_adapter_enabled")
+    .eq("empresa_id", empresa_id)
+    .maybeSingle();
+  return data?.outbox_adapter_enabled === true;
+}
+
 /** Enfileira item no outbox. Retorna enqueued=false se elegibilidade falhar
  * ou se já existir (dedupe por idempotency_key). */
 export async function enqueueOutbox(supabase: any, input: EnqueueInput): Promise<EnqueueResult> {

@@ -11,6 +11,7 @@ import {
   checkAvailability,
   createCalendarEvent,
 } from "../_shared/google-calendar.ts";
+import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 
 // ── Estado da conversa (máquina de estados) ──
 type ConversationState = "novo" | "aguardando_resposta" | "auto_reply_detected" | "human_detected" | "qualificando" | "qualificado" | "handoff" | "encerrado";
@@ -1381,6 +1382,46 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: st
         .eq("id", conversa_id);
       return;
     }
+
+    // ── Adapter routing (Fase 3): ai_reply enfileira quando outbox_adapter_enabled=true ──
+    if (empresaId && await isAdapterEnabled(supabase, empresaId)) {
+      // Latest IN para dedupe estável
+      const { data: lastIn } = await supabase
+        .from("orbit_mensagens")
+        .select("id")
+        .eq("conversa_id", conversa_id)
+        .eq("direcao", "IN")
+        .order("timestamp", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const inboundId = (lastIn as any)?.id ?? conversa_id;
+      const { data: conv } = await supabase
+        .from("orbit_conversas")
+        .select("prospect_id")
+        .eq("id", conversa_id)
+        .maybeSingle();
+      const routed = await enqueueOutbox(supabase, {
+        empresa_id: empresaId,
+        conversa_id,
+        prospect_id: (conv as any)?.prospect_id ?? null,
+        source_type: "ai_reply",
+        inbound_message_id: `${inboundId}:text`,
+        source_id: inboundId,
+        payload_type: "text",
+        payload: { mensagem },
+      });
+      await supabase.from("orbit_mensagens").insert({
+        conversa_id,
+        direcao: "OUT",
+        mensagem,
+        canal: "whatsapp",
+        status: "queued",
+        empresa_id: empresaId,
+      });
+      console.log("[orbit-ai-agent] Adapter routed ai_reply:", routed);
+      return;
+    }
+
 
     const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresaId);
     const replyBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);

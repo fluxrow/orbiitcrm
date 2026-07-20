@@ -4,6 +4,7 @@ import { ok, fail, optionsResponse, fromPlanCheck, ErrorCodes } from "../_shared
 import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
 import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
+import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse(req);
@@ -145,6 +146,52 @@ serve(async (req) => {
     let messageStatus = "pendente";
     let providerId = null;
     let failReason: string | null = null;
+
+    // ── Adapter routing (Fase 3): manual + outbox_adapter_enabled=true → enfileira, sem Z-API ──
+    if (!isDemo && profile?.empresa_id && await isAdapterEnabled(supabase, profile.empresa_id)) {
+      const routed = await enqueueOutbox(supabase, {
+        empresa_id: profile.empresa_id,
+        conversa_id,
+        source_type: "manual",
+        source_id: crypto.randomUUID(),
+        payload_type: (tipo_midia as any) || "text",
+        payload: {
+          mensagem: mensagem || "",
+          url_midia: url_midia || null,
+          storage_path: storage_path || null,
+          tipo_midia: tipo_midia || null,
+        },
+      });
+      // Registra a mensagem em orbit_mensagens como "queued" para UI acompanhar
+      const { data: novaMensagem } = await supabase
+        .from("orbit_mensagens")
+        .insert({
+          conversa_id,
+          direcao: "OUT",
+          mensagem: mensagem || (tipo_midia ? `📎 ${tipo_midia}` : ""),
+          canal: canal || "whatsapp",
+          status: "queued",
+          empresa_id: conversaEmpresaId || profile.empresa_id,
+          tipo_midia: tipo_midia || null,
+          url_midia: url_midia || null,
+          storage_path: storage_path || null,
+        })
+        .select()
+        .single();
+      return ok(
+        {
+          mensagem: novaMensagem,
+          status: "queued",
+          queued: !!routed.enqueued,
+          outbox_id: routed.outbox_id ?? null,
+          reason: routed.reason ?? null,
+          adapter: true,
+        },
+        undefined,
+        req,
+      );
+    }
+
 
     if (isDemo) {
       messageStatus = "simulated";
