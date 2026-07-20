@@ -1754,6 +1754,31 @@ export async function tryAutoScheduleMeeting(
   const dayStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
     .format(startDate);
 
+  // ── Guardrail anti-passado: rejeitar data/hora no passado ANTES de qualquer OAuth/Google/deal/insert ──
+  const now = new Date();
+  if (temHorario) {
+    // Horário explícito: exigir > agora + 5 min
+    if (startDate.getTime() <= now.getTime() + 5 * 60 * 1000) {
+      console.warn("[orbit-ai-agent] agendamento rejeitado (passado/imediato):", ag.data_iso);
+      return {
+        handled: true,
+        created: false,
+        response_override: "Essa data já passou. Você quis dizer a próxima segunda-feira? Me confirme a data e o horário, por favor.",
+      };
+    }
+  } else {
+    // Dia sem horário: rejeitar se o dia local da agenda já passou
+    const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+    if (dayStr < todayStr) {
+      console.warn("[orbit-ai-agent] agendamento rejeitado (dia passado):", ag.data_iso, "dayStr=", dayStr, "todayStr=", todayStr);
+      return {
+        handled: true,
+        created: false,
+        response_override: "Essa data já passou. Você quis dizer a próxima semana? Me confirme a data (e, se possível, o horário), por favor.",
+      };
+    }
+  }
+
   // ── Ramo: dia sem horário — sugerir 2 slots livres (precisa de token + freeBusy) ──
   if (!temHorario) {
     const access = await deps.ensureFreshAccessToken(token);
