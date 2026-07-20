@@ -225,6 +225,9 @@ export default function ZapiGoLivePage() {
                     </Button>
                   </div>
                 </div>
+                <div className="col-span-2 md:col-span-4">
+                  <FlowGoLiveReconcilePanel empresaId={row.empresa_id} empresaNome={row.empresa_nome} />
+                </div>
               </CardContent>
             </Card>
           );
