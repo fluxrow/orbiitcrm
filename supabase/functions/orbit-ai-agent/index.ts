@@ -1746,13 +1746,12 @@ export async function tryAutoScheduleMeeting(
   const titulo = String(ag.titulo || `Call com ${params.prospect?.nome_razao || params.prospect?.nome_fantasia || "lead"}`).slice(0, 200);
   const temHorario = ag.tem_horario === true;
 
-  const access = await deps.ensureFreshAccessToken(token);
-
   const dayStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
     .format(startDate);
 
-  // ── Ramo: dia sem horário — sugerir 2 slots livres ──
+  // ── Ramo: dia sem horário — sugerir 2 slots livres (precisa de token + freeBusy) ──
   if (!temHorario) {
+    const access = await deps.ensureFreshAccessToken(token);
     const timeMin = isoWithOffset(dayStr, 9, 0, tz);
     const timeMax = isoWithOffset(dayStr, 18, 0, tz);
     let busy: { start: string; end: string }[] = [];
@@ -1811,7 +1810,9 @@ export async function tryAutoScheduleMeeting(
   const startISO = startDate.toISOString();
   const endISO = new Date(startDate.getTime() + duracaoMin * 60 * 1000).toISOString();
 
-  // 1) Dedupe: já existe meeting scheduled/rescheduled para (empresa, prospect, scheduled_at)?
+  // 1) Dedupe ANTES de qualquer chamada OAuth/Google: já existe meeting scheduled/rescheduled
+  //    para (empresa, prospect, scheduled_at)? Se sim, reutiliza sem tocar OAuth/Google, deal,
+  //    evento de fluxo ou handoff.
   try {
     const { data: existing } = await supabase
       .from("orbit_meetings")
@@ -1824,7 +1825,7 @@ export async function tryAutoScheduleMeeting(
       .limit(1)
       .maybeSingle();
     if (existing?.id) {
-      console.log("[orbit-ai-agent] Meeting já existe para esse horário — reutilizando:", existing.id);
+      console.log("[orbit-ai-agent] Meeting já existe para esse horário — reutilizando sem tocar OAuth/Google:", existing.id);
       const humanTime = new Intl.DateTimeFormat("pt-BR", {
         timeZone: tz, weekday: "long", day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit",
       }).format(startDate);
@@ -1841,6 +1842,9 @@ export async function tryAutoScheduleMeeting(
   } catch (e) {
     console.warn("[orbit-ai-agent] dedupe orbit_meetings falhou (segue fluxo):", (e as Error).message);
   }
+
+  // A partir daqui vamos criar — só agora tocamos OAuth.
+  const access = await deps.ensureFreshAccessToken(token);
 
   // 2) ensure_deal_for_prospect ANTES de criar evento — abortar se falhar
   let dealId: string | null = null;
@@ -1883,6 +1887,7 @@ export async function tryAutoScheduleMeeting(
     console.error("[orbit-ai-agent] freeBusy exato falhou:", (e as Error).message);
     return { handled: false, error: "freeBusy exato falhou", deal_id: dealId };
   }
+
 
   // 4) Criar evento
   const attendees: string[] = [];
