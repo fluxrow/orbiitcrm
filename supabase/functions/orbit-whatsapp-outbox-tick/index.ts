@@ -267,6 +267,7 @@ async function ensureCampaignConversa(item: any, telefone: string): Promise<stri
     .maybeSingle();
   item.conversa_id = nova?.id ?? null;
   return item.conversa_id;
+}
 
 async function processItem(item: any, cfg: SendingConfig | null): Promise<ProcessResult> {
   // Kill switch por tenant + horário comercial para não-urgentes
