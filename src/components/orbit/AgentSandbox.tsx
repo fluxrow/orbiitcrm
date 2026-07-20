@@ -9,21 +9,10 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-export interface AgentSandboxAIConfig {
-  prompt_identidade?: string;
-  prompt_roteiro?: string;
-  prompt_regras?: string;
-  tom_conversa?: string;
-  idioma?: string;
-  max_tokens?: number;
-  modelo_ia?: string | null;
-  campos_qualificacao?: Array<{ label?: string; key?: string; required?: boolean }>;
-}
-
 interface AgentSandboxProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  aiConfig: AgentSandboxAIConfig;
+  empresaId: string | null | undefined;
 }
 
 interface SandboxMsg {
@@ -34,14 +23,13 @@ interface SandboxMsg {
 }
 
 const MOCK_LEAD = {
-  nome: "Teste Viver",
-  origem: "Typebot - Captacao Meta",
-  telefone: "+55 49 99951-3060",
-  email: "lead.teste@exemplo.com",
-  cidade: "Chapeco",
-  segmento: "Semijoias",
-  observacoes:
-    "Respondeu ao formulario do Typebot da Viver Semijoias. Capital disponivel: De R$ 7.000,00 a R$ 9.000,00. Momento: quer crescer com semijoias.",
+  nome: "Cliente Teste",
+  origem: "Formulário de captação",
+  telefone: "+55 11 90000-0000",
+  email: "cliente.teste@exemplo.com",
+  cidade: "",
+  segmento: "",
+  observacoes: "Respondeu ao formulário de captação e deixou os dados de contato.",
 };
 
 export function AgentSandbox({ open, onOpenChange, aiConfig }: AgentSandboxProps) {
