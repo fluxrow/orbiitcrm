@@ -197,12 +197,16 @@ async function upsertVisualMensagem(
 // source_id, ignora.
 async function updateCampaignRecipient(
   item: any,
-  patch: { status: "enviado" | "falhou" | "ignorado"; erro?: string | null; motivo?: string | null },
+  patch: { status: "enviado" | "simulated" | "falhou" | "ignorado"; erro?: string | null; motivo?: string | null },
 ): Promise<void> {
   if (item.source_type !== "campaign" || !item.source_id) return;
   const upd: Record<string, unknown> = { erro: patch.erro ?? null };
   if (patch.status === "enviado") {
     upd.status = "enviado";
+    upd.enviado_em = new Date().toISOString();
+    upd.erro = null;
+  } else if (patch.status === "simulated") {
+    upd.status = "simulated";
     upd.enviado_em = new Date().toISOString();
     upd.erro = null;
   } else if (patch.status === "ignorado") {
