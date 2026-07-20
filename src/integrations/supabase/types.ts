@@ -2160,6 +2160,7 @@ export type Database = {
           action_id: string | null
           action_type: string
           attempts: number
+          cadence_key: string | null
           canceled_reason: string | null
           context: Json
           created_at: string
@@ -2182,6 +2183,7 @@ export type Database = {
           action_id?: string | null
           action_type: string
           attempts?: number
+          cadence_key?: string | null
           canceled_reason?: string | null
           context?: Json
           created_at?: string
@@ -2204,6 +2206,7 @@ export type Database = {
           action_id?: string | null
           action_type?: string
           attempts?: number
+          cadence_key?: string | null
           canceled_reason?: string | null
           context?: Json
           created_at?: string
@@ -5001,6 +5004,7 @@ export type Database = {
           action_id: string | null
           action_type: string
           attempts: number
+          cadence_key: string | null
           canceled_reason: string | null
           context: Json
           created_at: string
