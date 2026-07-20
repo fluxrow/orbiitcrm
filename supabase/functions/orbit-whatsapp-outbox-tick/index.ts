@@ -245,15 +245,22 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
     return { outcome: "canceled", reason: "campaign_adapter_disabled" };
   }
 
-  // Daily quota global (para todos os sources)
-  const used = await getDailyUsage(item.empresa_id);
-  const limit = cfg.daily_limit ?? null;
-  if (limit != null && used >= limit) {
-    await supabase
-      .from("orbit_whatsapp_outbox")
-      .update({ status: "pending", locked_at: null, locked_by: null, next_attempt_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(), last_error: "daily_limit_reached" })
-      .eq("id", item.id);
-    return { outcome: "deferred", reason: "daily_limit_reached" };
+  // Daily quota / warmup — cota de prospecção automatizada.
+  // Aplica-se APENAS a sources outbound automatizados (campaign, flow_initial,
+  // flow_followup). Sources conversacionais urgentes (ai_reply, manual,
+  // meeting_confirmation) NÃO são bloqueados pelo daily_limit — precisam responder
+  // ao lead mesmo quando a cota diária de prospecção já se esgotou. Eles continuam
+  // sujeitos a max_per_minute, kill switch, opt-out, terminal deal, handoff etc.
+  if (!URGENT_SOURCES.has(item.source_type)) {
+    const used = await getDailyUsage(item.empresa_id);
+    const limit = cfg.daily_limit ?? null;
+    if (limit != null && used >= limit) {
+      await supabase
+        .from("orbit_whatsapp_outbox")
+        .update({ status: "pending", locked_at: null, locked_by: null, next_attempt_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(), last_error: "daily_limit_reached" })
+        .eq("id", item.id);
+      return { outcome: "deferred", reason: "daily_limit_reached" };
+    }
   }
 
   // Ritmo por minuto (global)
