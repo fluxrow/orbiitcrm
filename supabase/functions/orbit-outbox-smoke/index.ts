@@ -13,6 +13,7 @@ import { enqueueOutbox, cancelOutboxByProspect, isAdapterEnabled } from "../_sha
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SMOKE_TOKEN = Deno.env.get("SCHEDULER_CRON_TOKEN") || "";
+const SMOKE_INTERNAL_TOKEN = Deno.env.get("SMOKE_INTERNAL_TOKEN") || "";
 
 const RUN_ID = `OUTBOX_SMOKE_${Date.now()}`;
 const CAMP_ID = "314e6e23-d0f5-47ed-bba4-3cb2f24569d6";
