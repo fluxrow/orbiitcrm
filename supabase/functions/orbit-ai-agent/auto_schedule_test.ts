@@ -11,9 +11,14 @@ interface FakeState {
   pipeline_stages: Row[];
   flow_events: Row[];
   meetingInsertFails?: boolean;
+  // Simula corrida 23505: primeiro insert em orbit_meetings falha com unique_violation
+  // e uma linha "vencedora" é apresentada nos SELECTs seguintes.
+  meetingInsertUniqueViolation?: boolean;
+  winningMeeting?: Row | null;
   ensureDealResult?: { data: any; error: any };
   order: string[];
 }
+
 
 function makeFakeSupabase(state: FakeState) {
   // Query builder terminal-agnóstico.
@@ -24,8 +29,13 @@ function makeFakeSupabase(state: FakeState) {
       _record(op: string) { state.order.push(`${table}.${op}`); },
       insert(payload: any) {
         state.order.push(`${table}.insert`);
-        if (table === "orbit_meetings" && state.meetingInsertFails) {
-          pending = { data: null, error: { message: "insert failed" } };
+        if (table === "orbit_meetings" && state.meetingInsertUniqueViolation) {
+          // 1º insert: falha 23505 e "instala" a vencedora nas próximas leituras.
+          state.meetingInsertUniqueViolation = false;
+          if (state.winningMeeting) state.meetings.push(state.winningMeeting);
+          pending = { data: null, error: { code: "23505", message: "duplicate key value violates unique constraint" } };
+        } else if (table === "orbit_meetings" && state.meetingInsertFails) {
+          pending = { data: null, error: { code: "XX000", message: "insert failed" } };
         } else if (table === "orbit_meetings") {
           const row = { id: `meeting-${state.meetings.length + 1}`, ...payload };
           state.meetings.push(row);
@@ -38,6 +48,7 @@ function makeFakeSupabase(state: FakeState) {
         }
         return api;
       },
+
       update(patch: any) {
         state.order.push(`${table}.update`);
         if (table === "orbit_deals") {
@@ -249,3 +260,116 @@ Deno.test("Google Calendar não conectado devolve not_connected (handoff manual)
   assertEquals(res.handled, false);
   assertEquals(res.not_connected, true);
 });
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Regressão: idempotência concorrente do autoagendamento
+// ────────────────────────────────────────────────────────────────────────────────
+
+Deno.test("meeting existente NÃO chama ensureFreshAccessToken/freeBusy/createEvent nem RPC de deal", async () => {
+  const state: FakeState = {
+    meetings: [{
+      id: "m-existing", empresa_id: "emp-1", prospect_id: "prospect-1",
+      scheduled_at: START, status: "scheduled", meeting_url: "https://meet/old",
+    }],
+    deals: [], pipeline_stages: [], flow_events: [], order: [],
+  };
+  const supa = makeFakeSupabase(state);
+  let ensureCalls = 0, freeBusyCalls = 0, createCalls = 0;
+  const res = await tryAutoScheduleMeeting(supa as any, baseParams() as any, {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => { ensureCalls++; return "at"; },
+    checkAvailability: async () => { freeBusyCalls++; return { busy: [] }; },
+    createCalendarEvent: async () => { createCalls++; return { id: "x" }; },
+    deleteCalendarEvent: async () => {},
+  });
+  assertEquals(ensureCalls, 0, "ensureFreshAccessToken não pode ser chamado se já existe meeting");
+  assertEquals(freeBusyCalls, 0, "freeBusy não pode ser chamado se já existe meeting");
+  assertEquals(createCalls, 0, "createCalendarEvent não pode ser chamado se já existe meeting");
+  assertEquals(res.handled, true);
+  assertEquals(res.created, false);
+  assertEquals(res.meeting_id, "m-existing");
+  assert(!state.order.includes("rpc.ensure_deal_for_prospect"));
+});
+
+Deno.test("corrida 23505: deleta o Google event perdedor e reutiliza a meeting vencedora sem novo deal_stage_changed", async () => {
+  const winner = {
+    id: "m-winner", empresa_id: "emp-1", prospect_id: "prospect-1",
+    scheduled_at: START, status: "scheduled", meeting_url: "https://meet/winner",
+    created_at: "2026-07-30T17:59:59.000Z",
+  };
+  const state: FakeState = {
+    meetings: [],
+    deals: [{ id: "deal-1", etapa_id: null }],
+    pipeline_stages: [{ id: "stage-agendado", nome: "Agendado", ordem: 1, empresa_id: "emp-1", is_archived: false }],
+    flow_events: [],
+    meetingInsertUniqueViolation: true,
+    winningMeeting: winner,
+    order: [],
+  };
+  const supa = makeFakeSupabase(state);
+  let deleted: any = null;
+  const res = await tryAutoScheduleMeeting(supa as any, baseParams() as any, {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => "at",
+    checkAvailability: async () => ({ busy: [] }),
+    createCalendarEvent: async () => ({ id: "gev-loser", hangoutLink: "https://meet/loser" }),
+    deleteCalendarEvent: async (_at, cal, ev) => { deleted = { cal, ev }; },
+  });
+  assert(deleted, "deleteCalendarEvent deve ser chamado no evento perdedor");
+  assertEquals(deleted.ev, "gev-loser");
+  assertEquals(res.handled, true);
+  assertEquals(res.created, false);
+  assertEquals(res.meeting_id, "m-winner");
+  assertEquals(res.deal_id, "deal-1");
+  assertEquals(state.flow_events.length, 0, "nenhum deal_stage_changed adicional pode ser emitido na corrida");
+});
+
+Deno.test("ramo somente-dia (tem_horario=false) continua chamando ensureFreshAccessToken + freeBusy antes de sugerir slots", async () => {
+  const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
+  const supa = makeFakeSupabase(state);
+  let ensureCalls = 0, freeBusyCalls = 0;
+  const params = baseParams() as any;
+  params.agendamento = { ...params.agendamento, tem_horario: false };
+  const res = await tryAutoScheduleMeeting(supa as any, params, {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => { ensureCalls++; return "at"; },
+    checkAvailability: async () => { freeBusyCalls++; return { busy: [] }; },
+    createCalendarEvent: async () => ({ id: "should-not-be-created" }),
+    deleteCalendarEvent: async () => {},
+  });
+  assertEquals(ensureCalls, 1, "ensureFreshAccessToken deve ser chamado no ramo somente-dia");
+  assertEquals(freeBusyCalls, 1, "freeBusy deve ser chamado no ramo somente-dia");
+  assertEquals(res.handled, true);
+  // Não pode ter criado meeting nem tocado orbit_meetings insert.
+  assert(!state.order.includes("orbit_meetings.insert"));
+  assert(Array.isArray(res.suggestions));
+});
+
+Deno.test("migration contém o índice único parcial esperado em orbit_meetings", async () => {
+  const migPath = new URL(
+    "../../migrations/",
+    import.meta.url,
+  );
+  const dir = await Deno.readDir(migPath);
+  let found = false;
+  let matchingFile = "";
+  for await (const entry of dir) {
+    if (!entry.isFile || !entry.name.endsWith(".sql")) continue;
+    const body = await Deno.readTextFile(new URL(entry.name, migPath));
+    if (
+      body.includes("orbit_meetings_uniq_active_slot") &&
+      /CREATE\s+UNIQUE\s+INDEX/i.test(body) &&
+      body.includes("empresa_id") &&
+      body.includes("prospect_id") &&
+      body.includes("scheduled_at") &&
+      body.includes("prospect_id IS NOT NULL") &&
+      /status\s+IN\s*\(\s*'scheduled'\s*,\s*'rescheduled'\s*\)/i.test(body)
+    ) {
+      found = true;
+      matchingFile = entry.name;
+      break;
+    }
+  }
+  assert(found, `Migration com índice único parcial 'orbit_meetings_uniq_active_slot' não encontrada. Encontrado=${matchingFile}`);
+});
+

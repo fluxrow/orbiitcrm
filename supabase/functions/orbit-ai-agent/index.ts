@@ -1746,13 +1746,12 @@ export async function tryAutoScheduleMeeting(
   const titulo = String(ag.titulo || `Call com ${params.prospect?.nome_razao || params.prospect?.nome_fantasia || "lead"}`).slice(0, 200);
   const temHorario = ag.tem_horario === true;
 
-  const access = await deps.ensureFreshAccessToken(token);
-
   const dayStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
     .format(startDate);
 
-  // ── Ramo: dia sem horário — sugerir 2 slots livres ──
+  // ── Ramo: dia sem horário — sugerir 2 slots livres (precisa de token + freeBusy) ──
   if (!temHorario) {
+    const access = await deps.ensureFreshAccessToken(token);
     const timeMin = isoWithOffset(dayStr, 9, 0, tz);
     const timeMax = isoWithOffset(dayStr, 18, 0, tz);
     let busy: { start: string; end: string }[] = [];
@@ -1811,7 +1810,9 @@ export async function tryAutoScheduleMeeting(
   const startISO = startDate.toISOString();
   const endISO = new Date(startDate.getTime() + duracaoMin * 60 * 1000).toISOString();
 
-  // 1) Dedupe: já existe meeting scheduled/rescheduled para (empresa, prospect, scheduled_at)?
+  // 1) Dedupe ANTES de qualquer chamada OAuth/Google: já existe meeting scheduled/rescheduled
+  //    para (empresa, prospect, scheduled_at)? Se sim, reutiliza sem tocar OAuth/Google, deal,
+  //    evento de fluxo ou handoff.
   try {
     const { data: existing } = await supabase
       .from("orbit_meetings")
@@ -1824,7 +1825,7 @@ export async function tryAutoScheduleMeeting(
       .limit(1)
       .maybeSingle();
     if (existing?.id) {
-      console.log("[orbit-ai-agent] Meeting já existe para esse horário — reutilizando:", existing.id);
+      console.log("[orbit-ai-agent] Meeting já existe para esse horário — reutilizando sem tocar OAuth/Google:", existing.id);
       const humanTime = new Intl.DateTimeFormat("pt-BR", {
         timeZone: tz, weekday: "long", day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit",
       }).format(startDate);
@@ -1841,6 +1842,9 @@ export async function tryAutoScheduleMeeting(
   } catch (e) {
     console.warn("[orbit-ai-agent] dedupe orbit_meetings falhou (segue fluxo):", (e as Error).message);
   }
+
+  // A partir daqui vamos criar — só agora tocamos OAuth.
+  const access = await deps.ensureFreshAccessToken(token);
 
   // 2) ensure_deal_for_prospect ANTES de criar evento — abortar se falhar
   let dealId: string | null = null;
@@ -1883,6 +1887,7 @@ export async function tryAutoScheduleMeeting(
     console.error("[orbit-ai-agent] freeBusy exato falhou:", (e as Error).message);
     return { handled: false, error: "freeBusy exato falhou", deal_id: dealId };
   }
+
 
   // 4) Criar evento
   const attendees: string[] = [];
@@ -1932,7 +1937,13 @@ export async function tryAutoScheduleMeeting(
     .maybeSingle();
 
   if (meetErr || !meetingRow?.id) {
-    console.error("[orbit-ai-agent] insert orbit_meetings falhou — rollback do evento Google:", meetErr?.message);
+    const errCode = (meetErr as any)?.code ?? null;
+    const isUniqueViolation = errCode === "23505";
+    console.error(
+      "[orbit-ai-agent] insert orbit_meetings falhou — rollback do evento Google:",
+      { code: errCode, msg: meetErr?.message, isUniqueViolation },
+    );
+    // Rollback do evento Google recém-criado — sempre.
     if (googleEventId) {
       try {
         await deps.deleteCalendarEvent(access, calId, googleEventId);
@@ -1940,8 +1951,47 @@ export async function tryAutoScheduleMeeting(
         console.error("[orbit-ai-agent] rollback deleteCalendarEvent falhou:", (delErr as Error).message);
       }
     }
+
+    // Corrida concorrente: outra execução venceu a inserção. Reutiliza a meeting vencedora
+    // sem emitir novo deal_stage_changed nem handoff — apenas devolve sucesso/reuse.
+    if (isUniqueViolation) {
+      try {
+        const { data: winner } = await supabase
+          .from("orbit_meetings")
+          .select("id, meeting_url, scheduled_at, status")
+          .eq("empresa_id", params.empresaId)
+          .eq("prospect_id", params.prospect_id)
+          .eq("scheduled_at", startISO)
+          .in("status", ["scheduled", "rescheduled"])
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (winner?.id) {
+          console.log("[orbit-ai-agent] corrida 23505 — reutilizando meeting vencedora:", winner.id);
+          const humanTime = new Intl.DateTimeFormat("pt-BR", {
+            timeZone: tz, weekday: "long", day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit",
+          }).format(startDate);
+          const url = winner.meeting_url;
+          return {
+            handled: true,
+            created: false,
+            response_override: url
+              ? `Sua call já está agendada para ${humanTime}. Link: ${url}. Até lá!`
+              : `Sua call já está agendada para ${humanTime}. Até lá!`,
+            deal_id: dealId,
+            meeting_id: winner.id,
+          };
+        }
+        console.error("[orbit-ai-agent] 23505 sem meeting vencedora localizável — fallback seguro");
+      } catch (lookupErr) {
+        console.error("[orbit-ai-agent] lookup meeting vencedora falhou:", (lookupErr as Error).message);
+      }
+    }
+
     return { handled: false, error: "insert orbit_meetings falhou", deal_id: dealId };
   }
+
+
 
   // 6) Mover deal para etapa Agendado (se existir) e emitir deal_stage_changed com prospect_id + meeting_id
   try {
