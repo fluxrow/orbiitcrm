@@ -12,6 +12,7 @@ import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_
 import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 import { checkEligibility } from "../_shared/orbit-whatsapp-outbox.ts";
+import { checkCampaignRecipientEligibility } from "../_shared/campaign-safety.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
