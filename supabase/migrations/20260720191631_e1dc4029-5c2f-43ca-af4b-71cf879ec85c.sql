@@ -1,0 +1,1 @@
+ALTER TABLE public.orbit_flow_go_live_operations ALTER COLUMN performed_by DROP NOT NULL;
