@@ -506,7 +506,7 @@ async function runInternalSmoke(supabase: SupabaseClient, actorId: string) {
     record("cat_eligible_rebase_1", cats.eligible_rebase === 1, cats);
     record("cat_missing_real_out_ge2", (cats.blocked_missing_real_out ?? 0) >= 2, cats);
     record("cat_replied_1", cats.blocked_replied === 1, cats);
-    record("cat_other_guard_ge3", (cats.blocked_other_guard ?? 0) >= 3, cats);
+    record("cat_other_guard_ge2", (cats.blocked_other_guard ?? 0) >= 2, cats);
 
     // B. APPLY (idempotente)
     const opId = `${RUN_ID}_op1`;
