@@ -809,15 +809,8 @@ async function enqueueScheduledAction(params: {
       ordem: action.ordem ?? 0,
       action_type: action.action_type,
       action_config: action.action_config ?? {},
-      context: {
-        payload,
-        entity_type: run.entity_type ?? null,
-        entity_id: run.entity_id ?? null,
-        // Preserva o event_id do run original (dispatcher grava em orbit_flow_runs.event_id
-        // no path real de deal_stage_changed). Sem isso, o stableKey de flow_stage
-        // colapsaria para action_id/template_id em transições futuras à mesma etapa.
-        event_id: resolveEventId(run),
-      },
+      context: buildScheduledActionContext(run),
+
 
       prospect_id: prospectId ?? null,
       deal_id: dealId ?? null,
