@@ -27,7 +27,7 @@ const TYPEBOT_LEAD_SEM_NOME = {
 };
 
 const EMOJI_RE = /[\p{Extended_Pictographic}\p{Emoji_Presentation}]/u;
-const SELF_REVEAL_RE = /\b(SDR|Sales Development Representative|IA|intelig[eê]ncia artificial|rob[oô]|bot|assistente virtual)\b/i;
+const SELF_REVEAL_RE = /(\bSDR\b|Sales Development Representative|\bIA\b|intelig[eê]ncia artificial|rob[oôó]|\bbot\b|assistente virtual)/i;
 
 export function assertSandboxReplyIsClean(reply: string, opts: { leadNome?: string } = {}) {
   assertFalse(EMOJI_RE.test(reply), `resposta contém emoji: ${reply}`);
