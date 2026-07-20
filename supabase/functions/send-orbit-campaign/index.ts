@@ -6,6 +6,7 @@ import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_
 import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
+import { checkCampaignRecipientEligibility, markRecipientIgnorado } from "../_shared/campaign-safety.ts";
 import {
   WARMUP_SCALE,
   getEffectiveDailyLimit,
@@ -439,13 +440,29 @@ const handler = async (req: Request): Promise<Response> => {
     let adapterQueued = 0;
     let adapterSkipped = 0;
 
+    let ignorados = 0;
+
     for (const recipient of recipients) {
       try {
         const prospect = recipient.prospect;
         if (!prospect) {
-          await supabase.from("orbit_campaign_recipients").update({ status: "falhou", erro: "Prospect não encontrado" }).eq("id", recipient.id);
-          falhas++;
+          await markRecipientIgnorado(supabase, recipient.id, "prospect_missing");
+          ignorados++;
           continue;
+        }
+
+        // ── Safety pre-check (flags configuráveis por campanha) ──
+        if (campaign.canal === "whatsapp") {
+          const elig = await checkCampaignRecipientEligibility(supabase, {
+            campaign,
+            empresa_id: campaign.empresa_id,
+            prospect,
+          });
+          if (!elig.eligible) {
+            await markRecipientIgnorado(supabase, recipient.id, elig.motivo ?? "ineligible");
+            ignorados++;
+            continue;
+          }
         }
 
         let mensagem = campaign.template?.corpo_texto || "";
@@ -453,17 +470,13 @@ const handler = async (req: Request): Promise<Response> => {
         const assunto = campaign.template?.assunto_email || "";
 
         const getDisplayName = (p: any): string => {
-          // 1. Se tem contato, usar contato
           if (p.nome_contato?.trim()) return p.nome_contato.trim();
-          // 2. Se nome_razao não é telefone/placeholder, usar como empresa
           const nome = p.nome_razao || "";
           const digits = nome.replace(/\D/g, "");
           const isPhone = /^\d{8,}$/.test(digits) && digits.length >= 8;
           const isPlaceholder = nome.startsWith("WhatsApp ");
           if (!isPhone && !isPlaceholder && nome.trim()) return nome.trim();
-          // 3. Fallback para nome_fantasia
           if (p.nome_fantasia?.trim()) return p.nome_fantasia.trim();
-          // 4. Vazio — mensagem sem tag
           return "";
         };
 
@@ -491,7 +504,9 @@ const handler = async (req: Request): Promise<Response> => {
           html = html.replace(new RegExp(key, "g"), value);
         }
 
-        // ── Adapter routing (Fase 3): WhatsApp + outbox_adapter_enabled=true → enfileira, sem Z-API ──
+        // ── Adapter routing (Fase 3): quando adapter ligado, APENAS enfileira e retorna. ──
+        // Impede corrida entre direct sender e worker. Sem safety re-check aqui porque
+        // já foi feito acima; o worker re-valida no momento do envio Z-API.
         if (adapterEnabled && campaign.canal === "whatsapp" && recipient.status === "pendente") {
           const routed = await enqueueOutbox(supabase, {
             empresa_id: campaign.empresa_id,
@@ -897,29 +912,44 @@ const handler = async (req: Request): Promise<Response> => {
       .eq("campaign_id", campaign_id)
       .eq("status", "pendente");
 
-    const finalStatus = pausada_por_limite
-      ? "pausada_por_limite"
-      : (remainingPending && remainingPending > 0)
-        ? "enviando"
-        : (totalEnviados === 0 && falhas > 0)
-          ? "falha"
-          : "concluida";
+    // Se o adapter estiver ligado, o worker é a fonte da verdade para envios/falhas —
+    // aqui apenas devolvemos o status corrente. Reconcile atualiza contadores.
+    if (adapterEnabled && campaign.canal === "whatsapp") {
+      await supabase.rpc("reconcile_campaign_counters", { _campaign_id: campaign_id });
+    } else {
+      const finalStatus = pausada_por_limite
+        ? "pausada_por_limite"
+        : (remainingPending && remainingPending > 0)
+          ? "enviando"
+          : (totalEnviados === 0 && falhas > 0)
+            ? "falha"
+            : "concluida";
 
-    await supabase.from("orbit_campaigns").update({
-      enviados: (campaign.enviados || 0) + totalEnviados,
-      falhas: (campaign.falhas || 0) + falhas,
-      status: finalStatus,
-    }).eq("id", campaign_id);
+      await supabase.from("orbit_campaigns").update({
+        enviados: (campaign.enviados || 0) + totalEnviados,
+        falhas: (campaign.falhas || 0) + falhas,
+        ignorados: (campaign.ignorados || 0)
+          + ignorados
+          + ignorados_sem_numero
+          + ignorados_sem_whatsapp
+          + ignorados_whatsapp_invalido,
+        status: finalStatus,
+      }).eq("id", campaign_id);
+    }
 
     return ok(
       {
         enviados,
         validados_enviados,
+        ignorados,
         ignorados_sem_numero,
         ignorados_sem_whatsapp,
         ignorados_whatsapp_invalido,
         falhas,
         pausada_por_limite,
+        adapter_enabled: adapterEnabled,
+        adapter_queued: adapterQueued,
+        adapter_skipped: adapterSkipped,
         remaining_pending: remainingPending || 0,
         rate_limit: campaign.canal === "whatsapp" ? {
           daily_limit: effectiveDailyLimit,

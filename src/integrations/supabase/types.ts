@@ -1221,6 +1221,8 @@ export type Database = {
           enviado_em: string | null
           erro: string | null
           id: string
+          ignorado_em: string | null
+          ignorado_motivo: string | null
           opened_at: string | null
           prospect_id: string | null
           resend_email_id: string | null
@@ -1240,6 +1242,8 @@ export type Database = {
           enviado_em?: string | null
           erro?: string | null
           id?: string
+          ignorado_em?: string | null
+          ignorado_motivo?: string | null
           opened_at?: string | null
           prospect_id?: string | null
           resend_email_id?: string | null
@@ -1259,6 +1263,8 @@ export type Database = {
           enviado_em?: string | null
           erro?: string | null
           id?: string
+          ignorado_em?: string | null
+          ignorado_motivo?: string | null
           opened_at?: string | null
           prospect_id?: string | null
           resend_email_id?: string | null
@@ -1305,6 +1311,7 @@ export type Database = {
           falhas: number | null
           filtros_json: Json | null
           id: string
+          ignorados: number
           motivo_reprovacao: string | null
           nome: string
           publico_origem: string | null
@@ -1335,6 +1342,7 @@ export type Database = {
           falhas?: number | null
           filtros_json?: Json | null
           id?: string
+          ignorados?: number
           motivo_reprovacao?: string | null
           nome: string
           publico_origem?: string | null
@@ -1365,6 +1373,7 @@ export type Database = {
           falhas?: number | null
           filtros_json?: Json | null
           id?: string
+          ignorados?: number
           motivo_reprovacao?: string | null
           nome?: string
           publico_origem?: string | null
