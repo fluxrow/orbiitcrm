@@ -16,6 +16,8 @@ import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_
 import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { getTokenForEmpresa, ensureFreshAccessToken, checkAvailability } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
+import { resolveEventId, buildScheduledActionContext, restoreRunFromScheduled } from "./flow-run-events.ts";
+
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -72,6 +74,13 @@ function deriveOutboxSourceType(
   // Demais triggers (deal_idle, conversa_no_reply, meeting_reminder_*): mantém heurística legada.
   return hasScheduledAction ? "flow_followup" : "flow_initial";
 }
+
+// resolveEventId, buildScheduledActionContext e restoreRunFromScheduled vivem em
+// ./flow-run-events.ts para permitir testes unitários sem inicializar o cliente supabase.
+
+
+
+
 
 
 async function findOrCreateConversa(empresaId: string, prospectId: string, telefone: string): Promise<string | null> {
@@ -185,7 +194,7 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
     const payloadForCtx: Json = (run.context?.payload ?? {}) as Json;
     const dealId = sourceType === "flow_stage" ? (await resolveDealId(run)) : null;
     const targetStageId = sourceType === "flow_stage" ? (payloadForCtx.to_stage_id ?? null) : null;
-    const eventId = sourceType === "flow_stage" ? (run.context?.event?.id ?? payloadForCtx.event_id ?? null) : null;
+    const eventId = sourceType === "flow_stage" ? resolveEventId(run) : null;
     const allowTerminal = cfg?.allow_terminal_stage_message === true;
     const actionId = (cfg?.action_id as string | null) ?? (cfg?.template_id as string | null) ?? null;
     const routed = await enqueueOutbox(supabase, {
@@ -800,11 +809,9 @@ async function enqueueScheduledAction(params: {
       ordem: action.ordem ?? 0,
       action_type: action.action_type,
       action_config: action.action_config ?? {},
-      context: {
-        payload,
-        entity_type: run.entity_type ?? null,
-        entity_id: run.entity_id ?? null,
-      },
+      context: buildScheduledActionContext(run),
+
+
       prospect_id: prospectId ?? null,
       deal_id: dealId ?? null,
       scheduled_for: scheduledFor,
@@ -844,15 +851,11 @@ async function handleSingleAction(scheduledId: string): Promise<Response> {
     });
   }
 
-  const run: Json = {
-    id: s.run_id,
-    empresa_id: s.empresa_id,
-    flow_id: s.flow_id,
-    entity_type: s.context?.entity_type ?? null,
-    entity_id: s.context?.entity_id ?? null,
-    context: { payload: s.context?.payload ?? {} },
-    _scheduled_action_id: s.id,
-  };
+  // Restaura o run consumível pelo runner, garantindo que event_id do dispatcher original
+  // seja propagado para o path de flow_stage (evita colisão futura no stableKey).
+  const run: Json = restoreRunFromScheduled(s);
+
+
 
   const stepStart = new Date().toISOString();
   const { data: step } = await supabase
