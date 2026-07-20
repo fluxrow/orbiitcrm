@@ -295,7 +295,7 @@ function computeNextState(
   if (currentState === "human_detected") return "qualificando";
   if (currentState === "aguardando_resposta" || currentState === "novo") return "qualificando";
   if (currentState === "qualificando" && cadastroCompleto) return "qualificado";
-  return currentState === "novo" ? "qualificando" : currentState;
+  return (currentState as string) === "novo" ? "qualificando" : currentState;
 }
 
 // ── Montar leadContext estruturado ──
