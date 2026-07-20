@@ -432,7 +432,7 @@ function fmtSlot(d: Date, tz: string): string {
 }
 
 async function actionCheckCalendarAndOffer(cfg: Json, run: Json): Promise<StepResult> {
-  const prospectId = run.context?.payload?.prospect_id || (run.entity_type === "prospect" ? run.entity_id : null);
+  const prospectId = await resolveProspectId(run);
   if (!prospectId) return { ok: false, error: "prospect não identificado" };
   const telefone = cfg.telefone || await resolveProspectPhone(prospectId);
   if (!telefone) return { ok: false, error: "prospect sem telefone" };
