@@ -332,8 +332,9 @@ async function applyReconcile(
     outbox_adapter_enabled_touched: false,
   };
 
+  const performed_by_final = performed_by === "00000000-0000-0000-0000-000000000000" ? null : performed_by;
   const { error: opErr } = await supabase.from("orbit_flow_go_live_operations").insert({
-    operation_id, empresa_id, performed_by, mode: "apply", status: "applied",
+    operation_id, empresa_id, performed_by: performed_by_final, mode: "apply", status: "applied",
     summary, changes,
   });
   if (opErr) return { error: opErr.message };
