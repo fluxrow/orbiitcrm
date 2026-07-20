@@ -4,6 +4,11 @@
 // Delega o envio para send-orbit-campaign em modo interno (header x-campaign-scheduler-token).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import {
+  canResumePausadaPorLimite,
+  loadCampaignSendingConfig,
+  loadCampaignDailyUsage,
+} from "../_shared/whatsapp-campaign-quota.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
