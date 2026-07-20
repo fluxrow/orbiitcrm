@@ -349,7 +349,6 @@ export async function enqueueOutbox(supabase: any, input: EnqueueInput): Promise
   if (input.target_stage_id != null) ctxMeta.target_stage_id = input.target_stage_id;
   if (input.allow_terminal_stage_message != null) ctxMeta.allow_terminal_stage_message = input.allow_terminal_stage_message;
   if (input.event_id != null) ctxMeta.event_id = input.event_id;
-  if (input.action_id != null) ctxmeta_action_placeholder;
   if (input.action_id != null) ctxMeta.action_id = input.action_id;
   // Persistir campos de contexto que o worker precisa no re-check no consumo:
   // sem eles, flow_initial cai em lead_not_new, ai_reply perde vínculo com IN,
