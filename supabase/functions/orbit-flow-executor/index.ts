@@ -743,7 +743,16 @@ async function actionSwitch(cfg: Json, run: Json): Promise<StepResult> {
   return { ok: true, output: { branch, executed, field, value: v, trace } };
 }
 
+// Guard genérico: qualquer action com action_config.enabled === false é ignorada,
+// sem enfileirar outbox, sem chamar Z-API, sem mensagem. Auditável via output do step.
+function isActionDisabled(cfg: Json): boolean {
+  return !!cfg && (cfg as any).enabled === false;
+}
+
 async function runAction(actionType: string, cfg: Json, run: Json): Promise<StepResult> {
+  if (isActionDisabled(cfg)) {
+    return { ok: true, output: { skipped: true, reason: "action_disabled", action_type: actionType } };
+  }
   switch (actionType) {
     case "send_whatsapp_template": return actionSendWhatsappTemplate(cfg, run);
     case "move_deal_stage":        return actionMoveDealStage(cfg, run);
