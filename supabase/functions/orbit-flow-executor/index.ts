@@ -498,7 +498,7 @@ async function actionCreateTask(cfg: Json, run: Json): Promise<StepResult> {
       titulo: cfg.titulo || "Tarefa de fluxo",
       descricao: cfg.descricao || null,
       due_date: dueDate,
-      prospect_id: run.context?.payload?.prospect_id ?? null,
+      prospect_id: (await resolveProspectId(run)) ?? null,
       deal_id: dealId,
       status: "pendente",
       tipo_tarefa: cfg.tipo_tarefa ?? "follow_up",
