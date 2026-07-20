@@ -914,9 +914,11 @@ Deno.serve(async (req) => {
     const { data: camp } = await supabase.from("orbit_campaigns")
       .select("status, aprovacao_status, total_destinatarios, enviados, falhas")
       .eq("id", CAMP_ID).maybeSingle();
-    const campOk = !!camp && (camp as any).status === "pausada_por_limite"
+    // Estado esperado após cleanup 20260720: pausada, aprovada, 188 destinatários,
+    // 56 enviados, 0 falhas. Ignorados são 56 e pendentes 76 (não somam em falhas).
+    const campOk = !!camp && ["pausada", "pausada_por_limite"].includes((camp as any).status)
       && (camp as any).aprovacao_status === "aprovada"
-      && (camp as any).total_destinatarios === 188 && (camp as any).enviados === 50 && (camp as any).falhas === 0;
+      && (camp as any).total_destinatarios === 188 && (camp as any).enviados === 56 && (camp as any).falhas === 0;
 
     return {
       pass: (enabledCount ?? 0) === 0 && realWithRows.length === 0 && campOk,
