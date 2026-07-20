@@ -373,3 +373,78 @@ Deno.test("migration contém o índice único parcial esperado em orbit_meetings
   assert(found, `Migration com índice único parcial 'orbit_meetings_uniq_active_slot' não encontrada. Encontrado=${matchingFile}`);
 });
 
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Guardrail anti-passado (patch 20260720): agendamentos no passado devem ser bloqueados
+// ANTES de qualquer chamada a OAuth/Google/RPC de deal/insert.
+// ────────────────────────────────────────────────────────────────────────────────
+
+Deno.test("data/hora passada NÃO chama ensureFreshAccessToken/freeBusy/createEvent nem toca deal/insert", async () => {
+  const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
+  const supa = makeFakeSupabase(state);
+  let ensureCalls = 0, freeBusyCalls = 0, createCalls = 0;
+  const params = baseParams() as any;
+  // 1 ano no passado
+  const pastStart = new Date(Date.now() - 365 * 24 * 3600_000).toISOString();
+  params.agendamento = { ...params.agendamento, data_iso: pastStart, tem_horario: true };
+  const res = await tryAutoScheduleMeeting(supa as any, params, {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => { ensureCalls++; return "at"; },
+    checkAvailability: async () => { freeBusyCalls++; return { busy: [] }; },
+    createCalendarEvent: async () => { createCalls++; return { id: "x" }; },
+    deleteCalendarEvent: async () => {},
+  });
+  assertEquals(ensureCalls, 0);
+  assertEquals(freeBusyCalls, 0);
+  assertEquals(createCalls, 0);
+  assertEquals(res.handled, true);
+  assertEquals(res.created, false);
+  assert(res.response_override && res.response_override.toLowerCase().includes("já passou"));
+  assert(!state.order.includes("rpc.ensure_deal_for_prospect"));
+  assert(!state.order.includes("orbit_meetings.insert"));
+});
+
+Deno.test("dia passado sem horário NÃO consulta Google e retorna mensagem pedindo data futura", async () => {
+  const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
+  const supa = makeFakeSupabase(state);
+  let ensureCalls = 0, freeBusyCalls = 0;
+  const params = baseParams() as any;
+  const pastDay = new Date(Date.now() - 30 * 24 * 3600_000).toISOString();
+  params.agendamento = { ...params.agendamento, data_iso: pastDay, tem_horario: false };
+  const res = await tryAutoScheduleMeeting(supa as any, params, {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => { ensureCalls++; return "at"; },
+    checkAvailability: async () => { freeBusyCalls++; return { busy: [] }; },
+    createCalendarEvent: async () => ({ id: "x" }),
+    deleteCalendarEvent: async () => {},
+  });
+  assertEquals(ensureCalls, 0);
+  assertEquals(freeBusyCalls, 0);
+  assertEquals(res.handled, true);
+  assertEquals(res.created, false);
+  assert(res.response_override && res.response_override.toLowerCase().includes("já passou"));
+});
+
+Deno.test("data futura com horário continua fluindo normalmente (regressão)", async () => {
+  const futureStart = new Date(Date.now() + 7 * 24 * 3600_000).toISOString();
+  const futureEnd = new Date(new Date(futureStart).getTime() + 60 * 60_000).toISOString();
+  const state: FakeState = {
+    meetings: [], deals: [{ id: "deal-1", etapa_id: null }],
+    pipeline_stages: [{ id: "stage-1", nome: "Agendado", ordem: 1, empresa_id: "emp-1", is_archived: false }],
+    flow_events: [], order: [],
+  };
+  const supa = makeFakeSupabase(state);
+  const params = baseParams() as any;
+  params.agendamento = { ...params.agendamento, data_iso: futureStart, tem_horario: true };
+  const res = await tryAutoScheduleMeeting(supa as any, params, {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => "at",
+    checkAvailability: async () => ({ busy: [] }),
+    createCalendarEvent: async () => ({ id: "gev-1", hangoutLink: "https://meet/x" }),
+    deleteCalendarEvent: async () => {},
+  });
+  assertEquals(res.handled, true);
+  assertEquals(res.created, true);
+  assert(res.meeting_id);
+  assert(state.order.includes("orbit_meetings.insert"));
+});

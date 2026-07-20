@@ -753,12 +753,17 @@ serve(async (req) => {
       ? `\n=== REGRAS INVIOLÁVEIS (MAIOR PESO — devem ser sempre obedecidas) ===\n${promptRegras}\n=== FIM DAS REGRAS INVIOLÁVEIS ===\n`
       : "";
 
+    const _agendaTz = "America/Sao_Paulo";
+    const _nowFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: _agendaTz, weekday: "long", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date());
+    const _nowISO = new Date().toISOString();
+    const dataHoraAtualBlock = `\nDATA/HORA ATUAL (referência para agendamentos): ${_nowFmt} (${_agendaTz}) — ISO: ${_nowISO}\nREGRA CRÍTICA DE AGENDAMENTO: NUNCA devolva "data_iso" no passado. Se o cliente citar um dia da semana (ex.: "segunda-feira"), resolva SEMPRE para a próxima ocorrência FUTURA a partir da data atual acima. Se o cliente citar horário do dia atual já passado, resolva para o próximo dia útil. Ano correto é derivado da data atual; nunca use anos passados.\n`;
+
     const systemPrompt = `${promptIdentidade}
 
 Tom de voz: ${aiConfig.tom_conversa || "profissional e amigável"}
 Idioma: ${idioma === "pt-BR" ? "Português do Brasil" : idioma === "en" ? "Inglês" : "Espanhol"}
 ${campaignContinuity}${stateInstruction}${classificationInstruction}
-${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}
+${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${dataHoraAtualBlock}
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
 ${camposQualificacaoBlock}${ragBlock}
@@ -1748,6 +1753,31 @@ export async function tryAutoScheduleMeeting(
 
   const dayStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
     .format(startDate);
+
+  // ── Guardrail anti-passado: rejeitar data/hora no passado ANTES de qualquer OAuth/Google/deal/insert ──
+  const now = new Date();
+  if (temHorario) {
+    // Horário explícito: exigir > agora + 5 min
+    if (startDate.getTime() <= now.getTime() + 5 * 60 * 1000) {
+      console.warn("[orbit-ai-agent] agendamento rejeitado (passado/imediato):", ag.data_iso);
+      return {
+        handled: true,
+        created: false,
+        response_override: "Essa data já passou. Você quis dizer a próxima segunda-feira? Me confirme a data e o horário, por favor.",
+      };
+    }
+  } else {
+    // Dia sem horário: rejeitar se o dia local da agenda já passou
+    const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+    if (dayStr < todayStr) {
+      console.warn("[orbit-ai-agent] agendamento rejeitado (dia passado):", ag.data_iso, "dayStr=", dayStr, "todayStr=", todayStr);
+      return {
+        handled: true,
+        created: false,
+        response_override: "Essa data já passou. Você quis dizer a próxima semana? Me confirme a data (e, se possível, o horário), por favor.",
+      };
+    }
+  }
 
   // ── Ramo: dia sem horário — sugerir 2 slots livres (precisa de token + freeBusy) ──
   if (!temHorario) {
