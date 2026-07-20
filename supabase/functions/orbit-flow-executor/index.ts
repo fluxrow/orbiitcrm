@@ -229,6 +229,7 @@ async function resolveDealId(run: Json): Promise<string | null> {
   const payloadDealId = (run as any).context?.payload?.deal_id;
   if (payloadDealId) return String(payloadDealId);
   if ((run as any).entity_type === "deal" && (run as any).entity_id) return String((run as any).entity_id);
+  // Evita recursão em resolveProspectId: só usa o campo direto do payload aqui.
   const prospectId = (run as any).context?.payload?.prospect_id || ((run as any).entity_type === "prospect" ? (run as any).entity_id : null);
   if (!prospectId) return null;
   const { data, error } = await supabase
@@ -245,6 +246,65 @@ async function resolveDealId(run: Json): Promise<string | null> {
     return null;
   }
   return (data as any)?.id ?? null;
+}
+
+/**
+ * Resolve prospect_id do run com retrocompatibilidade para eventos antigos.
+ * Ordem de preferência:
+ *   1. payload.prospect_id explícito
+ *   2. entity_type=prospect → entity_id
+ *   3. Fallback via deal (payload.deal_id ou entity_type=deal): busca em orbit_deals
+ *      validando empresa_id e deleted_at IS NULL. Rejeita cross-tenant.
+ *   4. Fallback via meeting_id: busca em orbit_meetings validando empresa_id.
+ * Nunca retorna prospect de outro tenant. Nunca retorna prospect deletado.
+ */
+export async function resolveProspectId(run: Json): Promise<string | null> {
+  const payload = (run as any).context?.payload ?? {};
+  const empresaId = (run as any).empresa_id;
+  const direct = payload.prospect_id || ((run as any).entity_type === "prospect" ? (run as any).entity_id : null);
+  if (direct) return String(direct);
+
+  const dealId = payload.deal_id || ((run as any).entity_type === "deal" ? (run as any).entity_id : null);
+  if (dealId && empresaId) {
+    const { data: d, error } = await supabase
+      .from("orbit_deals")
+      .select("prospect_id, empresa_id, deleted_at")
+      .eq("id", dealId)
+      .maybeSingle();
+    if (error) console.warn("[flow-executor] resolveProspectId deal lookup error", error.message);
+    if (d && (d as any).empresa_id === empresaId && !(d as any).deleted_at && (d as any).prospect_id) {
+      // valida que o prospect também é do tenant e não está deletado
+      const { data: p } = await supabase
+        .from("orbit_prospects")
+        .select("id, empresa_id, deleted_at")
+        .eq("id", (d as any).prospect_id)
+        .maybeSingle();
+      if (p && (p as any).empresa_id === empresaId && !(p as any).deleted_at) {
+        return String((p as any).id);
+      }
+    }
+  }
+
+  const meetingId = payload.meeting_id;
+  if (meetingId && empresaId) {
+    const { data: m } = await supabase
+      .from("orbit_meetings")
+      .select("prospect_id, empresa_id")
+      .eq("id", meetingId)
+      .maybeSingle();
+    if (m && (m as any).empresa_id === empresaId && (m as any).prospect_id) {
+      const { data: p } = await supabase
+        .from("orbit_prospects")
+        .select("id, empresa_id, deleted_at")
+        .eq("id", (m as any).prospect_id)
+        .maybeSingle();
+      if (p && (p as any).empresa_id === empresaId && !(p as any).deleted_at) {
+        return String((p as any).id);
+      }
+    }
+  }
+
+  return null;
 }
 
 async function actionMoveDealStage(cfg: Json, run: Json): Promise<StepResult> {
