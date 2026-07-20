@@ -103,7 +103,9 @@ function stableKey(ctx: OutboxContext): string {
       );
       break;
     case "campaign":
-      parts.push(ctx.empresa_id, ctx.campaign_id ?? "-", ctx.prospect_id ?? ctx.source_id ?? "-");
+      // Dedupe por campaign_id + recipient (source_id). Só cai para prospect_id se
+      // por algum motivo o produtor não informar recipient — nunca deve acontecer no path real.
+      parts.push(ctx.empresa_id, ctx.campaign_id ?? "-", ctx.source_id ?? ctx.prospect_id ?? "-");
       break;
   }
   return parts.join("|");
