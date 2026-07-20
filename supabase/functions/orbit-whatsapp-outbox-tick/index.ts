@@ -122,7 +122,8 @@ async function sendViaZapi(item: any, telefone: string, config: any): Promise<{ 
   let url = `${base}/send-text`;
   let body: any = { phone: telefone, message: payload.mensagem ?? "" };
 
-  const mediaSource = payload.storage_path || payload.url_midia || null;
+  // Padroniza em url_midia; aceita legado payload.url e storage_path.
+  const mediaSource = payload.storage_path || payload.url_midia || payload.url || null;
   const mediaUrl = mediaSource ? await signOrbitMediaUrl(supabase, mediaSource, 3600) : null;
 
   if (item.payload_type === "image" && mediaUrl) {
@@ -148,6 +149,46 @@ async function sendViaZapi(item: any, telefone: string, config: any): Promise<{ 
   } catch (e) {
     return { ok: false, error: `Z-API exception: ${e instanceof Error ? e.message : String(e)}` };
   }
+}
+
+// ── Persistência unificada em orbit_mensagens ──
+// Se o produtor criou orbit_mensagens.status='queued' e passou metadata.orbit_message_id,
+// o worker UPDATE essa mesma linha (sem INSERT duplicado). Fallback: INSERT quando
+// orbit_message_id não vier (garante backward-compat).
+async function upsertVisualMensagem(
+  item: any,
+  patch: { status: string; provider_message_id?: string | null; erro?: string | null },
+) {
+  const orbitMsgId: string | null = item.metadata?.orbit_message_id ?? null;
+  if (!item.conversa_id) return;
+  if (orbitMsgId) {
+    const { data, error } = await supabase
+      .from("orbit_mensagens")
+      .update({
+        status: patch.status,
+        provider_message_id: patch.provider_message_id ?? null,
+        erro: patch.erro ?? null,
+      })
+      .eq("id", orbitMsgId)
+      .select("id")
+      .maybeSingle();
+    if (!error && data) return;
+    console.warn("[outbox] upsertVisualMensagem update sem match, fallback INSERT", error?.message);
+  }
+  await supabase.from("orbit_mensagens").insert({
+    conversa_id: item.conversa_id,
+    direcao: "OUT",
+    mensagem: item.payload?.mensagem ?? "",
+    canal: "whatsapp",
+    status: patch.status,
+    provider_message_id: patch.provider_message_id ?? null,
+    erro: patch.erro ?? null,
+    empresa_id: item.empresa_id,
+    tipo_midia: item.payload_type !== "text" ? item.payload_type : null,
+    url_midia: item.payload?.url_midia ?? item.payload?.url ?? null,
+    storage_path: item.payload?.storage_path ?? null,
+    campaign_id: item.campaign_id ?? null,
+  });
 }
 
 async function processItem(item: any, cfg: SendingConfig | null): Promise<ProcessResult> {
@@ -239,6 +280,7 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
   }
   if (!telefone) {
     await supabase.from("orbit_whatsapp_outbox").update({ status: "failed", last_error: "missing_phone", locked_at: null, locked_by: null }).eq("id", item.id);
+    await upsertVisualMensagem(item, { status: "falhou", erro: "missing_phone" });
     return { outcome: "failed", reason: "missing_phone" };
   }
 
@@ -248,6 +290,7 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
       .from("orbit_whatsapp_outbox")
       .update({ status: "simulated", sent_at: new Date().toISOString(), locked_at: null, locked_by: null })
       .eq("id", item.id);
+    await upsertVisualMensagem(item, { status: "simulated" });
     return { outcome: "simulated" };
   }
 
@@ -271,6 +314,7 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
       .from("orbit_whatsapp_outbox")
       .update({ status: "failed", last_error: block, locked_at: null, locked_by: null })
       .eq("id", item.id);
+    await upsertVisualMensagem(item, { status: "falhou", erro: block });
     return { outcome: "blocked", reason: "zapi_real_send_blocked" };
   }
 
@@ -279,6 +323,7 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
       .from("orbit_whatsapp_outbox")
       .update({ status: "failed", last_error: "zapi_config_missing", locked_at: null, locked_by: null })
       .eq("id", item.id);
+    await upsertVisualMensagem(item, { status: "falhou", erro: "zapi_config_missing" });
     return { outcome: "failed", reason: "zapi_config_missing" };
   }
 
@@ -290,27 +335,16 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
       .update({ status: "sent", sent_at: new Date().toISOString(), provider_message_id: result.providerId ?? null, locked_at: null, locked_by: null })
       .eq("id", item.id);
 
-    // Persistir orbit_mensagens
+    // Persistir orbit_mensagens: UPDATE se produtor pré-criou queued; INSERT fallback.
     if (item.conversa_id) {
       const preview = String(item.payload?.mensagem || `📎 ${item.payload_type}`).slice(0, 100);
-      await supabase.from("orbit_mensagens").insert({
-        conversa_id: item.conversa_id,
-        direcao: "OUT",
-        mensagem: item.payload?.mensagem ?? "",
-        canal: "whatsapp",
-        status: "enviada",
-        provider_message_id: result.providerId ?? null,
-        empresa_id: item.empresa_id,
-        tipo_midia: item.payload_type !== "text" ? item.payload_type : null,
-        url_midia: item.payload?.url_midia ?? null,
-        storage_path: item.payload?.storage_path ?? null,
-        campaign_id: item.campaign_id ?? null,
-      });
+      await upsertVisualMensagem(item, { status: "enviada", provider_message_id: result.providerId ?? null });
       await supabase
         .from("orbit_conversas")
         .update({ ultima_mensagem_at: new Date().toISOString(), ultima_mensagem_preview: preview })
         .eq("id", item.conversa_id);
     }
+
 
     await bumpDailyUsage(item.empresa_id, 1);
     await auditZapiSendAttempt(supabase, {
@@ -344,6 +378,20 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
   return { outcome: "deferred", reason: result.error };
 }
 
+function sortClaimed(items: any[]): any[] {
+  // Ordem determinística: priority DESC, scheduled_for ASC, created_at ASC, id ASC.
+  // Necessário porque RETURNING de UPDATE ... FROM não garante ordem do CTE.
+  return [...items].sort((a, b) => {
+    const p = (Number(b.priority) || 0) - (Number(a.priority) || 0);
+    if (p !== 0) return p;
+    const s = String(a.scheduled_for ?? "").localeCompare(String(b.scheduled_for ?? ""));
+    if (s !== 0) return s;
+    const c = String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
+    if (c !== 0) return c;
+    return String(a.id).localeCompare(String(b.id));
+  });
+}
+
 async function processTenant(empresa_id: string, batch: number): Promise<{ claimed: number; sent: number; simulated: number; canceled: number; deferred: number; failed: number; blocked: number }> {
   const cfg = await getSendingConfig(empresa_id);
   const { data: claimed, error } = await supabase.rpc("outbox_claim_batch", {
@@ -354,7 +402,7 @@ async function processTenant(empresa_id: string, batch: number): Promise<{ claim
   });
   if (error) throw error;
   const stats = { claimed: 0, sent: 0, simulated: 0, canceled: 0, deferred: 0, failed: 0, blocked: 0 };
-  for (const item of (claimed ?? []) as any[]) {
+  for (const item of sortClaimed((claimed ?? []) as any[])) {
     stats.claimed++;
     const r = await processItem(item, cfg);
     stats[r.outcome as keyof typeof stats]++;
@@ -391,6 +439,24 @@ Deno.serve(async (req) => {
         .eq("empresa_id", body.empresa_id)
         .maybeSingle();
       if (!single) return new Response(JSON.stringify({ ok: false, error: "not_found" }), { status: 200, headers: corsHeaders });
+
+      // Fura-fila guard: se existe pending com prioridade maior nesse tenant e já elegível,
+      // defer este item — nunca desrespeitar prioridade global.
+      const nowIso = new Date().toISOString();
+      const { data: higher } = await supabase
+        .from("orbit_whatsapp_outbox")
+        .select("id, priority")
+        .eq("empresa_id", body.empresa_id)
+        .eq("status", "pending")
+        .gt("priority", (single as any).priority ?? 0)
+        .lte("scheduled_for", nowIso)
+        .limit(1);
+      if (higher && higher.length > 0) {
+        return new Response(JSON.stringify({ ok: true, data: { deferred: true, reason: "higher_priority_pending" } }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       // Reserva manualmente
       const { data: locked } = await supabase
         .from("orbit_whatsapp_outbox")

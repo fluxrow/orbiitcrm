@@ -149,22 +149,15 @@ serve(async (req) => {
 
     // ── Adapter routing (Fase 3): manual + outbox_adapter_enabled=true → enfileira, sem Z-API ──
     if (!isDemo && profile?.empresa_id && await isAdapterEnabled(supabase, profile.empresa_id)) {
-      const routed = await enqueueOutbox(supabase, {
-        empresa_id: profile.empresa_id,
-        conversa_id,
-        prospect_id: conversaRow.prospect_id ?? null,
-        source_type: "manual",
-        source_id: crypto.randomUUID(),
-        payload_type: (tipo_midia as any) || "text",
-        payload: {
-          mensagem: mensagem || "",
-          url_midia: url_midia || null,
-          storage_path: storage_path || null,
-          tipo_midia: tipo_midia || null,
-        },
-      });
-      // Registra a mensagem em orbit_mensagens como "queued" para UI acompanhar
-      const { data: novaMensagem } = await supabase
+      // Idempotency-Key (header ou body) garante retries seguros — mesma key = 1 envio.
+      const idemHeader = req.headers.get("Idempotency-Key") || req.headers.get("idempotency-key");
+      const idemBody = (body as any)?.idempotency_key || (body as any)?.request_id;
+      const idemKey = String(idemHeader || idemBody || crypto.randomUUID());
+
+      // Pré-cria a linha visual "queued" para termos orbit_message_id antes do enqueue.
+      // Em retry com mesma Idempotency-Key: enqueue devolve duplicate → deletamos a linha
+      // recém-criada (não usada) e devolvemos a orbit_message_id original.
+      const { data: novaMensagem, error: preErr } = await supabase
         .from("orbit_mensagens")
         .insert({
           conversa_id,
@@ -179,6 +172,29 @@ serve(async (req) => {
         })
         .select()
         .single();
+      if (preErr) throw preErr;
+
+      const routed = await enqueueOutbox(supabase, {
+        empresa_id: profile.empresa_id,
+        conversa_id,
+        prospect_id: conversaRow.prospect_id ?? null,
+        source_type: "manual",
+        source_id: idemKey,
+        payload_type: (tipo_midia as any) || "text",
+        payload: {
+          mensagem: mensagem || "",
+          url_midia: url_midia || null,
+          storage_path: storage_path || null,
+          tipo_midia: tipo_midia || null,
+        },
+        metadata: { orbit_message_id: novaMensagem.id, idempotency_key: idemKey },
+      });
+
+      // Retry com mesma Idempotency-Key: descarta a linha pré-criada para não duplicar UI.
+      if (!routed.enqueued && routed.reason === "duplicate") {
+        await supabase.from("orbit_mensagens").delete().eq("id", novaMensagem.id);
+      }
+
       return ok(
         {
           mensagem: novaMensagem,
@@ -186,12 +202,14 @@ serve(async (req) => {
           queued: !!routed.enqueued,
           outbox_id: routed.outbox_id ?? null,
           reason: routed.reason ?? null,
+          idempotency_key: idemKey,
           adapter: true,
         },
         undefined,
         req,
       );
     }
+
 
 
     if (isDemo) {

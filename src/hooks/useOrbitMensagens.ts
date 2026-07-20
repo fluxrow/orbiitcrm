@@ -74,8 +74,16 @@ export function useSendMensagem() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
 
+      // Idempotency-Key estável por chamada: retries do react-query ou double-click
+      // não geram envios duplicados no adapter global de WhatsApp.
+      const idempotencyKey =
+        (typeof crypto !== "undefined" && "randomUUID" in crypto)
+          ? crypto.randomUUID()
+          : `${conversa_id}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
       const response = await supabase.functions.invoke("orbit-send-message", {
-        body: { conversa_id, mensagem, telefone, canal, tipo_midia, url_midia, storage_path },
+        body: { conversa_id, mensagem, telefone, canal, tipo_midia, url_midia, storage_path, idempotency_key: idempotencyKey },
+        headers: { "Idempotency-Key": idempotencyKey },
       });
 
       return handleApiResponse(response);

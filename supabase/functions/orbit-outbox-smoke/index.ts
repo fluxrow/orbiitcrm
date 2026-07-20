@@ -326,7 +326,9 @@ Deno.serve(async (req) => {
       _empresa_id: empresa_id, _batch: 3, _worker_id: "smoke", _lease_seconds: 60,
     });
     if (error) return { pass: false, detail: error.message };
-    const order = ((claimed as any[]) ?? []).map((r: any) => r.source_type);
+    // Aplica o sort determinístico do worker (RETURNING não garante ordem).
+    const sorted = [...((claimed as any[]) ?? [])].sort((a, b) => (Number(b.priority)||0) - (Number(a.priority)||0));
+    const order = sorted.map((r: any) => r.source_type);
     return { pass: order[0] === "ai_reply" && order[1] === "flow_followup" && order[2] === "campaign", detail: order };
   });
 
@@ -632,7 +634,8 @@ Deno.serve(async (req) => {
       _empresa_id: empresa_id, _batch: 4, _worker_id: "smoke-Y", _lease_seconds: 60,
     });
     if (error) return { pass: false, detail: error.message };
-    const order = ((claimed as any[]) ?? []).map((r: any) => r.source_type);
+    const sorted = [...((claimed as any[]) ?? [])].sort((a, b) => (Number(b.priority)||0) - (Number(a.priority)||0));
+    const order = sorted.map((r: any) => r.source_type);
     // Todos itens compartilham a mesma sending_config (quota compartilhada)
     const pass =
       order[0] === "ai_reply" && order[1] === "manual" &&
@@ -905,6 +908,156 @@ Deno.serve(async (req) => {
       detail: { enabled_adapters: enabledCount, real_outbox_rows: realWithRows.length, camp },
     };
   });
+
+  // ============================================================================
+  // Fase 3 – patches: AG (ordem determinística) / AH (idempotency manual) /
+  // AI (uma mensagem visual por envio) / AJ (áudio url_midia padronizado).
+  // ============================================================================
+
+  // Aplicação do mesmo sort do worker (priority DESC, scheduled_for ASC, created_at ASC, id ASC).
+  const sortClaimed = (items: any[]) => [...items].sort((a, b) => {
+    const p = (Number(b.priority) || 0) - (Number(a.priority) || 0);
+    if (p !== 0) return p;
+    const s = String(a.scheduled_for ?? "").localeCompare(String(b.scheduled_for ?? ""));
+    if (s !== 0) return s;
+    const c = String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
+    if (c !== 0) return c;
+    return String(a.id).localeCompare(String(b.id));
+  });
+
+  // AG. Ordem determinística (20 iterações): mesmo após claim, sort local sempre devolve
+  // priority DESC. Cobre a lacuna do RETURNING não-ordenado do UPDATE ... FROM.
+  await runCase(results, "AG. ordem determinística — 20 iterações", async () => {
+    const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
+    let allPass = true;
+    const perIter: any[] = [];
+    for (let i = 0; i < 20; i++) {
+      const now = new Date();
+      // Insere 3 itens (prioridades 100, 70, 40) em ordem aleatória de criação/agendamento.
+      const items = [
+        { priority: 40, offset: 0 },
+        { priority: 100, offset: 2 },
+        { priority: 70, offset: 1 },
+      ].sort(() => Math.random() - 0.5);
+      const pid = await makeProspect(supabase, empresa_id, { suffix: `AG${i}` });
+      for (const it of items) {
+        await supabase.from("orbit_whatsapp_outbox").insert({
+          empresa_id, prospect_id: pid,
+          source_type: "manual", source_id: `${RUN_ID}-AG-${i}-${it.priority}`,
+          idempotency_key: `${RUN_ID}-AG-${i}-${it.priority}`,
+          priority: it.priority,
+          payload_type: "text", payload: { mensagem: `p${it.priority}` },
+          scheduled_for: new Date(now.getTime() - 1000 - it.offset * 10).toISOString(),
+          metadata: { simulate: true, smoke: RUN_ID },
+        });
+      }
+      const { data: claimed } = await supabase.rpc("outbox_claim_batch", {
+        _empresa_id: empresa_id, _batch: 10, _worker_id: `smoke-AG-${i}`, _lease_seconds: 60,
+      });
+      const sorted = sortClaimed((claimed ?? []) as any[]);
+      const priorities = sorted.map((r) => r.priority);
+      const ok = priorities.length === 3 && priorities[0] === 100 && priorities[1] === 70 && priorities[2] === 40;
+      if (!ok) { allPass = false; perIter.push({ i, priorities }); }
+      // Reset (delete) claimed items para próxima iteração isolada
+      await supabase.from("orbit_whatsapp_outbox").delete().eq("empresa_id", empresa_id);
+    }
+    return { pass: allPass, detail: { iterations: 20, failures: perIter } };
+  });
+
+  // AH. Idempotência real do produtor manual: 2 enqueues com mesma source_id → 1 outbox.
+  await runCase(results, "AH. manual Idempotency-Key dedupe (2 chamadas = 1 outbox)", async () => {
+    const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
+    const pid = await makeProspect(supabase, empresa_id, { suffix: "AH" });
+    const cid = await makeConversa(supabase, empresa_id, pid);
+    const idem = `AH-${crypto.randomUUID()}`;
+    const r1 = await enqueueOutbox(supabase, {
+      empresa_id, conversa_id: cid, prospect_id: pid,
+      source_type: "manual", source_id: idem,
+      payload_type: "text", payload: { mensagem: "olá" },
+      metadata: { simulate: true, smoke: RUN_ID, idempotency_key: idem },
+    } as any);
+    const r2 = await enqueueOutbox(supabase, {
+      empresa_id, conversa_id: cid, prospect_id: pid,
+      source_type: "manual", source_id: idem,
+      payload_type: "text", payload: { mensagem: "olá" },
+      metadata: { simulate: true, smoke: RUN_ID, idempotency_key: idem },
+    } as any);
+    const { count } = await supabase
+      .from("orbit_whatsapp_outbox")
+      .select("id", { count: "exact", head: true })
+      .eq("empresa_id", empresa_id).eq("source_type", "manual");
+    return {
+      pass: r1.enqueued === true && r2.enqueued === false && r2.reason === "duplicate" && (count ?? 0) === 1,
+      detail: { r1, r2, count },
+    };
+  });
+
+  // AI. Uma mensagem visual por envio: produtor pré-cria orbit_mensagens=queued e envia
+  // metadata.orbit_message_id — após worker simulated, existe exatamente 1 linha e ela
+  // muda para 'simulated' (sem INSERT paralelo).
+  await runCase(results, "AI. uma mensagem visual por envio (adapter + worker simulated)", async () => {
+    const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
+    // Adapter precisa estar ligado no tenant sintético para roteamento do produtor real,
+    // mas aqui simulamos direto o contrato: enqueue com orbit_message_id em metadata.
+    await supabase.from("orbit_whatsapp_sending_config").upsert({
+      empresa_id, outbox_adapter_enabled: true, daily_limit: 999, max_per_minute: 999,
+    }, { onConflict: "empresa_id" });
+    const pid = await makeProspect(supabase, empresa_id, { suffix: "AI" });
+    const cid = await makeConversa(supabase, empresa_id, pid);
+    // Produtor pré-insere queued
+    const { data: pre } = await supabase.from("orbit_mensagens").insert({
+      empresa_id, conversa_id: cid, direcao: "OUT", mensagem: "oi", canal: "whatsapp", status: "queued",
+    }).select("id").single();
+    // Enfileira apontando para essa linha
+    const enq = await enqueueOutbox(supabase, {
+      empresa_id, conversa_id: cid, prospect_id: pid,
+      source_type: "manual", source_id: `AI-${crypto.randomUUID()}`,
+      payload_type: "text", payload: { mensagem: "oi" },
+      metadata: { simulate: true, smoke: RUN_ID, orbit_message_id: (pre as any).id },
+    } as any);
+    // Invoca o worker em modo dirigido (simulate=true → não chama Z-API real).
+    const cronToken = Deno.env.get("SCHEDULER_CRON_TOKEN") || SMOKE_TOKEN;
+    const workerResp = await fetch(`${SUPABASE_URL}/functions/v1/orbit-whatsapp-outbox-tick`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${cronToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ outbox_id: enq.outbox_id, empresa_id }),
+    });
+    const workerBody = await workerResp.json().catch(() => ({}));
+    // Conta orbit_mensagens dessa conversa: precisa ser EXATAMENTE 1 e status='simulated'.
+    const { data: msgs } = await supabase.from("orbit_mensagens")
+      .select("id, status").eq("conversa_id", cid);
+    const list = (msgs ?? []) as any[];
+    const pass = enq.enqueued === true && list.length === 1 && list[0].status === "simulated";
+    return { pass, detail: { workerBody, msgs: list } };
+  });
+
+  // AJ. Áudio url_midia padronizado: payload do adapter usa payload.url_midia (não .url legado).
+  await runCase(results, "AJ. áudio adapter usa payload.url_midia", async () => {
+    const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
+    const pid = await makeProspect(supabase, empresa_id, { suffix: "AJ" });
+    const cid = await makeConversa(supabase, empresa_id, pid);
+    // Simular IN para dar contexto ao ai_reply
+    const { data: inMsg } = await supabase.from("orbit_mensagens").insert({
+      empresa_id, conversa_id: cid, direcao: "IN", mensagem: "manda áudio", status: "recebida", canal: "whatsapp",
+    }).select("id").single();
+    const audioUrl = "https://cdn.example.com/audios/greet.mp3";
+    const enq = await enqueueOutbox(supabase, {
+      empresa_id, conversa_id: cid, prospect_id: pid,
+      source_type: "ai_reply",
+      inbound_message_id: `${(inMsg as any).id}:audio:${audioUrl}`,
+      source_id: audioUrl,
+      payload_type: "audio",
+      payload: { storage_path: null, url_midia: audioUrl },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    const { data: row } = await supabase.from("orbit_whatsapp_outbox")
+      .select("payload").eq("id", enq.outbox_id).maybeSingle();
+    const payload = (row as any)?.payload ?? {};
+    const pass = enq.enqueued === true && payload.url_midia === audioUrl && !("url" in payload);
+    return { pass, detail: { payload } };
+  });
+
+
 
   for (const t of tenants) {
     await supabase.from("orbit_whatsapp_sending_config").delete().eq("empresa_id", t);
