@@ -620,7 +620,7 @@ function evaluateCondition(ctx: Json, cond: Json, trace?: string[]): boolean {
 async function loadEvalContext(run: Json): Promise<Json> {
   const payload = run.context?.payload ?? {};
   const ctx: Json = { payload, prospect: null, deal: null };
-  const prospectId = payload.prospect_id || (run.entity_type === "prospect" ? run.entity_id : null);
+  const prospectId = await resolveProspectId(run);
   if (prospectId) {
     const { data } = await supabase.from("orbit_prospects").select("*").eq("id", prospectId).maybeSingle();
     ctx.prospect = data ?? null;
