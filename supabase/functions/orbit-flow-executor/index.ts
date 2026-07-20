@@ -75,26 +75,9 @@ function deriveOutboxSourceType(
   return hasScheduledAction ? "flow_followup" : "flow_initial";
 }
 
-/**
- * Resolve o event_id (orbit_flow_events) associado ao run em ordem determinística.
- * O dispatcher grava event_id em orbit_flow_runs.event_id (path real via trigger de
- * deal_stage_changed). Em execuções vindas do scheduler, o event_id é preservado
- * dentro de context.event_id (ver enqueueScheduledAction/handleSingleAction).
- * Fallback final aceita payload.event_id apenas para compatibilidade com produtores legados.
- *
- * Puro (sem I/O). Exportado para permitir testes unitários com a estrutura real de run.
- */
-export function resolveEventId(run: any): string | null {
-  const direct = run?.event_id;
-  if (direct) return String(direct);
-  const ctxEvent = run?.context?.event?.id;
-  if (ctxEvent) return String(ctxEvent);
-  const ctxEventId = run?.context?.event_id;
-  if (ctxEventId) return String(ctxEventId);
-  const payloadEventId = run?.context?.payload?.event_id;
-  if (payloadEventId) return String(payloadEventId);
-  return null;
-}
+// resolveEventId, buildScheduledActionContext e restoreRunFromScheduled vivem em
+// ./flow-run-events.ts para permitir testes unitários sem inicializar o cliente supabase.
+
 
 
 
