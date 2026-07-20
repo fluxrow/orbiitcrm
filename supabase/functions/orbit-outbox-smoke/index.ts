@@ -71,6 +71,7 @@ async function cleanupTenants(supabase: SupabaseClient, tenants: string[]) {
     await supabase.from("orbit_mensagens").delete().eq("empresa_id", empresa_id);
     await supabase.from("orbit_conversas").delete().eq("empresa_id", empresa_id);
     await supabase.from("orbit_deals").delete().eq("empresa_id", empresa_id);
+    await supabase.from("orbit_pipeline_stages").delete().eq("empresa_id", empresa_id);
     await supabase.from("orbit_prospects").delete().eq("empresa_id", empresa_id);
     await supabase.from("orbit_empresas").delete().eq("id", empresa_id);
   }
