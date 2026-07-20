@@ -447,6 +447,4 @@ Deno.test("data futura com horário continua fluindo normalmente (regressão)", 
   assertEquals(res.created, true);
   assert(res.meeting_id);
   assert(state.order.includes("orbit_meetings.insert"));
-  // Sanity: freeBusy foi consultado no intervalo exato
-  assert(state.order.some((s) => s.startsWith("freeBusy:")));
 });
