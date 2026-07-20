@@ -335,6 +335,13 @@ export async function enqueueOutbox(supabase: any, input: EnqueueInput): Promise
   }
 
   const priority = input.priority_override ?? OUTBOX_PRIORITY[input.source_type];
+  // Merge de contexto no metadata (o worker precisa desses campos para re-check no consumo).
+  const ctxMeta: Record<string, unknown> = {};
+  if (input.target_stage_id != null) ctxMeta.target_stage_id = input.target_stage_id;
+  if (input.allow_terminal_stage_message != null) ctxMeta.allow_terminal_stage_message = input.allow_terminal_stage_message;
+  if (input.event_id != null) ctxMeta.event_id = input.event_id;
+  if (input.action_id != null) ctxMeta.action_id = input.action_id;
+  const mergedMetadata = { ...(input.metadata ?? {}), ...ctxMeta };
   const { data: row, error } = await supabase
     .from("orbit_whatsapp_outbox")
     .insert({
@@ -352,7 +359,7 @@ export async function enqueueOutbox(supabase: any, input: EnqueueInput): Promise
       payload_type: input.payload_type,
       payload: input.payload,
       scheduled_for: input.scheduled_for ?? new Date().toISOString(),
-      metadata: input.metadata ?? {},
+      metadata: mergedMetadata,
     })
     .select("id, status")
     .single();
