@@ -315,6 +315,7 @@ Deno.serve(async (req) => {
     const p2 = await makeProspect(supabase, empresa_id, { suffix: "L2" });
     const p3 = await makeProspect(supabase, empresa_id, { suffix: "L3" });
     const cid = await makeConversa(supabase, empresa_id, p1);
+    await seedRealOut(empresa_id, p2);
 
     await enqueueOutbox(supabase, {
       empresa_id, prospect_id: p3, source_type: "campaign",
