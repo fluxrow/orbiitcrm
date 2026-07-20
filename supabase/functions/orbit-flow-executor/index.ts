@@ -266,60 +266,8 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
     },
   } as StepResult;
 
-  // (path legado direto via sendZapi removido — mantido apenas o retorno acima)
-  // eslint-disable-next-line no-unreachable
-  let imageResult: any = null;
-  if (tpl.imagem_url) {
-    imageResult = await sendZapi(run.empresa_id, telefone, "image", { image: tpl.imagem_url, caption: "" });
-    await supabase.from("orbit_mensagens").insert({
-      empresa_id: run.empresa_id,
-      conversa_id: conversaId,
-      direcao: "OUT",
-      mensagem: "",
-      tipo_midia: "image",
-      url_midia: tpl.imagem_url,
-      canal: "whatsapp",
-      status: imageResult.ok ? "enviada" : "falhou",
-      erro: imageResult.ok ? null : imageResult.error ?? null,
-      timestamp: new Date().toISOString(),
-    });
-  }
-
-  const textResult = await sendZapi(run.empresa_id, telefone, "text", { message: mensagem });
-
-  await supabase.from("orbit_mensagens").insert({
-    empresa_id: run.empresa_id,
-    conversa_id: conversaId,
-    direcao: "OUT",
-    mensagem,
-    canal: "whatsapp",
-    status: textResult.ok ? "enviada" : "falhou",
-    erro: textResult.ok ? null : textResult.error ?? null,
-    timestamp: new Date().toISOString(),
-  });
-
-  await supabase
-    .from("orbit_conversas")
-    .update({
-      ultima_mensagem_at: new Date().toISOString(),
-      ultima_mensagem_preview: (mensagem || "").slice(0, 200),
-    })
-    .eq("id", conversaId);
-
-  return {
-    ok: textResult.ok,
-    output: {
-      template_id: tpl.id,
-      template_nome: tpl.nome,
-      conversa_id: conversaId,
-      telefone,
-      mensagem,
-      image_sent: !!tpl.imagem_url,
-      image_result: imageResult?.output ?? null,
-      zapi: textResult.output ?? null,
-    },
-    error: textResult.ok ? undefined : textResult.error,
-  };
+  // (path legado direto via sendZapi para send_whatsapp_template foi removido —
+  //  envio real depende obrigatoriamente do adapter/outbox.)
 }
 
 async function resolveDealId(run: Json): Promise<string | null> {
