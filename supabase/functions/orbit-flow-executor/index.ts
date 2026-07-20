@@ -185,7 +185,8 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
   }
 
   // ── Adapter routing (Fase 3+): se outbox_adapter_enabled=true, enfileira e retorna ──
-  if (await isAdapterEnabled(supabase, run.empresa_id)) {
+  const adapterOn = await isAdapterEnabled(supabase, run.empresa_id);
+  if (adapterOn) {
     const scheduledActionId = (run as any)._scheduled_action_id ?? null;
     const hasScheduled = !!scheduledActionId;
     const triggerType = await getFlowTriggerType((run as any).flow_id ?? null);
@@ -197,6 +198,13 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
     const eventId = sourceType === "flow_stage" ? resolveEventId(run) : null;
     const allowTerminal = cfg?.allow_terminal_stage_message === true;
     const actionId = (cfg?.action_id as string | null) ?? (cfg?.template_id as string | null) ?? null;
+    // Suporte a smoke real: cfg.simulate=true propaga metadata.simulate=true ao outbox.
+    const simulate = cfg?.simulate === true;
+    const metadata: Record<string, unknown> = {
+      trigger_type: triggerType,
+      derived_source_type: sourceType,
+    };
+    if (simulate) metadata.simulate = true;
     const routed = await enqueueOutbox(supabase, {
       empresa_id: run.empresa_id,
       prospect_id: prospectId,
@@ -218,10 +226,7 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
         template_id: tpl.id,
         template_nome: tpl.nome,
       },
-      metadata: {
-        trigger_type: triggerType,
-        derived_source_type: sourceType,
-      },
+      metadata,
     } as any);
     return {
       ok: true,
@@ -240,10 +245,29 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
         conversa_id: conversaId,
         telefone,
         mensagem,
+        simulate,
       },
     };
   }
 
+  // ── Fail-closed: sem adapter, envio REAL de template não é permitido.
+  //   Caminho legado direto para sendZapi de send_whatsapp_template fica desativado.
+  //   dry_run continua permitido (não chega aqui). Manual/AI/campaign têm caminhos próprios.
+  return {
+    ok: false,
+    error: "OUTBOX_ADAPTER_REQUIRED",
+    output: {
+      adapter: false,
+      dry_run: false,
+      reason: "outbox_adapter_disabled",
+      template_id: tpl.id,
+      template_nome: tpl.nome,
+      conversa_id: conversaId,
+    },
+  } as StepResult;
+
+  // (path legado direto via sendZapi removido — mantido apenas o retorno acima)
+  // eslint-disable-next-line no-unreachable
   let imageResult: any = null;
   if (tpl.imagem_url) {
     imageResult = await sendZapi(run.empresa_id, telefone, "image", { image: tpl.imagem_url, caption: "" });
