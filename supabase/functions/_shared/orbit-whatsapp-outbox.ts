@@ -175,43 +175,88 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
     else if (!isManual && (c.human_talk === true || c.human_user_id)) reasons.push("human_handoff");
   }
 
-  // ── Terminal deal — bloqueia TODOS os source_types (inclusive manual até decisão futura).
-  // Detecta por: (a) deal_id explícito; (b) qualquer deal do prospect no mesmo tenant com
-  // deleted_at, status textual won/lost ou etapa vinculada com is_won/is_lost=true.
-  if (ctx.deal_id) {
-    const { data: d } = await supabase
-      .from("orbit_deals")
-      .select("id, status, deleted_at, etapa_id")
-      .eq("id", ctx.deal_id)
-      .maybeSingle();
-    if (d?.deleted_at) reasons.push("terminal_deal");
-    else if (d?.status && ["won","lost","ganho","perdido","deleted"].includes(String(d.status).toLowerCase())) {
-      reasons.push("terminal_deal");
+  // ── flow_stage: elegibilidade dedicada de transição de etapa.
+  //   • Sempre exige deal existente no mesmo tenant/prospect e não deletado.
+  //   • Não bloqueia por contato/resposta histórica (histórico é esperado).
+  //   • Etapa atual do deal deve == metadata.target_stage_id; senão stale_stage_transition.
+  //   • Terminal (is_won/is_lost) só passa se allow_terminal_stage_message=true E
+  //     a etapa atual É a terminal alvo. Nunca envia em deal deletado.
+  const isFlowStage = ctx.source_type === "flow_stage";
+  if (isFlowStage) {
+    let dealRow: any = null;
+    if (ctx.deal_id) {
+      const { data: d } = await supabase
+        .from("orbit_deals")
+        .select("id, empresa_id, prospect_id, status, deleted_at, etapa_id")
+        .eq("id", ctx.deal_id)
+        .maybeSingle();
+      dealRow = d ?? null;
     }
-  }
-  if (!reasons.includes("terminal_deal") && ctx.prospect_id) {
-    const { data: deals } = await supabase
-      .from("orbit_deals")
-      .select("id, status, deleted_at, etapa_id")
-      .eq("empresa_id", ctx.empresa_id)
-      .eq("prospect_id", ctx.prospect_id);
-    const list = (deals ?? []) as any[];
-    let terminal = false;
-    const stageIds: string[] = [];
-    for (const d of list) {
-      if (d.deleted_at) { terminal = true; break; }
-      const s = String(d.status ?? "").toLowerCase();
-      if (["won","lost","ganho","perdido","deleted"].includes(s)) { terminal = true; break; }
-      if (d.etapa_id) stageIds.push(d.etapa_id);
+    if (!dealRow) reasons.push("deal_missing");
+    else if (dealRow.empresa_id !== ctx.empresa_id) reasons.push("cross_tenant");
+    else if (dealRow.deleted_at) reasons.push("terminal_deal");
+    else {
+      // Etapa atual deve bater com a etapa alvo do enqueue.
+      if (ctx.target_stage_id && dealRow.etapa_id !== ctx.target_stage_id) {
+        reasons.push("stale_stage_transition");
+      }
+      // Verifica se a etapa atual é terminal (won/lost) e aplica gate.
+      if (dealRow.etapa_id) {
+        const { data: stg } = await supabase
+          .from("orbit_pipeline_stages")
+          .select("id, is_won, is_lost")
+          .eq("id", dealRow.etapa_id)
+          .maybeSingle();
+        const isTerminalStage = stg?.is_won === true || stg?.is_lost === true;
+        if (isTerminalStage && ctx.allow_terminal_stage_message !== true) {
+          reasons.push("terminal_deal");
+        }
+      }
+      // status textual won/lost com flag off também bloqueia.
+      const s = String(dealRow.status ?? "").toLowerCase();
+      if (["won","lost","ganho","perdido","deleted"].includes(s) && ctx.allow_terminal_stage_message !== true) {
+        if (!reasons.includes("terminal_deal")) reasons.push("terminal_deal");
+      }
     }
-    if (!terminal && stageIds.length > 0) {
-      const { data: stages } = await supabase
-        .from("orbit_pipeline_stages")
-        .select("id, is_won, is_lost")
-        .in("id", stageIds);
-      if ((stages ?? []).some((s: any) => s.is_won === true || s.is_lost === true)) terminal = true;
+  } else {
+    // ── Terminal deal — bloqueia demais source_types (inclusive manual até decisão futura).
+    // Detecta por: (a) deal_id explícito; (b) qualquer deal do prospect no mesmo tenant com
+    // deleted_at, status textual won/lost ou etapa vinculada com is_won/is_lost=true.
+    if (ctx.deal_id) {
+      const { data: d } = await supabase
+        .from("orbit_deals")
+        .select("id, status, deleted_at, etapa_id")
+        .eq("id", ctx.deal_id)
+        .maybeSingle();
+      if (d?.deleted_at) reasons.push("terminal_deal");
+      else if (d?.status && ["won","lost","ganho","perdido","deleted"].includes(String(d.status).toLowerCase())) {
+        reasons.push("terminal_deal");
+      }
     }
-    if (terminal) reasons.push("terminal_deal");
+    if (!reasons.includes("terminal_deal") && ctx.prospect_id) {
+      const { data: deals } = await supabase
+        .from("orbit_deals")
+        .select("id, status, deleted_at, etapa_id")
+        .eq("empresa_id", ctx.empresa_id)
+        .eq("prospect_id", ctx.prospect_id);
+      const list = (deals ?? []) as any[];
+      let terminal = false;
+      const stageIds: string[] = [];
+      for (const d of list) {
+        if (d.deleted_at) { terminal = true; break; }
+        const s = String(d.status ?? "").toLowerCase();
+        if (["won","lost","ganho","perdido","deleted"].includes(s)) { terminal = true; break; }
+        if (d.etapa_id) stageIds.push(d.etapa_id);
+      }
+      if (!terminal && stageIds.length > 0) {
+        const { data: stages } = await supabase
+          .from("orbit_pipeline_stages")
+          .select("id, is_won, is_lost")
+          .in("id", stageIds);
+        if ((stages ?? []).some((s: any) => s.is_won === true || s.is_lost === true)) terminal = true;
+      }
+      if (terminal) reasons.push("terminal_deal");
+    }
   }
 
   // Meeting ativa/futura para o prospect — apenas automações agendadas de outbound.
