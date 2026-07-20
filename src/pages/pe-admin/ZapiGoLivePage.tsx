@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { AlertTriangle, CheckCircle2, XCircle, Loader2, Play } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { FlowGoLiveReconcilePanel } from "@/components/pe-admin/FlowGoLiveReconcilePanel";
 
 interface EmpresaRow {
   empresa_id: string;
@@ -223,6 +224,9 @@ export default function ZapiGoLivePage() {
                       Rodar smoke
                     </Button>
                   </div>
+                </div>
+                <div className="col-span-2 md:col-span-4">
+                  <FlowGoLiveReconcilePanel empresaId={row.empresa_id} empresaNome={row.empresa_nome} />
                 </div>
               </CardContent>
             </Card>
