@@ -15,6 +15,7 @@ const FUNCTIONS_BASE = `${SUPABASE_URL}/functions/v1`;
 import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
 import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { getTokenForEmpresa, ensureFreshAccessToken, checkAvailability } from "../_shared/google-calendar.ts";
+import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -123,6 +124,44 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
       ok: true,
       output: {
         dry_run: true,
+        template_id: tpl.id,
+        template_nome: tpl.nome,
+        conversa_id: conversaId,
+        telefone,
+        mensagem,
+      },
+    };
+  }
+
+  // ── Adapter routing (Fase 3): se outbox_adapter_enabled=true, enfileira e retorna ──
+  if (await isAdapterEnabled(supabase, run.empresa_id)) {
+    const scheduledActionId = (run as any)._scheduled_action_id ?? null;
+    const isFollowup = !!scheduledActionId;
+    const eventCreated = run.context?.payload?.created === true;
+    const routed = await enqueueOutbox(supabase, {
+      empresa_id: run.empresa_id,
+      prospect_id: prospectId,
+      conversa_id: conversaId,
+      flow_run_id: (run as any).id ?? null,
+      scheduled_action_id: scheduledActionId,
+      source_type: isFollowup ? "flow_followup" : "flow_initial",
+      event_created: eventCreated,
+      payload_type: tpl.imagem_url ? "image" : "text",
+      payload: {
+        mensagem,
+        url_midia: tpl.imagem_url ?? null,
+        template_id: tpl.id,
+        template_nome: tpl.nome,
+      },
+    } as any);
+    return {
+      ok: true,
+      output: {
+        adapter: true,
+        queued: !!routed.enqueued,
+        outbox_id: routed.outbox_id ?? null,
+        reason: routed.reason ?? null,
+        source_type: isFollowup ? "flow_followup" : "flow_initial",
         template_id: tpl.id,
         template_nome: tpl.nome,
         conversa_id: conversaId,
@@ -688,6 +727,7 @@ async function handleSingleAction(scheduledId: string): Promise<Response> {
     entity_type: s.context?.entity_type ?? null,
     entity_id: s.context?.entity_id ?? null,
     context: { payload: s.context?.payload ?? {} },
+    _scheduled_action_id: s.id,
   };
 
   const stepStart = new Date().toISOString();

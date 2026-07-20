@@ -5,6 +5,7 @@ import { resolveCtaConfig, buildCtaButtonHtml, injectCta } from "../_shared/what
 import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
 import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
+import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 
 interface CampaignRequest {
   campaign_id: string;
@@ -441,6 +442,13 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
+    // ── Adapter flag (Fase 3) — computa uma vez por campanha ──
+    const adapterEnabled = campaign.canal === "whatsapp"
+      ? await isAdapterEnabled(supabase, campaign.empresa_id)
+      : false;
+    let adapterQueued = 0;
+    let adapterSkipped = 0;
+
     for (const recipient of recipients) {
       try {
         const prospect = recipient.prospect;
@@ -491,6 +499,21 @@ const handler = async (req: Request): Promise<Response> => {
         for (const [key, value] of Object.entries(variaveis)) {
           mensagem = mensagem.replace(new RegExp(key, "g"), value);
           html = html.replace(new RegExp(key, "g"), value);
+        }
+
+        // ── Adapter routing (Fase 3): WhatsApp + outbox_adapter_enabled=true → enfileira, sem Z-API ──
+        if (adapterEnabled && campaign.canal === "whatsapp" && recipient.status === "pendente") {
+          const routed = await enqueueOutbox(supabase, {
+            empresa_id: campaign.empresa_id,
+            campaign_id: campaign.id,
+            prospect_id: prospect.id,
+            source_type: "campaign",
+            source_id: recipient.id,
+            payload_type: templateImageUrl ? "image" : "text",
+            payload: { mensagem, url_midia: templateImageUrl ?? null },
+          });
+          if (routed.enqueued) adapterQueued++; else adapterSkipped++;
+          continue;
         }
 
         if (isDemo) {
