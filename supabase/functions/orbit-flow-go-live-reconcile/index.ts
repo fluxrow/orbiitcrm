@@ -425,7 +425,7 @@ async function runInternalSmoke(supabase: SupabaseClient, actorId: string) {
       const r = chk("orbit_prospects.insert", await supabase.from("orbit_prospects").insert({
         empresa_id, nome_razao: `${RUN_ID}_p_${crypto.randomUUID().slice(0, 6)}`,
         telefone: `+55119${Math.floor(Math.random() * 1e8)}`,
-        origem_lead: "smoke", tipo: "pf", origem_contato: "IMPORTACAO", ...opts,
+        origem_lead: "smoke", tipo: "pessoa", origem_contato: "IMPORTACAO", ...opts,
       }).select("id").single());
       return (r as any).id as string;
     };
