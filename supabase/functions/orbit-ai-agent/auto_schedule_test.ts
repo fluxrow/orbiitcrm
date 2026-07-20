@@ -11,9 +11,14 @@ interface FakeState {
   pipeline_stages: Row[];
   flow_events: Row[];
   meetingInsertFails?: boolean;
+  // Simula corrida 23505: primeiro insert em orbit_meetings falha com unique_violation
+  // e uma linha "vencedora" é apresentada nos SELECTs seguintes.
+  meetingInsertUniqueViolation?: boolean;
+  winningMeeting?: Row | null;
   ensureDealResult?: { data: any; error: any };
   order: string[];
 }
+
 
 function makeFakeSupabase(state: FakeState) {
   // Query builder terminal-agnóstico.
