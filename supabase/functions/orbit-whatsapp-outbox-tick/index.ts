@@ -423,7 +423,7 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
       .update({ status: "simulated", sent_at: new Date().toISOString(), locked_at: null, locked_by: null })
       .eq("id", item.id);
     await upsertVisualMensagem(item, { status: "simulated" });
-    await updateCampaignRecipient(item, { status: "enviado" });
+    await updateCampaignRecipient(item, { status: "simulated" });
     return { outcome: "simulated" };
   }
 
