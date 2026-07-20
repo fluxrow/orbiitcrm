@@ -38,9 +38,6 @@ async function makeProspect(
     empresa_id,
     nome_razao: `${RUN_ID}_${opts.suffix ?? crypto.randomUUID().slice(0, 6)}`,
     telefone: phone,
-    origem: "smoke",
-    origem_contato: "smoke",
-    status: "novo",
   };
   if (opts.optout_whatsapp) payload.optout_whatsapp = true;
   if (opts.deleted_at) payload.deleted_at = opts.deleted_at;
