@@ -762,15 +762,42 @@ async function runAction(actionType: string, cfg: Json, run: Json): Promise<Step
 // ── Scheduler helpers ─────────────────────────────────────────────────
 const INLINE_DELAY_MAX_SECONDS = 30;
 
+/**
+ * Deriva a cadence_key para agendamentos de send_whatsapp_template.
+ * Regra: só emite chave se TODOS os componentes semanticamente relevantes existirem
+ *   — empresa_id, prospect_id, flow_id, action_id (id da orbit_flow_actions).
+ * Ausência de qualquer componente → null (fail-safe, sem inventar tenant/ação).
+ * Ações que não são send_whatsapp_template → null.
+ */
+export function computeCadenceKey(input: {
+  action_type: string | null | undefined;
+  empresa_id: string | null | undefined;
+  prospect_id: string | null | undefined;
+  flow_id: string | null | undefined;
+  action_id: string | null | undefined;
+}): string | null {
+  if (input.action_type !== "send_whatsapp_template") return null;
+  const { empresa_id, prospect_id, flow_id, action_id } = input;
+  if (!empresa_id || !prospect_id || !flow_id || !action_id) return null;
+  return `cad:swt:${empresa_id}:${prospect_id}:${flow_id}:${action_id}`;
+}
+
 async function enqueueScheduledAction(params: {
   run: Json;
   action: Json;
-}): Promise<{ id: string | null; scheduled_for: string }> {
+}): Promise<{ id: string | null; scheduled_for: string; dedupe?: boolean; cadence_key?: string | null }> {
   const { run, action } = params;
   const payload = run.context?.payload ?? {};
   const prospectId = (await resolveProspectId(run)) ?? payload.prospect_id ?? (run.entity_type === "prospect" ? run.entity_id : null);
   const dealId = payload.deal_id ?? (run.entity_type === "deal" ? run.entity_id : null);
   const scheduledFor = new Date(Date.now() + Number(action.delay_seconds || 0) * 1000).toISOString();
+  const cadenceKey = computeCadenceKey({
+    action_type: action.action_type,
+    empresa_id: run.empresa_id,
+    prospect_id: prospectId ?? null,
+    flow_id: run.flow_id,
+    action_id: action.id ?? null,
+  });
   const { data, error } = await supabase
     .from("orbit_flow_scheduled_actions")
     .insert({
@@ -782,22 +809,47 @@ async function enqueueScheduledAction(params: {
       action_type: action.action_type,
       action_config: action.action_config ?? {},
       context: buildScheduledActionContext(run),
-
-
       prospect_id: prospectId ?? null,
       deal_id: dealId ?? null,
       scheduled_for: scheduledFor,
       status: "pending",
+      cadence_key: cadenceKey,
     })
     .select("id")
     .maybeSingle();
   if (error) {
-    // duplicate (dedupe): já enfileirado — não é erro fatal
+    // 23505 no índice parcial de cadence_key ativa → dedupe auditável.
+    // Buscamos o agendamento ativo existente e retornamos seu id sem criar duplicata.
+    if ((error as any).code === "23505" && cadenceKey) {
+      const { data: existing } = await supabase
+        .from("orbit_flow_scheduled_actions")
+        .select("id, scheduled_for, status")
+        .eq("cadence_key", cadenceKey)
+        .in("status", ["pending", "running"])
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      console.warn("[executor] cadence dedupe", {
+        cadence_key: cadenceKey,
+        existing_id: (existing as any)?.id ?? null,
+        empresa_id: run.empresa_id,
+        flow_id: run.flow_id,
+        action_id: action.id ?? null,
+      });
+      return {
+        id: (existing as any)?.id ?? null,
+        scheduled_for: (existing as any)?.scheduled_for ?? scheduledFor,
+        dedupe: true,
+        cadence_key: cadenceKey,
+      };
+    }
+    // duplicate genérico (dedupe legado): não é erro fatal
     console.warn("[executor] enqueue warn", error.message);
-    return { id: null, scheduled_for: scheduledFor };
+    return { id: null, scheduled_for: scheduledFor, cadence_key: cadenceKey };
   }
-  return { id: (data as any)?.id ?? null, scheduled_for: scheduledFor };
+  return { id: (data as any)?.id ?? null, scheduled_for: scheduledFor, cadence_key: cadenceKey };
 }
+
 
 async function handleSingleAction(scheduledId: string): Promise<Response> {
   const { data: sched, error } = await supabase
