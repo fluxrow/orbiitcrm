@@ -446,10 +446,13 @@ async function runInternalSmoke(supabase: SupabaseClient, actorId: string) {
       if (r.error) throw new Error(`orbit_mensagens.insert: ${r.error.message}`);
     };
     const mkSnap = async (flow_id: string, action_id: string, prospect_id: string, cfg: any = {}, delayMs = 24 * 60 * 60 * 1000) => {
+      const run = chk("orbit_flow_runs.insert", await supabase.from("orbit_flow_runs").insert({
+        empresa_id, flow_id, status: "pending", context: {},
+      }).select("id").single());
       const r = chk("orbit_flow_scheduled_actions.insert", await supabase.from("orbit_flow_scheduled_actions").insert({
         empresa_id, flow_id, action_id, action_type: "send_whatsapp_template",
         action_config: { dry_run: true, category: "follow_up", cancel_on_reply: true, ...cfg },
-        context: {}, run_id: crypto.randomUUID(), ordem: 1, prospect_id,
+        context: {}, run_id: (run as any).id, ordem: 1, prospect_id,
         scheduled_for: new Date(Date.now() + delayMs).toISOString(),
         status: "pending", attempts: 0,
       }).select("id").single());
