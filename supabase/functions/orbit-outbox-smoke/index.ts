@@ -1058,6 +1058,171 @@ Deno.serve(async (req) => {
   });
 
 
+  // ═══════ AK–AP: daily_limit gating aplica APENAS a sources automatizados ═══════
+  // Setup helper: sending_config com daily_limit=1 e usage=1 (cota estourada), max_per_minute alto.
+  async function makeAtDailyLimit(empresa_id: string) {
+    await supabase.from("orbit_whatsapp_sending_config").upsert({
+      empresa_id, enabled: true, outbox_adapter_enabled: true,
+      daily_limit: 1, max_per_minute: 999, min_delay_ms: 0, max_delay_ms: 0,
+      warmup_enabled: false,
+    }, { onConflict: "empresa_id" });
+    const today = new Date().toISOString().slice(0, 10);
+    await supabase.from("orbit_whatsapp_daily_usage").upsert({
+      empresa_id, usage_date: today, sent_count: 1,
+    }, { onConflict: "empresa_id,usage_date" });
+  }
+
+  async function drive(outbox_id: string, empresa_id: string) {
+    const cronToken = Deno.env.get("SCHEDULER_CRON_TOKEN") || SMOKE_TOKEN;
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/orbit-whatsapp-outbox-tick`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${cronToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ outbox_id, empresa_id }),
+    });
+    return await r.json().catch(() => ({}));
+  }
+
+  async function readItem(outbox_id: string) {
+    const { data } = await supabase.from("orbit_whatsapp_outbox")
+      .select("status, last_error").eq("id", outbox_id).maybeSingle();
+    return data as any;
+  }
+
+  // AK. campaign no daily_limit → deferred (pending + last_error=daily_limit_reached), sem envio
+  await runCase(results, "AK. campaign no daily_limit → deferred", async () => {
+    const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
+    await makeAtDailyLimit(empresa_id);
+    const pid = await makeProspect(supabase, empresa_id, { suffix: "AK" });
+    const enq = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pid, campaign_id: crypto.randomUUID(),
+      source_type: "campaign", source_id: crypto.randomUUID(),
+      payload_type: "text", payload: { mensagem: "camp", telefone: "+5511900000000" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    const workerBody = await drive(enq.outbox_id!, empresa_id);
+    const row = await readItem(enq.outbox_id!);
+    return { pass: row?.status === "pending" && row?.last_error === "daily_limit_reached", detail: { workerBody, row } };
+  });
+
+  // AL. flow_initial no daily_limit → deferred
+  await runCase(results, "AL. flow_initial no daily_limit → deferred", async () => {
+    const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
+    await makeAtDailyLimit(empresa_id);
+    const pid = await makeProspect(supabase, empresa_id, { suffix: "AL" });
+    const enq = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pid,
+      source_type: "flow_initial", event_created: true,
+      flow_run_id: crypto.randomUUID(),
+      payload_type: "text", payload: { mensagem: "hi", telefone: "+5511900000001" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    await drive(enq.outbox_id!, empresa_id);
+    const row = await readItem(enq.outbox_id!);
+    return { pass: row?.status === "pending" && row?.last_error === "daily_limit_reached", detail: row };
+  });
+
+  // AL2. flow_followup no daily_limit → deferred
+  await runCase(results, "AL2. flow_followup no daily_limit → deferred", async () => {
+    const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
+    await makeAtDailyLimit(empresa_id);
+    const pid = await makeProspect(supabase, empresa_id, { suffix: "AL2" });
+    const enq = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pid,
+      source_type: "flow_followup", scheduled_action_id: crypto.randomUUID(),
+      payload_type: "text", payload: { mensagem: "fu", telefone: "+5511900000002" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    await drive(enq.outbox_id!, empresa_id);
+    const row = await readItem(enq.outbox_id!);
+    return { pass: row?.status === "pending" && row?.last_error === "daily_limit_reached", detail: row };
+  });
+
+  // AM. ai_reply no MESMO tenant/limite → processa (simulated)
+  await runCase(results, "AM. ai_reply ignora daily_limit e processa simulated", async () => {
+    const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
+    await makeAtDailyLimit(empresa_id);
+    const pid = await makeProspect(supabase, empresa_id, { suffix: "AM" });
+    const cid = await makeConversa(supabase, empresa_id, pid);
+    const { data: inMsg } = await supabase.from("orbit_mensagens").insert({
+      empresa_id, conversa_id: cid, direcao: "IN", mensagem: "oi", status: "recebida", canal: "whatsapp",
+    }).select("id").single();
+    const enq = await enqueueOutbox(supabase, {
+      empresa_id, conversa_id: cid, prospect_id: pid,
+      source_type: "ai_reply", inbound_message_id: (inMsg as any).id,
+      payload_type: "text", payload: { mensagem: "resposta", telefone: "+5511900000003" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    await drive(enq.outbox_id!, empresa_id);
+    const row = await readItem(enq.outbox_id!);
+    return { pass: row?.status === "simulated", detail: row };
+  });
+
+  // AN. manual no daily_limit → processa (simulated)
+  await runCase(results, "AN. manual ignora daily_limit e processa simulated", async () => {
+    const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
+    await makeAtDailyLimit(empresa_id);
+    const pid = await makeProspect(supabase, empresa_id, { suffix: "AN" });
+    const cid = await makeConversa(supabase, empresa_id, pid);
+    const enq = await enqueueOutbox(supabase, {
+      empresa_id, conversa_id: cid, prospect_id: pid,
+      source_type: "manual", source_id: `AN-${crypto.randomUUID()}`,
+      payload_type: "text", payload: { mensagem: "oi humano", telefone: "+5511900000004" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    await drive(enq.outbox_id!, empresa_id);
+    const row = await readItem(enq.outbox_id!);
+    return { pass: row?.status === "simulated", detail: row };
+  });
+
+  // AO. meeting_confirmation no daily_limit → processa (simulated)
+  await runCase(results, "AO. meeting_confirmation ignora daily_limit e processa simulated", async () => {
+    const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
+    await makeAtDailyLimit(empresa_id);
+    const pid = await makeProspect(supabase, empresa_id, { suffix: "AO" });
+    const cid = await makeConversa(supabase, empresa_id, pid);
+    const enq = await enqueueOutbox(supabase, {
+      empresa_id, conversa_id: cid, prospect_id: pid,
+      source_type: "meeting_confirmation", meeting_id: crypto.randomUUID(),
+      payload_type: "text", payload: { mensagem: "sua call é amanhã", telefone: "+5511900000005" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    await drive(enq.outbox_id!, empresa_id);
+    const row = await readItem(enq.outbox_id!);
+    return { pass: row?.status === "simulated", detail: row };
+  });
+
+  // AP. urgentes ainda obedecem max_per_minute
+  await runCase(results, "AP. ai_reply obedece max_per_minute mesmo ignorando daily_limit", async () => {
+    const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
+    // daily_limit alto, mas max_per_minute=1 e já há 1 envio recente
+    await supabase.from("orbit_whatsapp_sending_config").upsert({
+      empresa_id, enabled: true, outbox_adapter_enabled: true,
+      daily_limit: 999, max_per_minute: 1, min_delay_ms: 0, max_delay_ms: 0, warmup_enabled: false,
+    }, { onConflict: "empresa_id" });
+    // Seed: um envio recente na outbox no status 'sent' para consumir max_per_minute
+    const pidA = await makeProspect(supabase, empresa_id, { suffix: "AP1" });
+    await supabase.from("orbit_whatsapp_outbox").insert({
+      empresa_id, prospect_id: pidA, source_type: "ai_reply",
+      idempotency_key: `AP-seed-${crypto.randomUUID()}`,
+      priority: 100, payload_type: "text", payload: { mensagem: "seed" },
+      status: "sent", sent_at: new Date().toISOString(),
+      scheduled_for: new Date().toISOString(),
+    });
+    const pid = await makeProspect(supabase, empresa_id, { suffix: "AP2" });
+    const cid = await makeConversa(supabase, empresa_id, pid);
+    const { data: inMsg } = await supabase.from("orbit_mensagens").insert({
+      empresa_id, conversa_id: cid, direcao: "IN", mensagem: "oi", status: "recebida", canal: "whatsapp",
+    }).select("id").single();
+    const enq = await enqueueOutbox(supabase, {
+      empresa_id, conversa_id: cid, prospect_id: pid,
+      source_type: "ai_reply", inbound_message_id: (inMsg as any).id,
+      payload_type: "text", payload: { mensagem: "r", telefone: "+5511900000006" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    await drive(enq.outbox_id!, empresa_id);
+    const row = await readItem(enq.outbox_id!);
+    return { pass: row?.status === "pending" && row?.last_error === "rate_limited", detail: row };
+  });
 
   for (const t of tenants) {
     await supabase.from("orbit_whatsapp_sending_config").delete().eq("empresa_id", t);
