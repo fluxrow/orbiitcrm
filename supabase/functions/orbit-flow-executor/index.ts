@@ -18,6 +18,7 @@ import { getTokenForEmpresa, ensureFreshAccessToken, checkAvailability } from ".
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 import { resolveEventId, buildScheduledActionContext, restoreRunFromScheduled } from "./flow-run-events.ts";
 import { computeCadenceKey } from "./cadence-key.ts";
+import { isActionDisabled } from "./action-guards.ts";
 
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
