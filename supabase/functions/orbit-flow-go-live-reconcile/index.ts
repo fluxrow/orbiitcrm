@@ -336,7 +336,7 @@ async function applyReconcile(
     .map((c: ClassifiedSnapshot) => ({ scheduled_id: c.scheduled_id, proposed_scheduled_for: c.proposed_scheduled_for }));
 
   const performedByFinal = performed_by === "00000000-0000-0000-0000-000000000000" ? null : performed_by;
-  const { data, error } = await supabase.rpc("orbit_flow_go_live_apply_v2", {
+  const { data, error } = await supabase.rpc("orbit_flow_go_live_apply_v3", {
     p_operation_id: operation_id,
     p_empresa_id: empresa_id,
     p_performed_by: performedByFinal,
@@ -554,6 +554,87 @@ async function runInternalSmoke(supabase: SupabaseClient, actorId: string) {
     const { data: eSnap } = await supabase.from("orbit_flow_scheduled_actions").select("action_config").eq("id", snapEligible).single();
     record("snap_promoted", (eSnap as any)?.action_config?.dry_run === false);
 
+    // ─── TOCTOU E2E — revalidação atômica dentro da RPC v3 ───
+    // Para cada cenário: cria flow+action dry_run separados, snapshot pending,
+    // preview classifica como eligible_rebase, injeta mutação entre preview e apply,
+    // apply DEVE falhar com guard_revalidation_failed e NÃO alterar estado.
+    const runToctou = async (
+      name: string,
+      mutate: (ctx: { prospectId: string; conversaId: string }) => Promise<void>,
+      expectedReasonPrefix: string,
+    ) => {
+      const flowT = await mkFlow(empresa_id, {});
+      const pT = await mkProspect(empresa_id);
+      const cT = await mkConversa(empresa_id, pT);
+      await insertMsg(empresa_id, cT, "OUT", "enviada", -3600 * 1000);
+      const originalDelay = 86400000;
+      const snapT = await mkSnap(empresa_id, flowT.flow_id, flowT.action_id, pT, {}, originalDelay);
+      const { data: snapBefore } = await supabase
+        .from("orbit_flow_scheduled_actions")
+        .select("action_config, scheduled_for")
+        .eq("id", snapT).single();
+
+      // 1) Preview: garante classificação eligible
+      const previewT = await buildPreview(supabase, empresa_id);
+      const classT = (previewT.classified ?? []).find((c: ClassifiedSnapshot) => c.scheduled_id === snapT);
+      record(`${name}_preview_eligible`, classT?.category === "eligible_rebase", classT);
+
+      // 2) Mutação TOCTOU (entre preview e apply)
+      await mutate({ prospectId: pT, conversaId: cT });
+
+      // 3) Apply DEVE falhar com guard_revalidation_failed:<reason>
+      const opT = `${RUN_ID}_toctou_${name}_${crypto.randomUUID().slice(0, 6)}`;
+      const applyT = await applyReconcile(supabase, empresa_id, actorId, opT);
+      const errStr = String((applyT as any)?.error ?? "");
+      record(`${name}_apply_rejected`, errStr.startsWith("guard_revalidation_failed"), applyT);
+      record(`${name}_apply_reason_${expectedReasonPrefix}`, errStr.includes(`guard_revalidation_failed:${expectedReasonPrefix}`), errStr);
+
+      // 4) Action continua dry_run=true (transação rollback completa)
+      const { data: actAfter } = await supabase.from("orbit_flow_actions")
+        .select("action_config").eq("id", flowT.action_id).single();
+      record(`${name}_action_dry_run_intact`, (actAfter as any)?.action_config?.dry_run === true, actAfter);
+
+      // 5) Snapshot inalterado (dry_run=true e scheduled_for original)
+      const { data: snapAfter } = await supabase.from("orbit_flow_scheduled_actions")
+        .select("action_config, scheduled_for").eq("id", snapT).single();
+      record(`${name}_snapshot_dry_run_intact`, (snapAfter as any)?.action_config?.dry_run === true);
+      record(`${name}_snapshot_scheduled_for_intact`,
+        (snapAfter as any)?.scheduled_for === (snapBefore as any)?.scheduled_for);
+
+      // 6) Nenhuma operação applied persistida
+      const { data: opRowT } = await supabase.from("orbit_flow_go_live_operations")
+        .select("status").eq("operation_id", opT).maybeSingle();
+      record(`${name}_no_operation_persisted`, opRowT === null || opRowT === undefined);
+    };
+
+    // Cenário 1: IN chega entre preview e apply
+    await runToctou("toctou_reply", async ({ conversaId }) => {
+      await insertMsg(empresa_id, conversaId, "IN", "recebida", -60 * 1000);
+    }, "in_after_last_real_out");
+
+    // Cenário 2: future meeting criada entre preview e apply
+    await runToctou("toctou_meeting", async ({ prospectId }) => {
+      await supabase.from("orbit_meetings").insert({
+        empresa_id, prospect_id: prospectId, titulo: "toctou_meeting",
+        scheduled_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+        status: "scheduled",
+      });
+    }, "future_meeting");
+
+    // Cenário 3: handoff registrado entre preview e apply
+    await runToctou("toctou_handoff", async ({ prospectId }) => {
+      await supabase.from("orbit_handoffs").insert({
+        empresa_id, prospect_id: prospectId, status: "sent",
+      });
+    }, "handoff_registered");
+
+    // Cenário 4: opt-out marcado entre preview e apply
+    await runToctou("toctou_optout", async ({ prospectId }) => {
+      await supabase.from("orbit_prospects")
+        .update({ optout_whatsapp: true }).eq("id", prospectId);
+    }, "optout_whatsapp");
+
+
     // C. Atomic rollback drift → rollback_conflict
     // Mutar action promovida para simular drift
     await supabase.from("orbit_flow_actions")
@@ -644,7 +725,18 @@ serve(async (req) => {
       if (confirm !== CONFIRM_TEXT) return fail(ErrorCodes.VALIDATION_ERROR, `Confirme com "${CONFIRM_TEXT}"`, 400, undefined, req);
       if (!authorized) return fail(ErrorCodes.VALIDATION_ERROR, "Autorização obrigatória", 400, undefined, req);
       if (!operation_id || operation_id.length < 8) return fail(ErrorCodes.VALIDATION_ERROR, "operation_id inválido", 400, undefined, req);
-      return ok(await applyReconcile(supabase, empresa_id, auth.actorId, operation_id), {}, req);
+      const result = await applyReconcile(supabase, empresa_id, auth.actorId, operation_id);
+      const errMsg = (result as any)?.error as string | undefined;
+      if (errMsg) {
+        if (errMsg.startsWith("guard_revalidation_failed")) {
+          return fail("GUARD_REVALIDATION_FAILED", errMsg, 409, { operation_id, empresa_id }, req);
+        }
+        if (errMsg.includes("preview_truncated_refuse_apply")) {
+          return fail(ErrorCodes.VALIDATION_ERROR, errMsg, 409, undefined, req);
+        }
+        return fail(ErrorCodes.INTERNAL_ERROR, errMsg, 500, { operation_id, empresa_id }, req);
+      }
+      return ok(result, {}, req);
     }
     return fail(ErrorCodes.VALIDATION_ERROR, "mode inválido", 400, undefined, req);
   } catch (e: any) {

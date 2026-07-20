@@ -71,7 +71,18 @@ export function FlowGoLiveReconcilePanel({ empresaId, empresaNome }: Props) {
           confirm_text: CONFIRM_TEXT, authorized: true,
         },
       });
-      if (r.error) throw new Error(r.error.message);
+      // Guard failures agora retornam 409 (não-2xx) — precisamos extrair mensagem
+      if (r.error) {
+        const ctx: any = (r.error as any)?.context;
+        let detail = r.error.message;
+        try {
+          if (ctx?.body) {
+            const parsed = typeof ctx.body === "string" ? JSON.parse(ctx.body) : ctx.body;
+            detail = parsed?.error?.message ?? detail;
+          }
+        } catch { /* noop */ }
+        throw new Error(detail);
+      }
       const data = (r.data as any)?.data ?? r.data;
       if (data?.error) throw new Error(data.error);
       setLastApply(data);
@@ -79,7 +90,15 @@ export function FlowGoLiveReconcilePanel({ empresaId, empresaNome }: Props) {
       setApplyOpen(false);
       runPreview();
     } catch (e: any) {
-      toast({ title: "Falha no apply", description: e.message, variant: "destructive" });
+      const msg = String(e.message ?? e);
+      const isGuard = msg.includes("guard_revalidation_failed");
+      toast({
+        title: isGuard ? "Apply bloqueado por guard (TOCTOU)" : "Falha no apply",
+        description: isGuard
+          ? `Estado do prospect mudou entre preview e apply. Rode preview novamente. Detalhe: ${msg}`
+          : msg,
+        variant: "destructive",
+      });
     } finally {
       setLoading(null);
     }
