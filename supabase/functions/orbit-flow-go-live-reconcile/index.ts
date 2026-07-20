@@ -336,7 +336,7 @@ async function applyReconcile(
     .map((c: ClassifiedSnapshot) => ({ scheduled_id: c.scheduled_id, proposed_scheduled_for: c.proposed_scheduled_for }));
 
   const performedByFinal = performed_by === "00000000-0000-0000-0000-000000000000" ? null : performed_by;
-  const { data, error } = await supabase.rpc("orbit_flow_go_live_apply_v2", {
+  const { data, error } = await supabase.rpc("orbit_flow_go_live_apply_v3", {
     p_operation_id: operation_id,
     p_empresa_id: empresa_id,
     p_performed_by: performedByFinal,
