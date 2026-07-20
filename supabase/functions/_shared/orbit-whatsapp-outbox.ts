@@ -23,13 +23,19 @@ export type OutboxSourceType =
   | "manual"
   | "flow_initial"
   | "flow_followup"
+  | "flow_stage"
   | "campaign";
 
 export type OutboxPayloadType = "text" | "image" | "audio" | "document" | "video";
 
+// Prioridade global determinística. flow_stage entra entre meeting_confirmation
+// e flow_initial: transições de etapa são intencionais (Agendado/No-show/Ganho/
+// Perdido/Negociação) e devem sair na frente de qualquer follow-up de prospecção,
+// mas não podem furar respostas de IA nem confirmações de reunião.
 export const OUTBOX_PRIORITY: Record<OutboxSourceType, number> = {
   ai_reply: 100,
   meeting_confirmation: 90,
+  flow_stage: 75,
   manual: 80,
   flow_initial: 70,
   flow_followup: 40,
@@ -52,6 +58,14 @@ export interface OutboxContext {
   inbound_message_id?: string | null;
   // meeting_id para dedupe de meeting_confirmation
   meeting_id?: string | null;
+  // flow_stage: transição de etapa (id da etapa alvo no instante do enqueue)
+  target_stage_id?: string | null;
+  // flow_stage: permite mensagem em etapa terminal (won/lost) somente quando true
+  allow_terminal_stage_message?: boolean | null;
+  // flow_stage / auditoria: id do orbit_flow_events que originou o run
+  event_id?: string | null;
+  // flow_stage / dedupe: id da action ou template (semântica da mensagem)
+  action_id?: string | null;
   // Se true, testes/rotinas usam prefixo idempotente próprio
   idempotency_scope?: string | null;
 }
