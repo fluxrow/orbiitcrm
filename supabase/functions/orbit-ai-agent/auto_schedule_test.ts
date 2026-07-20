@@ -29,8 +29,13 @@ function makeFakeSupabase(state: FakeState) {
       _record(op: string) { state.order.push(`${table}.${op}`); },
       insert(payload: any) {
         state.order.push(`${table}.insert`);
-        if (table === "orbit_meetings" && state.meetingInsertFails) {
-          pending = { data: null, error: { message: "insert failed" } };
+        if (table === "orbit_meetings" && state.meetingInsertUniqueViolation) {
+          // 1º insert: falha 23505 e "instala" a vencedora nas próximas leituras.
+          state.meetingInsertUniqueViolation = false;
+          if (state.winningMeeting) state.meetings.push(state.winningMeeting);
+          pending = { data: null, error: { code: "23505", message: "duplicate key value violates unique constraint" } };
+        } else if (table === "orbit_meetings" && state.meetingInsertFails) {
+          pending = { data: null, error: { code: "XX000", message: "insert failed" } };
         } else if (table === "orbit_meetings") {
           const row = { id: `meeting-${state.meetings.length + 1}`, ...payload };
           state.meetings.push(row);
@@ -43,6 +48,7 @@ function makeFakeSupabase(state: FakeState) {
         }
         return api;
       },
+
       update(patch: any) {
         state.order.push(`${table}.update`);
         if (table === "orbit_deals") {
