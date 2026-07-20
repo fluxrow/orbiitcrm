@@ -2160,6 +2160,7 @@ export async function tryAutoScheduleMeeting(
               payload: {
                 deal_id: dealId,
                 prospect_id: params.prospect_id,
+                conversa_id: params.conversa_id,
                 meeting_id: meetingRow.id,
                 from_stage_id: fromStageId,
                 to_stage_id: agStage.id,
