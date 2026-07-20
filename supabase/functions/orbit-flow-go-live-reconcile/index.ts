@@ -124,7 +124,7 @@ async function classifySnapshot(
     const { data: outs } = await supabase
       .from("orbit_mensagens")
       .select("id, timestamp, status, direcao")
-      .eq("empresa_id", empresa_id).eq("direcao", "out")
+      .eq("empresa_id", empresa_id).eq("direcao", "OUT")
       .in("conversa_id", conversaIds)
       .not("status", "in", "(simulated,falhou,failed)")
       .order("timestamp", { ascending: false }).limit(1);
@@ -139,7 +139,7 @@ async function classifySnapshot(
   if (lastRealOutAt && conversaIds.length > 0) {
     const { count: inCount } = await supabase
       .from("orbit_mensagens").select("id", { count: "exact", head: true })
-      .eq("empresa_id", empresa_id).eq("direcao", "in")
+      .eq("empresa_id", empresa_id).eq("direcao", "IN")
       .in("conversa_id", conversaIds)
       .gt("timestamp", lastRealOutAt);
     if ((inCount ?? 0) > 0) {
@@ -437,7 +437,7 @@ async function runInternalSmoke(supabase: SupabaseClient, actorId: string) {
       }).select("id").single());
       return (r as any).id as string;
     };
-    const insertMsg = async (conversa_id: string, direcao: "in" | "out", status: string, offsetMs = 0) => {
+    const insertMsg = async (conversa_id: string, direcao: "IN" | "OUT", status: string, offsetMs = 0) => {
       const r = await supabase.from("orbit_mensagens").insert({
         empresa_id, conversa_id, direcao, status,
         mensagem: `${RUN_ID}_${direcao}_${status}`, canal: "whatsapp",
@@ -468,14 +468,14 @@ async function runInternalSmoke(supabase: SupabaseClient, actorId: string) {
     const pOptOut = await mkProspect({ optout_whatsapp: true });
 
     const c2 = await mkConversa(pWithOut);
-    await insertMsg(c2, "out", "enviada", -3600 * 1000);
+    await insertMsg(c2, "OUT", "enviada", -3600 * 1000);
 
     const c3 = await mkConversa(pWithOutAndIn);
-    await insertMsg(c3, "out", "enviada", -7200 * 1000);
-    await insertMsg(c3, "in", "recebida", -3600 * 1000);
+    await insertMsg(c3, "OUT", "enviada", -7200 * 1000);
+    await insertMsg(c3, "IN", "recebida", -3600 * 1000);
 
     const c4 = await mkConversa(pOnlySimulated);
-    await insertMsg(c4, "out", "simulated", -3600 * 1000);
+    await insertMsg(c4, "OUT", "simulated", -3600 * 1000);
 
     await supabase.from("orbit_meetings").insert({
       empresa_id, prospect_id: pFutureMeeting, titulo: "future",
