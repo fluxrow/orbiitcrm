@@ -620,6 +620,7 @@ Deno.serve(async (req) => {
     const p3 = await makeProspect(supabase, empresa_id, { suffix: "Y3" });
     const p4 = await makeProspect(supabase, empresa_id, { suffix: "Y4" });
     const c1 = await makeConversa(supabase, empresa_id, p1);
+    await seedRealOut(empresa_id, p2);
     await enqueueOutbox(supabase, {
       empresa_id, prospect_id: p3, source_type: "campaign",
       campaign_id: crypto.randomUUID(),
