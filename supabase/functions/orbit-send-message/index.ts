@@ -152,6 +152,7 @@ serve(async (req) => {
       const routed = await enqueueOutbox(supabase, {
         empresa_id: profile.empresa_id,
         conversa_id,
+        prospect_id: conversaRow.prospect_id ?? null,
         source_type: "manual",
         source_id: crypto.randomUUID(),
         payload_type: (tipo_midia as any) || "text",
