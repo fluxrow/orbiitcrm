@@ -114,6 +114,9 @@ verify_jwt = false
 [functions.orbit-onboarding-asset-upload]
 verify_jwt = false
 
+[functions.orbit-whatsapp-outbox-tick]
+verify_jwt = false
+
 
 
 

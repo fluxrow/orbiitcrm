@@ -3767,6 +3767,102 @@ export type Database = {
           },
         ]
       }
+      orbit_whatsapp_outbox: {
+        Row: {
+          attempts: number
+          campaign_id: string | null
+          canceled_at: string | null
+          canceled_reason: string | null
+          conversa_id: string | null
+          created_at: string
+          deal_id: string | null
+          empresa_id: string
+          flow_run_id: string | null
+          id: string
+          idempotency_key: string
+          last_error: string | null
+          locked_at: string | null
+          locked_by: string | null
+          max_attempts: number
+          metadata: Json
+          next_attempt_at: string | null
+          payload: Json
+          payload_type: string
+          priority: number
+          prospect_id: string | null
+          provider_message_id: string | null
+          scheduled_action_id: string | null
+          scheduled_for: string
+          sent_at: string | null
+          source_id: string | null
+          source_type: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          campaign_id?: string | null
+          canceled_at?: string | null
+          canceled_reason?: string | null
+          conversa_id?: string | null
+          created_at?: string
+          deal_id?: string | null
+          empresa_id: string
+          flow_run_id?: string | null
+          id?: string
+          idempotency_key: string
+          last_error?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          max_attempts?: number
+          metadata?: Json
+          next_attempt_at?: string | null
+          payload?: Json
+          payload_type?: string
+          priority?: number
+          prospect_id?: string | null
+          provider_message_id?: string | null
+          scheduled_action_id?: string | null
+          scheduled_for?: string
+          sent_at?: string | null
+          source_id?: string | null
+          source_type: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          campaign_id?: string | null
+          canceled_at?: string | null
+          canceled_reason?: string | null
+          conversa_id?: string | null
+          created_at?: string
+          deal_id?: string | null
+          empresa_id?: string
+          flow_run_id?: string | null
+          id?: string
+          idempotency_key?: string
+          last_error?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          max_attempts?: number
+          metadata?: Json
+          next_attempt_at?: string | null
+          payload?: Json
+          payload_type?: string
+          priority?: number
+          prospect_id?: string | null
+          provider_message_id?: string | null
+          scheduled_action_id?: string | null
+          scheduled_for?: string
+          sent_at?: string | null
+          source_id?: string | null
+          source_type?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       orbit_whatsapp_sending_config: {
         Row: {
           batch_pause_ms: number
@@ -3779,6 +3875,7 @@ export type Database = {
           max_delay_ms: number
           max_per_minute: number
           min_delay_ms: number
+          outbox_adapter_enabled: boolean
           updated_at: string | null
           warmup_enabled: boolean
           warmup_start_date: string | null
@@ -3794,6 +3891,7 @@ export type Database = {
           max_delay_ms?: number
           max_per_minute?: number
           min_delay_ms?: number
+          outbox_adapter_enabled?: boolean
           updated_at?: string | null
           warmup_enabled?: boolean
           warmup_start_date?: string | null
@@ -3809,6 +3907,7 @@ export type Database = {
           max_delay_ms?: number
           max_per_minute?: number
           min_delay_ms?: number
+          outbox_adapter_enabled?: boolean
           updated_at?: string | null
           warmup_enabled?: boolean
           warmup_start_date?: string | null
@@ -5077,6 +5176,60 @@ export type Database = {
           status: string
         }[]
       }
+      outbox_cancel_by_prospect: {
+        Args: {
+          _empresa_id: string
+          _prospect_id: string
+          _reason: string
+          _sources?: string[]
+        }
+        Returns: number
+      }
+      outbox_claim_batch: {
+        Args: {
+          _batch?: number
+          _empresa_id: string
+          _lease_seconds?: number
+          _worker_id?: string
+        }
+        Returns: {
+          attempts: number
+          campaign_id: string | null
+          canceled_at: string | null
+          canceled_reason: string | null
+          conversa_id: string | null
+          created_at: string
+          deal_id: string | null
+          empresa_id: string
+          flow_run_id: string | null
+          id: string
+          idempotency_key: string
+          last_error: string | null
+          locked_at: string | null
+          locked_by: string | null
+          max_attempts: number
+          metadata: Json
+          next_attempt_at: string | null
+          payload: Json
+          payload_type: string
+          priority: number
+          prospect_id: string | null
+          provider_message_id: string | null
+          scheduled_action_id: string | null
+          scheduled_for: string
+          sent_at: string | null
+          source_id: string | null
+          source_type: string
+          status: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "orbit_whatsapp_outbox"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       pe_backfill_import_as_lista: {
         Args: {
           p_empresa_id: string
@@ -5159,6 +5312,10 @@ export type Database = {
       pe_user_is_sales_or_sdr: { Args: { p_user_id: string }; Returns: boolean }
       recalculate_lead_score: {
         Args: { p_empresa_id: string; p_prospect_id: string }
+        Returns: Json
+      }
+      reconcile_campaign_counters: {
+        Args: { _campaign_id: string }
         Returns: Json
       }
       reschedule_scheduled_action: {
