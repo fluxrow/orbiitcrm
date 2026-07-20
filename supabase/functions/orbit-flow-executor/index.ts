@@ -745,9 +745,7 @@ async function actionSwitch(cfg: Json, run: Json): Promise<StepResult> {
 
 // Guard genérico: qualquer action com action_config.enabled === false é ignorada,
 // sem enfileirar outbox, sem chamar Z-API, sem mensagem. Auditável via output do step.
-function isActionDisabled(cfg: Json): boolean {
-  return !!cfg && (cfg as any).enabled === false;
-}
+// A implementação vive em ./action-guards.ts para permitir testes unitários.
 
 async function runAction(actionType: string, cfg: Json, run: Json): Promise<StepResult> {
   if (isActionDisabled(cfg)) {
