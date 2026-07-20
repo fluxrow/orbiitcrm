@@ -5224,6 +5224,20 @@ export type Database = {
       normalize_phone: { Args: { p: string }; Returns: string }
       normalize_slug: { Args: { p: string }; Returns: string }
       orbit_first_stage_id: { Args: { p_empresa_id: string }; Returns: string }
+      orbit_flow_go_live_apply_v2: {
+        Args: {
+          p_actions: Json
+          p_empresa_id: string
+          p_operation_id: string
+          p_performed_by: string
+          p_snapshots: Json
+        }
+        Returns: Json
+      }
+      orbit_flow_go_live_rollback_v2: {
+        Args: { p_operation_id: string; p_rolled_back_by: string }
+        Returns: Json
+      }
       orbit_resend_has_api_key: {
         Args: { p_empresa_id: string }
         Returns: boolean
