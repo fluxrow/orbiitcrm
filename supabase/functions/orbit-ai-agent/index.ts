@@ -2129,7 +2129,13 @@ export async function tryAutoScheduleMeeting(
 
 
 
-  // 6) Mover deal para etapa Agendado (se existir) e emitir deal_stage_changed com prospect_id + meeting_id
+  // 6) Mover deal para etapa Agendado (se existir).
+  //    Não emitimos INSERT manual de deal_stage_changed aqui: o trigger de banco
+  //    `trg_orbit_emit_deal_stage_changed` (SECURITY DEFINER) já grava o evento
+  //    a partir do UPDATE de etapa, com dedupe determinístico por (deal, from, to, bucket 60s).
+  //    Se emitíssemos manualmente logo depois do UPDATE, geraríamos DOIS eventos
+  //    semanticamente iguais em milissegundos e o dispatcher criaria dois runs.
+  //    O executor resolve prospect_id/meeting_id via lookups a partir do deal.
   try {
     const { data: agStage } = await supabase
       .from("orbit_pipeline_stages")
@@ -2149,29 +2155,6 @@ export async function tryAutoScheduleMeeting(
           .from("orbit_deals").update({ etapa_id: agStage.id }).eq("id", dealId);
         if (mvErr) {
           console.warn("[orbit-ai-agent] mover deal para Agendado falhou:", mvErr.message);
-        } else {
-          try {
-            await supabase.from("orbit_flow_events").insert({
-              empresa_id: params.empresaId,
-              event_type: "deal_stage_changed",
-              entity_type: "deal",
-              entity_id: dealId,
-              dedupe_key: `deal_stage_changed:${dealId}:${agStage.id}:${startISO}`,
-              payload: {
-                deal_id: dealId,
-                prospect_id: params.prospect_id,
-                conversa_id: params.conversa_id,
-                meeting_id: meetingRow.id,
-                from_stage_id: fromStageId,
-                to_stage_id: agStage.id,
-                to_stage_nome: agStage.nome,
-                scheduled_at: startISO,
-                source: "orbit-ai-agent",
-              },
-            });
-          } catch (e) {
-            console.warn("[orbit-ai-agent] flow_events deal_stage_changed erro:", e);
-          }
         }
       }
     }
