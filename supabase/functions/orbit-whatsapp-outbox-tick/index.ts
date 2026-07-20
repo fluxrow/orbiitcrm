@@ -191,6 +191,83 @@ async function upsertVisualMensagem(
   });
 }
 
+// ── Recipient lifecycle (source_type=campaign) ──
+// source_id do outbox = orbit_campaign_recipients.id. Fail-safe: se não houver
+// source_id, ignora.
+async function updateCampaignRecipient(
+  item: any,
+  patch: { status: "enviado" | "falhou" | "ignorado"; erro?: string | null; motivo?: string | null },
+): Promise<void> {
+  if (item.source_type !== "campaign" || !item.source_id) return;
+  const upd: Record<string, unknown> = { erro: patch.erro ?? null };
+  if (patch.status === "enviado") {
+    upd.status = "enviado";
+    upd.enviado_em = new Date().toISOString();
+    upd.erro = null;
+  } else if (patch.status === "ignorado") {
+    upd.status = "ignorado";
+    upd.ignorado_em = new Date().toISOString();
+    upd.ignorado_motivo = patch.motivo ?? "worker_cancel";
+    upd.erro = null;
+  } else {
+    upd.status = "falhou";
+  }
+  await supabase
+    .from("orbit_campaign_recipients")
+    .update(upd)
+    .eq("id", item.source_id)
+    .eq("campaign_id", item.campaign_id)
+    .in("status", ["pendente", "enviando"]);
+  if (item.campaign_id) {
+    try {
+      await supabase.rpc("reconcile_campaign_counters", { _campaign_id: item.campaign_id });
+    } catch (e) {
+      console.warn("[outbox] reconcile falhou", (e as any)?.message);
+    }
+  }
+}
+
+// Resolve ou cria conversa tenant-safe antes de persistir OUT para campanhas.
+// Sem esse passo, mensagens de campanha ficariam sem conversa e a resposta inbound
+// não caía na mesma thread.
+async function ensureCampaignConversa(item: any, telefone: string): Promise<string | null> {
+  if (item.source_type !== "campaign" || !item.empresa_id || !item.prospect_id) {
+    return item.conversa_id ?? null;
+  }
+  if (item.conversa_id) return item.conversa_id;
+
+  const { data: existing } = await supabase
+    .from("orbit_conversas")
+    .select("id")
+    .eq("empresa_id", item.empresa_id)
+    .eq("prospect_id", item.prospect_id)
+    .eq("status", "aberta")
+    .maybeSingle();
+  if (existing?.id) {
+    item.conversa_id = existing.id;
+    return existing.id;
+  }
+  const { data: nova } = await supabase
+    .from("orbit_conversas")
+    .insert({
+      empresa_id: item.empresa_id,
+      prospect_id: item.prospect_id,
+      canal: "whatsapp",
+      telefone_whatsapp: telefone,
+      status: "aberta",
+      ultima_mensagem_at: new Date().toISOString(),
+      ai_contexto: {
+        origin: "outbound_campaign",
+        campaign_id: item.campaign_id ?? null,
+        intro_already_sent: true,
+        estado: "aguardando_resposta",
+      },
+    })
+    .select("id")
+    .maybeSingle();
+  item.conversa_id = nova?.id ?? null;
+  return item.conversa_id;
+
 async function processItem(item: any, cfg: SendingConfig | null): Promise<ProcessResult> {
   // Kill switch por tenant + horário comercial para não-urgentes
   if (!URGENT_SOURCES.has(item.source_type) && !nowInBusinessWindow()) {
@@ -224,6 +301,7 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
       .from("orbit_whatsapp_outbox")
       .update({ status: "canceled", canceled_at: new Date().toISOString(), canceled_reason: elig.reasons.join(","), locked_at: null, locked_by: null })
       .eq("id", item.id);
+    await updateCampaignRecipient(item, { status: "ignorado", motivo: elig.reasons[0] ?? "ineligible" });
     return { outcome: "canceled", reason: elig.reasons.join(",") };
   }
 
@@ -288,7 +366,13 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
   if (!telefone) {
     await supabase.from("orbit_whatsapp_outbox").update({ status: "failed", last_error: "missing_phone", locked_at: null, locked_by: null }).eq("id", item.id);
     await upsertVisualMensagem(item, { status: "falhou", erro: "missing_phone" });
+    await updateCampaignRecipient(item, { status: "falhou", erro: "missing_phone" });
     return { outcome: "failed", reason: "missing_phone" };
+  }
+
+  // Para campaign: resolver/criar conversa antes de qualquer persistência OUT.
+  if (item.source_type === "campaign") {
+    await ensureCampaignConversa(item, telefone);
   }
 
   // Modo simulated para testes: metadata.simulate=true força simulação sem tocar Z-API
@@ -298,6 +382,7 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
       .update({ status: "simulated", sent_at: new Date().toISOString(), locked_at: null, locked_by: null })
       .eq("id", item.id);
     await upsertVisualMensagem(item, { status: "simulated" });
+    await updateCampaignRecipient(item, { status: "enviado" });
     return { outcome: "simulated" };
   }
 
@@ -322,6 +407,7 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
       .update({ status: "failed", last_error: block, locked_at: null, locked_by: null })
       .eq("id", item.id);
     await upsertVisualMensagem(item, { status: "falhou", erro: block });
+    await updateCampaignRecipient(item, { status: "falhou", erro: block });
     return { outcome: "blocked", reason: "zapi_real_send_blocked" };
   }
 
@@ -331,6 +417,7 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
       .update({ status: "failed", last_error: "zapi_config_missing", locked_at: null, locked_by: null })
       .eq("id", item.id);
     await upsertVisualMensagem(item, { status: "falhou", erro: "zapi_config_missing" });
+    await updateCampaignRecipient(item, { status: "falhou", erro: "zapi_config_missing" });
     return { outcome: "failed", reason: "zapi_config_missing" };
   }
 
@@ -352,6 +439,7 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
         .eq("id", item.conversa_id);
     }
 
+    await updateCampaignRecipient(item, { status: "enviado" });
 
     await bumpDailyUsage(item.empresa_id, 1);
     await auditZapiSendAttempt(supabase, {
@@ -375,6 +463,7 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
       .from("orbit_whatsapp_outbox")
       .update({ status: "failed", last_error: result.error?.slice(0, 500) ?? "unknown", locked_at: null, locked_by: null })
       .eq("id", item.id);
+    await updateCampaignRecipient(item, { status: "falhou", erro: result.error?.slice(0, 500) ?? "unknown" });
     return { outcome: "failed", reason: result.error };
   }
   const backoff = Math.min(30 * 60 * 1000, 60 * 1000 * Math.pow(2, Number(item.attempts) - 1));
