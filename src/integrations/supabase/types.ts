@@ -5234,6 +5234,16 @@ export type Database = {
         }
         Returns: Json
       }
+      orbit_flow_go_live_apply_v3: {
+        Args: {
+          p_actions: Json
+          p_empresa_id: string
+          p_operation_id: string
+          p_performed_by: string
+          p_snapshots: Json
+        }
+        Returns: Json
+      }
       orbit_flow_go_live_rollback_v2: {
         Args: { p_operation_id: string; p_rolled_back_by: string }
         Returns: Json
