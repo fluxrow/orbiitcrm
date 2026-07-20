@@ -1141,6 +1141,7 @@ Deno.serve(async (req) => {
     const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
     await makeAtDailyLimit(empresa_id);
     const pid = await makeProspect(supabase, empresa_id, { suffix: "AL2" });
+    await seedRealOut(empresa_id, pid);
     const enq = await enqueueOutbox(supabase, {
       empresa_id, prospect_id: pid,
       source_type: "flow_followup", scheduled_action_id: crypto.randomUUID(),
