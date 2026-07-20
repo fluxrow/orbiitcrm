@@ -32,6 +32,46 @@ function renderTemplateVars(text: string, vars: Json): string {
   });
 }
 
+// Cache leve por invocação para não re-consultar orbit_flows a cada action.
+const FLOW_TRIGGER_CACHE = new Map<string, string | null>();
+async function getFlowTriggerType(flowId: string | null | undefined): Promise<string | null> {
+  if (!flowId) return null;
+  if (FLOW_TRIGGER_CACHE.has(flowId)) return FLOW_TRIGGER_CACHE.get(flowId) ?? null;
+  const { data } = await supabase
+    .from("orbit_flows")
+    .select("trigger_type")
+    .eq("id", flowId)
+    .maybeSingle();
+  const t = (data?.trigger_type as string | undefined) ?? null;
+  FLOW_TRIGGER_CACHE.set(flowId, t);
+  return t;
+}
+
+const ALLOWED_OUTBOX_SOURCE_OVERRIDES = new Set(["flow_initial", "flow_followup", "flow_stage"]);
+
+/**
+ * Deriva source_type semanticamente a partir do trigger do flow e da presença
+ * de scheduled_action_id, com override opcional restrito ao enum permitido.
+ *
+ * - lead_recebido + imediato → flow_initial
+ * - lead_recebido + agendado → flow_followup
+ * - deal_stage_changed (imediato OU agendado) → flow_stage
+ * - qualquer outro trigger → mantém heurística legada (initial/followup)
+ */
+function deriveOutboxSourceType(
+  triggerType: string | null,
+  hasScheduledAction: boolean,
+  cfg: Json,
+): "flow_initial" | "flow_followup" | "flow_stage" {
+  const override = typeof cfg?.outbox_source_type === "string" ? cfg.outbox_source_type : null;
+  if (override && ALLOWED_OUTBOX_SOURCE_OVERRIDES.has(override)) {
+    return override as any;
+  }
+  if (triggerType === "deal_stage_changed") return "flow_stage";
+  if (triggerType === "lead_recebido") return hasScheduledAction ? "flow_followup" : "flow_initial";
+  // Demais triggers (deal_idle, conversa_no_reply, meeting_reminder_*): mantém heurística legada.
+  return hasScheduledAction ? "flow_followup" : "flow_initial";
+
 async function findOrCreateConversa(empresaId: string, prospectId: string, telefone: string): Promise<string | null> {
   const { data: existing } = await supabase
     .from("orbit_conversas")
