@@ -326,7 +326,9 @@ Deno.serve(async (req) => {
       _empresa_id: empresa_id, _batch: 3, _worker_id: "smoke", _lease_seconds: 60,
     });
     if (error) return { pass: false, detail: error.message };
-    const order = ((claimed as any[]) ?? []).map((r: any) => r.source_type);
+    // Aplica o sort determinístico do worker (RETURNING não garante ordem).
+    const sorted = [...((claimed as any[]) ?? [])].sort((a, b) => (Number(b.priority)||0) - (Number(a.priority)||0));
+    const order = sorted.map((r: any) => r.source_type);
     return { pass: order[0] === "ai_reply" && order[1] === "flow_followup" && order[2] === "campaign", detail: order };
   });
 
