@@ -2037,6 +2037,59 @@ export type Database = {
           },
         ]
       }
+      orbit_flow_go_live_operations: {
+        Row: {
+          changes: Json
+          created_at: string
+          empresa_id: string
+          id: string
+          mode: string
+          operation_id: string
+          performed_by: string | null
+          rolled_back_at: string | null
+          rolled_back_by: string | null
+          status: string
+          summary: Json
+          updated_at: string
+        }
+        Insert: {
+          changes?: Json
+          created_at?: string
+          empresa_id: string
+          id?: string
+          mode?: string
+          operation_id: string
+          performed_by?: string | null
+          rolled_back_at?: string | null
+          rolled_back_by?: string | null
+          status?: string
+          summary?: Json
+          updated_at?: string
+        }
+        Update: {
+          changes?: Json
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          mode?: string
+          operation_id?: string
+          performed_by?: string | null
+          rolled_back_at?: string | null
+          rolled_back_by?: string | null
+          status?: string
+          summary?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_flow_go_live_operations_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_flow_run_steps: {
         Row: {
           action_id: string | null
