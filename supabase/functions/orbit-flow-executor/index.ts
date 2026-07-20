@@ -966,6 +966,21 @@ Deno.serve(async (req) => {
         .select("id")
         .maybeSingle();
 
+      // Kill-switch de action: action_config.enabled=false pula sem enfileirar/executar.
+      // Preserva o step com output auditável e segue para a próxima action.
+      if (isActionDisabled((action as any).action_config ?? {})) {
+        await supabase
+          .from("orbit_flow_run_steps")
+          .update({
+            status: "success",
+            finished_at: new Date().toISOString(),
+            output: { skipped: true, reason: "action_disabled", action_type: (action as any).action_type },
+            error: null,
+          })
+          .eq("id", step?.id);
+        continue;
+      }
+
       // Delays curtos: comportamento original (inline).
       // Delays > 30s: enfileira e segue para a próxima action sem bloquear.
       if (delay > INLINE_DELAY_MAX_SECONDS) {
