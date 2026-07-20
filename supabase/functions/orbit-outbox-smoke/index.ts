@@ -893,11 +893,11 @@ Deno.serve(async (req) => {
 
     // (c) campanha da Fábrica preservada
     const { data: camp } = await supabase.from("orbit_campaigns")
-      .select("status, aprovacao_status, total, enviados, falhas")
+      .select("status, aprovacao_status, total_destinatarios, enviados, falhas")
       .eq("id", CAMP_ID).maybeSingle();
     const campOk = !!camp && (camp as any).status === "pausada_por_limite"
       && (camp as any).aprovacao_status === "aprovada"
-      && (camp as any).total === 188 && (camp as any).enviados === 50 && (camp as any).falhas === 0;
+      && (camp as any).total_destinatarios === 188 && (camp as any).enviados === 50 && (camp as any).falhas === 0;
 
     return {
       pass: (enabledCount ?? 0) === 0 && realWithRows.length === 0 && campOk,
