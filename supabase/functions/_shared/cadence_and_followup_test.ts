@@ -23,7 +23,7 @@ import {
   enqueueOutbox,
   type OutboxContext,
 } from "./orbit-whatsapp-outbox.ts";
-import { computeCadenceKey } from "../orbit-flow-executor/index-cadence-exports.ts";
+import { computeCadenceKey } from "../orbit-flow-executor/cadence-key.ts";
 
 // ── Mock supabase compatível com o padrão usado em outbox_flow_stage_test.ts ──
 interface Fx {

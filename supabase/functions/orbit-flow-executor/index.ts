@@ -17,6 +17,7 @@ import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { getTokenForEmpresa, ensureFreshAccessToken, checkAvailability } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 import { resolveEventId, buildScheduledActionContext, restoreRunFromScheduled } from "./flow-run-events.ts";
+import { computeCadenceKey } from "./cadence-key.ts";
 
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -762,25 +763,9 @@ async function runAction(actionType: string, cfg: Json, run: Json): Promise<Step
 // ── Scheduler helpers ─────────────────────────────────────────────────
 const INLINE_DELAY_MAX_SECONDS = 30;
 
-/**
- * Deriva a cadence_key para agendamentos de send_whatsapp_template.
- * Regra: só emite chave se TODOS os componentes semanticamente relevantes existirem
- *   — empresa_id, prospect_id, flow_id, action_id (id da orbit_flow_actions).
- * Ausência de qualquer componente → null (fail-safe, sem inventar tenant/ação).
- * Ações que não são send_whatsapp_template → null.
- */
-export function computeCadenceKey(input: {
-  action_type: string | null | undefined;
-  empresa_id: string | null | undefined;
-  prospect_id: string | null | undefined;
-  flow_id: string | null | undefined;
-  action_id: string | null | undefined;
-}): string | null {
-  if (input.action_type !== "send_whatsapp_template") return null;
-  const { empresa_id, prospect_id, flow_id, action_id } = input;
-  if (!empresa_id || !prospect_id || !flow_id || !action_id) return null;
-  return `cad:swt:${empresa_id}:${prospect_id}:${flow_id}:${action_id}`;
-}
+// computeCadenceKey vive em ./cadence-key.ts para permitir testes unitários
+// sem inicializar o cliente supabase deste módulo.
+
 
 async function enqueueScheduledAction(params: {
   run: Json;
