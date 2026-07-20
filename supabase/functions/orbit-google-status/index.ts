@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
 
     const { data, error: dbErr } = await svc
       .from("orbit_google_tokens")
-      .select("google_email, calendar_id, timezone, expires_at, created_at, updated_at")
+      .select("google_email, calendar_id, timezone, availability_start, availability_end, expires_at, created_at, updated_at")
       .eq("empresa_id", empresaId)
       .maybeSingle();
     if (dbErr) return fail(ErrorCodes.INTERNAL_ERROR, dbErr.message, 500, undefined, req);
@@ -49,6 +49,8 @@ Deno.serve(async (req) => {
       google_email: data?.google_email ?? null,
       calendar_id: data?.calendar_id ?? null,
       timezone: data?.timezone ?? null,
+      availability_start: data?.availability_start?.slice(0, 5) ?? "09:00",
+      availability_end: data?.availability_end?.slice(0, 5) ?? "18:00",
       connected_at: data?.created_at ?? null,
       provider_configured: !!Deno.env.get("GOOGLE_CLIENT_ID") && !!Deno.env.get("GOOGLE_CLIENT_SECRET"),
     }, undefined, req);

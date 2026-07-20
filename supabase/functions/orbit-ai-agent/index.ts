@@ -1787,6 +1787,12 @@ function isoWithOffset(dayStr: string, hour: number, minute: number, tz: string)
   return new Date(utcMs).toISOString();
 }
 
+function parseAvailabilityTime(value: unknown, fallbackHour: number): { hour: number; minute: number } {
+  const match = String(value ?? "").match(/^([01]\d|2[0-3]):([0-5]\d)/);
+  if (!match) return { hour: fallbackHour, minute: 0 };
+  return { hour: Number(match[1]), minute: Number(match[2]) };
+}
+
 export interface AutoScheduleParams {
   empresaId: string;
   prospect: any;
@@ -1888,8 +1894,10 @@ export async function tryAutoScheduleMeeting(
   // ── Ramo: dia sem horário — sugerir 2 slots livres (precisa de token + freeBusy) ──
   if (!temHorario) {
     const access = await deps.ensureFreshAccessToken(token);
-    const timeMin = isoWithOffset(dayStr, 9, 0, tz);
-    const timeMax = isoWithOffset(dayStr, 18, 0, tz);
+    const availabilityStart = parseAvailabilityTime(token.availability_start, 9);
+    const availabilityEnd = parseAvailabilityTime(token.availability_end, 18);
+    const timeMin = isoWithOffset(dayStr, availabilityStart.hour, availabilityStart.minute, tz);
+    const timeMax = isoWithOffset(dayStr, availabilityEnd.hour, availabilityEnd.minute, tz);
     let busy: { start: string; end: string }[] = [];
     try {
       const av = await deps.checkAvailability(access, calId, timeMin, timeMax, tz);

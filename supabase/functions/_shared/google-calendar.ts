@@ -95,6 +95,8 @@ export interface GoogleTokenRow {
   expires_at: string;
   calendar_id: string;
   timezone: string;
+  availability_start: string;
+  availability_end: string;
 }
 
 export function svcClient() {

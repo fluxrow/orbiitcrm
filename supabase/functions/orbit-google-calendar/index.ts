@@ -85,6 +85,22 @@ Deno.serve(async (req) => {
         const patch: Record<string, unknown> = {};
         if (body.calendar_id) patch.calendar_id = String(body.calendar_id);
         if (body.timezone) patch.timezone = String(body.timezone);
+        const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
+        const availabilityStart = body.availability_start == null ? null : String(body.availability_start);
+        const availabilityEnd = body.availability_end == null ? null : String(body.availability_end);
+        if (availabilityStart !== null && !timePattern.test(availabilityStart)) {
+          return fail(ErrorCodes.VALIDATION_ERROR, "availability_start deve usar HH:mm", 400, undefined, req);
+        }
+        if (availabilityEnd !== null && !timePattern.test(availabilityEnd)) {
+          return fail(ErrorCodes.VALIDATION_ERROR, "availability_end deve usar HH:mm", 400, undefined, req);
+        }
+        const effectiveStart = availabilityStart ?? row?.availability_start?.slice(0, 5) ?? "09:00";
+        const effectiveEnd = availabilityEnd ?? row?.availability_end?.slice(0, 5) ?? "18:00";
+        if (effectiveStart >= effectiveEnd) {
+          return fail(ErrorCodes.VALIDATION_ERROR, "o início da disponibilidade deve ser anterior ao fim", 400, undefined, req);
+        }
+        if (availabilityStart !== null) patch.availability_start = availabilityStart;
+        if (availabilityEnd !== null) patch.availability_end = availabilityEnd;
         if (!Object.keys(patch).length) {
           return fail(ErrorCodes.VALIDATION_ERROR, "nenhum campo para atualizar", 400, undefined, req);
         }

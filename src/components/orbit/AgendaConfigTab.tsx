@@ -39,11 +39,15 @@ export default function AgendaConfigTab({ empresaId }: Props) {
 
   const [calendarId, setCalendarId] = useState("primary");
   const [timezone, setTimezone] = useState("America/Sao_Paulo");
+  const [availabilityStart, setAvailabilityStart] = useState("09:00");
+  const [availabilityEnd, setAvailabilityEnd] = useState("18:00");
 
   useEffect(() => {
     if (status.data) {
       setCalendarId(status.data.calendar_id ?? "primary");
       setTimezone(status.data.timezone ?? "America/Sao_Paulo");
+      setAvailabilityStart(status.data.availability_start ?? "09:00");
+      setAvailabilityEnd(status.data.availability_end ?? "18:00");
     }
   }, [status.data]);
 
@@ -117,6 +121,28 @@ export default function AgendaConfigTab({ empresaId }: Props) {
 
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
+                  <Label htmlFor="availability-start">Primeiro horário sugerido</Label>
+                  <Input
+                    id="availability-start"
+                    type="time"
+                    value={availabilityStart}
+                    onChange={(e) => setAvailabilityStart(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="availability-end">Fim da disponibilidade</Label>
+                  <Input
+                    id="availability-end"
+                    type="time"
+                    value={availabilityEnd}
+                    onChange={(e) => setAvailabilityEnd(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">O agente só oferece horários que terminem até este limite.</p>
+                </div>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
                   <Label htmlFor="cal-id">ID do calendário</Label>
                   <Input id="cal-id" value={calendarId} onChange={(e) => setCalendarId(e.target.value)} placeholder="primary" />
                   <p className="text-xs text-muted-foreground mt-1">Use "primary" para a agenda principal ou o ID de outro calendário compartilhado.</p>
@@ -136,8 +162,14 @@ export default function AgendaConfigTab({ empresaId }: Props) {
 
               <div className="flex flex-wrap gap-2 pt-2">
                 <Button
-                  onClick={() => update.mutate({ empresaId, calendar_id: calendarId, timezone })}
-                  disabled={update.isPending}
+                  onClick={() => update.mutate({
+                    empresaId,
+                    calendar_id: calendarId,
+                    timezone,
+                    availability_start: availabilityStart,
+                    availability_end: availabilityEnd,
+                  })}
+                  disabled={update.isPending || !availabilityStart || !availabilityEnd || availabilityStart >= availabilityEnd}
                   className="gap-2"
                 >
                   {update.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}

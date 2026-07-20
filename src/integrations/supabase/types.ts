@@ -2436,6 +2436,8 @@ export type Database = {
       orbit_google_tokens: {
         Row: {
           access_token: string
+          availability_end: string
+          availability_start: string
           calendar_id: string
           created_at: string
           empresa_id: string
@@ -2450,6 +2452,8 @@ export type Database = {
         }
         Insert: {
           access_token: string
+          availability_end?: string
+          availability_start?: string
           calendar_id?: string
           created_at?: string
           empresa_id: string
@@ -2464,6 +2468,8 @@ export type Database = {
         }
         Update: {
           access_token?: string
+          availability_end?: string
+          availability_start?: string
           calendar_id?: string
           created_at?: string
           empresa_id?: string

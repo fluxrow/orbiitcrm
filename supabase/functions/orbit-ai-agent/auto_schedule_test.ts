@@ -108,7 +108,40 @@ const TOKEN: any = {
   expires_at: new Date(Date.now() + 3600_000).toISOString(),
   calendar_id: "primary",
   timezone: "America/Sao_Paulo",
+  availability_start: "09:00",
+  availability_end: "18:00",
 };
+
+Deno.test("dia sem horário usa janela e fuso configurados no tenant", async () => {
+  const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
+  const supa = makeFakeSupabase(state);
+  const params = baseParams() as any;
+  params.agendamento = { ...params.agendamento, data_iso: START, tem_horario: false };
+  let queried: { min: string; max: string; tz: string } | null = null;
+  const res = await tryAutoScheduleMeeting(supa as any, params, {
+    getTokenForEmpresa: async () => ({
+      ...TOKEN,
+      timezone: "America/Manaus",
+      availability_start: "10:30:00",
+      availability_end: "16:30:00",
+    }),
+    ensureFreshAccessToken: async () => "at",
+    checkAvailability: async (_at, _cal, min, max, tz) => {
+      queried = { min, max, tz };
+      return { busy: [] };
+    },
+    createCalendarEvent: async () => ({ id: "unused" }),
+    deleteCalendarEvent: async () => {},
+  });
+  assertEquals(res.handled, true);
+  assertEquals(res.created, undefined);
+  assertEquals(queried, {
+    min: "2026-07-30T14:30:00.000Z",
+    max: "2026-07-30T20:30:00.000Z",
+    tz: "America/Manaus",
+  });
+  assertEquals(res.suggestions?.[0]?.label, "10:30");
+});
 
 const START = "2026-07-30T18:00:00.000Z"; // 15:00 BRT
 const END = "2026-07-30T19:00:00.000Z";

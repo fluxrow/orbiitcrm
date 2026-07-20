@@ -7,6 +7,8 @@ export interface GoogleStatus {
   google_email: string | null;
   calendar_id: string | null;
   timezone: string | null;
+  availability_start: string;
+  availability_end: string;
   connected_at: string | null;
   provider_configured: boolean;
 }
@@ -72,13 +74,15 @@ export function useDisconnectGoogleCalendar() {
 export function useUpdateGoogleCalendarConfig() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (params: { empresaId: string; calendar_id?: string; timezone?: string }) => {
+    mutationFn: async (params: { empresaId: string; calendar_id?: string; timezone?: string; availability_start?: string; availability_end?: string }) => {
       const { data, error } = await supabase.functions.invoke("orbit-google-calendar", {
         body: {
           action: "update_config",
           empresa_id: params.empresaId,
           calendar_id: params.calendar_id,
           timezone: params.timezone,
+          availability_start: params.availability_start,
+          availability_end: params.availability_end,
         },
       });
       if (error) throw error;
@@ -137,4 +141,3 @@ export function useCalendarEventsRange(
     },
   });
 }
-
