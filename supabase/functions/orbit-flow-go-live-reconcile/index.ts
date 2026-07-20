@@ -644,7 +644,18 @@ serve(async (req) => {
       if (confirm !== CONFIRM_TEXT) return fail(ErrorCodes.VALIDATION_ERROR, `Confirme com "${CONFIRM_TEXT}"`, 400, undefined, req);
       if (!authorized) return fail(ErrorCodes.VALIDATION_ERROR, "Autorização obrigatória", 400, undefined, req);
       if (!operation_id || operation_id.length < 8) return fail(ErrorCodes.VALIDATION_ERROR, "operation_id inválido", 400, undefined, req);
-      return ok(await applyReconcile(supabase, empresa_id, auth.actorId, operation_id), {}, req);
+      const result = await applyReconcile(supabase, empresa_id, auth.actorId, operation_id);
+      const errMsg = (result as any)?.error as string | undefined;
+      if (errMsg) {
+        if (errMsg.startsWith("guard_revalidation_failed")) {
+          return fail("GUARD_REVALIDATION_FAILED", errMsg, 409, { operation_id, empresa_id }, req);
+        }
+        if (errMsg.includes("preview_truncated_refuse_apply")) {
+          return fail(ErrorCodes.VALIDATION_ERROR, errMsg, 409, undefined, req);
+        }
+        return fail(ErrorCodes.INTERNAL_ERROR, errMsg, 500, { operation_id, empresa_id }, req);
+      }
+      return ok(result, {}, req);
     }
     return fail(ErrorCodes.VALIDATION_ERROR, "mode inválido", 400, undefined, req);
   } catch (e: any) {
