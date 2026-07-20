@@ -32,6 +32,48 @@ function renderTemplateVars(text: string, vars: Json): string {
   });
 }
 
+// Cache leve por invocação para não re-consultar orbit_flows a cada action.
+const FLOW_TRIGGER_CACHE = new Map<string, string | null>();
+async function getFlowTriggerType(flowId: string | null | undefined): Promise<string | null> {
+  if (!flowId) return null;
+  if (FLOW_TRIGGER_CACHE.has(flowId)) return FLOW_TRIGGER_CACHE.get(flowId) ?? null;
+  const { data } = await supabase
+    .from("orbit_flows")
+    .select("trigger_type")
+    .eq("id", flowId)
+    .maybeSingle();
+  const t = (data?.trigger_type as string | undefined) ?? null;
+  FLOW_TRIGGER_CACHE.set(flowId, t);
+  return t;
+}
+
+const ALLOWED_OUTBOX_SOURCE_OVERRIDES = new Set(["flow_initial", "flow_followup", "flow_stage"]);
+
+/**
+ * Deriva source_type semanticamente a partir do trigger do flow e da presença
+ * de scheduled_action_id, com override opcional restrito ao enum permitido.
+ *
+ * - lead_recebido + imediato → flow_initial
+ * - lead_recebido + agendado → flow_followup
+ * - deal_stage_changed (imediato OU agendado) → flow_stage
+ * - qualquer outro trigger → mantém heurística legada (initial/followup)
+ */
+function deriveOutboxSourceType(
+  triggerType: string | null,
+  hasScheduledAction: boolean,
+  cfg: Json,
+): "flow_initial" | "flow_followup" | "flow_stage" {
+  const override = typeof cfg?.outbox_source_type === "string" ? cfg.outbox_source_type : null;
+  if (override && ALLOWED_OUTBOX_SOURCE_OVERRIDES.has(override)) {
+    return override as any;
+  }
+  if (triggerType === "deal_stage_changed") return "flow_stage";
+  if (triggerType === "lead_recebido") return hasScheduledAction ? "flow_followup" : "flow_initial";
+  // Demais triggers (deal_idle, conversa_no_reply, meeting_reminder_*): mantém heurística legada.
+  return hasScheduledAction ? "flow_followup" : "flow_initial";
+}
+
+
 async function findOrCreateConversa(empresaId: string, prospectId: string, telefone: string): Promise<string | null> {
   const { data: existing } = await supabase
     .from("orbit_conversas")
@@ -133,18 +175,32 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
     };
   }
 
-  // ── Adapter routing (Fase 3): se outbox_adapter_enabled=true, enfileira e retorna ──
+  // ── Adapter routing (Fase 3+): se outbox_adapter_enabled=true, enfileira e retorna ──
   if (await isAdapterEnabled(supabase, run.empresa_id)) {
     const scheduledActionId = (run as any)._scheduled_action_id ?? null;
-    const isFollowup = !!scheduledActionId;
+    const hasScheduled = !!scheduledActionId;
+    const triggerType = await getFlowTriggerType((run as any).flow_id ?? null);
+    const sourceType = deriveOutboxSourceType(triggerType, hasScheduled, cfg);
     const eventCreated = run.context?.payload?.created === true;
+    const payloadForCtx: Json = (run.context?.payload ?? {}) as Json;
+    const dealId = sourceType === "flow_stage" ? (await resolveDealId(run)) : null;
+    const targetStageId = sourceType === "flow_stage" ? (payloadForCtx.to_stage_id ?? null) : null;
+    const eventId = sourceType === "flow_stage" ? (run.context?.event?.id ?? payloadForCtx.event_id ?? null) : null;
+    const allowTerminal = cfg?.allow_terminal_stage_message === true;
+    const actionId = (cfg?.action_id as string | null) ?? (cfg?.template_id as string | null) ?? null;
     const routed = await enqueueOutbox(supabase, {
       empresa_id: run.empresa_id,
       prospect_id: prospectId,
       conversa_id: conversaId,
+      deal_id: dealId,
       flow_run_id: (run as any).id ?? null,
       scheduled_action_id: scheduledActionId,
-      source_type: isFollowup ? "flow_followup" : "flow_initial",
+      source_type: sourceType,
+      source_id: eventId ?? actionId ?? scheduledActionId ?? null,
+      event_id: eventId,
+      target_stage_id: targetStageId,
+      allow_terminal_stage_message: allowTerminal,
+      action_id: actionId,
       event_created: eventCreated,
       payload_type: tpl.imagem_url ? "image" : "text",
       payload: {
@@ -152,6 +208,10 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
         url_midia: tpl.imagem_url ?? null,
         template_id: tpl.id,
         template_nome: tpl.nome,
+      },
+      metadata: {
+        trigger_type: triggerType,
+        derived_source_type: sourceType,
       },
     } as any);
     return {
@@ -161,7 +221,11 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
         queued: !!routed.enqueued,
         outbox_id: routed.outbox_id ?? null,
         reason: routed.reason ?? null,
-        source_type: isFollowup ? "flow_followup" : "flow_initial",
+        eligibility_reasons: routed.reasons ?? null,
+        source_type: sourceType,
+        trigger_type: triggerType,
+        target_stage_id: targetStageId,
+        allow_terminal_stage_message: allowTerminal,
         template_id: tpl.id,
         template_nome: tpl.nome,
         conversa_id: conversaId,

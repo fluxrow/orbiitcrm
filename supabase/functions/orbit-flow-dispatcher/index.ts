@@ -84,6 +84,35 @@ async function processEvent(event: any) {
   for (const flow of flows ?? []) {
     if (!matchesConditions(flow.condicoes, event.payload, flow.trigger_config, event.event_type)) continue;
 
+    // ── Fail-safe de transição semanticamente duplicada (fora do dedupe do trigger).
+    // Se algum produtor externo emitir OUTRO evento da MESMA transição
+    // (deal + from_stage + to_stage) dentro de 120s, ignoramos aqui e auditamos.
+    // Não afeta transição legítima futura (sair e voltar à etapa depois).
+    if (event.event_type === "deal_stage_changed") {
+      const dealId = (event.payload as any)?.deal_id ?? event.entity_id;
+      const fromStage = (event.payload as any)?.from_stage_id ?? null;
+      const toStage = (event.payload as any)?.to_stage_id ?? null;
+      if (dealId) {
+        const windowStart = new Date(Date.now() - 120 * 1000).toISOString();
+        const { data: prevRuns } = await supabase
+          .from("orbit_flow_runs")
+          .select("id, context, created_at")
+          .eq("flow_id", flow.id)
+          .eq("entity_type", "deal")
+          .eq("entity_id", dealId)
+          .gte("created_at", windowStart)
+          .limit(20);
+        const dup = (prevRuns ?? []).find((r: any) => {
+          const p = r?.context?.payload ?? {};
+          return (p.from_stage_id ?? null) === fromStage && (p.to_stage_id ?? null) === toStage;
+        });
+        if (dup) {
+          console.log("[dispatcher] skip duplicate stage transition", { flow_id: flow.id, deal_id: dealId, from: fromStage, to: toStage, event_id: event.id });
+          continue;
+        }
+      }
+    }
+
     // rate limit: max 50 runs per flow per hour
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const { count } = await supabase

@@ -23,13 +23,19 @@ export type OutboxSourceType =
   | "manual"
   | "flow_initial"
   | "flow_followup"
+  | "flow_stage"
   | "campaign";
 
 export type OutboxPayloadType = "text" | "image" | "audio" | "document" | "video";
 
+// Prioridade global determinística. flow_stage entra entre meeting_confirmation
+// e flow_initial: transições de etapa são intencionais (Agendado/No-show/Ganho/
+// Perdido/Negociação) e devem sair na frente de qualquer follow-up de prospecção,
+// mas não podem furar respostas de IA nem confirmações de reunião.
 export const OUTBOX_PRIORITY: Record<OutboxSourceType, number> = {
   ai_reply: 100,
   meeting_confirmation: 90,
+  flow_stage: 75,
   manual: 80,
   flow_initial: 70,
   flow_followup: 40,
@@ -52,6 +58,14 @@ export interface OutboxContext {
   inbound_message_id?: string | null;
   // meeting_id para dedupe de meeting_confirmation
   meeting_id?: string | null;
+  // flow_stage: transição de etapa (id da etapa alvo no instante do enqueue)
+  target_stage_id?: string | null;
+  // flow_stage: permite mensagem em etapa terminal (won/lost) somente quando true
+  allow_terminal_stage_message?: boolean | null;
+  // flow_stage / auditoria: id do orbit_flow_events que originou o run
+  event_id?: string | null;
+  // flow_stage / dedupe: id da action ou template (semântica da mensagem)
+  action_id?: string | null;
   // Se true, testes/rotinas usam prefixo idempotente próprio
   idempotency_scope?: string | null;
 }
@@ -102,6 +116,18 @@ function stableKey(ctx: OutboxContext): string {
         ctx.scheduled_action_id ?? `${ctx.flow_run_id ?? "-"}:${ctx.source_id ?? "-"}`,
       );
       break;
+    case "flow_stage":
+      // Transição de etapa: identidade determinística por (empresa, deal, target_stage,
+      // event_id ou action_id). Sem timestamps — dedupe é responsabilidade do trigger
+      // (bucket de 60s) e do dispatcher (janela curta). Duas emissões da MESMA transição
+      // convergem para a mesma chave e o segundo insert cai em duplicate.
+      parts.push(
+        ctx.empresa_id,
+        ctx.deal_id ?? "-",
+        ctx.target_stage_id ?? "-",
+        ctx.event_id ?? ctx.action_id ?? ctx.source_id ?? ctx.flow_run_id ?? "-",
+      );
+      break;
     case "campaign":
       // Dedupe por campaign_id + recipient (source_id). Só cai para prospect_id se
       // por algum motivo o produtor não informar recipient — nunca deve acontecer no path real.
@@ -149,43 +175,88 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
     else if (!isManual && (c.human_talk === true || c.human_user_id)) reasons.push("human_handoff");
   }
 
-  // ── Terminal deal — bloqueia TODOS os source_types (inclusive manual até decisão futura).
-  // Detecta por: (a) deal_id explícito; (b) qualquer deal do prospect no mesmo tenant com
-  // deleted_at, status textual won/lost ou etapa vinculada com is_won/is_lost=true.
-  if (ctx.deal_id) {
-    const { data: d } = await supabase
-      .from("orbit_deals")
-      .select("id, status, deleted_at, etapa_id")
-      .eq("id", ctx.deal_id)
-      .maybeSingle();
-    if (d?.deleted_at) reasons.push("terminal_deal");
-    else if (d?.status && ["won","lost","ganho","perdido","deleted"].includes(String(d.status).toLowerCase())) {
-      reasons.push("terminal_deal");
+  // ── flow_stage: elegibilidade dedicada de transição de etapa.
+  //   • Sempre exige deal existente no mesmo tenant/prospect e não deletado.
+  //   • Não bloqueia por contato/resposta histórica (histórico é esperado).
+  //   • Etapa atual do deal deve == metadata.target_stage_id; senão stale_stage_transition.
+  //   • Terminal (is_won/is_lost) só passa se allow_terminal_stage_message=true E
+  //     a etapa atual É a terminal alvo. Nunca envia em deal deletado.
+  const isFlowStage = ctx.source_type === "flow_stage";
+  if (isFlowStage) {
+    let dealRow: any = null;
+    if (ctx.deal_id) {
+      const { data: d } = await supabase
+        .from("orbit_deals")
+        .select("id, empresa_id, prospect_id, status, deleted_at, etapa_id")
+        .eq("id", ctx.deal_id)
+        .maybeSingle();
+      dealRow = d ?? null;
     }
-  }
-  if (!reasons.includes("terminal_deal") && ctx.prospect_id) {
-    const { data: deals } = await supabase
-      .from("orbit_deals")
-      .select("id, status, deleted_at, etapa_id")
-      .eq("empresa_id", ctx.empresa_id)
-      .eq("prospect_id", ctx.prospect_id);
-    const list = (deals ?? []) as any[];
-    let terminal = false;
-    const stageIds: string[] = [];
-    for (const d of list) {
-      if (d.deleted_at) { terminal = true; break; }
-      const s = String(d.status ?? "").toLowerCase();
-      if (["won","lost","ganho","perdido","deleted"].includes(s)) { terminal = true; break; }
-      if (d.etapa_id) stageIds.push(d.etapa_id);
+    if (!dealRow) reasons.push("deal_missing");
+    else if (dealRow.empresa_id !== ctx.empresa_id) reasons.push("cross_tenant");
+    else if (dealRow.deleted_at) reasons.push("terminal_deal");
+    else {
+      // Etapa atual deve bater com a etapa alvo do enqueue.
+      if (ctx.target_stage_id && dealRow.etapa_id !== ctx.target_stage_id) {
+        reasons.push("stale_stage_transition");
+      }
+      // Verifica se a etapa atual é terminal (won/lost) e aplica gate.
+      if (dealRow.etapa_id) {
+        const { data: stg } = await supabase
+          .from("orbit_pipeline_stages")
+          .select("id, is_won, is_lost")
+          .eq("id", dealRow.etapa_id)
+          .maybeSingle();
+        const isTerminalStage = stg?.is_won === true || stg?.is_lost === true;
+        if (isTerminalStage && ctx.allow_terminal_stage_message !== true) {
+          reasons.push("terminal_deal");
+        }
+      }
+      // status textual won/lost com flag off também bloqueia.
+      const s = String(dealRow.status ?? "").toLowerCase();
+      if (["won","lost","ganho","perdido","deleted"].includes(s) && ctx.allow_terminal_stage_message !== true) {
+        if (!reasons.includes("terminal_deal")) reasons.push("terminal_deal");
+      }
     }
-    if (!terminal && stageIds.length > 0) {
-      const { data: stages } = await supabase
-        .from("orbit_pipeline_stages")
-        .select("id, is_won, is_lost")
-        .in("id", stageIds);
-      if ((stages ?? []).some((s: any) => s.is_won === true || s.is_lost === true)) terminal = true;
+  } else {
+    // ── Terminal deal — bloqueia demais source_types (inclusive manual até decisão futura).
+    // Detecta por: (a) deal_id explícito; (b) qualquer deal do prospect no mesmo tenant com
+    // deleted_at, status textual won/lost ou etapa vinculada com is_won/is_lost=true.
+    if (ctx.deal_id) {
+      const { data: d } = await supabase
+        .from("orbit_deals")
+        .select("id, status, deleted_at, etapa_id")
+        .eq("id", ctx.deal_id)
+        .maybeSingle();
+      if (d?.deleted_at) reasons.push("terminal_deal");
+      else if (d?.status && ["won","lost","ganho","perdido","deleted"].includes(String(d.status).toLowerCase())) {
+        reasons.push("terminal_deal");
+      }
     }
-    if (terminal) reasons.push("terminal_deal");
+    if (!reasons.includes("terminal_deal") && ctx.prospect_id) {
+      const { data: deals } = await supabase
+        .from("orbit_deals")
+        .select("id, status, deleted_at, etapa_id")
+        .eq("empresa_id", ctx.empresa_id)
+        .eq("prospect_id", ctx.prospect_id);
+      const list = (deals ?? []) as any[];
+      let terminal = false;
+      const stageIds: string[] = [];
+      for (const d of list) {
+        if (d.deleted_at) { terminal = true; break; }
+        const s = String(d.status ?? "").toLowerCase();
+        if (["won","lost","ganho","perdido","deleted"].includes(s)) { terminal = true; break; }
+        if (d.etapa_id) stageIds.push(d.etapa_id);
+      }
+      if (!terminal && stageIds.length > 0) {
+        const { data: stages } = await supabase
+          .from("orbit_pipeline_stages")
+          .select("id, is_won, is_lost")
+          .in("id", stageIds);
+        if ((stages ?? []).some((s: any) => s.is_won === true || s.is_lost === true)) terminal = true;
+      }
+      if (terminal) reasons.push("terminal_deal");
+    }
   }
 
   // Meeting ativa/futura para o prospect — apenas automações agendadas de outbound.
@@ -264,6 +335,13 @@ export async function enqueueOutbox(supabase: any, input: EnqueueInput): Promise
   }
 
   const priority = input.priority_override ?? OUTBOX_PRIORITY[input.source_type];
+  // Merge de contexto no metadata (o worker precisa desses campos para re-check no consumo).
+  const ctxMeta: Record<string, unknown> = {};
+  if (input.target_stage_id != null) ctxMeta.target_stage_id = input.target_stage_id;
+  if (input.allow_terminal_stage_message != null) ctxMeta.allow_terminal_stage_message = input.allow_terminal_stage_message;
+  if (input.event_id != null) ctxMeta.event_id = input.event_id;
+  if (input.action_id != null) ctxMeta.action_id = input.action_id;
+  const mergedMetadata = { ...(input.metadata ?? {}), ...ctxMeta };
   const { data: row, error } = await supabase
     .from("orbit_whatsapp_outbox")
     .insert({
@@ -281,7 +359,7 @@ export async function enqueueOutbox(supabase: any, input: EnqueueInput): Promise
       payload_type: input.payload_type,
       payload: input.payload,
       scheduled_for: input.scheduled_for ?? new Date().toISOString(),
-      metadata: input.metadata ?? {},
+      metadata: mergedMetadata,
     })
     .select("id, status")
     .single();

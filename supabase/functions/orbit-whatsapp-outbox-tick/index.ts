@@ -301,6 +301,11 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
     event_created: item.metadata?.event_created ?? null,
     inbound_message_id: item.metadata?.inbound_message_id ?? null,
     meeting_id: item.metadata?.meeting_id ?? null,
+    // flow_stage: propaga contexto de transição de etapa para o re-check no consumo.
+    target_stage_id: item.metadata?.target_stage_id ?? null,
+    allow_terminal_stage_message: item.metadata?.allow_terminal_stage_message ?? null,
+    event_id: item.metadata?.event_id ?? null,
+    action_id: item.metadata?.action_id ?? null,
   });
   if (!elig.eligible) {
     await supabase
