@@ -144,7 +144,7 @@ Deno.test("order: meeting lookup → ensure_deal → freeBusy exato → createEv
 Deno.test("rollback: se insert meeting falhar, DELETE do evento Google é chamado", async () => {
   const state: FakeState = { meetings: [], deals: [{ id: "deal-1" }], pipeline_stages: [], flow_events: [], meetingInsertFails: true, order: [] };
   const supa = makeFakeSupabase(state);
-  let deleted: { cal: string; ev: string } | null = null;
+  let deleted: any = null;
   const res = await tryAutoScheduleMeeting(supa as any, baseParams() as any, {
     getTokenForEmpresa: async () => TOKEN,
     ensureFreshAccessToken: async () => "at",
@@ -155,7 +155,7 @@ Deno.test("rollback: se insert meeting falhar, DELETE do evento Google é chamad
   assertEquals(res.handled, false);
   assertEquals(res.error, "insert orbit_meetings falhou");
   assert(deleted, "deleteCalendarEvent deve ter sido chamado");
-  assertEquals(deleted!.ev, "gev-42");
+  assertEquals(deleted.ev, "gev-42");
 });
 
 Deno.test("ensure_deal_for_prospect falhando aborta antes de tocar Google", async () => {

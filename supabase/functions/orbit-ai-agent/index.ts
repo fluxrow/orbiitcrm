@@ -140,7 +140,7 @@ async function notifyCommercialHumanDetected(
     prospect: any;
     telefone_lead: string;
     mensagem: string;
-    classification: MessageClassification;
+    classification: MessageClassification | string;
     empresa_id: string | null;
     isDemo: boolean;
   }
@@ -295,7 +295,7 @@ function computeNextState(
   if (currentState === "human_detected") return "qualificando";
   if (currentState === "aguardando_resposta" || currentState === "novo") return "qualificando";
   if (currentState === "qualificando" && cadastroCompleto) return "qualificado";
-  return currentState === "novo" ? "qualificando" : currentState;
+  return (currentState as string) === "novo" ? "qualificando" : currentState;
 }
 
 // ── Montar leadContext estruturado ──
@@ -505,7 +505,7 @@ serve(async (req) => {
   }
 
   let conversaIdForCleanup: string | null = null;
-  let supabaseForCleanup: ReturnType<typeof createClient> | null = null;
+  let supabaseForCleanup: any = null;
   try {
     const { conversa_id, prospect_id, mensagem, telefone } = await req.json();
     conversaIdForCleanup = conversa_id ?? null;
@@ -1194,7 +1194,7 @@ ${regrasBlock}`;
           Deno.env.get("SUPABASE_URL")!,
           Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
         );
-        await cleanupClient
+        await (cleanupClient as any)
           .from("orbit_conversas")
           .update({ ai_processing: false })
           .eq("id", conversaIdForCleanup);
