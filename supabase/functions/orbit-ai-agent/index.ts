@@ -753,12 +753,17 @@ serve(async (req) => {
       ? `\n=== REGRAS INVIOLÁVEIS (MAIOR PESO — devem ser sempre obedecidas) ===\n${promptRegras}\n=== FIM DAS REGRAS INVIOLÁVEIS ===\n`
       : "";
 
+    const _agendaTz = "America/Sao_Paulo";
+    const _nowFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: _agendaTz, weekday: "long", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date());
+    const _nowISO = new Date().toISOString();
+    const dataHoraAtualBlock = `\nDATA/HORA ATUAL (referência para agendamentos): ${_nowFmt} (${_agendaTz}) — ISO: ${_nowISO}\nREGRA CRÍTICA DE AGENDAMENTO: NUNCA devolva "data_iso" no passado. Se o cliente citar um dia da semana (ex.: "segunda-feira"), resolva SEMPRE para a próxima ocorrência FUTURA a partir da data atual acima. Se o cliente citar horário do dia atual já passado, resolva para o próximo dia útil. Ano correto é derivado da data atual; nunca use anos passados.\n`;
+
     const systemPrompt = `${promptIdentidade}
 
 Tom de voz: ${aiConfig.tom_conversa || "profissional e amigável"}
 Idioma: ${idioma === "pt-BR" ? "Português do Brasil" : idioma === "en" ? "Inglês" : "Espanhol"}
 ${campaignContinuity}${stateInstruction}${classificationInstruction}
-${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}
+${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${dataHoraAtualBlock}
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
 ${camposQualificacaoBlock}${ragBlock}
