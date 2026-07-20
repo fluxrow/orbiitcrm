@@ -4,6 +4,11 @@
 // Delega o envio para send-orbit-campaign em modo interno (header x-campaign-scheduler-token).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import {
+  canResumePausadaPorLimite,
+  loadCampaignSendingConfig,
+  loadCampaignDailyUsage,
+} from "../_shared/whatsapp-campaign-quota.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -167,7 +172,112 @@ Deno.serve(async (req) => {
       console.error("auto_resume_error", e?.message ?? e);
     }
 
-    const summary = { tick_id: tickId, claimed, dispatched, resumed, errors, duration_ms: Date.now() - t0 };
+    // ── Auto-resume: campanhas 'pausada_por_limite' cujo tenant já tem cota do dia ──
+    // Regra: só sources aprovadas + status=pausada_por_limite + pendentes > 0.
+    // Não toca em 'pausada' (manual), reprovada, cancelada, concluída, enviando ou agendada.
+    // Usa a MESMA função de cota do send-orbit-campaign (whatsapp-campaign-quota.ts).
+    let resumed_limit = 0;
+    try {
+      const { data: pausadas } = await supabase
+        .from("orbit_campaigns")
+        .select("id, empresa_id, canal, aprovacao_status, status")
+        .eq("status", "pausada_por_limite")
+        .eq("aprovacao_status", "aprovada")
+        .eq("canal", "whatsapp")
+        .limit(20);
+
+      for (const c of (pausadas ?? [])) {
+        if (!c.empresa_id) continue;
+
+        const { count: pending } = await supabase
+          .from("orbit_campaign_recipients")
+          .select("*", { count: "exact", head: true })
+          .eq("campaign_id", c.id)
+          .eq("status", "pendente");
+        if (!pending || pending === 0) continue;
+
+        const cfg = await loadCampaignSendingConfig(supabase, c.empresa_id);
+        if (!cfg.enabled) {
+          results.push({ id: c.id, resume_limit: false, reason: "rhythm_disabled" });
+          continue;
+        }
+
+        const { sentCount, usageDate } = await loadCampaignDailyUsage(supabase, c.empresa_id);
+        const { resume, effectiveLimit, remaining } = canResumePausadaPorLimite({
+          config: cfg,
+          dailySentCount: sentCount,
+        });
+
+        if (!resume) {
+          results.push({
+            id: c.id,
+            resume_limit: false,
+            reason: "still_over_limit",
+            sent: sentCount, effective_limit: effectiveLimit, usage_date: usageDate,
+          });
+          continue;
+        }
+
+        // Claim idempotente: pausada_por_limite -> aprovada_para_envio
+        const { data: claimedRow, error: claimErr } = await supabase
+          .from("orbit_campaigns")
+          .update({ status: "aprovada_para_envio" })
+          .eq("id", c.id)
+          .eq("status", "pausada_por_limite")
+          .eq("aprovacao_status", "aprovada")
+          .select("id")
+          .maybeSingle();
+
+        if (claimErr) {
+          errors++;
+          results.push({ id: c.id, resume_limit: false, error: `claim: ${claimErr.message}` });
+          continue;
+        }
+        if (!claimedRow) {
+          // Outro tick venceu a corrida.
+          continue;
+        }
+
+        try {
+          const resp = await fetch(`${FUNCTIONS_BASE}/send-orbit-campaign`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${SERVICE_KEY}`,
+              "x-campaign-scheduler-token": CRON_TOKEN,
+            },
+            body: JSON.stringify({ campaign_id: c.id }),
+          });
+          const json = await resp.json().catch(() => ({}));
+          const okResp = resp.ok && (json?.ok === true);
+          if (okResp) resumed_limit++;
+          else errors++;
+          results.push({
+            id: c.id, resume_limit: okResp, http: resp.status,
+            sent: sentCount, effective_limit: effectiveLimit, remaining, pending,
+          });
+          console.log(JSON.stringify({
+            scope: "campaign_scheduler_resume_limit", tick_id: tickId, campaign_id: c.id,
+            empresa_id: c.empresa_id, ok: okResp, http: resp.status,
+            sent: sentCount, effective_limit: effectiveLimit, remaining, pending,
+          }));
+        } catch (e: any) {
+          errors++;
+          const msg = String(e?.message ?? e).slice(0, 300);
+          results.push({ id: c.id, resume_limit: false, error: msg });
+          // Rollback do claim para permitir novo tick.
+          await supabase
+            .from("orbit_campaigns")
+            .update({ status: "pausada_por_limite" })
+            .eq("id", c.id)
+            .eq("status", "aprovada_para_envio");
+        }
+      }
+    } catch (e: any) {
+      console.error("auto_resume_pausada_por_limite_error", e?.message ?? e);
+    }
+
+    const summary = { tick_id: tickId, claimed, dispatched, resumed, resumed_limit, errors, duration_ms: Date.now() - t0 };
     console.log(JSON.stringify({ scope: "campaign_scheduler_tick_summary", ...summary }));
     return new Response(JSON.stringify({ ok: true, data: { ...summary, results } }), {
       status: 200,

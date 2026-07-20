@@ -6,6 +6,11 @@ import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_
 import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
+import {
+  WARMUP_SCALE,
+  getEffectiveDailyLimit,
+  type CampaignSendingConfig,
+} from "../_shared/whatsapp-campaign-quota.ts";
 
 interface CampaignRequest {
   campaign_id: string;
@@ -14,7 +19,9 @@ interface CampaignRequest {
 const delayMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const VALIDATION_CACHE_DAYS = 7;
-const WARMUP_SCALE = [50, 80, 120, 200, 300, 500];
+// WARMUP_SCALE agora vem de _shared/whatsapp-campaign-quota.ts para evitar divergência
+// com o auto-resume do scheduler. Mantida a referência importada para uso local.
+void WARMUP_SCALE;
 
 function isCheckExpired(lastCheck: string | null): boolean {
   if (!lastCheck) return true;
@@ -88,17 +95,9 @@ async function checkZapiInstanceStatus(
   }
 }
 
-interface SendingConfig {
-  min_delay_ms: number;
-  max_delay_ms: number;
-  batch_size: number;
-  batch_pause_ms: number;
-  daily_limit: number;
-  max_per_minute: number;
-  warmup_enabled: boolean;
-  warmup_start_date: string | null;
-  enabled: boolean;
-}
+// SendingConfig, DEFAULT_CONFIG e getEffectiveLimit vêm de
+// _shared/whatsapp-campaign-quota.ts. Aliases locais preservam a API interna.
+type SendingConfig = CampaignSendingConfig;
 
 const DEFAULT_CONFIG: SendingConfig = {
   min_delay_ms: 1500,
@@ -113,16 +112,7 @@ const DEFAULT_CONFIG: SendingConfig = {
 };
 
 function getEffectiveLimit(config: SendingConfig): { limit: number; delayMultiplier: number } {
-  if (!config.warmup_enabled || !config.warmup_start_date) {
-    return { limit: config.daily_limit, delayMultiplier: 1 };
-  }
-  const startDate = new Date(config.warmup_start_date);
-  const now = new Date();
-  const daysDiff = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-  const dayIndex = Math.max(0, daysDiff);
-  const limit = dayIndex < WARMUP_SCALE.length ? WARMUP_SCALE[dayIndex] : config.daily_limit;
-  const delayMultiplier = dayIndex < 3 ? 1.5 : 1;
-  return { limit: Math.min(limit, config.daily_limit), delayMultiplier };
+  return getEffectiveDailyLimit(config);
 }
 
 function randomDelay(min: number, max: number): number {
