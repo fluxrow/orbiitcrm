@@ -723,7 +723,7 @@ async function enqueueScheduledAction(params: {
 }): Promise<{ id: string | null; scheduled_for: string }> {
   const { run, action } = params;
   const payload = run.context?.payload ?? {};
-  const prospectId = payload.prospect_id ?? (run.entity_type === "prospect" ? run.entity_id : null);
+  const prospectId = (await resolveProspectId(run)) ?? payload.prospect_id ?? (run.entity_type === "prospect" ? run.entity_id : null);
   const dealId = payload.deal_id ?? (run.entity_type === "deal" ? run.entity_id : null);
   const scheduledFor = new Date(Date.now() + Number(action.delay_seconds || 0) * 1000).toISOString();
   const { data, error } = await supabase
