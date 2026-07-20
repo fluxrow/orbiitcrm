@@ -125,6 +125,17 @@ Deno.serve(async (req) => {
   const results: CaseResult[] = [];
   const tenants: string[] = [];
 
+  // Helper: garante uma OUT real (enviada) prévia para desbloquear flow_followup.
+  const seedRealOut = async (empresa_id: string, prospect_id: string): Promise<string> => {
+    const cid = await makeConversa(supabase, empresa_id, prospect_id);
+    await supabase.from("orbit_mensagens").insert({
+      empresa_id, conversa_id: cid, direcao: "OUT",
+      mensagem: "seed prior real out", status: "enviada", canal: "whatsapp",
+    });
+    return cid;
+  };
+
+
   // A. flow_initial created=true sem histórico → enqueued
   await runCase(results, "A. flow_initial created=true sem histórico", async () => {
     const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
