@@ -398,6 +398,20 @@ async function sendWhatsAppAudio(
         .select("prospect_id")
         .eq("id", conversa_id)
         .maybeSingle();
+      const isPath = !/^https?:\/\//i.test(audioSource);
+      // Pré-cria a linha visual antes de enfileirar para linkar orbit_message_id.
+      const { data: novaAudio } = await supabase.from("orbit_mensagens").insert({
+        conversa_id,
+        direcao: "OUT",
+        mensagem: "🎙️ Áudio",
+        tipo_midia: "audio",
+        storage_path: isPath ? audioSource : null,
+        url_midia: isPath ? null : audioSource,
+        canal: "whatsapp",
+        status: "queued",
+        empresa_id: empresaId,
+      }).select("id").single();
+
       const routed = await enqueueOutbox(supabase, {
         empresa_id: empresaId,
         conversa_id,
@@ -408,22 +422,16 @@ async function sendWhatsAppAudio(
         source_id: audioKey,
         payload_type: "audio",
         payload: {
-          storage_path: /^https?:\/\//i.test(audioSource) ? null : audioSource,
-          url: /^https?:\/\//i.test(audioSource) ? audioSource : null,
+          storage_path: isPath ? audioSource : null,
+          // Padronizado em url_midia (worker aceita url legado como fallback).
+          url_midia: isPath ? null : audioSource,
         },
+        metadata: { orbit_message_id: novaAudio?.id ?? null },
       });
-      const isPath = !/^https?:\/\//i.test(audioSource);
-      await supabase.from("orbit_mensagens").insert({
-        conversa_id,
-        direcao: "OUT",
-        mensagem: "🎙️ Áudio",
-        tipo_midia: "audio",
-        storage_path: isPath ? audioSource : null,
-        url_midia: isPath ? null : audioSource,
-        canal: "whatsapp",
-        status: "queued",
-        empresa_id: empresaId,
-      });
+      // Retry dedupe: descarta a linha pré-criada se já havia outbox equivalente.
+      if (!routed.enqueued && routed.reason === "duplicate" && novaAudio?.id) {
+        await supabase.from("orbit_mensagens").delete().eq("id", novaAudio.id);
+      }
       console.log("[orbit-ai-agent] Adapter routed ai_reply(audio):", routed);
       return;
     }
@@ -1448,6 +1456,19 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: st
         .select("prospect_id")
         .eq("id", conversa_id)
         .maybeSingle();
+      // Pré-cria linha "queued" para linkar orbit_message_id.
+      const { data: novaTxt } = await supabase
+        .from("orbit_mensagens")
+        .insert({
+          conversa_id,
+          direcao: "OUT",
+          mensagem,
+          canal: "whatsapp",
+          status: "queued",
+          empresa_id: empresaId,
+        })
+        .select("id")
+        .single();
       const routed = await enqueueOutbox(supabase, {
         empresa_id: empresaId,
         conversa_id,
@@ -1457,15 +1478,11 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: st
         source_id: inboundId,
         payload_type: "text",
         payload: { mensagem },
+        metadata: { orbit_message_id: novaTxt?.id ?? null },
       });
-      await supabase.from("orbit_mensagens").insert({
-        conversa_id,
-        direcao: "OUT",
-        mensagem,
-        canal: "whatsapp",
-        status: "queued",
-        empresa_id: empresaId,
-      });
+      if (!routed.enqueued && routed.reason === "duplicate" && novaTxt?.id) {
+        await supabase.from("orbit_mensagens").delete().eq("id", novaTxt.id);
+      }
       console.log("[orbit-ai-agent] Adapter routed ai_reply:", routed);
       return;
     }
