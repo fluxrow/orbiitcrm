@@ -154,7 +154,7 @@ export function FlowGoLiveReconcilePanel({ empresaId, empresaNome }: Props) {
           {preview.truncated && (
             <div className="text-amber-600 flex items-center gap-1">
               <AlertTriangle className="w-3 h-3" />
-              Preview truncado (>5000 snapshots). Aplicar está bloqueado até reduzir o backlog.
+              Preview truncado (mais de 5000 snapshots). Aplicar está bloqueado até reduzir o backlog.
             </div>
           )}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
