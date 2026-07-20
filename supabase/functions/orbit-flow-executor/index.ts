@@ -71,6 +71,8 @@ function deriveOutboxSourceType(
   if (triggerType === "lead_recebido") return hasScheduledAction ? "flow_followup" : "flow_initial";
   // Demais triggers (deal_idle, conversa_no_reply, meeting_reminder_*): mantém heurística legada.
   return hasScheduledAction ? "flow_followup" : "flow_initial";
+}
+
 
 async function findOrCreateConversa(empresaId: string, prospectId: string, telefone: string): Promise<string | null> {
   const { data: existing } = await supabase
