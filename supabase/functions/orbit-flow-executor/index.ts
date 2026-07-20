@@ -873,15 +873,22 @@ async function handleSingleAction(scheduledId: string): Promise<Response> {
     });
   }
 
+  // Restaura event_id no run a partir do context persistido pelo enqueueScheduledAction.
+  // Fallback aceita context.payload.event_id para agendamentos legados anteriores ao patch.
+  const restoredEventId =
+    s.context?.event_id ?? s.context?.payload?.event_id ?? null;
+
   const run: Json = {
     id: s.run_id,
     empresa_id: s.empresa_id,
     flow_id: s.flow_id,
     entity_type: s.context?.entity_type ?? null,
     entity_id: s.context?.entity_id ?? null,
-    context: { payload: s.context?.payload ?? {} },
+    event_id: restoredEventId,
+    context: { payload: s.context?.payload ?? {}, event_id: restoredEventId },
     _scheduled_action_id: s.id,
   };
+
 
   const stepStart = new Date().toISOString();
   const { data: step } = await supabase
