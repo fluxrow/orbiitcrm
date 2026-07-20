@@ -281,6 +281,7 @@ Deno.serve(async (req) => {
   await runCase(results, "J. cancel follow-ups por lead_replied", async () => {
     const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
     const pid = await makeProspect(supabase, empresa_id, { suffix: "J" });
+    await seedRealOut(empresa_id, pid);
     await enqueueOutbox(supabase, {
       empresa_id, prospect_id: pid, source_type: "flow_followup",
       scheduled_action_id: crypto.randomUUID(),
