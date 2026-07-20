@@ -16,6 +16,8 @@ import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_
 import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { getTokenForEmpresa, ensureFreshAccessToken, checkAvailability } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
+import { resolveEventId, buildScheduledActionContext, restoreRunFromScheduled } from "./flow-run-events.ts";
+
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
