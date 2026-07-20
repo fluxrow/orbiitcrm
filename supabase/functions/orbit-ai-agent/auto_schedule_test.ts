@@ -245,6 +245,7 @@ Deno.test("deal_stage_changed inclui prospect_id e meeting_id no payload", async
   assertEquals(ev.payload.prospect_id, "prospect-1");
   assertEquals(ev.payload.meeting_id, res.meeting_id);
   assertEquals(ev.payload.deal_id, "deal-1");
+  assertEquals(ev.payload.conversa_id, "conv-1");
 });
 
 Deno.test("Google Calendar não conectado devolve not_connected (handoff manual)", async () => {
