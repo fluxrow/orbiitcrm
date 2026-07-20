@@ -382,7 +382,7 @@ async function actionSendRichMedia(cfg: Json, run: Json): Promise<StepResult> {
   if (!["image", "audio", "document", "video"].includes(tipo)) return { ok: false, error: "tipo_midia inválido" };
   if (!cfg.url_midia) return { ok: false, error: "url_midia ausente" };
 
-  const prospectId = run.context?.payload?.prospect_id || (run.entity_type === "prospect" ? run.entity_id : null);
+  const prospectId = await resolveProspectId(run);
   if (!prospectId) return { ok: false, error: "prospect não identificado" };
   const telefone = cfg.telefone || await resolveProspectPhone(prospectId);
   if (!telefone) return { ok: false, error: "prospect sem telefone" };
