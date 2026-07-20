@@ -643,14 +643,19 @@ Deno.serve(async (req) => {
 
   // Z. Isolamento: nenhum tenant real tem adapter=true; nenhuma row de outbox foi criada para eles
   await runCase(results, "Z. tenants reais permanecem adapter=false, sem novas rows", async () => {
-    const { count: enabledCount } = await supabase
-      .from("orbit_whatsapp_sending_config")
-      .select("id", { count: "exact", head: true })
-      .eq("outbox_adapter_enabled", true);
-    // Excluir tenants sintéticos do smoke atual do check de rows
+    // Excluir tenants sintéticos do smoke atual
     const { data: syntheticIds } = await supabase.from("orbit_empresas")
       .select("id").ilike("nome", "OUTBOX_SMOKE_%");
     const synth = new Set(((syntheticIds ?? []) as any[]).map((r) => r.id));
+    const synthArr = Array.from(synth);
+    let enabledQuery = supabase
+      .from("orbit_whatsapp_sending_config")
+      .select("empresa_id", { count: "exact", head: true })
+      .eq("outbox_adapter_enabled", true);
+    if (synthArr.length > 0) {
+      enabledQuery = enabledQuery.not("empresa_id", "in", `(${synthArr.join(",")})`);
+    }
+    const { count: enabledCount } = await enabledQuery;
     const { data: rows } = await supabase.from("orbit_whatsapp_outbox")
       .select("empresa_id").in("status", ["pending","processing"]);
     const realWithRows = ((rows ?? []) as any[]).filter((r) => !synth.has(r.empresa_id));
