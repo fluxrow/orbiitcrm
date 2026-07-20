@@ -512,7 +512,7 @@ async function actionCreateTask(cfg: Json, run: Json): Promise<StepResult> {
 
 
 async function actionToggleAiAgent(cfg: Json, run: Json): Promise<StepResult> {
-  const prospectId = run.context?.payload?.prospect_id || (run.entity_type === "prospect" ? run.entity_id : null);
+  const prospectId = await resolveProspectId(run);
   if (!prospectId) return { ok: false, error: "prospect não identificado" };
   const humanTalk = Boolean(cfg.human_talk);
   const { error } = await supabase
