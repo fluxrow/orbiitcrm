@@ -67,6 +67,7 @@ async function makeConversa(
 async function cleanupTenants(supabase: SupabaseClient, tenants: string[]) {
   for (const empresa_id of tenants) {
     await supabase.from("orbit_whatsapp_outbox").delete().eq("empresa_id", empresa_id);
+    await supabase.from("orbit_whatsapp_daily_usage").delete().eq("empresa_id", empresa_id);
     await supabase.from("orbit_meetings").delete().eq("empresa_id", empresa_id);
     await supabase.from("orbit_mensagens").delete().eq("empresa_id", empresa_id);
     await supabase.from("orbit_conversas").delete().eq("empresa_id", empresa_id);
