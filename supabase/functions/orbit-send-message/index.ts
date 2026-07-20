@@ -56,7 +56,7 @@ serve(async (req) => {
     // ── Cross-tenant guard: conversa DEVE pertencer à empresa do usuário ──
     const { data: conversaRow, error: convErr } = await supabase
       .from("orbit_conversas")
-      .select("id, empresa_id, telefone_whatsapp")
+      .select("id, empresa_id, telefone_whatsapp, prospect_id")
       .eq("id", conversa_id)
       .maybeSingle();
 
