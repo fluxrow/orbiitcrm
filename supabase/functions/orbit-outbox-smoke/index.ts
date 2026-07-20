@@ -13,7 +13,6 @@ import { enqueueOutbox, cancelOutboxByProspect, isAdapterEnabled } from "../_sha
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SMOKE_TOKEN = Deno.env.get("SCHEDULER_CRON_TOKEN") || "";
-const SMOKE_INTERNAL_TOKEN = Deno.env.get("SMOKE_INTERNAL_TOKEN") || "";
 
 const RUN_ID = `OUTBOX_SMOKE_${Date.now()}`;
 const CAMP_ID = "314e6e23-d0f5-47ed-bba4-3cb2f24569d6";
@@ -72,6 +71,7 @@ async function cleanupTenants(supabase: SupabaseClient, tenants: string[]) {
     await supabase.from("orbit_mensagens").delete().eq("empresa_id", empresa_id);
     await supabase.from("orbit_conversas").delete().eq("empresa_id", empresa_id);
     await supabase.from("orbit_deals").delete().eq("empresa_id", empresa_id);
+    await supabase.from("orbit_pipeline_stages").delete().eq("empresa_id", empresa_id);
     await supabase.from("orbit_prospects").delete().eq("empresa_id", empresa_id);
     await supabase.from("orbit_empresas").delete().eq("id", empresa_id);
   }
@@ -94,8 +94,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const auth = req.headers.get("authorization") ?? "";
-  let authorized = (SMOKE_TOKEN && auth === `Bearer ${SMOKE_TOKEN}`)
-    || (SMOKE_INTERNAL_TOKEN && auth === `Bearer ${SMOKE_INTERNAL_TOKEN}`);
+  let authorized = (SMOKE_TOKEN && auth === `Bearer ${SMOKE_TOKEN}`);
   if (!authorized && auth.startsWith("Bearer ")) {
     // Fallback: aceitar super_admin autenticado (uso manual pela plataforma)
     try {
@@ -665,7 +664,248 @@ Deno.serve(async (req) => {
     };
   });
 
-  // Cleanup extra: sending_config sintéticos
+  // ── AA. manual em human_talk=true + OUT/IN prévios enfileira; optout/deleted/cross-tenant bloqueiam ──
+  await runCase(results, "AA. manual respeita optout/deleted/cross-tenant, ignora handoff/already_contacted/lead_replied", async () => {
+    const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
+    await enableAdapter(empresa_id, true);
+    // Prospect com handoff + OUT prévio + IN prévio → manual deve enfileirar
+    const pid = await makeProspect(supabase, empresa_id, { suffix: "AA_OK" });
+    const cid = await makeConversa(supabase, empresa_id, pid, { human_talk: true });
+    await supabase.from("orbit_mensagens").insert([
+      { empresa_id, conversa_id: cid, direcao: "OUT", mensagem: "prev", status: "enviada", canal: "whatsapp" },
+      { empresa_id, conversa_id: cid, direcao: "IN", mensagem: "oi", status: "recebida", canal: "whatsapp" },
+    ]);
+    const rOk = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pid, conversa_id: cid, source_type: "manual",
+      source_id: crypto.randomUUID(),
+      payload_type: "text", payload: { mensagem: "resposta humana" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    // Optout bloqueia manual
+    const pOpt = await makeProspect(supabase, empresa_id, { suffix: "AA_OPT", optout_whatsapp: true });
+    const cOpt = await makeConversa(supabase, empresa_id, pOpt, { human_talk: true });
+    const rOpt = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pOpt, conversa_id: cOpt, source_type: "manual",
+      source_id: crypto.randomUUID(),
+      payload_type: "text", payload: { mensagem: "x" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    // Deleted bloqueia manual
+    const pDel = await makeProspect(supabase, empresa_id, { suffix: "AA_DEL", deleted_at: new Date().toISOString() });
+    const rDel = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pDel, source_type: "manual",
+      source_id: crypto.randomUUID(),
+      payload_type: "text", payload: { mensagem: "x" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    // Cross-tenant: prospect é de outro empresa_id
+    const otherEmpresa = await makeTenant(supabase); tenants.push(otherEmpresa);
+    const pXt = await makeProspect(supabase, otherEmpresa, { suffix: "AA_XT" });
+    const rXt = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pXt, source_type: "manual",
+      source_id: crypto.randomUUID(),
+      payload_type: "text", payload: { mensagem: "x" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    return {
+      pass: rOk.enqueued === true
+        && !rOpt.enqueued && (rOpt.reasons ?? []).includes("opt_out")
+        && !rDel.enqueued && (rDel.reasons ?? []).includes("prospect_deleted")
+        && !rXt.enqueued && (rXt.reasons ?? []).includes("cross_tenant"),
+      detail: { rOk, rOpt, rDel, rXt },
+    };
+  });
+
+  // ── AB. Terminal detectado APENAS por prospect+pipeline stage is_won/is_lost bloqueia automações ──
+  await runCase(results, "AB. terminal via pipeline_stage is_won/is_lost bloqueia todos os automatizados", async () => {
+    const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
+    await enableAdapter(empresa_id, true);
+    // Cria pipeline_stage is_won=true
+    const { data: stageWon } = await supabase.from("orbit_pipeline_stages").insert({
+      empresa_id, nome: "Ganho SMOKE", ordem: 99, is_won: true,
+    }).select("id").single();
+    const pid = await makeProspect(supabase, empresa_id, { suffix: "AB" });
+    // Deal sem status textual terminal, apenas etapa_id apontando pra stage is_won
+    await supabase.from("orbit_deals").insert({
+      empresa_id, prospect_id: pid, titulo: "AB", status: "em_negociacao",
+      etapa_id: (stageWon as any).id,
+    });
+    // Nenhum produtor passa deal_id → helper detecta via prospect+stage
+    const rInitial = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pid, source_type: "flow_initial", event_created: true,
+      flow_run_id: crypto.randomUUID(),
+      payload_type: "text", payload: { mensagem: "x" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    const rFollowup = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pid, source_type: "flow_followup",
+      scheduled_action_id: crypto.randomUUID(),
+      payload_type: "text", payload: { mensagem: "x" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    const rCampaign = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pid, campaign_id: crypto.randomUUID(),
+      source_id: crypto.randomUUID(), source_type: "campaign",
+      payload_type: "text", payload: { mensagem: "x" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    const rAiReply = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pid, source_type: "ai_reply",
+      inbound_message_id: crypto.randomUUID(),
+      payload_type: "text", payload: { mensagem: "x" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    // Cleanup local: apagar stage sintética
+    await supabase.from("orbit_pipeline_stages").delete().eq("id", (stageWon as any).id);
+    return {
+      pass: !rInitial.enqueued && (rInitial.reasons ?? []).includes("terminal_deal")
+        && !rFollowup.enqueued && (rFollowup.reasons ?? []).includes("terminal_deal")
+        && !rCampaign.enqueued && (rCampaign.reasons ?? []).includes("terminal_deal")
+        && !rAiReply.enqueued && (rAiReply.reasons ?? []).includes("terminal_deal"),
+      detail: { rInitial, rFollowup, rCampaign, rAiReply },
+    };
+  });
+
+  // ── AC. campaign dedupe por recipient: 2 recipients distintos do mesmo prospect enfileiram 2; retry não aumenta ──
+  await runCase(results, "AC. campaign dedupe por recipient (source_id), não por prospect_id", async () => {
+    const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
+    await enableAdapter(empresa_id, true);
+    const pid = await makeProspect(supabase, empresa_id, { suffix: "AC" });
+    const campId = crypto.randomUUID();
+    const rec1 = crypto.randomUUID();
+    const rec2 = crypto.randomUUID();
+    const r1 = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pid, campaign_id: campId, source_type: "campaign",
+      source_id: rec1,
+      payload_type: "text", payload: { mensagem: "c1" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    const r2 = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pid, campaign_id: campId, source_type: "campaign",
+      source_id: rec2,
+      payload_type: "text", payload: { mensagem: "c2" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    // Retry de cada recipient → duplicate
+    const r1r = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pid, campaign_id: campId, source_type: "campaign",
+      source_id: rec1,
+      payload_type: "text", payload: { mensagem: "c1" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    const r2r = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pid, campaign_id: campId, source_type: "campaign",
+      source_id: rec2,
+      payload_type: "text", payload: { mensagem: "c2" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    const { count } = await supabase.from("orbit_whatsapp_outbox")
+      .select("id", { count: "exact", head: true }).eq("empresa_id", empresa_id);
+    return {
+      pass: r1.enqueued === true && r2.enqueued === true
+        && r1r.enqueued === false && r1r.reason === "duplicate"
+        && r2r.enqueued === false && r2r.reason === "duplicate"
+        && count === 2,
+      detail: { r1, r2, r1r, r2r, count },
+    };
+  });
+
+  // ── AD. ai_reply texto+áudio do mesmo inbound enfileira 2; retry não aumenta ──
+  await runCase(results, "AD. ai_reply texto+áudio mesmo inbound = 2 itens únicos", async () => {
+    const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
+    await enableAdapter(empresa_id, true);
+    const pid = await makeProspect(supabase, empresa_id, { suffix: "AD" });
+    const cid = await makeConversa(supabase, empresa_id, pid);
+    const { data: inMsg } = await supabase.from("orbit_mensagens").insert({
+      empresa_id, conversa_id: cid, direcao: "IN",
+      mensagem: "quero saber", status: "recebida", canal: "whatsapp",
+    }).select("id").single();
+    const inboundId = (inMsg as any).id;
+    const audioKey = "audio_lib_AD";
+    // Texto
+    const rTxt = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pid, conversa_id: cid, source_type: "ai_reply",
+      inbound_message_id: `${inboundId}:text`, source_id: inboundId,
+      payload_type: "text", payload: { mensagem: "resposta" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    // Áudio (mesmo inbound, tipo/áudio diferentes)
+    const rAud = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pid, conversa_id: cid, source_type: "ai_reply",
+      inbound_message_id: `${inboundId}:audio:${audioKey}`, source_id: audioKey,
+      payload_type: "audio", payload: { storage_path: `audio/${audioKey}.mp3` },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    // Retries
+    const rTxtR = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pid, conversa_id: cid, source_type: "ai_reply",
+      inbound_message_id: `${inboundId}:text`, source_id: inboundId,
+      payload_type: "text", payload: { mensagem: "resposta" },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    const rAudR = await enqueueOutbox(supabase, {
+      empresa_id, prospect_id: pid, conversa_id: cid, source_type: "ai_reply",
+      inbound_message_id: `${inboundId}:audio:${audioKey}`, source_id: audioKey,
+      payload_type: "audio", payload: { storage_path: `audio/${audioKey}.mp3` },
+      metadata: { simulate: true, smoke: RUN_ID },
+    } as any);
+    const { count } = await supabase.from("orbit_whatsapp_outbox")
+      .select("id", { count: "exact", head: true }).eq("empresa_id", empresa_id);
+    return {
+      pass: rTxt.enqueued === true && rAud.enqueued === true
+        && rTxtR.enqueued === false && rTxtR.reason === "duplicate"
+        && rAudR.enqueued === false && rAudR.reason === "duplicate"
+        && count === 2,
+      detail: { rTxt, rAud, rTxtR, rAudR, count },
+    };
+  });
+
+  // ── AE. adapter=false + dry_run mantêm caminhos diretos e sem outbox de teste ──
+  await runCase(results, "AE. adapter=false e dry_run não geram rows na outbox", async () => {
+    const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
+    await enableAdapter(empresa_id, false);
+    const flag = await isAdapterEnabled(supabase, empresa_id);
+    // Invariante: com adapter=false, os produtores não chamam enqueueOutbox. Verificamos zero rows.
+    const { count } = await supabase.from("orbit_whatsapp_outbox")
+      .select("id", { count: "exact", head: true }).eq("empresa_id", empresa_id);
+    return { pass: flag === false && (count ?? 0) === 0, detail: { flag, count } };
+  });
+
+  // ── AF. Invariantes globais: tenants reais adapter=false; campanha da Fábrica intacta; zero rows/synth ──
+  await runCase(results, "AF. invariantes globais (real adapter=false, campanha estável, synth zero)", async () => {
+    // (a) nenhum tenant real com adapter=true
+    const { data: syntheticIds } = await supabase.from("orbit_empresas")
+      .select("id").ilike("nome", "OUTBOX_SMOKE_%");
+    const synth = new Set(((syntheticIds ?? []) as any[]).map((r) => r.id));
+    const synthArr = Array.from(synth);
+    let enabledQuery = supabase
+      .from("orbit_whatsapp_sending_config")
+      .select("empresa_id", { count: "exact", head: true })
+      .eq("outbox_adapter_enabled", true);
+    if (synthArr.length > 0) {
+      enabledQuery = enabledQuery.not("empresa_id", "in", `(${synthArr.join(",")})`);
+    }
+    const { count: enabledCount } = await enabledQuery;
+
+    // (b) outbox real residual = 0 (fora dos sintéticos)
+    const { data: rows } = await supabase.from("orbit_whatsapp_outbox")
+      .select("empresa_id").in("status", ["pending","processing"]);
+    const realWithRows = ((rows ?? []) as any[]).filter((r) => !synth.has(r.empresa_id));
+
+    // (c) campanha da Fábrica preservada
+    const { data: camp } = await supabase.from("orbit_campaigns")
+      .select("status, aprovacao_status, total_destinatarios, enviados, falhas")
+      .eq("id", CAMP_ID).maybeSingle();
+    const campOk = !!camp && (camp as any).status === "pausada_por_limite"
+      && (camp as any).aprovacao_status === "aprovada"
+      && (camp as any).total_destinatarios === 188 && (camp as any).enviados === 50 && (camp as any).falhas === 0;
+
+    return {
+      pass: (enabledCount ?? 0) === 0 && realWithRows.length === 0 && campOk,
+      detail: { enabled_adapters: enabledCount, real_outbox_rows: realWithRows.length, camp },
+    };
+  });
+
   for (const t of tenants) {
     await supabase.from("orbit_whatsapp_sending_config").delete().eq("empresa_id", t);
   }

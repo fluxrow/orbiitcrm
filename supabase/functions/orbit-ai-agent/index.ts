@@ -378,8 +378,56 @@ async function sendWhatsAppAudio(
   audioSource: string,
   conversa_id: string,
   empresaId?: string | null,
+  opts: { audioKey?: string | null } = {},
 ) {
   try {
+    // ── Adapter routing (Fase 3): ai_reply/áudio enfileira quando outbox_adapter_enabled=true ──
+    if (empresaId && await isAdapterEnabled(supabase, empresaId)) {
+      const { data: lastIn } = await supabase
+        .from("orbit_mensagens")
+        .select("id")
+        .eq("conversa_id", conversa_id)
+        .eq("direcao", "IN")
+        .order("timestamp", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const inboundId = (lastIn as any)?.id ?? conversa_id;
+      const audioKey = opts.audioKey ?? audioSource;
+      const { data: conv } = await supabase
+        .from("orbit_conversas")
+        .select("prospect_id")
+        .eq("id", conversa_id)
+        .maybeSingle();
+      const routed = await enqueueOutbox(supabase, {
+        empresa_id: empresaId,
+        conversa_id,
+        prospect_id: (conv as any)?.prospect_id ?? null,
+        source_type: "ai_reply",
+        // Chave única = inbound + tipo + identificador do áudio (permite texto+áudio no mesmo turn).
+        inbound_message_id: `${inboundId}:audio:${audioKey}`,
+        source_id: audioKey,
+        payload_type: "audio",
+        payload: {
+          storage_path: /^https?:\/\//i.test(audioSource) ? null : audioSource,
+          url: /^https?:\/\//i.test(audioSource) ? audioSource : null,
+        },
+      });
+      const isPath = !/^https?:\/\//i.test(audioSource);
+      await supabase.from("orbit_mensagens").insert({
+        conversa_id,
+        direcao: "OUT",
+        mensagem: "🎙️ Áudio",
+        tipo_midia: "audio",
+        storage_path: isPath ? audioSource : null,
+        url_midia: isPath ? null : audioSource,
+        canal: "whatsapp",
+        status: "queued",
+        empresa_id: empresaId,
+      });
+      console.log("[orbit-ai-agent] Adapter routed ai_reply(audio):", routed);
+      return;
+    }
+
     const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresaId);
     if (!zapiConfig?.instance_id || !zapiConfig?.token) {
       console.log("[orbit-ai-agent] Z-API não configurado para envio de áudio de biblioteca");

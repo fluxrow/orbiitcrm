@@ -103,7 +103,9 @@ function stableKey(ctx: OutboxContext): string {
       );
       break;
     case "campaign":
-      parts.push(ctx.empresa_id, ctx.campaign_id ?? "-", ctx.prospect_id ?? ctx.source_id ?? "-");
+      // Dedupe por campaign_id + recipient (source_id). Só cai para prospect_id se
+      // por algum motivo o produtor não informar recipient — nunca deve acontecer no path real.
+      parts.push(ctx.empresa_id, ctx.campaign_id ?? "-", ctx.source_id ?? ctx.prospect_id ?? "-");
       break;
   }
   return parts.join("|");
@@ -112,13 +114,16 @@ function stableKey(ctx: OutboxContext): string {
 export async function checkEligibility(supabase: any, ctx: OutboxContext): Promise<EligibilityResult> {
   const reasons: string[] = [];
   const idempotency_key = stableKey(ctx);
+  const isManual = ctx.source_type === "manual";
 
   // Regra flow_initial: created deve ser true
   if (ctx.source_type === "flow_initial" && ctx.event_created !== true) {
     reasons.push("lead_not_new");
   }
 
-  // Prospect precisa existir e não estar deletado
+  // Prospect precisa existir, ser do mesmo tenant e não estar deletado. Vale para todos
+  // os source_type — inclusive manual, que é humano após handoff mas ainda respeita
+  // opt-out/deleted/cross-tenant.
   if (ctx.prospect_id) {
     const { data: p } = await supabase
       .from("orbit_prospects")
@@ -131,7 +136,8 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
     else if (p.optout_whatsapp === true) reasons.push("opt_out");
   }
 
-  // Conversa: handoff / humano
+  // Conversa: sempre confirma isolamento por tenant. Handoff só bloqueia automações;
+  // manual é justamente o humano assumindo o atendimento.
   if (ctx.conversa_id) {
     const { data: c } = await supabase
       .from("orbit_conversas")
@@ -140,14 +146,16 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
       .maybeSingle();
     if (!c) reasons.push("conversa_missing");
     else if (c.empresa_id && c.empresa_id !== ctx.empresa_id) reasons.push("cross_tenant");
-    else if (c.human_talk === true || c.human_user_id) reasons.push("human_handoff");
+    else if (!isManual && (c.human_talk === true || c.human_user_id)) reasons.push("human_handoff");
   }
 
-  // Deal terminal
+  // ── Terminal deal — bloqueia TODOS os source_types (inclusive manual até decisão futura).
+  // Detecta por: (a) deal_id explícito; (b) qualquer deal do prospect no mesmo tenant com
+  // deleted_at, status textual won/lost ou etapa vinculada com is_won/is_lost=true.
   if (ctx.deal_id) {
     const { data: d } = await supabase
       .from("orbit_deals")
-      .select("id, status, deleted_at")
+      .select("id, status, deleted_at, etapa_id")
       .eq("id", ctx.deal_id)
       .maybeSingle();
     if (d?.deleted_at) reasons.push("terminal_deal");
@@ -155,8 +163,32 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
       reasons.push("terminal_deal");
     }
   }
+  if (!reasons.includes("terminal_deal") && ctx.prospect_id) {
+    const { data: deals } = await supabase
+      .from("orbit_deals")
+      .select("id, status, deleted_at, etapa_id")
+      .eq("empresa_id", ctx.empresa_id)
+      .eq("prospect_id", ctx.prospect_id);
+    const list = (deals ?? []) as any[];
+    let terminal = false;
+    const stageIds: string[] = [];
+    for (const d of list) {
+      if (d.deleted_at) { terminal = true; break; }
+      const s = String(d.status ?? "").toLowerCase();
+      if (["won","lost","ganho","perdido","deleted"].includes(s)) { terminal = true; break; }
+      if (d.etapa_id) stageIds.push(d.etapa_id);
+    }
+    if (!terminal && stageIds.length > 0) {
+      const { data: stages } = await supabase
+        .from("orbit_pipeline_stages")
+        .select("id, is_won, is_lost")
+        .in("id", stageIds);
+      if ((stages ?? []).some((s: any) => s.is_won === true || s.is_lost === true)) terminal = true;
+    }
+    if (terminal) reasons.push("terminal_deal");
+  }
 
-  // Meeting ativa/futura para o prospect
+  // Meeting ativa/futura para o prospect — apenas automações agendadas de outbound.
   if (ctx.prospect_id && ["flow_initial","flow_followup","campaign"].includes(ctx.source_type)) {
     const { data: mtg } = await supabase
       .from("orbit_meetings")
@@ -168,9 +200,9 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
     if (mtg && mtg.length > 0) reasons.push("meeting_scheduled");
   }
 
-  // Contato prévio real (para flow_initial) e resposta do lead (para initial/followup)
-  if (ctx.prospect_id && (ctx.source_type === "flow_initial" || ctx.source_type === "flow_followup")) {
-    // conversas do prospect
+  // Contato prévio real (bloqueia flow_initial) e resposta do lead (bloqueia initial/followup).
+  // Manual e ai_reply ignoram essas regras — humano assumindo e resposta à mensagem recebida.
+  if (!isManual && ctx.prospect_id && (ctx.source_type === "flow_initial" || ctx.source_type === "flow_followup")) {
     const { data: convs } = await supabase
       .from("orbit_conversas")
       .select("id")
@@ -178,7 +210,6 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
       .eq("empresa_id", ctx.empresa_id);
     const convIds = (convs ?? []).map((r: any) => r.id);
     if (convIds.length > 0) {
-      // OUT real (não simulated) => já contatado (bloqueia initial)
       if (ctx.source_type === "flow_initial") {
         const { data: outMsgs } = await supabase
           .from("orbit_mensagens")
@@ -189,7 +220,6 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
           .limit(1);
         if (outMsgs && outMsgs.length > 0) reasons.push("already_contacted");
       }
-      // IN posterior => resposta do lead
       const { data: inMsgs } = await supabase
         .from("orbit_mensagens")
         .select("id")
