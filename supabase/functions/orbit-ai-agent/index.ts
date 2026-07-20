@@ -1194,7 +1194,7 @@ ${regrasBlock}`;
           Deno.env.get("SUPABASE_URL")!,
           Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
         );
-        await cleanupClient
+        await (cleanupClient as any)
           .from("orbit_conversas")
           .update({ ai_processing: false })
           .eq("id", conversaIdForCleanup);
