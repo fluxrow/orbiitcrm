@@ -272,6 +272,7 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
   }
 
   // Contato prévio real (bloqueia flow_initial) e resposta do lead (bloqueia initial/followup).
+  // flow_followup exige ao menos uma OUT REAL prévia (não simulated) — followup não sai do nada.
   // Manual e ai_reply ignoram essas regras — humano assumindo e resposta à mensagem recebida.
   if (!isManual && ctx.prospect_id && (ctx.source_type === "flow_initial" || ctx.source_type === "flow_followup")) {
     const { data: convs } = await supabase
@@ -280,16 +281,21 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
       .eq("prospect_id", ctx.prospect_id)
       .eq("empresa_id", ctx.empresa_id);
     const convIds = (convs ?? []).map((r: any) => r.id);
+    const REAL_OUT_STATUS = ["enviada", "sent", "entregue", "delivered"];
     if (convIds.length > 0) {
-      if (ctx.source_type === "flow_initial") {
-        const { data: outMsgs } = await supabase
-          .from("orbit_mensagens")
-          .select("id, status")
-          .in("conversa_id", convIds)
-          .eq("direcao", "OUT")
-          .in("status", ["enviada","sent","entregue","delivered"])
-          .limit(1);
-        if (outMsgs && outMsgs.length > 0) reasons.push("already_contacted");
+      const { data: outMsgs } = await supabase
+        .from("orbit_mensagens")
+        .select("id, status")
+        .in("conversa_id", convIds)
+        .eq("direcao", "OUT")
+        .in("status", REAL_OUT_STATUS)
+        .limit(1);
+      const hasRealOut = !!(outMsgs && outMsgs.length > 0);
+      if (ctx.source_type === "flow_initial" && hasRealOut) {
+        reasons.push("already_contacted");
+      }
+      if (ctx.source_type === "flow_followup" && !hasRealOut) {
+        reasons.push("missing_prior_real_outbound");
       }
       const { data: inMsgs } = await supabase
         .from("orbit_mensagens")
@@ -298,6 +304,9 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
         .eq("direcao", "IN")
         .limit(1);
       if (inMsgs && inMsgs.length > 0) reasons.push("lead_replied");
+    } else if (ctx.source_type === "flow_followup") {
+      // Sem qualquer conversa: definitivamente não há OUT real prévia.
+      reasons.push("missing_prior_real_outbound");
     }
   }
 
