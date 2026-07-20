@@ -1937,7 +1937,13 @@ export async function tryAutoScheduleMeeting(
     .maybeSingle();
 
   if (meetErr || !meetingRow?.id) {
-    console.error("[orbit-ai-agent] insert orbit_meetings falhou — rollback do evento Google:", meetErr?.message);
+    const errCode = (meetErr as any)?.code ?? null;
+    const isUniqueViolation = errCode === "23505";
+    console.error(
+      "[orbit-ai-agent] insert orbit_meetings falhou — rollback do evento Google:",
+      { code: errCode, msg: meetErr?.message, isUniqueViolation },
+    );
+    // Rollback do evento Google recém-criado — sempre.
     if (googleEventId) {
       try {
         await deps.deleteCalendarEvent(access, calId, googleEventId);
@@ -1945,8 +1951,47 @@ export async function tryAutoScheduleMeeting(
         console.error("[orbit-ai-agent] rollback deleteCalendarEvent falhou:", (delErr as Error).message);
       }
     }
+
+    // Corrida concorrente: outra execução venceu a inserção. Reutiliza a meeting vencedora
+    // sem emitir novo deal_stage_changed nem handoff — apenas devolve sucesso/reuse.
+    if (isUniqueViolation) {
+      try {
+        const { data: winner } = await supabase
+          .from("orbit_meetings")
+          .select("id, meeting_url, scheduled_at, status")
+          .eq("empresa_id", params.empresaId)
+          .eq("prospect_id", params.prospect_id)
+          .eq("scheduled_at", startISO)
+          .in("status", ["scheduled", "rescheduled"])
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (winner?.id) {
+          console.log("[orbit-ai-agent] corrida 23505 — reutilizando meeting vencedora:", winner.id);
+          const humanTime = new Intl.DateTimeFormat("pt-BR", {
+            timeZone: tz, weekday: "long", day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit",
+          }).format(startDate);
+          const url = winner.meeting_url;
+          return {
+            handled: true,
+            created: false,
+            response_override: url
+              ? `Sua call já está agendada para ${humanTime}. Link: ${url}. Até lá!`
+              : `Sua call já está agendada para ${humanTime}. Até lá!`,
+            deal_id: dealId,
+            meeting_id: winner.id,
+          };
+        }
+        console.error("[orbit-ai-agent] 23505 sem meeting vencedora localizável — fallback seguro");
+      } catch (lookupErr) {
+        console.error("[orbit-ai-agent] lookup meeting vencedora falhou:", (lookupErr as Error).message);
+      }
+    }
+
     return { handled: false, error: "insert orbit_meetings falhou", deal_id: dealId };
   }
+
+
 
   // 6) Mover deal para etapa Agendado (se existir) e emitir deal_stage_changed com prospect_id + meeting_id
   try {
