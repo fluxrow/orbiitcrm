@@ -117,6 +117,9 @@ verify_jwt = false
 [functions.orbit-whatsapp-outbox-tick]
 verify_jwt = false
 
+[functions.orbit-outbox-smoke]
+verify_jwt = false
+
 
 
 
