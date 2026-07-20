@@ -93,8 +93,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const auth = req.headers.get("authorization") ?? "";
-  let authorized = (SMOKE_TOKEN && auth === `Bearer ${SMOKE_TOKEN}`)
-    || (SMOKE_INTERNAL_TOKEN && auth === `Bearer ${SMOKE_INTERNAL_TOKEN}`);
+  let authorized = (SMOKE_TOKEN && auth === `Bearer ${SMOKE_TOKEN}`);
   if (!authorized && auth.startsWith("Bearer ")) {
     // Fallback: aceitar super_admin autenticado (uso manual pela plataforma)
     try {
