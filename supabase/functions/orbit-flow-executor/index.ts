@@ -62,7 +62,7 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
   const templateSlug = cfg.template_slug || cfg.template_nome || (!cfg.template_id ? cfg.template : undefined);
   if (!cfg.template_id && !templateSlug) return { ok: false, error: "template ausente" };
 
-  const prospectId = run.context?.payload?.prospect_id || (run.entity_type === "prospect" ? run.entity_id : null);
+  const prospectId = await resolveProspectId(run);
   if (!prospectId) return { ok: false, error: "prospect não identificado" };
 
   const { data: prospect } = await supabase
