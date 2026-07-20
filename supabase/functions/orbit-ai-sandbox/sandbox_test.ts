@@ -1,13 +1,17 @@
 // Testes automatizados para o AgentSandbox (orbit-ai-sandbox).
 //
-// Como a resposta do LLM não é determinística, os testes cobrem duas camadas:
-//   1) O system prompt gerado por `buildSystemPrompt` — garante que, para
-//      trigger `inbound_webhook` com origem Typebot, as regras anti-emoji,
-//      anti-"site" e anti-"Lead" estão presentes.
-//   2) Um validador `assertSandboxReplyIsClean` que pode ser aplicado a
-//      qualquer texto de resposta (real ou fixture) e falha se violar as
-//      mesmas regras. Isto permite plugar respostas capturadas do modelo em
-//      um teste de contrato sem depender de rede.
+// A resposta do LLM não é determinística, então os testes cobrem:
+//   1) O system prompt gerado por `buildSystemPrompt` — garante que os
+//      guardrails anti-autorrevelação (SDR/IA/robô), anti-emoji, anti-"site"
+//      e anti-"Lead" estão presentes; e que sem prompt_identidade a função
+//      não deve gerar prompt genérico (o handler retorna 409 antes disso).
+//   2) Um validador `assertSandboxReplyIsClean` para qualquer texto de
+//      resposta — real ou fixture — que falha se violar as mesmas regras,
+//      incluindo autorrevelação como SDR/IA/robô/assistente.
+//
+// Testes de contrato HTTP (401/400/403/409) do handler são cobertos por
+// smoke autenticado em ambiente com sessão real; o handler encerra cedo
+// antes de qualquer chamada ao LLM nesses casos.
 
 import { assert, assertStringIncludes, assertFalse } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { buildSystemPrompt } from "./index.ts";
@@ -22,32 +26,37 @@ const TYPEBOT_LEAD_SEM_NOME = {
   observacoes: "Respondeu ao formulario do Typebot da Viver Semijoias.",
 };
 
-// Regex de emojis (blocos Unicode comuns: pictográficos, símbolos, dingbats).
 const EMOJI_RE = /[\p{Extended_Pictographic}\p{Emoji_Presentation}]/u;
+const SELF_REVEAL_RE = /(\bSDR\b|Sales Development Representative|\bIA\b|intelig[eê]ncia artificial|rob[oôó]|\bbot\b|assistente virtual)/i;
 
-/** Valida que uma resposta do sandbox respeita os guardrails da Viver. */
 export function assertSandboxReplyIsClean(reply: string, opts: { leadNome?: string } = {}) {
   assertFalse(EMOJI_RE.test(reply), `resposta contém emoji: ${reply}`);
-  assertFalse(
-    /\bsite\b/i.test(reply),
-    `resposta menciona "site" indevidamente: ${reply}`,
-  );
+  assertFalse(/\bsite\b/i.test(reply), `resposta menciona "site" indevidamente: ${reply}`);
+  assertFalse(SELF_REVEAL_RE.test(reply), `resposta se autorrevela como SDR/IA/robô: ${reply}`);
   if (!opts.leadNome || !opts.leadNome.trim()) {
-    // Não pode chamar a pessoa de "Lead" quando o nome está vazio.
-    assertFalse(
-      /\bLead\b/.test(reply),
-      `resposta chama a pessoa de "Lead" sem nome disponível: ${reply}`,
-    );
+    assertFalse(/\bLead\b/.test(reply), `resposta chama a pessoa de "Lead" sem nome: ${reply}`);
   }
 }
 
-Deno.test("buildSystemPrompt injeta guardrails no gatilho de webhook Typebot", () => {
+Deno.test("buildSystemPrompt injeta guardrails anti-autorrevelação e do webhook Typebot", () => {
   const prompt = buildSystemPrompt(
-    { prompt_identidade: "SDR da Viver Semijoias." },
+    { prompt_identidade: "Você é Fernanda, representante da Viver Semijoias." },
     TYPEBOT_LEAD_SEM_NOME,
     "inbound_webhook",
   );
 
+  // Anti-autorrevelação (global)
+  assertStringIncludes(prompt, "NUNCA se apresente como");
+  assertStringIncludes(prompt, "SDR");
+  assertStringIncludes(prompt, "IA");
+  assertStringIncludes(prompt, "robô");
+  assertStringIncludes(prompt, "assistente virtual");
+  assertStringIncludes(prompt, "representante da empresa");
+
+  // Identidade preservada do tenant
+  assertStringIncludes(prompt, "Viver Semijoias");
+
+  // Guardrails do gatilho
   assertStringIncludes(prompt, "Nao use emojis");
   assertStringIncludes(prompt, 'Nao diga que o lead veio do site');
   assertStringIncludes(prompt, "respostas do formulario");
@@ -61,47 +70,42 @@ Deno.test("assertSandboxReplyIsClean aceita resposta em conformidade", () => {
     "Vi suas respostas no formulario da Viver Semijoias e queria entender melhor seu momento.",
     "Hoje, o que mais esta travando: vender mais, organizar revendedoras ou tornar isso uma renda consistente?",
   ].join("\n\n");
-
   assertSandboxReplyIsClean(reply, { leadNome: "" });
 });
 
 Deno.test("assertSandboxReplyIsClean falha quando resposta usa emoji", () => {
   let threw = false;
-  try {
-    assertSandboxReplyIsClean("Oi, tudo bem? 😊 Vi suas respostas do formulario.", { leadNome: "" });
-  } catch {
-    threw = true;
-  }
+  try { assertSandboxReplyIsClean("Oi, tudo bem? 😊", { leadNome: "" }); } catch { threw = true; }
   assert(threw, "esperava falha por emoji");
 });
 
 Deno.test("assertSandboxReplyIsClean falha quando resposta menciona 'site'", () => {
   let threw = false;
-  try {
-    assertSandboxReplyIsClean(
-      "Oi! Vi que voce se cadastrou no site e queria entender seu momento.",
-      { leadNome: "" },
-    );
-  } catch {
-    threw = true;
-  }
+  try { assertSandboxReplyIsClean("Vi que voce se cadastrou no site.", { leadNome: "" }); } catch { threw = true; }
   assert(threw, "esperava falha por 'site'");
 });
 
 Deno.test("assertSandboxReplyIsClean falha quando chama a pessoa de 'Lead' sem nome", () => {
   let threw = false;
-  try {
-    assertSandboxReplyIsClean(
-      "Oi, Lead! Tudo bem? Vi suas respostas do formulario.",
-      { leadNome: "" },
-    );
-  } catch {
-    threw = true;
-  }
+  try { assertSandboxReplyIsClean("Oi, Lead! Tudo bem?", { leadNome: "" }); } catch { threw = true; }
   assert(threw, "esperava falha por chamar de 'Lead' sem nome");
 });
 
-Deno.test("assertSandboxReplyIsClean permite palavra 'Lead' quando nome está presente", () => {
-  // Cenário raro (não recomendado), mas o guardrail só ativa quando o nome está vazio.
-  assertSandboxReplyIsClean("Oi, Fernanda! Vi suas respostas do formulario.", { leadNome: "Fernanda" });
+Deno.test("assertSandboxReplyIsClean falha quando a resposta se autorrevela como SDR", () => {
+  let threw = false;
+  try { assertSandboxReplyIsClean("Oi! Sou o SDR responsavel pelo seu atendimento.", { leadNome: "" }); } catch { threw = true; }
+  assert(threw, "esperava falha por autorrevelação SDR");
+});
+
+Deno.test("assertSandboxReplyIsClean falha quando resposta se identifica como IA/robô/assistente virtual", () => {
+  for (const bad of [
+    "Oi, sou uma IA da Viver.",
+    "Sou um robô treinado pela empresa.",
+    "Sou seu assistente virtual da Viver Semijoias.",
+    "Sou uma inteligencia artificial da Viver.",
+  ]) {
+    let threw = false;
+    try { assertSandboxReplyIsClean(bad, { leadNome: "Fernanda" }); } catch { threw = true; }
+    assert(threw, `esperava falha para autorrevelação: ${bad}`);
+  }
 });

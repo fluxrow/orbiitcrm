@@ -1941,16 +1941,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
       <AgentSandbox
         open={sandboxOpen}
         onOpenChange={setSandboxOpen}
-        aiConfig={{
-          prompt_identidade: aiForm.prompt_identidade,
-          prompt_roteiro: aiForm.prompt_roteiro,
-          prompt_regras: aiForm.prompt_regras,
-          tom_conversa: aiForm.tom_conversa,
-          idioma: aiForm.idioma,
-          max_tokens: aiForm.max_tokens,
-          modelo_ia: aiForm.modelo_ia || null,
-          campos_qualificacao: aiForm.campos_qualificacao as Array<{ label?: string; key?: string; required?: boolean }>,
-        }}
+        empresaId={empresaId}
       />
     </OrbitLayout>
   );
