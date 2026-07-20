@@ -140,7 +140,7 @@ async function notifyCommercialHumanDetected(
     prospect: any;
     telefone_lead: string;
     mensagem: string;
-    classification: MessageClassification;
+    classification: MessageClassification | string;
     empresa_id: string | null;
     isDemo: boolean;
   }
