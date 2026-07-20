@@ -173,18 +173,32 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
     };
   }
 
-  // ── Adapter routing (Fase 3): se outbox_adapter_enabled=true, enfileira e retorna ──
+  // ── Adapter routing (Fase 3+): se outbox_adapter_enabled=true, enfileira e retorna ──
   if (await isAdapterEnabled(supabase, run.empresa_id)) {
     const scheduledActionId = (run as any)._scheduled_action_id ?? null;
-    const isFollowup = !!scheduledActionId;
+    const hasScheduled = !!scheduledActionId;
+    const triggerType = await getFlowTriggerType((run as any).flow_id ?? null);
+    const sourceType = deriveOutboxSourceType(triggerType, hasScheduled, cfg);
     const eventCreated = run.context?.payload?.created === true;
+    const payloadForCtx: Json = (run.context?.payload ?? {}) as Json;
+    const dealId = sourceType === "flow_stage" ? (await resolveDealId(run)) : null;
+    const targetStageId = sourceType === "flow_stage" ? (payloadForCtx.to_stage_id ?? null) : null;
+    const eventId = sourceType === "flow_stage" ? (run.context?.event?.id ?? payloadForCtx.event_id ?? null) : null;
+    const allowTerminal = cfg?.allow_terminal_stage_message === true;
+    const actionId = (cfg?.action_id as string | null) ?? (cfg?.template_id as string | null) ?? null;
     const routed = await enqueueOutbox(supabase, {
       empresa_id: run.empresa_id,
       prospect_id: prospectId,
       conversa_id: conversaId,
+      deal_id: dealId,
       flow_run_id: (run as any).id ?? null,
       scheduled_action_id: scheduledActionId,
-      source_type: isFollowup ? "flow_followup" : "flow_initial",
+      source_type: sourceType,
+      source_id: eventId ?? actionId ?? scheduledActionId ?? null,
+      event_id: eventId,
+      target_stage_id: targetStageId,
+      allow_terminal_stage_message: allowTerminal,
+      action_id: actionId,
       event_created: eventCreated,
       payload_type: tpl.imagem_url ? "image" : "text",
       payload: {
@@ -192,6 +206,10 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
         url_midia: tpl.imagem_url ?? null,
         template_id: tpl.id,
         template_nome: tpl.nome,
+      },
+      metadata: {
+        trigger_type: triggerType,
+        derived_source_type: sourceType,
       },
     } as any);
     return {
@@ -201,7 +219,11 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
         queued: !!routed.enqueued,
         outbox_id: routed.outbox_id ?? null,
         reason: routed.reason ?? null,
-        source_type: isFollowup ? "flow_followup" : "flow_initial",
+        eligibility_reasons: routed.reasons ?? null,
+        source_type: sourceType,
+        trigger_type: triggerType,
+        target_stage_id: targetStageId,
+        allow_terminal_stage_message: allowTerminal,
         template_id: tpl.id,
         template_nome: tpl.nome,
         conversa_id: conversaId,
