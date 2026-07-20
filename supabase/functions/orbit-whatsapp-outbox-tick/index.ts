@@ -311,6 +311,41 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
     return { outcome: "canceled", reason: elig.reasons.join(",") };
   }
 
+  // Re-check específico de campanha: aplica flags configuráveis (campaign_safety)
+  // no INSTANTE do consumo. Fecha lacuna quando lead responde/é contatado entre
+  // enqueue e tick. NÃO chama Z-API. Se inelegível: cancel outbox + ignorado
+  // no recipient com o mesmo motivo.
+  if (item.source_type === "campaign" && item.campaign_id) {
+    const { data: camp } = await supabase
+      .from("orbit_campaigns")
+      .select("id, empresa_id, canal, filtros_json")
+      .eq("id", item.campaign_id)
+      .maybeSingle();
+    let prospect: any = null;
+    if (item.prospect_id) {
+      const { data: p } = await supabase
+        .from("orbit_prospects")
+        .select("id, empresa_id, optout_whatsapp, deleted_at, nome_razao, nome_contato, nome_fantasia, email_principal, tags")
+        .eq("id", item.prospect_id)
+        .maybeSingle();
+      prospect = p;
+    }
+    const cse = await checkCampaignRecipientEligibility(supabase, {
+      campaign: camp,
+      empresa_id: item.empresa_id,
+      prospect,
+    });
+    if (!cse.eligible) {
+      const motivo = cse.motivo ?? "campaign_ineligible";
+      await supabase
+        .from("orbit_whatsapp_outbox")
+        .update({ status: "canceled", canceled_at: new Date().toISOString(), canceled_reason: motivo, locked_at: null, locked_by: null })
+        .eq("id", item.id);
+      await updateCampaignRecipient(item, { status: "ignorado", motivo });
+      return { outcome: "canceled", reason: motivo };
+    }
+  }
+
   // Config e quota
   if (!cfg || cfg.enabled === false) {
     await supabase
