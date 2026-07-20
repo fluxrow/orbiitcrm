@@ -17,6 +17,7 @@ import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { getTokenForEmpresa, ensureFreshAccessToken, checkAvailability } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 import { resolveEventId, buildScheduledActionContext, restoreRunFromScheduled } from "./flow-run-events.ts";
+import { computeCadenceKey } from "./cadence-key.ts";
 
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -185,7 +186,8 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
   }
 
   // ── Adapter routing (Fase 3+): se outbox_adapter_enabled=true, enfileira e retorna ──
-  if (await isAdapterEnabled(supabase, run.empresa_id)) {
+  const adapterOn = await isAdapterEnabled(supabase, run.empresa_id);
+  if (adapterOn) {
     const scheduledActionId = (run as any)._scheduled_action_id ?? null;
     const hasScheduled = !!scheduledActionId;
     const triggerType = await getFlowTriggerType((run as any).flow_id ?? null);
@@ -197,6 +199,13 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
     const eventId = sourceType === "flow_stage" ? resolveEventId(run) : null;
     const allowTerminal = cfg?.allow_terminal_stage_message === true;
     const actionId = (cfg?.action_id as string | null) ?? (cfg?.template_id as string | null) ?? null;
+    // Suporte a smoke real: cfg.simulate=true propaga metadata.simulate=true ao outbox.
+    const simulate = cfg?.simulate === true;
+    const metadata: Record<string, unknown> = {
+      trigger_type: triggerType,
+      derived_source_type: sourceType,
+    };
+    if (simulate) metadata.simulate = true;
     const routed = await enqueueOutbox(supabase, {
       empresa_id: run.empresa_id,
       prospect_id: prospectId,
@@ -218,10 +227,7 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
         template_id: tpl.id,
         template_nome: tpl.nome,
       },
-      metadata: {
-        trigger_type: triggerType,
-        derived_source_type: sourceType,
-      },
+      metadata,
     } as any);
     return {
       ok: true,
@@ -240,62 +246,29 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
         conversa_id: conversaId,
         telefone,
         mensagem,
+        simulate,
       },
     };
   }
 
-  let imageResult: any = null;
-  if (tpl.imagem_url) {
-    imageResult = await sendZapi(run.empresa_id, telefone, "image", { image: tpl.imagem_url, caption: "" });
-    await supabase.from("orbit_mensagens").insert({
-      empresa_id: run.empresa_id,
-      conversa_id: conversaId,
-      direcao: "OUT",
-      mensagem: "",
-      tipo_midia: "image",
-      url_midia: tpl.imagem_url,
-      canal: "whatsapp",
-      status: imageResult.ok ? "enviada" : "falhou",
-      erro: imageResult.ok ? null : imageResult.error ?? null,
-      timestamp: new Date().toISOString(),
-    });
-  }
-
-  const textResult = await sendZapi(run.empresa_id, telefone, "text", { message: mensagem });
-
-  await supabase.from("orbit_mensagens").insert({
-    empresa_id: run.empresa_id,
-    conversa_id: conversaId,
-    direcao: "OUT",
-    mensagem,
-    canal: "whatsapp",
-    status: textResult.ok ? "enviada" : "falhou",
-    erro: textResult.ok ? null : textResult.error ?? null,
-    timestamp: new Date().toISOString(),
-  });
-
-  await supabase
-    .from("orbit_conversas")
-    .update({
-      ultima_mensagem_at: new Date().toISOString(),
-      ultima_mensagem_preview: (mensagem || "").slice(0, 200),
-    })
-    .eq("id", conversaId);
-
+  // ── Fail-closed: sem adapter, envio REAL de template não é permitido.
+  //   Caminho legado direto para sendZapi de send_whatsapp_template fica desativado.
+  //   dry_run continua permitido (não chega aqui). Manual/AI/campaign têm caminhos próprios.
   return {
-    ok: textResult.ok,
+    ok: false,
+    error: "OUTBOX_ADAPTER_REQUIRED",
     output: {
+      adapter: false,
+      dry_run: false,
+      reason: "outbox_adapter_disabled",
       template_id: tpl.id,
       template_nome: tpl.nome,
       conversa_id: conversaId,
-      telefone,
-      mensagem,
-      image_sent: !!tpl.imagem_url,
-      image_result: imageResult?.output ?? null,
-      zapi: textResult.output ?? null,
     },
-    error: textResult.ok ? undefined : textResult.error,
-  };
+  } as StepResult;
+
+  // (path legado direto via sendZapi para send_whatsapp_template foi removido —
+  //  envio real depende obrigatoriamente do adapter/outbox.)
 }
 
 async function resolveDealId(run: Json): Promise<string | null> {
@@ -790,15 +763,26 @@ async function runAction(actionType: string, cfg: Json, run: Json): Promise<Step
 // ── Scheduler helpers ─────────────────────────────────────────────────
 const INLINE_DELAY_MAX_SECONDS = 30;
 
+// computeCadenceKey vive em ./cadence-key.ts para permitir testes unitários
+// sem inicializar o cliente supabase deste módulo.
+
+
 async function enqueueScheduledAction(params: {
   run: Json;
   action: Json;
-}): Promise<{ id: string | null; scheduled_for: string }> {
+}): Promise<{ id: string | null; scheduled_for: string; dedupe?: boolean; cadence_key?: string | null }> {
   const { run, action } = params;
   const payload = run.context?.payload ?? {};
   const prospectId = (await resolveProspectId(run)) ?? payload.prospect_id ?? (run.entity_type === "prospect" ? run.entity_id : null);
   const dealId = payload.deal_id ?? (run.entity_type === "deal" ? run.entity_id : null);
   const scheduledFor = new Date(Date.now() + Number(action.delay_seconds || 0) * 1000).toISOString();
+  const cadenceKey = computeCadenceKey({
+    action_type: action.action_type,
+    empresa_id: run.empresa_id,
+    prospect_id: prospectId ?? null,
+    flow_id: run.flow_id,
+    action_id: action.id ?? null,
+  });
   const { data, error } = await supabase
     .from("orbit_flow_scheduled_actions")
     .insert({
@@ -810,22 +794,47 @@ async function enqueueScheduledAction(params: {
       action_type: action.action_type,
       action_config: action.action_config ?? {},
       context: buildScheduledActionContext(run),
-
-
       prospect_id: prospectId ?? null,
       deal_id: dealId ?? null,
       scheduled_for: scheduledFor,
       status: "pending",
+      cadence_key: cadenceKey,
     })
     .select("id")
     .maybeSingle();
   if (error) {
-    // duplicate (dedupe): já enfileirado — não é erro fatal
+    // 23505 no índice parcial de cadence_key ativa → dedupe auditável.
+    // Buscamos o agendamento ativo existente e retornamos seu id sem criar duplicata.
+    if ((error as any).code === "23505" && cadenceKey) {
+      const { data: existing } = await supabase
+        .from("orbit_flow_scheduled_actions")
+        .select("id, scheduled_for, status")
+        .eq("cadence_key", cadenceKey)
+        .in("status", ["pending", "running"])
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      console.warn("[executor] cadence dedupe", {
+        cadence_key: cadenceKey,
+        existing_id: (existing as any)?.id ?? null,
+        empresa_id: run.empresa_id,
+        flow_id: run.flow_id,
+        action_id: action.id ?? null,
+      });
+      return {
+        id: (existing as any)?.id ?? null,
+        scheduled_for: (existing as any)?.scheduled_for ?? scheduledFor,
+        dedupe: true,
+        cadence_key: cadenceKey,
+      };
+    }
+    // duplicate genérico (dedupe legado): não é erro fatal
     console.warn("[executor] enqueue warn", error.message);
-    return { id: null, scheduled_for: scheduledFor };
+    return { id: null, scheduled_for: scheduledFor, cadence_key: cadenceKey };
   }
-  return { id: (data as any)?.id ?? null, scheduled_for: scheduledFor };
+  return { id: (data as any)?.id ?? null, scheduled_for: scheduledFor, cadence_key: cadenceKey };
 }
+
 
 async function handleSingleAction(scheduledId: string): Promise<Response> {
   const { data: sched, error } = await supabase
