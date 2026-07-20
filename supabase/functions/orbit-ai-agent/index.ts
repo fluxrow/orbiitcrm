@@ -505,7 +505,7 @@ serve(async (req) => {
   }
 
   let conversaIdForCleanup: string | null = null;
-  let supabaseForCleanup: ReturnType<typeof createClient> | null = null;
+  let supabaseForCleanup: any = null;
   try {
     const { conversa_id, prospect_id, mensagem, telefone } = await req.json();
     conversaIdForCleanup = conversa_id ?? null;
