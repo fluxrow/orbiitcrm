@@ -114,33 +114,30 @@ function baseParams() {
 }
 
 Deno.test("order: meeting lookup → ensure_deal → freeBusy exato → createEvent → insert meeting", async () => {
-  const state: FakeState = { meetings: [], deals: [{ id: "deal-1", etapa_id: null }], pipeline_stages: [{ id: "stage-1", nome: "Agendado", ordem: 1 }], flow_events: [], order: [] };
+  const state: FakeState = { meetings: [], deals: [{ id: "deal-1", etapa_id: null }], pipeline_stages: [{ id: "stage-1", nome: "Agendado", ordem: 1, empresa_id: "emp-1", is_archived: false }], flow_events: [], order: [] };
   const supa = makeFakeSupabase(state);
-  const calls: string[] = [];
   const created = { id: "gev-1", hangoutLink: "https://meet/x", htmlLink: "https://cal/x" };
   const res = await tryAutoScheduleMeeting(supa as any, baseParams() as any, {
-    getTokenForEmpresa: async () => { calls.push("getToken"); return TOKEN; },
-    ensureFreshAccessToken: async () => { calls.push("ensureAccess"); return "at"; },
-    checkAvailability: async (_at, _cal, tmin, tmax) => { calls.push(`freeBusy:${tmin}:${tmax}`); return { busy: [] }; },
-    createCalendarEvent: async () => { calls.push("createEvent"); return created; },
-    deleteCalendarEvent: async () => { calls.push("delete"); },
+    getTokenForEmpresa: async () => { state.order.push("getToken"); return TOKEN; },
+    ensureFreshAccessToken: async () => { state.order.push("ensureAccess"); return "at"; },
+    checkAvailability: async (_at, _cal, tmin, tmax) => { state.order.push(`freeBusy:${tmin}:${tmax}`); return { busy: [] }; },
+    createCalendarEvent: async () => { state.order.push("createEvent"); return created; },
+    deleteCalendarEvent: async () => { state.order.push("delete"); },
   });
   assertEquals(res.handled, true);
   assertEquals(res.created, true);
   assertEquals(res.deal_id, "deal-1");
   assert(res.meeting_id);
-  // ordem esperada
-  const seq = [...state.order, ...calls];
+  const seq = state.order;
   const idxLookup = seq.indexOf("orbit_meetings.select");
   const idxEnsure = seq.indexOf("rpc.ensure_deal_for_prospect");
   const idxFB = seq.findIndex((s) => s.startsWith("freeBusy:"));
   const idxCreate = seq.indexOf("createEvent");
   const idxInsert = seq.indexOf("orbit_meetings.insert");
-  assert(idxLookup !== -1 && idxLookup < idxEnsure, "lookup antes de ensure_deal");
-  assert(idxEnsure !== -1 && idxEnsure < idxFB, "ensure_deal antes do freeBusy exato");
-  assert(idxFB !== -1 && idxFB < idxCreate, "freeBusy antes do createEvent");
-  assert(idxCreate < idxInsert, "createEvent antes do insert meeting");
-  // freeBusy exato bate com startISO/endISO
+  assert(idxLookup !== -1 && idxLookup < idxEnsure, `lookup antes de ensure_deal (seq=${seq.join(",")})`);
+  assert(idxEnsure < idxFB, `ensure_deal antes do freeBusy exato (seq=${seq.join(",")})`);
+  assert(idxFB < idxCreate, `freeBusy antes do createEvent (seq=${seq.join(",")})`);
+  assert(idxCreate < idxInsert, `createEvent antes do insert meeting (seq=${seq.join(",")})`);
   assertEquals(seq[idxFB], `freeBusy:${START}:${END}`);
 });
 
