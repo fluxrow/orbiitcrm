@@ -125,6 +125,17 @@ Deno.serve(async (req) => {
   const results: CaseResult[] = [];
   const tenants: string[] = [];
 
+  // Helper: garante uma OUT real (enviada) prévia para desbloquear flow_followup.
+  const seedRealOut = async (empresa_id: string, prospect_id: string): Promise<string> => {
+    const cid = await makeConversa(supabase, empresa_id, prospect_id);
+    await supabase.from("orbit_mensagens").insert({
+      empresa_id, conversa_id: cid, direcao: "OUT",
+      mensagem: "seed prior real out", status: "enviada", canal: "whatsapp",
+    });
+    return cid;
+  };
+
+
   // A. flow_initial created=true sem histórico → enqueued
   await runCase(results, "A. flow_initial created=true sem histórico", async () => {
     const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
@@ -270,6 +281,7 @@ Deno.serve(async (req) => {
   await runCase(results, "J. cancel follow-ups por lead_replied", async () => {
     const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
     const pid = await makeProspect(supabase, empresa_id, { suffix: "J" });
+    await seedRealOut(empresa_id, pid);
     await enqueueOutbox(supabase, {
       empresa_id, prospect_id: pid, source_type: "flow_followup",
       scheduled_action_id: crypto.randomUUID(),
@@ -303,6 +315,7 @@ Deno.serve(async (req) => {
     const p2 = await makeProspect(supabase, empresa_id, { suffix: "L2" });
     const p3 = await makeProspect(supabase, empresa_id, { suffix: "L3" });
     const cid = await makeConversa(supabase, empresa_id, p1);
+    await seedRealOut(empresa_id, p2);
 
     await enqueueOutbox(supabase, {
       empresa_id, prospect_id: p3, source_type: "campaign",
@@ -607,6 +620,7 @@ Deno.serve(async (req) => {
     const p3 = await makeProspect(supabase, empresa_id, { suffix: "Y3" });
     const p4 = await makeProspect(supabase, empresa_id, { suffix: "Y4" });
     const c1 = await makeConversa(supabase, empresa_id, p1);
+    await seedRealOut(empresa_id, p2);
     await enqueueOutbox(supabase, {
       empresa_id, prospect_id: p3, source_type: "campaign",
       campaign_id: crypto.randomUUID(),
@@ -900,9 +914,11 @@ Deno.serve(async (req) => {
     const { data: camp } = await supabase.from("orbit_campaigns")
       .select("status, aprovacao_status, total_destinatarios, enviados, falhas")
       .eq("id", CAMP_ID).maybeSingle();
-    const campOk = !!camp && (camp as any).status === "pausada_por_limite"
+    // Estado esperado após cleanup 20260720: pausada, aprovada, 188 destinatários,
+    // 56 enviados, 0 falhas. Ignorados são 56 e pendentes 76 (não somam em falhas).
+    const campOk = !!camp && ["pausada", "pausada_por_limite"].includes((camp as any).status)
       && (camp as any).aprovacao_status === "aprovada"
-      && (camp as any).total_destinatarios === 188 && (camp as any).enviados === 50 && (camp as any).falhas === 0;
+      && (camp as any).total_destinatarios === 188 && (camp as any).enviados === 56 && (camp as any).falhas === 0;
 
     return {
       pass: (enabledCount ?? 0) === 0 && realWithRows.length === 0 && campOk,
@@ -1127,6 +1143,7 @@ Deno.serve(async (req) => {
     const empresa_id = await makeTenant(supabase); tenants.push(empresa_id);
     await makeAtDailyLimit(empresa_id);
     const pid = await makeProspect(supabase, empresa_id, { suffix: "AL2" });
+    await seedRealOut(empresa_id, pid);
     const enq = await enqueueOutbox(supabase, {
       empresa_id, prospect_id: pid,
       source_type: "flow_followup", scheduled_action_id: crypto.randomUUID(),

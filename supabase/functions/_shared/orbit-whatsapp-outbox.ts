@@ -350,6 +350,12 @@ export async function enqueueOutbox(supabase: any, input: EnqueueInput): Promise
   if (input.allow_terminal_stage_message != null) ctxMeta.allow_terminal_stage_message = input.allow_terminal_stage_message;
   if (input.event_id != null) ctxMeta.event_id = input.event_id;
   if (input.action_id != null) ctxMeta.action_id = input.action_id;
+  // Persistir campos de contexto que o worker precisa no re-check no consumo:
+  // sem eles, flow_initial cai em lead_not_new, ai_reply perde vínculo com IN,
+  // meeting_confirmation esquece o meeting. Bug histórico do enqueue.
+  if (input.event_created != null) ctxMeta.event_created = input.event_created;
+  if (input.inbound_message_id != null) ctxMeta.inbound_message_id = input.inbound_message_id;
+  if (input.meeting_id != null) ctxMeta.meeting_id = input.meeting_id;
   const mergedMetadata = { ...(input.metadata ?? {}), ...ctxMeta };
   const { data: row, error } = await supabase
     .from("orbit_whatsapp_outbox")
