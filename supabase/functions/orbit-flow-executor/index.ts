@@ -209,7 +209,7 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
     const payloadForCtx: Json = (run.context?.payload ?? {}) as Json;
     const dealId = sourceType === "flow_stage" ? (await resolveDealId(run)) : null;
     const targetStageId = sourceType === "flow_stage" ? (payloadForCtx.to_stage_id ?? null) : null;
-    const eventId = sourceType === "flow_stage" ? (run.context?.event?.id ?? payloadForCtx.event_id ?? null) : null;
+    const eventId = sourceType === "flow_stage" ? resolveEventId(run) : null;
     const allowTerminal = cfg?.allow_terminal_stage_message === true;
     const actionId = (cfg?.action_id as string | null) ?? (cfg?.template_id as string | null) ?? null;
     const routed = await enqueueOutbox(supabase, {
