@@ -116,6 +116,18 @@ function stableKey(ctx: OutboxContext): string {
         ctx.scheduled_action_id ?? `${ctx.flow_run_id ?? "-"}:${ctx.source_id ?? "-"}`,
       );
       break;
+    case "flow_stage":
+      // Transição de etapa: identidade determinística por (empresa, deal, target_stage,
+      // event_id ou action_id). Sem timestamps — dedupe é responsabilidade do trigger
+      // (bucket de 60s) e do dispatcher (janela curta). Duas emissões da MESMA transição
+      // convergem para a mesma chave e o segundo insert cai em duplicate.
+      parts.push(
+        ctx.empresa_id,
+        ctx.deal_id ?? "-",
+        ctx.target_stage_id ?? "-",
+        ctx.event_id ?? ctx.action_id ?? ctx.source_id ?? ctx.flow_run_id ?? "-",
+      );
+      break;
     case "campaign":
       // Dedupe por campaign_id + recipient (source_id). Só cai para prospect_id se
       // por algum motivo o produtor não informar recipient — nunca deve acontecer no path real.
