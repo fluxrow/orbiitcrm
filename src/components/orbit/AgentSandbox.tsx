@@ -32,7 +32,7 @@ const MOCK_LEAD = {
   observacoes: "Respondeu ao formulário de captação e deixou os dados de contato.",
 };
 
-export function AgentSandbox({ open, onOpenChange, aiConfig }: AgentSandboxProps) {
+export function AgentSandbox({ open, onOpenChange, empresaId }: AgentSandboxProps) {
   const [messages, setMessages] = useState<SandboxMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -47,12 +47,16 @@ export function AgentSandbox({ open, onOpenChange, aiConfig }: AgentSandboxProps
 
   const callSandbox = useCallback(
     async (history: SandboxMsg[], trigger?: "inbound_webhook" | "manual") => {
+      if (!empresaId) {
+        toast.error("Empresa não identificada.");
+        return;
+      }
       setLoading(true);
       setTyping(true);
       try {
         const { data, error } = await supabase.functions.invoke("orbit-ai-sandbox", {
           body: {
-            aiConfig,
+            empresaId,
             mockLead: trigger === "inbound_webhook" ? MOCK_LEAD : null,
             trigger: trigger ?? "manual",
             messages: history.map((m) => ({ role: m.role, content: m.content })),
@@ -73,7 +77,7 @@ export function AgentSandbox({ open, onOpenChange, aiConfig }: AgentSandboxProps
         setTyping(false);
       }
     },
-    [aiConfig],
+    [empresaId],
   );
 
   const handleTriggerWebhook = () => {
