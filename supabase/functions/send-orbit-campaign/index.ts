@@ -6,6 +6,11 @@ import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_
 import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
+import {
+  WARMUP_SCALE,
+  getEffectiveDailyLimit,
+  type CampaignSendingConfig,
+} from "../_shared/whatsapp-campaign-quota.ts";
 
 interface CampaignRequest {
   campaign_id: string;
@@ -14,7 +19,9 @@ interface CampaignRequest {
 const delayMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const VALIDATION_CACHE_DAYS = 7;
-const WARMUP_SCALE = [50, 80, 120, 200, 300, 500];
+// WARMUP_SCALE agora vem de _shared/whatsapp-campaign-quota.ts para evitar divergência
+// com o auto-resume do scheduler. Mantida a referência importada para uso local.
+void WARMUP_SCALE;
 
 function isCheckExpired(lastCheck: string | null): boolean {
   if (!lastCheck) return true;
