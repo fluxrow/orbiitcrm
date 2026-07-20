@@ -18,6 +18,7 @@ import { getTokenForEmpresa, ensureFreshAccessToken, checkAvailability } from ".
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 import { resolveEventId, buildScheduledActionContext, restoreRunFromScheduled } from "./flow-run-events.ts";
 import { computeCadenceKey } from "./cadence-key.ts";
+import { isActionDisabled } from "./action-guards.ts";
 
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -743,7 +744,14 @@ async function actionSwitch(cfg: Json, run: Json): Promise<StepResult> {
   return { ok: true, output: { branch, executed, field, value: v, trace } };
 }
 
+// Guard genérico: qualquer action com action_config.enabled === false é ignorada,
+// sem enfileirar outbox, sem chamar Z-API, sem mensagem. Auditável via output do step.
+// A implementação vive em ./action-guards.ts para permitir testes unitários.
+
 async function runAction(actionType: string, cfg: Json, run: Json): Promise<StepResult> {
+  if (isActionDisabled(cfg)) {
+    return { ok: true, output: { skipped: true, reason: "action_disabled", action_type: actionType } };
+  }
   switch (actionType) {
     case "send_whatsapp_template": return actionSendWhatsappTemplate(cfg, run);
     case "move_deal_stage":        return actionMoveDealStage(cfg, run);
@@ -956,6 +964,21 @@ Deno.serve(async (req) => {
         .insert({ run_id, action_id: (action as any).id, ordem: (action as any).ordem, status: "running", started_at: stepStart })
         .select("id")
         .maybeSingle();
+
+      // Kill-switch de action: action_config.enabled=false pula sem enfileirar/executar.
+      // Preserva o step com output auditável e segue para a próxima action.
+      if (isActionDisabled((action as any).action_config ?? {})) {
+        await supabase
+          .from("orbit_flow_run_steps")
+          .update({
+            status: "success",
+            finished_at: new Date().toISOString(),
+            output: { skipped: true, reason: "action_disabled", action_type: (action as any).action_type },
+            error: null,
+          })
+          .eq("id", step?.id);
+        continue;
+      }
 
       // Delays curtos: comportamento original (inline).
       // Delays > 30s: enfileira e segue para a próxima action sem bloquear.
