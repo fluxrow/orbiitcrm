@@ -2850,13 +2850,13 @@ export type Database = {
           empresa_id: string | null
           erro: string | null
           id: string
-          mensagem: string | null
           media_extracted_text: string | null
           media_model: string | null
           media_processed_at: string | null
           media_processing_error: string | null
           media_processing_status: string | null
           media_provider: string | null
+          mensagem: string | null
           provider_message_id: string | null
           status: string | null
           storage_path: string | null
@@ -2872,13 +2872,13 @@ export type Database = {
           empresa_id?: string | null
           erro?: string | null
           id?: string
-          mensagem?: string | null
           media_extracted_text?: string | null
           media_model?: string | null
           media_processed_at?: string | null
           media_processing_error?: string | null
           media_processing_status?: string | null
           media_provider?: string | null
+          mensagem?: string | null
           provider_message_id?: string | null
           status?: string | null
           storage_path?: string | null
@@ -2894,13 +2894,13 @@ export type Database = {
           empresa_id?: string | null
           erro?: string | null
           id?: string
-          mensagem?: string | null
           media_extracted_text?: string | null
           media_model?: string | null
           media_processed_at?: string | null
           media_processing_error?: string | null
           media_processing_status?: string | null
           media_provider?: string | null
+          mensagem?: string | null
           provider_message_id?: string | null
           status?: string | null
           storage_path?: string | null
