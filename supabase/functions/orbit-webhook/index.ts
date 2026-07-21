@@ -588,14 +588,18 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
 
     // 6. If AI active and human_talk = false and incoming message, call AI agent
     if (!fromMe && !conversa.human_talk && shouldProcessMedia && savedMessage?.id) {
-      fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-inbound-media-processor`, {
+      const mediaResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-inbound-media-processor`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
         },
         body: JSON.stringify({ message_id: savedMessage.id }),
-      }).catch((error) => console.error("[orbit-webhook] Erro ao processar mídia:", error));
+      });
+      if (!mediaResponse.ok) {
+        const detail = (await mediaResponse.text()).slice(0, 300);
+        console.error("[orbit-webhook] Erro ao processar mídia:", mediaResponse.status, detail);
+      }
     } else if (!fromMe && !conversa.human_talk && !((tipoMidia === "image" || tipoMidia === "audio") && !shouldProcessMedia)) {
       // Safety-net: reclamar lock stale (>3min) — evita conversa travada por falha anterior
       const staleThreshold = new Date(Date.now() - 3 * 60 * 1000).toISOString();

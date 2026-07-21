@@ -80,21 +80,48 @@ async function describeImage(bytes: Uint8Array, mime: string, caption: string): 
   return result.text.trim();
 }
 
-async function transcribeAudio(bytes: Uint8Array, mime: string, tenantKey?: string | null): Promise<string> {
-  const key = Deno.env.get("ELEVENLABS_API_KEY") || tenantKey || "";
-  if (!key) throw new Error("audio_provider_key_missing");
+interface AudioTranscription {
+  text: string;
+  provider: "elevenlabs" | "lovable";
+  model: string;
+}
+
+async function transcribeAudio(bytes: Uint8Array, mime: string, tenantKey?: string | null): Promise<AudioTranscription> {
+  const elevenLabsKey = Deno.env.get("ELEVENLABS_API_KEY") || tenantKey || "";
   const form = new FormData();
-  form.append("model_id", "scribe_v2");
-  form.append("language_code", "por");
   form.append("file", new Blob([bytes], { type: mime }), `audio.${safeExtension(mime)}`);
-  const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
-    method: "POST", headers: { "xi-api-key": key }, body: form,
-  });
-  if (!response.ok) throw new Error(`audio_provider_${response.status}`);
+
+  let response: Response;
+  let provider: AudioTranscription["provider"];
+  let model: string;
+  if (elevenLabsKey) {
+    form.append("model_id", "scribe_v2");
+    form.append("language_code", "por");
+    provider = "elevenlabs";
+    model = "scribe_v2";
+    response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+      method: "POST", headers: { "xi-api-key": elevenLabsKey }, body: form,
+    });
+  } else {
+    const lovableKey = Deno.env.get("LOVABLE_API_KEY") || "";
+    if (!lovableKey) throw new Error("audio_provider_key_missing");
+    form.append("model", "gpt-4o-mini-transcribe");
+    form.append("language", "pt");
+    provider = "lovable";
+    model = "gpt-4o-mini-transcribe";
+    response = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", {
+      method: "POST", headers: { Authorization: `Bearer ${lovableKey}` }, body: form,
+    });
+  }
+
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 200).replace(/\s+/g, " ");
+    throw new Error(`audio_provider_${provider}_${response.status}:${detail}`);
+  }
   const data = await response.json();
   const text = String(data?.text || "").trim();
   if (!text) throw new Error("audio_transcript_empty");
-  return text;
+  return { text, provider, model };
 }
 
 serve(async (req) => {
@@ -136,9 +163,12 @@ serve(async (req) => {
     const { error: uploadError } = await supabase.storage.from("orbit-media").upload(path, media.bytes, { contentType: media.mime, upsert: true });
     if (uploadError) throw new Error(`media_storage:${uploadError.message}`);
 
+    const audio = type === "audio"
+      ? await transcribeAudio(media.bytes, media.mime, config?.tts_api_key)
+      : null;
     const extracted = type === "image"
       ? await describeImage(media.bytes, media.mime, String(claimed.mensagem || ""))
-      : await transcribeAudio(media.bytes, media.mime, config?.tts_api_key);
+      : audio!.text;
     const prefix = type === "image" ? "Imagem recebida" : "Transcrição do áudio recebido";
     const original = String(claimed.mensagem || "").replace(/^📎\s*(image|audio)$/i, "").trim();
     const agentText = `${original ? `${original}\n` : ""}[${prefix}: ${extracted}]`;
@@ -149,21 +179,26 @@ serve(async (req) => {
       media_extracted_text: extracted,
       media_processing_error: null,
       media_processed_at: new Date().toISOString(),
-      media_provider: type === "image" ? "anthropic" : "elevenlabs",
-      media_model: type === "image" ? "tenant-default" : "scribe_v2",
+      media_provider: type === "image" ? "anthropic" : audio!.provider,
+      media_model: type === "image" ? "tenant-default" : audio!.model,
     }).eq("id", message_id);
 
+    let agentInvoked = false;
     if (!dry_run && config?.modo_automatico && !conversation.human_talk) {
       const { data: lock } = await supabase.from("orbit_conversas").update({ ai_processing: true }).eq("id", conversation.id).eq("ai_processing", false).select("id");
       if (lock?.length) {
-        fetch(`${supabaseUrl}/functions/v1/orbit-ai-agent`, {
+        agentInvoked = true;
+        const invokeAgent = fetch(`${supabaseUrl}/functions/v1/orbit-ai-agent`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, "x-orbit-internal-secret": Deno.env.get("ORBIT_AI_AGENT_SECRET") || "" },
           body: JSON.stringify({ conversa_id: conversation.id, prospect_id: prospect.id, mensagem: agentText, telefone: prospect.telefone }),
         }).catch((error) => console.error("[media-processor] agent invoke failed", error));
+        // Keep the worker alive until the downstream agent accepts the request.
+        // @ts-ignore EdgeRuntime is provided by Supabase Edge Runtime.
+        if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(invokeAgent);
       }
     }
-    return json({ ok: true, processed: true, type, dry_run: !!dry_run, agent_invoked: !dry_run && !!config?.modo_automatico && !conversation.human_talk });
+    return json({ ok: true, processed: true, type, dry_run: !!dry_run, agent_invoked: agentInvoked });
   } catch (error) {
     const reason = error instanceof Error ? error.message : "unknown";
     await supabase.from("orbit_mensagens").update({
