@@ -41,6 +41,8 @@ export default function AgendaConfigTab({ empresaId }: Props) {
   const [timezone, setTimezone] = useState("America/Sao_Paulo");
   const [availabilityStart, setAvailabilityStart] = useState("09:00");
   const [availabilityEnd, setAvailabilityEnd] = useState("18:00");
+  const [minNoticeMinutes, setMinNoticeMinutes] = useState(60);
+  const [maxHorizonDays, setMaxHorizonDays] = useState(60);
 
   useEffect(() => {
     if (status.data) {
@@ -48,6 +50,8 @@ export default function AgendaConfigTab({ empresaId }: Props) {
       setTimezone(status.data.timezone ?? "America/Sao_Paulo");
       setAvailabilityStart(status.data.availability_start ?? "09:00");
       setAvailabilityEnd(status.data.availability_end ?? "18:00");
+      setMinNoticeMinutes(status.data.booking_min_notice_minutes ?? 60);
+      setMaxHorizonDays(status.data.booking_max_horizon_days ?? 60);
     }
   }, [status.data]);
 
@@ -104,6 +108,34 @@ export default function AgendaConfigTab({ empresaId }: Props) {
 
           {connected ? (
             <>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="min-notice">Antecedência mínima (minutos)</Label>
+                  <Input
+                    id="min-notice"
+                    type="number"
+                    min={0}
+                    max={10080}
+                    step={15}
+                    value={minNoticeMinutes}
+                    onChange={(e) => setMinNoticeMinutes(Number(e.target.value))}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Evita oferecer um horário próximo demais do momento da conversa.</p>
+                </div>
+                <div>
+                  <Label htmlFor="max-horizon">Máximo de dias no futuro</Label>
+                  <Input
+                    id="max-horizon"
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={maxHorizonDays}
+                    onChange={(e) => setMaxHorizonDays(Number(e.target.value))}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Datas além deste limite nunca serão sugeridas pelo agente.</p>
+                </div>
+              </div>
+
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-xs text-muted-foreground">Conta Google</Label>
@@ -168,8 +200,10 @@ export default function AgendaConfigTab({ empresaId }: Props) {
                     timezone,
                     availability_start: availabilityStart,
                     availability_end: availabilityEnd,
+                    booking_min_notice_minutes: minNoticeMinutes,
+                    booking_max_horizon_days: maxHorizonDays,
                   })}
-                  disabled={update.isPending || !availabilityStart || !availabilityEnd || availabilityStart >= availabilityEnd}
+                  disabled={update.isPending || !availabilityStart || !availabilityEnd || availabilityStart >= availabilityEnd || minNoticeMinutes < 0 || minNoticeMinutes > 10080 || maxHorizonDays < 1 || maxHorizonDays > 365}
                   className="gap-2"
                 >
                   {update.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}

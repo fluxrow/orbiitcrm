@@ -25,8 +25,12 @@ let cachedAvailableModel: string | null = null;
 
 export interface AnthropicMessage {
   role: "user" | "assistant";
-  content: string;
+  content: string | AnthropicContentBlock[];
 }
+
+export type AnthropicContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; source: { type: "base64"; media_type: string; data: string } };
 
 export interface AnthropicCallInput {
   system: string;

@@ -894,6 +894,8 @@ export type Database = {
           horario_inicio: string | null
           id: string
           idioma: string | null
+          inbound_audio_transcription_enabled: boolean
+          inbound_image_understanding_enabled: boolean
           knowledge_base_enabled: boolean
           max_tokens: number | null
           mensagem_boas_vindas: string | null
@@ -924,6 +926,8 @@ export type Database = {
           horario_inicio?: string | null
           id?: string
           idioma?: string | null
+          inbound_audio_transcription_enabled?: boolean
+          inbound_image_understanding_enabled?: boolean
           knowledge_base_enabled?: boolean
           max_tokens?: number | null
           mensagem_boas_vindas?: string | null
@@ -954,6 +958,8 @@ export type Database = {
           horario_inicio?: string | null
           id?: string
           idioma?: string | null
+          inbound_audio_transcription_enabled?: boolean
+          inbound_image_understanding_enabled?: boolean
           knowledge_base_enabled?: boolean
           max_tokens?: number | null
           mensagem_boas_vindas?: string | null
@@ -2438,6 +2444,8 @@ export type Database = {
           access_token: string
           availability_end: string
           availability_start: string
+          booking_max_horizon_days: number
+          booking_min_notice_minutes: number
           calendar_id: string
           created_at: string
           empresa_id: string
@@ -2454,6 +2462,8 @@ export type Database = {
           access_token: string
           availability_end?: string
           availability_start?: string
+          booking_max_horizon_days?: number
+          booking_min_notice_minutes?: number
           calendar_id?: string
           created_at?: string
           empresa_id: string
@@ -2470,6 +2480,8 @@ export type Database = {
           access_token?: string
           availability_end?: string
           availability_start?: string
+          booking_max_horizon_days?: number
+          booking_min_notice_minutes?: number
           calendar_id?: string
           created_at?: string
           empresa_id?: string
@@ -2839,6 +2851,12 @@ export type Database = {
           erro: string | null
           id: string
           mensagem: string | null
+          media_extracted_text: string | null
+          media_model: string | null
+          media_processed_at: string | null
+          media_processing_error: string | null
+          media_processing_status: string | null
+          media_provider: string | null
           provider_message_id: string | null
           status: string | null
           storage_path: string | null
@@ -2855,6 +2873,12 @@ export type Database = {
           erro?: string | null
           id?: string
           mensagem?: string | null
+          media_extracted_text?: string | null
+          media_model?: string | null
+          media_processed_at?: string | null
+          media_processing_error?: string | null
+          media_processing_status?: string | null
+          media_provider?: string | null
           provider_message_id?: string | null
           status?: string | null
           storage_path?: string | null
@@ -2871,6 +2895,12 @@ export type Database = {
           erro?: string | null
           id?: string
           mensagem?: string | null
+          media_extracted_text?: string | null
+          media_model?: string | null
+          media_processed_at?: string | null
+          media_processing_error?: string | null
+          media_processing_status?: string | null
+          media_provider?: string | null
           provider_message_id?: string | null
           status?: string | null
           storage_path?: string | null

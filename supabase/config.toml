@@ -12,6 +12,9 @@ verify_jwt = false
 [functions.orbit-ai-agent]
 verify_jwt = false
 
+[functions.orbit-inbound-media-processor]
+verify_jwt = false
+
 [functions.orbit-ai-suggest]
 verify_jwt = false
 
@@ -122,7 +125,6 @@ verify_jwt = false
 
 [functions.orbit-flow-go-live-reconcile]
 verify_jwt = false
-
 
 
 

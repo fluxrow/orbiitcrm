@@ -9,6 +9,8 @@ export interface GoogleStatus {
   timezone: string | null;
   availability_start: string;
   availability_end: string;
+  booking_min_notice_minutes: number;
+  booking_max_horizon_days: number;
   connected_at: string | null;
   provider_configured: boolean;
 }
@@ -74,7 +76,7 @@ export function useDisconnectGoogleCalendar() {
 export function useUpdateGoogleCalendarConfig() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (params: { empresaId: string; calendar_id?: string; timezone?: string; availability_start?: string; availability_end?: string }) => {
+    mutationFn: async (params: { empresaId: string; calendar_id?: string; timezone?: string; availability_start?: string; availability_end?: string; booking_min_notice_minutes?: number; booking_max_horizon_days?: number }) => {
       const { data, error } = await supabase.functions.invoke("orbit-google-calendar", {
         body: {
           action: "update_config",
@@ -83,6 +85,8 @@ export function useUpdateGoogleCalendarConfig() {
           timezone: params.timezone,
           availability_start: params.availability_start,
           availability_end: params.availability_end,
+          booking_min_notice_minutes: params.booking_min_notice_minutes,
+          booking_max_horizon_days: params.booking_max_horizon_days,
         },
       });
       if (error) throw error;

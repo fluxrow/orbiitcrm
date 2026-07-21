@@ -88,6 +88,8 @@ Deno.serve(async (req) => {
         const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
         const availabilityStart = body.availability_start == null ? null : String(body.availability_start);
         const availabilityEnd = body.availability_end == null ? null : String(body.availability_end);
+        const minNotice = body.booking_min_notice_minutes == null ? null : Number(body.booking_min_notice_minutes);
+        const maxHorizon = body.booking_max_horizon_days == null ? null : Number(body.booking_max_horizon_days);
         if (availabilityStart !== null && !timePattern.test(availabilityStart)) {
           return fail(ErrorCodes.VALIDATION_ERROR, "availability_start deve usar HH:mm", 400, undefined, req);
         }
@@ -99,8 +101,16 @@ Deno.serve(async (req) => {
         if (effectiveStart >= effectiveEnd) {
           return fail(ErrorCodes.VALIDATION_ERROR, "o início da disponibilidade deve ser anterior ao fim", 400, undefined, req);
         }
+        if (minNotice !== null && (!Number.isInteger(minNotice) || minNotice < 0 || minNotice > 10080)) {
+          return fail(ErrorCodes.VALIDATION_ERROR, "booking_min_notice_minutes deve estar entre 0 e 10080", 400, undefined, req);
+        }
+        if (maxHorizon !== null && (!Number.isInteger(maxHorizon) || maxHorizon < 1 || maxHorizon > 365)) {
+          return fail(ErrorCodes.VALIDATION_ERROR, "booking_max_horizon_days deve estar entre 1 e 365", 400, undefined, req);
+        }
         if (availabilityStart !== null) patch.availability_start = availabilityStart;
         if (availabilityEnd !== null) patch.availability_end = availabilityEnd;
+        if (minNotice !== null) patch.booking_min_notice_minutes = minNotice;
+        if (maxHorizon !== null) patch.booking_max_horizon_days = maxHorizon;
         if (!Object.keys(patch).length) {
           return fail(ErrorCodes.VALIDATION_ERROR, "nenhum campo para atualizar", 400, undefined, req);
         }

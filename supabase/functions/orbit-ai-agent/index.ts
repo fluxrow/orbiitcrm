@@ -619,6 +619,14 @@ serve(async (req) => {
       });
     }
 
+    const { data: agendaSettings } = empresaId
+      ? await supabase
+          .from("orbit_google_tokens")
+          .select("timezone, availability_start, availability_end, booking_min_notice_minutes, booking_max_horizon_days")
+          .eq("empresa_id", empresaId)
+          .maybeSingle()
+      : { data: null };
+
     // Verificar horário de atendimento no fuso de São Paulo
     const formatter = new Intl.DateTimeFormat("en-US", {
       timeZone: "America/Sao_Paulo",
@@ -810,10 +818,10 @@ serve(async (req) => {
       ? `\n=== REGRAS INVIOLÁVEIS (MAIOR PESO — devem ser sempre obedecidas) ===\n${promptRegras}\n=== FIM DAS REGRAS INVIOLÁVEIS ===\n`
       : "";
 
-    const _agendaTz = "America/Sao_Paulo";
+    const _agendaTz = agendaSettings?.timezone || "America/Sao_Paulo";
     const _nowFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: _agendaTz, weekday: "long", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date());
     const _nowISO = new Date().toISOString();
-    const dataHoraAtualBlock = `\nDATA/HORA ATUAL (referência para agendamentos): ${_nowFmt} (${_agendaTz}) — ISO: ${_nowISO}\nREGRA CRÍTICA DE AGENDAMENTO: NUNCA devolva "data_iso" no passado. Se o cliente citar um dia da semana (ex.: "segunda-feira"), resolva SEMPRE para a próxima ocorrência FUTURA a partir da data atual acima. Se o cliente citar horário do dia atual já passado, resolva para o próximo dia útil. Ano correto é derivado da data atual; nunca use anos passados.\n`;
+    const dataHoraAtualBlock = `\nDATA/HORA ATUAL (referência para agendamentos): ${_nowFmt} (${_agendaTz}) — ISO: ${_nowISO}\nJANELA DA AGENDA: ${agendaSettings?.availability_start || "09:00"}–${agendaSettings?.availability_end || "18:00"}; antecedência mínima ${agendaSettings?.booking_min_notice_minutes ?? 60} min; horizonte máximo ${agendaSettings?.booking_max_horizon_days ?? 60} dias.\nREGRA CRÍTICA DE AGENDAMENTO: NUNCA devolva "data_iso" no passado nem além do horizonte. Se o cliente citar um dia da semana, resolva para a próxima ocorrência FUTURA no fuso acima. Se disser apenas "semana que vem" sem indicar o dia, deixe data_iso=null e pergunte o dia. Ano correto é derivado da data atual; nunca invente janeiro ou outro mês sem apoio na mensagem.\n`;
 
     const systemPrompt = `${promptIdentidade}
 
@@ -950,6 +958,8 @@ ${regrasBlock}`;
           prospect_id,
           conversa_id,
           telefone,
+          mensagem_cliente: mensagemAgregada,
+          sugestoes_anteriores: Array.isArray(aiContexto?.agendamento_sugestoes) ? aiContexto.agendamento_sugestoes : [],
           agendamento: parsed.agendamento || {},
         });
       } catch (schedErr) {
@@ -1793,12 +1803,69 @@ function parseAvailabilityTime(value: unknown, fallbackHour: number): { hour: nu
   return { hour: Number(match[1]), minute: Number(match[2]) };
 }
 
+function localDay(date: Date, tz: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(date);
+}
+
+function addCalendarDays(day: string, amount: number): string {
+  const [year, month, date] = day.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, date + amount));
+  return shifted.toISOString().slice(0, 10);
+}
+
+function normalizePt(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+export function resolveBookingDateHint(message: string, now: Date, tz: string): {
+  expectedDay?: string;
+  ambiguous?: boolean;
+} {
+  const text = normalizePt(message || "");
+  const today = localDay(now, tz);
+
+  if (/\b(hoje)\b/.test(text)) return { expectedDay: today };
+  if (/\b(amanha)\b/.test(text)) return { expectedDay: addCalendarDays(today, 1) };
+
+  const explicit = text.match(/\b([0-3]?\d)[\/.\-]([01]?\d)(?:[\/.\-](\d{2,4}))?\b/);
+  if (explicit) {
+    const currentYear = Number(today.slice(0, 4));
+    let year = explicit[3] ? Number(explicit[3]) : currentYear;
+    if (year < 100) year += 2000;
+    let candidate = `${year}-${String(Number(explicit[2])).padStart(2, "0")}-${String(Number(explicit[1])).padStart(2, "0")}`;
+    if (!explicit[3] && candidate < today) candidate = `${year + 1}${candidate.slice(4)}`;
+    return { expectedDay: candidate };
+  }
+
+  const weekdays: Array<[RegExp, number]> = [
+    [/\bdomingo\b/, 0], [/\bsegunda(?:-feira)?\b/, 1], [/\bterca(?:-feira)?\b/, 2],
+    [/\bquarta(?:-feira)?\b/, 3], [/\bquinta(?:-feira)?\b/, 4],
+    [/\bsexta(?:-feira)?\b/, 5], [/\bsabado\b/, 6],
+  ];
+  const weekday = weekdays.find(([pattern]) => pattern.test(text));
+  if (weekday) {
+    const [y, m, d] = today.split("-").map(Number);
+    const currentWeekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+    let delta = (weekday[1] - currentWeekday + 7) % 7;
+    if (delta === 0) delta = 7;
+    if (/\b(proxima semana|semana que vem)\b/.test(text) && delta < 7) delta += 7;
+    return { expectedDay: addCalendarDays(today, delta) };
+  }
+
+  if (/\b(proxima semana|semana que vem)\b/.test(text)) return { ambiguous: true };
+  return {};
+}
+
 export interface AutoScheduleParams {
   empresaId: string;
   prospect: any;
   prospect_id: string;
   conversa_id: string;
   telefone: string;
+  mensagem_cliente?: string;
+  sugestoes_anteriores?: Array<{ start?: string; end?: string; label?: string; label_full?: string }>;
   agendamento: any;
 }
 
@@ -1852,35 +1919,71 @@ export async function tryAutoScheduleMeeting(
     return { handled: false, error: "sem data_iso" };
   }
 
-  const startDate = new Date(ag.data_iso);
+  const tz = token.timezone || "America/Sao_Paulo";
+  const previousSuggestions = Array.isArray(params.sugestoes_anteriores) ? params.sugestoes_anteriores : [];
+  const selectionText = normalizePt(params.mensagem_cliente || "");
+  let selectedSuggestion = /\b(primeir[oa]|opcao 1|1\s*[ªa])\b/.test(selectionText)
+    ? previousSuggestions[0]
+    : /\b(segund[oa]|opcao 2|2\s*[ªa])\b/.test(selectionText)
+    ? previousSuggestions[1]
+    : previousSuggestions.find((s) => s.label && selectionText.includes(normalizePt(s.label)));
+  const effectiveDataIso = selectedSuggestion?.start || ag.data_iso;
+  const startDate = new Date(effectiveDataIso);
   if (isNaN(startDate.getTime())) {
     return { handled: false, error: "data_iso inválida" };
   }
 
-  const tz = token.timezone || "America/Sao_Paulo";
   const calId = token.calendar_id;
   const duracaoMin = Math.max(15, Math.min(240, Number(ag.duracao_min) || 60));
   const titulo = String(ag.titulo || `Call com ${params.prospect?.nome_razao || params.prospect?.nome_fantasia || "lead"}`).slice(0, 200);
-  const temHorario = ag.tem_horario === true;
+  const temHorario = Boolean(selectedSuggestion?.start) || ag.tem_horario === true;
 
-  const dayStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
-    .format(startDate);
+  const dayStr = localDay(startDate, tz);
 
-  // ── Guardrail anti-passado: rejeitar data/hora no passado ANTES de qualquer OAuth/Google/deal/insert ──
+  // ── Guardrails determinísticos: texto, passado, antecedência e horizonte ──
   const now = new Date();
+  const configuredNotice = Number(token.booking_min_notice_minutes);
+  const configuredHorizon = Number(token.booking_max_horizon_days);
+  const minNoticeMinutes = Math.max(0, Number.isFinite(configuredNotice) ? configuredNotice : 60);
+  const maxHorizonDays = Math.max(1, Number.isFinite(configuredHorizon) ? configuredHorizon : 60);
+  const hint = resolveBookingDateHint(params.mensagem_cliente || "", now, tz);
+  if (!selectedSuggestion && hint.ambiguous) {
+    return {
+      handled: true,
+      created: false,
+      response_override: "Claro. Qual dia da próxima semana funciona melhor para você?",
+    };
+  }
+  if (!selectedSuggestion && hint.expectedDay && hint.expectedDay !== dayStr) {
+    console.warn("[orbit-ai-agent] data do modelo diverge da mensagem", {
+      message: params.mensagem_cliente, expectedDay: hint.expectedDay, modelDay: dayStr,
+    });
+    return {
+      handled: true,
+      created: false,
+      response_override: "Só para confirmar a data corretamente: qual dia e horário você prefere?",
+    };
+  }
+  if (startDate.getTime() > now.getTime() + maxHorizonDays * 24 * 60 * 60 * 1000) {
+    console.warn("[orbit-ai-agent] agendamento rejeitado (fora do horizonte):", effectiveDataIso);
+    return {
+      handled: true,
+      created: false,
+      response_override: `Consigo consultar a agenda para os próximos ${maxHorizonDays} dias. Qual data dentro desse período funciona para você?`,
+    };
+  }
   if (temHorario) {
-    // Horário explícito: exigir > agora + 5 min
-    if (startDate.getTime() <= now.getTime() + 5 * 60 * 1000) {
+    if (startDate.getTime() <= now.getTime() + minNoticeMinutes * 60 * 1000) {
       console.warn("[orbit-ai-agent] agendamento rejeitado (passado/imediato):", ag.data_iso);
       return {
         handled: true,
         created: false,
-        response_override: "Essa data já passou. Você quis dizer a próxima segunda-feira? Me confirme a data e o horário, por favor.",
+        response_override: `Esse horário já passou ou não respeita a antecedência mínima de ${minNoticeMinutes} minutos. Pode me indicar outro horário?`,
       };
     }
   } else {
     // Dia sem horário: rejeitar se o dia local da agenda já passou
-    const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+    const todayStr = localDay(now, tz);
     if (dayStr < todayStr) {
       console.warn("[orbit-ai-agent] agendamento rejeitado (dia passado):", ag.data_iso, "dayStr=", dayStr, "todayStr=", todayStr);
       return {
@@ -1911,7 +2014,9 @@ export async function tryAutoScheduleMeeting(
     const stepMs = 30 * 60 * 1000;
     const endMs = new Date(timeMax).getTime();
     const suggestions: { start: string; end: string; label: string; label_full: string }[] = [];
-    let cursor = new Date(timeMin).getTime();
+    const noticeFloor = now.getTime() + minNoticeMinutes * 60 * 1000;
+    let cursor = Math.max(new Date(timeMin).getTime(), noticeFloor);
+    cursor = Math.ceil(cursor / stepMs) * stepMs;
     while (cursor + durMs <= endMs && suggestions.length < 2) {
       const slotEnd = cursor + durMs;
       const overlap = busy.some((b) => {

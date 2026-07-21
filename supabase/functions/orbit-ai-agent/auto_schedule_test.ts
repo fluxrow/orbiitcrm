@@ -1,7 +1,7 @@
 // Testes de contrato para tryAutoScheduleMeeting.
 // Rodar: deno test --allow-net --allow-env supabase/functions/orbit-ai-agent/auto_schedule_test.ts
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { tryAutoScheduleMeeting } from "./index.ts";
+import { resolveBookingDateHint, tryAutoScheduleMeeting } from "./index.ts";
 
 type Row = Record<string, any>;
 
@@ -110,7 +110,36 @@ const TOKEN: any = {
   timezone: "America/Sao_Paulo",
   availability_start: "09:00",
   availability_end: "18:00",
+  booking_min_notice_minutes: 60,
+  booking_max_horizon_days: 60,
 };
+
+Deno.test("interpreta datas relativas no fuso do tenant sem inventar mês", () => {
+  const now = new Date("2026-07-20T15:00:00.000Z"); // segunda, 12h BRT
+  assertEquals(resolveBookingDateHint("pode ser quinta-feira", now, "America/Sao_Paulo"), {
+    expectedDay: "2026-07-23",
+  });
+  assertEquals(resolveBookingDateHint("amanhã funciona", now, "America/Sao_Paulo"), {
+    expectedDay: "2026-07-21",
+  });
+  assertEquals(resolveBookingDateHint("semana que vem", now, "America/Sao_Paulo"), {
+    ambiguous: true,
+  });
+});
+
+Deno.test("bloqueia data do modelo divergente do dia informado pelo lead", async () => {
+  const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
+  const params = baseParams() as any;
+  params.mensagem_cliente = "pode ser quinta-feira";
+  params.agendamento.data_iso = "2027-01-14T15:00:00-03:00";
+  const res = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, params, {
+    getTokenForEmpresa: async () => TOKEN,
+  });
+  assertEquals(res.handled, true);
+  assertEquals(res.created, false);
+  assert(String(res.response_override).includes("confirmar a data"));
+  assertEquals(state.order.length, 0);
+});
 
 Deno.test("dia sem horário usa janela e fuso configurados no tenant", async () => {
   const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
@@ -256,7 +285,7 @@ Deno.test("dedupe: meeting pré-existente reutilizado sem tocar Google nem criar
   assert(!state.order.includes("rpc.ensure_deal_for_prospect"));
 });
 
-Deno.test("deal_stage_changed inclui prospect_id e meeting_id no payload", async () => {
+Deno.test("movimento para Agendado não insere deal_stage_changed duplicado manualmente", async () => {
   const state: FakeState = {
     meetings: [],
     deals: [{ id: "deal-1", etapa_id: null }],
@@ -272,13 +301,10 @@ Deno.test("deal_stage_changed inclui prospect_id e meeting_id no payload", async
     deleteCalendarEvent: async () => {},
   });
   assertEquals(res.created, true);
-  assertEquals(state.flow_events.length, 1);
-  const ev = state.flow_events[0];
-  assertEquals(ev.event_type, "deal_stage_changed");
-  assertEquals(ev.payload.prospect_id, "prospect-1");
-  assertEquals(ev.payload.meeting_id, res.meeting_id);
-  assertEquals(ev.payload.deal_id, "deal-1");
-  assertEquals(ev.payload.conversa_id, "conv-1");
+  // Em produção o trigger do UPDATE de orbit_deals emite o evento. O agente não
+  // deve inserir outro evento manual, pois isso criaria dois runs.
+  assertEquals(state.flow_events.length, 0);
+  assertEquals(state.deals[0].etapa_id, "stage-agendado");
 });
 
 Deno.test("Google Calendar não conectado devolve not_connected (handoff manual)", async () => {

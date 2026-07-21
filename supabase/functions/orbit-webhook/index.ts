@@ -507,7 +507,19 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       ? (messageText || `📎 ${tipoMidia}`).substring(0, 100)
       : messageText.substring(0, 100);
 
-    await supabase.from("orbit_mensagens").insert({
+    let shouldProcessMedia = false;
+    if (!fromMe && (tipoMidia === "image" || tipoMidia === "audio") && empresaId) {
+      const { data: mediaConfig } = await supabase
+        .from("orbit_ai_config")
+        .select("inbound_image_understanding_enabled, inbound_audio_transcription_enabled")
+        .eq("empresa_id", empresaId)
+        .maybeSingle();
+      shouldProcessMedia = tipoMidia === "image"
+        ? mediaConfig?.inbound_image_understanding_enabled === true
+        : mediaConfig?.inbound_audio_transcription_enabled === true;
+    }
+
+    const { data: savedMessage, error: savedMessageError } = await supabase.from("orbit_mensagens").insert({
       conversa_id: conversa.id,
       direcao,
       mensagem: messageText || (tipoMidia ? `📎 ${tipoMidia}` : ""),
@@ -517,7 +529,9 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       empresa_id: empresaId,
       tipo_midia: tipoMidia,
       url_midia: urlMidia,
-    });
+      media_processing_status: shouldProcessMedia ? "pending" : (tipoMidia ? "disabled" : null),
+    }).select("id").single();
+    if (savedMessageError) throw savedMessageError;
 
     // 4b. Email-CTA attribution: if this is an inbound message and the prospect
     // recently clicked an email CTA (last 14 days), record a one-time attribution event.
@@ -573,7 +587,16 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       .eq("id", conversa.id);
 
     // 6. If AI active and human_talk = false and incoming message, call AI agent
-    if (!fromMe && !conversa.human_talk) {
+    if (!fromMe && !conversa.human_talk && shouldProcessMedia && savedMessage?.id) {
+      fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-inbound-media-processor`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        },
+        body: JSON.stringify({ message_id: savedMessage.id }),
+      }).catch((error) => console.error("[orbit-webhook] Erro ao processar mídia:", error));
+    } else if (!fromMe && !conversa.human_talk && !((tipoMidia === "image" || tipoMidia === "audio") && !shouldProcessMedia)) {
       // Safety-net: reclamar lock stale (>3min) — evita conversa travada por falha anterior
       const staleThreshold = new Date(Date.now() - 3 * 60 * 1000).toISOString();
       await supabase
@@ -629,7 +652,11 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[orbit-webhook] Erro:", message);
-    if (logId) await supabase.from("orbit_webhook_logs").update({ status: "failed", error_message: message }).eq("id", logId).catch(() => {});
+    if (logId) {
+      try {
+        await supabase.from("orbit_webhook_logs").update({ status: "failed", error_message: message }).eq("id", logId);
+      } catch { /* best-effort logging */ }
+    }
     return new Response(JSON.stringify({ error: "internal_error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
