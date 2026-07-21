@@ -49,6 +49,31 @@ interface LeadContext {
   missingFields: Record<string, boolean>;
 }
 
+function normalizePhone(value: unknown): string {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function messageTextForAgent(message: { mensagem?: string | null; media_extracted_text?: string | null; tipo_midia?: string | null }): string {
+  const visible = String(message.mensagem || "").trim();
+  const extracted = String(message.media_extracted_text || "").trim();
+  if (!extracted) return visible;
+  const label = message.tipo_midia === "audio" ? "Transcrição do áudio recebido" : "Imagem recebida";
+  const isPlaceholder = /^📎\s*(image|audio)$/i.test(visible) || visible === "🎙️ Áudio";
+  return `${isPlaceholder ? "" : `${visible}\n`}[${label}: ${extracted}]`.trim();
+}
+
+async function isCanaryPhoneAllowed(supabase: any, empresaId: string | null | undefined, telefone: string): Promise<boolean> {
+  if (!empresaId) return false;
+  const { data } = await supabase
+    .from("orbit_zapi_config")
+    .select("canary_phone_numbers")
+    .eq("empresa_id", empresaId)
+    .maybeSingle();
+  const target = normalizePhone(telefone);
+  return Array.isArray(data?.canary_phone_numbers)
+    && data.canary_phone_numbers.some((candidate: unknown) => normalizePhone(candidate) === target);
+}
+
 // ── Validação de dados extraídos ──
 function validateExtractedData(dados: Record<string, any>): Record<string, any> {
   const validated: Record<string, any> = {};
@@ -686,7 +711,7 @@ serve(async (req) => {
 
     let pendingQuery = supabase
       .from("orbit_mensagens")
-      .select("mensagem")
+      .select("mensagem, media_extracted_text, tipo_midia")
       .eq("conversa_id", conversa_id)
       .eq("direcao", "IN")
       .order("timestamp", { ascending: true });
@@ -697,7 +722,7 @@ serve(async (req) => {
 
     const { data: pendingMsgs } = await pendingQuery;
     const mensagemAgregada = (pendingMsgs && pendingMsgs.length > 0)
-      ? pendingMsgs.map(m => m.mensagem).join("\n")
+      ? pendingMsgs.map(messageTextForAgent).filter(Boolean).join("\n")
       : mensagem;
 
     console.log("[orbit-ai-agent] Mensagens agregadas:", pendingMsgs?.length || 1, "msgs →", mensagemAgregada.substring(0, 100));
@@ -709,14 +734,14 @@ serve(async (req) => {
     // Buscar histórico completo (últimas 20 mensagens para contexto)
     const { data: mensagens } = await supabase
       .from("orbit_mensagens")
-      .select("direcao, mensagem, timestamp")
+      .select("direcao, mensagem, media_extracted_text, tipo_midia, timestamp")
       .eq("conversa_id", conversa_id)
       .order("timestamp", { ascending: false })
       .limit(20);
 
     const historicoFormatado = (mensagens || [])
       .reverse()
-      .map((m) => `${m.direcao === "IN" ? "Cliente" : "Assistente"}: ${m.mensagem}`)
+      .map((m) => `${m.direcao === "IN" ? "Cliente" : "Assistente"}: ${messageTextForAgent(m)}`)
       .join("\n");
 
     const mensagensIN = mensagens?.filter((m) => m.direcao === "IN").length || 0;
@@ -1499,7 +1524,18 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: st
 
 
     const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresaId);
-    const replyBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
+    const configuredBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
+    const canaryAllowed = configuredBlockReason
+      ? await isCanaryPhoneAllowed(supabase, empresaId, telefone)
+      : false;
+    const replyBlockReason = canaryAllowed ? null : configuredBlockReason;
+
+    if (canaryAllowed) {
+      console.warn("[orbit-ai-agent] Envio canario autorizado com kill switch global ativo", {
+        empresa_id: empresaId,
+        telefone: normalizePhone(telefone),
+      });
+    }
 
     if (replyBlockReason) {
       console.warn("[orbit-ai-agent] Resposta automática bloqueada:", replyBlockReason);

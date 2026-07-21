@@ -86,15 +86,23 @@ interface AudioTranscription {
   model: string;
 }
 
+function audioFormat(mime: string): string {
+  const normalized = mime.toLowerCase();
+  if (normalized.includes("mpeg")) return "mp3";
+  if (normalized.includes("mp4")) return "m4a";
+  if (normalized.includes("wav")) return "wav";
+  if (normalized.includes("webm")) return "webm";
+  return "ogg";
+}
+
 async function transcribeAudio(bytes: Uint8Array, mime: string, tenantKey?: string | null): Promise<AudioTranscription> {
   const elevenLabsKey = Deno.env.get("ELEVENLABS_API_KEY") || tenantKey || "";
-  const form = new FormData();
-  form.append("file", new Blob([bytes], { type: mime }), `audio.${safeExtension(mime)}`);
-
   let response: Response;
   let provider: AudioTranscription["provider"];
   let model: string;
   if (elevenLabsKey) {
+    const form = new FormData();
+    form.append("file", new Blob([bytes], { type: mime }), `audio.${safeExtension(mime)}`);
     form.append("model_id", "scribe_v2");
     form.append("language_code", "por");
     provider = "elevenlabs";
@@ -105,12 +113,22 @@ async function transcribeAudio(bytes: Uint8Array, mime: string, tenantKey?: stri
   } else {
     const lovableKey = Deno.env.get("LOVABLE_API_KEY") || "";
     if (!lovableKey) throw new Error("audio_provider_key_missing");
-    form.append("model", "gpt-4o-mini-transcribe");
-    form.append("language", "pt");
     provider = "lovable";
-    model = "gpt-4o-mini-transcribe";
-    response = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", {
-      method: "POST", headers: { Authorization: `Bearer ${lovableKey}` }, body: form,
+    model = "google/gemini-2.5-flash";
+    response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${lovableKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        temperature: 0,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: "Transcreva fielmente este audio em portugues do Brasil. Retorne somente a transcricao, sem comentarios, titulos ou markdown." },
+            { type: "input_audio", input_audio: { data: bytesToBase64(bytes), format: audioFormat(mime) } },
+          ],
+        }],
+      }),
     });
   }
 
@@ -119,7 +137,7 @@ async function transcribeAudio(bytes: Uint8Array, mime: string, tenantKey?: stri
     throw new Error(`audio_provider_${provider}_${response.status}:${detail}`);
   }
   const data = await response.json();
-  const text = String(data?.text || "").trim();
+  const text = String(provider === "elevenlabs" ? data?.text : data?.choices?.[0]?.message?.content || "").trim();
   if (!text) throw new Error("audio_transcript_empty");
   return { text, provider, model };
 }
@@ -173,7 +191,6 @@ serve(async (req) => {
     const original = String(claimed.mensagem || "").replace(/^📎\s*(image|audio)$/i, "").trim();
     const agentText = `${original ? `${original}\n` : ""}[${prefix}: ${extracted}]`;
     await supabase.from("orbit_mensagens").update({
-      mensagem: agentText,
       storage_path: path,
       media_processing_status: "processed",
       media_extracted_text: extracted,
