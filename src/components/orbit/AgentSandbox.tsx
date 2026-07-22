@@ -23,7 +23,7 @@ interface SandboxMsg {
 }
 
 const MOCK_LEAD = {
-  nome: "Cliente Teste",
+  nome: "Mariana",
   origem: "Formulário de captação",
   telefone: "+55 11 90000-0000",
   email: "cliente.teste@exemplo.com",
