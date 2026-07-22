@@ -14,7 +14,7 @@
 // antes de qualquer chamada ao LLM nesses casos.
 
 import { assert, assertStringIncludes, assertFalse } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { buildSystemPrompt } from "./index.ts";
+import { buildSystemPrompt, renderWelcomeMessage } from "./index.ts";
 
 const TYPEBOT_LEAD_SEM_NOME = {
   nome: "",
@@ -62,6 +62,21 @@ Deno.test("buildSystemPrompt injeta guardrails anti-autorrevelação e do webhoo
   assertStringIncludes(prompt, "respostas do formulario");
   assertStringIncludes(prompt, 'Nao chame o lead de "Lead"');
   assertStringIncludes(prompt, "Typebot - Captacao Meta");
+});
+
+Deno.test("renderWelcomeMessage usa a abertura aprovada e personaliza o nome", () => {
+  const reply = renderWelcomeMessage(
+    "Oi, {{nome}}! Aqui é a Fernanda, da Viver Semijoias. Vi suas respostas no diagnóstico.",
+    { nome: "Mariana" },
+  );
+
+  assert(reply === "Oi, Mariana! Aqui é a Fernanda, da Viver Semijoias. Vi suas respostas no diagnóstico.");
+  assertSandboxReplyIsClean(reply, { leadNome: "Mariana" });
+});
+
+Deno.test("renderWelcomeMessage não deixa pontuação quebrada quando o nome está vazio", () => {
+  const reply = renderWelcomeMessage("Oi, {{nome}}! Tudo bem?", { nome: "" });
+  assert(reply === "Oi! Tudo bem?");
 });
 
 Deno.test("assertSandboxReplyIsClean aceita resposta em conformidade", () => {
