@@ -906,6 +906,10 @@ export type Database = {
           prompt_regras: string | null
           prompt_roteiro: string | null
           responder_fora_horario: boolean | null
+          scheduling_handoff_message: string | null
+          scheduling_handoff_whatsapp: string | null
+          scheduling_meeting_duration_minutes: number
+          scheduling_mode: string
           tempo_espera: number | null
           tom_conversa: string | null
           tts_api_key: string | null
@@ -938,6 +942,10 @@ export type Database = {
           prompt_regras?: string | null
           prompt_roteiro?: string | null
           responder_fora_horario?: boolean | null
+          scheduling_handoff_message?: string | null
+          scheduling_handoff_whatsapp?: string | null
+          scheduling_meeting_duration_minutes?: number
+          scheduling_mode?: string
           tempo_espera?: number | null
           tom_conversa?: string | null
           tts_api_key?: string | null
@@ -970,6 +978,10 @@ export type Database = {
           prompt_regras?: string | null
           prompt_roteiro?: string | null
           responder_fora_horario?: boolean | null
+          scheduling_handoff_message?: string | null
+          scheduling_handoff_whatsapp?: string | null
+          scheduling_meeting_duration_minutes?: number
+          scheduling_mode?: string
           tempo_espera?: number | null
           tom_conversa?: string | null
           tts_api_key?: string | null
