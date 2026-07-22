@@ -1911,6 +1911,7 @@ export interface AutoScheduleDeps {
   checkAvailability: typeof checkAvailability;
   createCalendarEvent: typeof createCalendarEvent;
   deleteCalendarEvent: (accessToken: string, calendarId: string, eventId: string) => Promise<void>;
+  now: () => Date;
 }
 
 async function defaultDeleteCalendarEvent(accessToken: string, calendarId: string, eventId: string): Promise<void> {
@@ -1920,6 +1921,145 @@ async function defaultDeleteCalendarEvent(accessToken: string, calendarId: strin
   if (!r.ok && r.status !== 404 && r.status !== 410) {
     console.warn(`[orbit-ai-agent] deleteCalendarEvent status=${r.status}`);
   }
+}
+
+function dayOfWeek(day: string): number {
+  const [year, month, date] = day.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, date)).getUTCDay();
+}
+
+function isDefaultBusinessDay(day: string): boolean {
+  const weekday = dayOfWeek(day);
+  return weekday >= 1 && weekday <= 5;
+}
+
+function localMinutes(date: Date, tz: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(date);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value || 0) % 24;
+  const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
+  return hour * 60 + minute;
+}
+
+function preferredPeriod(message: string): "morning" | "afternoon" | "evening" | null {
+  const text = normalizePt(message || "");
+  if (/\b(manha|cedo)\b/.test(text)) return "morning";
+  if (/\b(tarde|depois do almoco)\b/.test(text)) return "afternoon";
+  if (/\b(noite|noturno)\b/.test(text)) return "evening";
+  return null;
+}
+
+function availabilityBoundsForPeriod(
+  startMinutes: number,
+  endMinutes: number,
+  period: ReturnType<typeof preferredPeriod>,
+): { start: number; end: number } {
+  if (period === "morning") return { start: startMinutes, end: Math.min(endMinutes, 12 * 60) };
+  if (period === "afternoon") return { start: Math.max(startMinutes, 12 * 60), end: Math.min(endMinutes, 18 * 60) };
+  if (period === "evening") return { start: Math.max(startMinutes, 18 * 60), end: endMinutes };
+  return { start: startMinutes, end: endMinutes };
+}
+
+async function findNearestAvailableSlots(params: {
+  deps: AutoScheduleDeps;
+  token: any;
+  accessToken: string;
+  calendarId: string;
+  timezone: string;
+  startDay: string;
+  durationMinutes: number;
+  minNoticeMinutes: number;
+  maxDays: number;
+  now: Date;
+  message: string;
+}): Promise<Array<{ start: string; end: string; label: string; label_full: string }>> {
+  const availabilityStart = parseAvailabilityTime(params.token.availability_start, 9);
+  const availabilityEnd = parseAvailabilityTime(params.token.availability_end, 18);
+  const configuredStart = availabilityStart.hour * 60 + availabilityStart.minute;
+  const configuredEnd = availabilityEnd.hour * 60 + availabilityEnd.minute;
+  const bounds = availabilityBoundsForPeriod(configuredStart, configuredEnd, preferredPeriod(params.message));
+  const durationMs = params.durationMinutes * 60_000;
+  const stepMs = Math.max(30, params.durationMinutes) * 60_000;
+  const noticeFloor = params.now.getTime() + params.minNoticeMinutes * 60_000;
+  const suggestions: Array<{ start: string; end: string; label: string; label_full: string }> = [];
+
+  if (bounds.end - bounds.start < params.durationMinutes) return suggestions;
+
+  for (let dayOffset = 0; dayOffset < params.maxDays && suggestions.length < 2; dayOffset++) {
+    const day = addCalendarDays(params.startDay, dayOffset);
+    if (!isDefaultBusinessDay(day)) continue;
+
+    const dayStart = isoWithOffset(day, Math.floor(bounds.start / 60), bounds.start % 60, params.timezone);
+    const dayEnd = isoWithOffset(day, Math.floor(bounds.end / 60), bounds.end % 60, params.timezone);
+    const endMs = new Date(dayEnd).getTime();
+    const dayStartMs = new Date(dayStart).getTime();
+    let cursor = Math.max(dayStartMs, noticeFloor);
+    cursor = dayStartMs + Math.ceil((cursor - dayStartMs) / stepMs) * stepMs;
+    if (cursor + durationMs > endMs) continue;
+
+    let busy: Array<{ start: string; end: string }> = [];
+    try {
+      const availability = await params.deps.checkAvailability(
+        params.accessToken,
+        params.calendarId,
+        dayStart,
+        dayEnd,
+        params.timezone,
+      );
+      busy = availability.busy || [];
+    } catch (error) {
+      console.error("[orbit-ai-agent] freeBusy falhou ao buscar próximos horários:", error);
+      throw error;
+    }
+
+    while (cursor + durationMs <= endMs && suggestions.length < 2) {
+      const slotEnd = cursor + durationMs;
+      const overlaps = busy.some((item) => {
+        const busyStart = new Date(item.start).getTime();
+        const busyEnd = new Date(item.end).getTime();
+        return cursor < busyEnd && slotEnd > busyStart;
+      });
+      if (!overlaps) {
+        const start = new Date(cursor);
+        const label = new Intl.DateTimeFormat("pt-BR", {
+          timeZone: params.timezone,
+          hour: "2-digit",
+          minute: "2-digit",
+        }).format(start);
+        const dayLabel = new Intl.DateTimeFormat("pt-BR", {
+          timeZone: params.timezone,
+          weekday: "long",
+          day: "2-digit",
+          month: "long",
+        }).format(start);
+        suggestions.push({
+          start: start.toISOString(),
+          end: new Date(slotEnd).toISOString(),
+          label,
+          label_full: `${dayLabel} às ${label}`,
+        });
+      }
+      cursor += stepMs;
+    }
+  }
+
+  return suggestions;
+}
+
+function formatSuggestionsResponse(
+  suggestions: Array<{ label_full?: string; label?: string }>,
+): string {
+  if (!suggestions.length) {
+    return "Não encontrei horários livres dentro do expediente nos próximos dias. Vou pedir para a equipe conferir a agenda e continuar com você.";
+  }
+  if (suggestions.length === 1) {
+    return `Encontrei este horário livre: ${suggestions[0].label_full || suggestions[0].label}. Funciona para você?`;
+  }
+  return `Encontrei estes dois horários livres: 1) ${suggestions[0].label_full || suggestions[0].label}; 2) ${suggestions[1].label_full || suggestions[1].label}. Qual deles você prefere?`;
 }
 
 export async function tryAutoScheduleMeeting(
@@ -1942,6 +2082,7 @@ export async function tryAutoScheduleMeeting(
     checkAvailability: depsIn?.checkAvailability ?? checkAvailability,
     createCalendarEvent: depsIn?.createCalendarEvent ?? createCalendarEvent,
     deleteCalendarEvent: depsIn?.deleteCalendarEvent ?? defaultDeleteCalendarEvent,
+    now: depsIn?.now ?? (() => new Date()),
   };
 
   const ag = params.agendamento || {};
@@ -1949,10 +2090,6 @@ export async function tryAutoScheduleMeeting(
   if (!token) {
     console.log("[orbit-ai-agent] Google Calendar não conectado — fallback para handoff manual", { empresaId: params.empresaId });
     return { handled: false, not_connected: true };
-  }
-  if (!ag.data_iso) {
-    console.log("[orbit-ai-agent] AI marcou agendar_call sem data_iso — fallback para handoff manual");
-    return { handled: false, error: "sem data_iso" };
   }
 
   const tz = token.timezone || "America/Sao_Paulo";
@@ -1963,42 +2100,110 @@ export async function tryAutoScheduleMeeting(
     : /\b(segund[oa]|opcao 2|2\s*[ªa])\b/.test(selectionText)
     ? previousSuggestions[1]
     : previousSuggestions.find((s) => s.label && selectionText.includes(normalizePt(s.label)));
-  const effectiveDataIso = selectedSuggestion?.start || ag.data_iso;
-  const startDate = new Date(effectiveDataIso);
-  if (isNaN(startDate.getTime())) {
-    return { handled: false, error: "data_iso inválida" };
-  }
 
   const calId = token.calendar_id;
   const duracaoMin = Math.max(15, Math.min(240, Number(ag.duracao_min) || 60));
   const titulo = String(ag.titulo || `Call com ${params.prospect?.nome_razao || params.prospect?.nome_fantasia || "lead"}`).slice(0, 200);
-  const temHorario = Boolean(selectedSuggestion?.start) || ag.tem_horario === true;
-
-  const dayStr = localDay(startDate, tz);
-
-  // ── Guardrails determinísticos: texto, passado, antecedência e horizonte ──
-  const now = new Date();
+  const now = deps.now();
   const configuredNotice = Number(token.booking_min_notice_minutes);
   const configuredHorizon = Number(token.booking_max_horizon_days);
   const minNoticeMinutes = Math.max(0, Number.isFinite(configuredNotice) ? configuredNotice : 60);
   const maxHorizonDays = Math.max(1, Number.isFinite(configuredHorizon) ? configuredHorizon : 60);
   const hint = resolveBookingDateHint(params.mensagem_cliente || "", now, tz);
+
+  // Sem data informada: consultar a agenda e oferecer os dois horários úteis mais próximos.
+  if (!selectedSuggestion?.start && !ag.data_iso) {
+    const access = await deps.ensureFreshAccessToken(token);
+    const today = localDay(now, tz);
+    const startDay = hint.expectedDay || (hint.ambiguous ? addCalendarDays(today, 7) : today);
+    try {
+      const suggestions = await findNearestAvailableSlots({
+        deps,
+        token,
+        accessToken: access,
+        calendarId: calId,
+        timezone: tz,
+        startDay,
+        durationMinutes: duracaoMin,
+        minNoticeMinutes,
+        maxDays: Math.min(maxHorizonDays, 14),
+        now,
+        message: params.mensagem_cliente || "",
+      });
+      return {
+        handled: true,
+        created: false,
+        response_override: formatSuggestionsResponse(suggestions),
+        suggestions,
+      };
+    } catch {
+      return { handled: false, error: "freeBusy falhou" };
+    }
+  }
+
+  const effectiveDataIso = selectedSuggestion?.start || ag.data_iso;
+  const startDate = new Date(effectiveDataIso);
+  if (isNaN(startDate.getTime())) {
+    return { handled: false, error: "data_iso inválida" };
+  }
+  const temHorario = Boolean(selectedSuggestion?.start) || ag.tem_horario === true;
+  const dayStr = localDay(startDate, tz);
+
+  // ── Guardrails determinísticos: texto, passado, antecedência e horizonte ──
   if (!selectedSuggestion && hint.ambiguous) {
-    return {
-      handled: true,
-      created: false,
-      response_override: "Claro. Qual dia da próxima semana funciona melhor para você?",
-    };
+    const access = await deps.ensureFreshAccessToken(token);
+    try {
+      const suggestions = await findNearestAvailableSlots({
+        deps,
+        token,
+        accessToken: access,
+        calendarId: calId,
+        timezone: tz,
+        startDay: addCalendarDays(localDay(now, tz), 7),
+        durationMinutes: duracaoMin,
+        minNoticeMinutes,
+        maxDays: Math.min(maxHorizonDays, 14),
+        now,
+        message: params.mensagem_cliente || "",
+      });
+      return {
+        handled: true,
+        created: false,
+        response_override: formatSuggestionsResponse(suggestions),
+        suggestions,
+      };
+    } catch {
+      return { handled: false, error: "freeBusy falhou" };
+    }
   }
   if (!selectedSuggestion && hint.expectedDay && hint.expectedDay !== dayStr) {
     console.warn("[orbit-ai-agent] data do modelo diverge da mensagem", {
       message: params.mensagem_cliente, expectedDay: hint.expectedDay, modelDay: dayStr,
     });
-    return {
-      handled: true,
-      created: false,
-      response_override: "Só para confirmar a data corretamente: qual dia e horário você prefere?",
-    };
+    const access = await deps.ensureFreshAccessToken(token);
+    try {
+      const suggestions = await findNearestAvailableSlots({
+        deps,
+        token,
+        accessToken: access,
+        calendarId: calId,
+        timezone: tz,
+        startDay: hint.expectedDay,
+        durationMinutes: duracaoMin,
+        minNoticeMinutes,
+        maxDays: Math.min(maxHorizonDays, 14),
+        now,
+        message: params.mensagem_cliente || "",
+      });
+      return {
+        handled: true,
+        created: false,
+        response_override: formatSuggestionsResponse(suggestions),
+        suggestions,
+      };
+    } catch {
+      return { handled: false, error: "freeBusy falhou" };
+    }
   }
   if (startDate.getTime() > now.getTime() + maxHorizonDays * 24 * 60 * 60 * 1000) {
     console.warn("[orbit-ai-agent] agendamento rejeitado (fora do horizonte):", effectiveDataIso);
@@ -2017,6 +2222,49 @@ export async function tryAutoScheduleMeeting(
         response_override: `Esse horário já passou ou não respeita a antecedência mínima de ${minNoticeMinutes} minutos. Pode me indicar outro horário?`,
       };
     }
+
+    const availabilityStart = parseAvailabilityTime(token.availability_start, 9);
+    const availabilityEnd = parseAvailabilityTime(token.availability_end, 18);
+    const configuredStart = availabilityStart.hour * 60 + availabilityStart.minute;
+    const configuredEnd = availabilityEnd.hour * 60 + availabilityEnd.minute;
+    const appointmentStart = localMinutes(startDate, tz);
+    const appointmentEndDate = new Date(startDate.getTime() + duracaoMin * 60_000);
+    const appointmentEnd = localMinutes(appointmentEndDate, tz);
+    const sameLocalDay = localDay(appointmentEndDate, tz) === dayStr;
+    const insideBusinessHours = isDefaultBusinessDay(dayStr) && sameLocalDay &&
+      appointmentStart >= configuredStart && appointmentEnd <= configuredEnd;
+    if (!insideBusinessHours) {
+      console.warn("[orbit-ai-agent] horário rejeitado fora do expediente:", {
+        effectiveDataIso,
+        availabilityStart: token.availability_start,
+        availabilityEnd: token.availability_end,
+        timezone: tz,
+      });
+      const access = await deps.ensureFreshAccessToken(token);
+      try {
+        const suggestions = await findNearestAvailableSlots({
+          deps,
+          token,
+          accessToken: access,
+          calendarId: calId,
+          timezone: tz,
+          startDay: dayStr,
+          durationMinutes: duracaoMin,
+          minNoticeMinutes,
+          maxDays: Math.min(maxHorizonDays, 14),
+          now,
+          message: params.mensagem_cliente || "",
+        });
+        return {
+          handled: true,
+          created: false,
+          response_override: `Esse horário fica fora do nosso expediente de ${String(token.availability_start || "09:00").slice(0, 5)} às ${String(token.availability_end || "18:00").slice(0, 5)}. ${formatSuggestionsResponse(suggestions)}`,
+          suggestions,
+        };
+      } catch {
+        return { handled: false, error: "freeBusy falhou" };
+      }
+    }
   } else {
     // Dia sem horário: rejeitar se o dia local da agenda já passou
     const todayStr = localDay(now, tz);
@@ -2030,65 +2278,33 @@ export async function tryAutoScheduleMeeting(
     }
   }
 
-  // ── Ramo: dia sem horário — sugerir 2 slots livres (precisa de token + freeBusy) ──
+  // ── Ramo: dia sem horário — sugerir os 2 slots úteis mais próximos ──
   if (!temHorario) {
     const access = await deps.ensureFreshAccessToken(token);
-    const availabilityStart = parseAvailabilityTime(token.availability_start, 9);
-    const availabilityEnd = parseAvailabilityTime(token.availability_end, 18);
-    const timeMin = isoWithOffset(dayStr, availabilityStart.hour, availabilityStart.minute, tz);
-    const timeMax = isoWithOffset(dayStr, availabilityEnd.hour, availabilityEnd.minute, tz);
-    let busy: { start: string; end: string }[] = [];
     try {
-      const av = await deps.checkAvailability(access, calId, timeMin, timeMax, tz);
-      busy = av.busy || [];
+      const suggestions = await findNearestAvailableSlots({
+        deps,
+        token,
+        accessToken: access,
+        calendarId: calId,
+        timezone: tz,
+        startDay: dayStr,
+        durationMinutes: duracaoMin,
+        minNoticeMinutes,
+        maxDays: Math.min(maxHorizonDays, 14),
+        now,
+        message: params.mensagem_cliente || "",
+      });
+      return {
+        handled: true,
+        created: false,
+        response_override: formatSuggestionsResponse(suggestions),
+        suggestions,
+      };
     } catch (e) {
       console.error("[orbit-ai-agent] freeBusy falhou:", e);
       return { handled: false, error: "freeBusy falhou" };
     }
-
-    const durMs = duracaoMin * 60 * 1000;
-    const stepMs = 30 * 60 * 1000;
-    const endMs = new Date(timeMax).getTime();
-    const suggestions: { start: string; end: string; label: string; label_full: string }[] = [];
-    const noticeFloor = now.getTime() + minNoticeMinutes * 60 * 1000;
-    let cursor = Math.max(new Date(timeMin).getTime(), noticeFloor);
-    cursor = Math.ceil(cursor / stepMs) * stepMs;
-    while (cursor + durMs <= endMs && suggestions.length < 2) {
-      const slotEnd = cursor + durMs;
-      const overlap = busy.some((b) => {
-        const bs = new Date(b.start).getTime();
-        const be = new Date(b.end).getTime();
-        return cursor < be && slotEnd > bs;
-      });
-      if (!overlap) {
-        const hhmm = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, hour: "2-digit", minute: "2-digit" }).format(new Date(cursor));
-        const dayFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, weekday: "long", day: "2-digit", month: "long" }).format(new Date(cursor));
-        suggestions.push({
-          start: new Date(cursor).toISOString(),
-          end: new Date(slotEnd).toISOString(),
-          label: hhmm,
-          label_full: `${dayFmt} às ${hhmm}`,
-        });
-      }
-      cursor += stepMs;
-    }
-
-    if (!suggestions.length) {
-      const dayFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, weekday: "long", day: "2-digit", month: "long" }).format(startDate);
-      return {
-        handled: true,
-        response_override: `Infelizmente não tenho horários livres em ${dayFmt}. Pode me passar outra data?`,
-        suggestions: [],
-      };
-    }
-
-    const dayFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: tz, weekday: "long", day: "2-digit", month: "long" }).format(new Date(suggestions[0].start));
-    const listStr = suggestions.map((s) => s.label).join(" ou ");
-    return {
-      handled: true,
-      response_override: `Perfeito! Tenho ${listStr} livres na ${dayFmt}. Qual prefere?`,
-      suggestions,
-    };
   }
 
   // ── Ramo: data + horário ──

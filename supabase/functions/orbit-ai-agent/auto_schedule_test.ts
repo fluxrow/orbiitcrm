@@ -134,11 +134,81 @@ Deno.test("bloqueia data do modelo divergente do dia informado pelo lead", async
   params.agendamento.data_iso = "2027-01-14T15:00:00-03:00";
   const res = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, params, {
     getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => "at",
+    checkAvailability: async () => ({ busy: [] }),
+    now: () => new Date("2026-07-20T15:00:00.000Z"),
   });
   assertEquals(res.handled, true);
   assertEquals(res.created, false);
-  assert(String(res.response_override).includes("confirmar a data"));
+  assertEquals(res.suggestions?.length, 2);
+  assertEquals(res.suggestions?.[0]?.start, "2026-07-23T12:00:00.000Z");
+  assert(String(res.response_override).includes("dois horários livres"));
   assertEquals(state.order.length, 0);
+});
+
+Deno.test("sem data consulta freeBusy e oferece os 2 horários úteis mais próximos", async () => {
+  const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
+  const params = baseParams() as any;
+  params.mensagem_cliente = "sim, quero agendar";
+  params.agendamento = { data_iso: null, tem_horario: false, duracao_min: 60 };
+  const queriedDays: string[] = [];
+  const res = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, params, {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => "at",
+    checkAvailability: async (_at, _cal, min) => {
+      queriedDays.push(String(min));
+      return { busy: [] };
+    },
+    now: () => new Date("2026-07-20T15:00:00.000Z"), // segunda, 12h BRT
+  });
+  assertEquals(res.handled, true);
+  assertEquals(res.created, false);
+  assertEquals(res.suggestions?.map((slot) => slot.label), ["13:00", "14:00"]);
+  assertEquals(queriedDays, ["2026-07-20T12:00:00.000Z"]);
+  assert(String(res.response_override).includes("Qual deles você prefere?"));
+  assert(!state.order.includes("orbit_meetings.insert"));
+});
+
+Deno.test("horário explícito fora do expediente não cria evento e oferece alternativas válidas", async () => {
+  const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
+  const params = baseParams() as any;
+  params.mensagem_cliente = "pode ser dia 30/07 às 8h";
+  params.agendamento = {
+    data_iso: "2026-07-30T11:00:00.000Z", // 08h BRT
+    tem_horario: true,
+    duracao_min: 60,
+  };
+  let createCalls = 0;
+  const res = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, params, {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => "at",
+    checkAvailability: async () => ({ busy: [] }),
+    createCalendarEvent: async () => { createCalls++; return { id: "must-not-run" }; },
+    now: () => new Date("2026-07-20T15:00:00.000Z"),
+  });
+  assertEquals(res.handled, true);
+  assertEquals(res.created, false);
+  assertEquals(createCalls, 0);
+  assertEquals(res.suggestions?.map((slot) => slot.label), ["09:00", "10:00"]);
+  assert(String(res.response_override).includes("fora do nosso expediente de 09:00 às 18:00"));
+  assert(!state.order.includes("rpc.ensure_deal_for_prospect"));
+  assert(!state.order.includes("orbit_meetings.insert"));
+});
+
+Deno.test("busca automática pula sábado e domingo", async () => {
+  const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
+  const params = baseParams() as any;
+  params.mensagem_cliente = "quero agendar";
+  params.agendamento = { data_iso: null, tem_horario: false, duracao_min: 60 };
+  const queried: string[] = [];
+  const res = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, params, {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => "at",
+    checkAvailability: async (_at, _cal, min) => { queried.push(String(min)); return { busy: [] }; },
+    now: () => new Date("2026-07-24T23:30:00.000Z"), // sexta, 20:30 BRT; próxima janela é segunda
+  });
+  assertEquals(res.suggestions?.map((slot) => slot.label), ["09:00", "10:00"]);
+  assertEquals(queried, ["2026-07-27T12:00:00.000Z"]);
 });
 
 Deno.test("dia sem horário usa janela e fuso configurados no tenant", async () => {
@@ -163,7 +233,7 @@ Deno.test("dia sem horário usa janela e fuso configurados no tenant", async () 
     deleteCalendarEvent: async () => {},
   });
   assertEquals(res.handled, true);
-  assertEquals(res.created, undefined);
+  assertEquals(res.created, false);
   assertEquals(queried, {
     min: "2026-07-30T14:30:00.000Z",
     max: "2026-07-30T20:30:00.000Z",
@@ -486,7 +556,8 @@ Deno.test("dia passado sem horário NÃO consulta Google e retorna mensagem pedi
 });
 
 Deno.test("data futura com horário continua fluindo normalmente (regressão)", async () => {
-  const futureStart = new Date(Date.now() + 7 * 24 * 3600_000).toISOString();
+  const futureDay = localFutureDay(7);
+  const futureStart = `${futureDay}T18:00:00.000Z`; // 15h BRT, dentro de 09h–18h
   const futureEnd = new Date(new Date(futureStart).getTime() + 60 * 60_000).toISOString();
   const state: FakeState = {
     meetings: [], deals: [{ id: "deal-1", etapa_id: null }],
@@ -508,3 +579,13 @@ Deno.test("data futura com horário continua fluindo normalmente (regressão)", 
   assert(res.meeting_id);
   assert(state.order.includes("orbit_meetings.insert"));
 });
+
+function localFutureDay(days: number): string {
+  const future = new Date(Date.now() + days * 24 * 3600_000);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(future);
+}
