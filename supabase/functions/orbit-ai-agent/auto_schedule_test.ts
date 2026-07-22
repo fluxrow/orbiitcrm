@@ -1,7 +1,12 @@
 // Testes de contrato para tryAutoScheduleMeeting.
 // Rodar: deno test --allow-net --allow-env supabase/functions/orbit-ai-agent/auto_schedule_test.ts
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { resolveBookingDateHint, tryAutoScheduleMeeting } from "./index.ts";
+import {
+  normalizePreferredPeriod,
+  resolveBookingDateHint,
+  resolveTenantSchedulingDecision,
+  tryAutoScheduleMeeting,
+} from "./index.ts";
 
 type Row = Record<string, any>;
 
@@ -113,6 +118,40 @@ const TOKEN: any = {
   booking_min_notice_minutes: 60,
   booking_max_horizon_days: 60,
 };
+
+Deno.test("modo de agendamento padrao permanece auto_calendar", () => {
+  assertEquals(resolveTenantSchedulingDecision({ mode: null, message: "quero agendar" }), {
+    mode: "auto_calendar",
+    handled: false,
+    handoff_ready: false,
+    awaiting_period: false,
+    preferred_period: null,
+  });
+});
+
+Deno.test("handoff humano pergunta periodo antes de transferir", () => {
+  const result = resolveTenantSchedulingDecision({
+    mode: "human_handoff_after_period",
+    message: "sim, tenho interesse",
+  });
+  assertEquals(result.handled, true);
+  assertEquals(result.handoff_ready, false);
+  assertEquals(result.awaiting_period, true);
+  assert(String(result.response_override).includes("manha, a tarde ou a noite"));
+});
+
+Deno.test("handoff humano reconhece periodo e libera transferencia", () => {
+  assertEquals(normalizePreferredPeriod("À tarde"), "tarde");
+  const result = resolveTenantSchedulingDecision({
+    mode: "human_handoff_after_period",
+    message: "prefiro no período da tarde",
+    handoffMessage: "Perfeito. Vou verificar a agenda e ja te passo os horarios disponiveis.",
+  });
+  assertEquals(result.handled, false);
+  assertEquals(result.handoff_ready, true);
+  assertEquals(result.awaiting_period, false);
+  assertEquals(result.preferred_period, "tarde");
+});
 
 Deno.test("interpreta datas relativas no fuso do tenant sem inventar mês", () => {
   const now = new Date("2026-07-20T15:00:00.000Z"); // segunda, 12h BRT

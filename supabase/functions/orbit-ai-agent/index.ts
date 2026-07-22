@@ -15,6 +15,64 @@ import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbo
 
 // ── Estado da conversa (máquina de estados) ──
 type ConversationState = "novo" | "aguardando_resposta" | "auto_reply_detected" | "human_detected" | "qualificando" | "qualificado" | "handoff" | "encerrado";
+type SchedulingMode = "auto_calendar" | "human_handoff_after_period";
+
+export type TenantSchedulingDecision = {
+  mode: SchedulingMode;
+  handled: boolean;
+  handoff_ready: boolean;
+  awaiting_period: boolean;
+  preferred_period: "manha" | "tarde" | "noite" | null;
+  response_override?: string;
+};
+
+export function normalizePreferredPeriod(value: unknown): "manha" | "tarde" | "noite" | null {
+  const normalized = String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (/\b(manha|matutino|cedo)\b/.test(normalized)) return "manha";
+  if (/\b(tarde|vespertino)\b/.test(normalized)) return "tarde";
+  if (/\b(noite|noturno)\b/.test(normalized)) return "noite";
+  return null;
+}
+
+export function resolveTenantSchedulingDecision(params: {
+  mode?: unknown;
+  message: string;
+  parsedPeriod?: unknown;
+  awaitingPeriod?: boolean;
+  handoffMessage?: unknown;
+}): TenantSchedulingDecision {
+  const mode: SchedulingMode = params.mode === "human_handoff_after_period"
+    ? "human_handoff_after_period"
+    : "auto_calendar";
+  if (mode === "auto_calendar") {
+    return { mode, handled: false, handoff_ready: false, awaiting_period: false, preferred_period: null };
+  }
+
+  const preferredPeriod = normalizePreferredPeriod(params.parsedPeriod) ||
+    normalizePreferredPeriod(params.message);
+  if (!preferredPeriod) {
+    return {
+      mode,
+      handled: true,
+      handoff_ready: false,
+      awaiting_period: true,
+      preferred_period: null,
+      response_override: "Voce prefere conversar pela manha, a tarde ou a noite?",
+    };
+  }
+
+  return {
+    mode,
+    handled: false,
+    handoff_ready: true,
+    awaiting_period: false,
+    preferred_period: preferredPeriod,
+    response_override: String(params.handoffMessage || "Perfeito. Vou verificar a agenda e ja te passo os horarios disponiveis."),
+  };
+}
 
 // ── Classificação de mensagem ──
 type MessageClassification = "human_probable" | "auto_reply" | "uncertain";
@@ -847,13 +905,16 @@ serve(async (req) => {
     const _nowFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: _agendaTz, weekday: "long", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date());
     const _nowISO = new Date().toISOString();
     const dataHoraAtualBlock = `\nDATA/HORA ATUAL (referência para agendamentos): ${_nowFmt} (${_agendaTz}) — ISO: ${_nowISO}\nJANELA DA AGENDA: ${agendaSettings?.availability_start || "09:00"}–${agendaSettings?.availability_end || "18:00"}; antecedência mínima ${agendaSettings?.booking_min_notice_minutes ?? 60} min; horizonte máximo ${agendaSettings?.booking_max_horizon_days ?? 60} dias.\nREGRA CRÍTICA DE AGENDAMENTO: NUNCA devolva "data_iso" no passado nem além do horizonte. Se o cliente citar um dia da semana, resolva para a próxima ocorrência FUTURA no fuso acima. Se disser apenas "semana que vem" sem indicar o dia, deixe data_iso=null e pergunte o dia. Ano correto é derivado da data atual; nunca invente janeiro ou outro mês sem apoio na mensagem.\n`;
+    const schedulingModeBlock = aiConfig.scheduling_mode === "human_handoff_after_period"
+      ? `\nMODO DE AGENDAMENTO DESTE TENANT: HANDOFF HUMANO APOS PERIODO.\n- Quando o lead aceitar a conversa/reuniao, use intencao=agendar_call e pergunte apenas se prefere manha, tarde ou noite.\n- Quando ele responder o periodo, use intencao=agendar_call e preencha agendamento.periodo_preferido.\n- Nao ofereca dia ou horario e nao prometa evento criado. O sistema transfere para o responsavel.\n`
+      : `\nMODO DE AGENDAMENTO DESTE TENANT: AGENDA AUTOMATICA. O sistema consulta o calendario e oferece dois horarios livres; nao pergunte qual horario o lead prefere antes dessa consulta.\n`;
 
     const systemPrompt = `${promptIdentidade}
 
 Tom de voz: ${aiConfig.tom_conversa || "profissional e amigável"}
 Idioma: ${idioma === "pt-BR" ? "Português do Brasil" : idioma === "en" ? "Inglês" : "Espanhol"}
 ${campaignContinuity}${stateInstruction}${classificationInstruction}
-${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${dataHoraAtualBlock}
+${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${dataHoraAtualBlock}${schedulingModeBlock}
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
 ${camposQualificacaoBlock}${ragBlock}
@@ -881,7 +942,7 @@ IMPORTANTE: Responda em JSON com esta estrutura:
   "dados_adicionais": { ${camposQualificacao.map(c => `"${c.key}": "..."`).join(", ")} },
   "campo_solicitado": "nome_do_campo ou null",
   "cadastro_completo": true|false,
-  "agendamento": { "data_iso": "ISO-8601 com timezone ou null", "tem_horario": true|false, "duracao_min": 60, "titulo": "Call com ..." }
+  "agendamento": { "data_iso": "ISO-8601 com timezone ou null", "tem_horario": true|false, "periodo_preferido": "manha|tarde|noite|null", "duracao_min": 60, "titulo": "Call com ..." }
 }
 
 Regras de "intencao":
@@ -895,6 +956,7 @@ Regras de "agendamento":
 - Se o cliente informou dia + horário: data_iso = ISO completo com timezone (ex.: "2026-07-23T15:00:00-03:00"), tem_horario=true.
 - Se o cliente informou apenas o dia (sem horário claro): data_iso = ISO desse dia às 09:00 no timezone, tem_horario=false. O sistema vai propor 2 horários livres da agenda.
 - Se o cliente estiver ESCOLHENDO um horário sugerido em mensagem anterior (ex.: "o primeiro", "às 10h", "pode ser o segundo"), leia SUGESTOES_ANTERIORES abaixo e devolva o data_iso escolhido com tem_horario=true.
+- Se o atendimento pedir apenas o periodo do dia, preencha periodo_preferido com manha, tarde ou noite exatamente quando o cliente responder.
 - NUNCA invente horários que não foram citados nem sugeridos.
 - "titulo" curto (ex.: "Call comercial com <nome>"); duracao_min padrão = 60.
 
@@ -958,7 +1020,16 @@ ${regrasBlock}`;
 
     // ── Calcular próximo estado da conversa ──
     // Handoff APENAS quando há sinal comercial real: agendamento de call, venda ou pedido explícito de humano.
-    const intencaoNormalizada = String(parsed.intencao || "outro");
+    let intencaoNormalizada = String(parsed.intencao || "outro");
+    if (
+      aiConfig.scheduling_mode === "human_handoff_after_period" &&
+      aiContexto?.agendamento_aguardando_periodo === true &&
+      normalizePreferredPeriod(parsed.agendamento?.periodo_preferido || mensagemAgregada)
+    ) {
+      // O modelo pode classificar uma resposta curta como "a tarde" como outro.
+      // O contexto pendente torna a intenção de agendamento determinística.
+      intencaoNormalizada = "agendar_call";
+    }
     const isCommercialSignal =
       intencaoNormalizada === "agendar_call" ||
       intencaoNormalizada === "venda_fechada" ||
@@ -974,22 +1045,39 @@ ${regrasBlock}`;
       meeting_id?: string | null;
       not_connected?: boolean;
       error?: string;
+      awaiting_period?: boolean;
+      preferred_period?: string | null;
+      handoff_ready?: boolean;
     } = { handled: false };
     if (intencaoNormalizada === "agendar_call" && empresaId) {
-      try {
-        scheduleOutcome = await tryAutoScheduleMeeting(supabase, {
-          empresaId,
-          prospect,
-          prospect_id,
-          conversa_id,
-          telefone,
-          mensagem_cliente: mensagemAgregada,
-          sugestoes_anteriores: Array.isArray(aiContexto?.agendamento_sugestoes) ? aiContexto.agendamento_sugestoes : [],
-          agendamento: parsed.agendamento || {},
-        });
-      } catch (schedErr) {
-        console.error("[orbit-ai-agent] tryAutoScheduleMeeting erro:", schedErr);
-        scheduleOutcome = { handled: false, error: (schedErr as Error).message };
+      const schedulingDecision = resolveTenantSchedulingDecision({
+        mode: aiConfig.scheduling_mode,
+        message: mensagemAgregada,
+        parsedPeriod: parsed.agendamento?.periodo_preferido,
+        awaitingPeriod: aiContexto?.agendamento_aguardando_periodo === true,
+        handoffMessage: aiConfig.scheduling_handoff_message,
+      });
+      if (schedulingDecision.mode === "human_handoff_after_period") {
+        scheduleOutcome = schedulingDecision;
+      } else {
+        try {
+          scheduleOutcome = await tryAutoScheduleMeeting(supabase, {
+            empresaId,
+            prospect,
+            prospect_id,
+            conversa_id,
+            telefone,
+            mensagem_cliente: mensagemAgregada,
+            sugestoes_anteriores: Array.isArray(aiContexto?.agendamento_sugestoes) ? aiContexto.agendamento_sugestoes : [],
+            agendamento: {
+              ...(parsed.agendamento || {}),
+              duracao_min: parsed.agendamento?.duracao_min || aiConfig.scheduling_meeting_duration_minutes || 60,
+            },
+          });
+        } catch (schedErr) {
+          console.error("[orbit-ai-agent] tryAutoScheduleMeeting erro:", schedErr);
+          scheduleOutcome = { handled: false, error: (schedErr as Error).message };
+        }
       }
       if (scheduleOutcome.response_override) {
         resposta = scheduleOutcome.response_override;
@@ -1009,7 +1097,7 @@ ${regrasBlock}`;
 
     // ── Notificação comercial: SOMENTE em sinal comercial real e sem auto-agendamento ──
     const alreadyNotified = aiContexto.commercial_notified === true;
-    const shouldNotifyCommercial = isCommercialSignal && !alreadyNotified && !suppressHandoff;
+    const shouldNotifyCommercial = isCommercialSignal && !alreadyNotified && !suppressHandoff && !scheduleOutcome.handoff_ready;
     if (shouldNotifyCommercial) {
       console.log("[orbit-ai-agent] Sinal comercial detectado:", intencaoNormalizada, "— notificando responsável...");
       await notifyCommercialHumanDetected(supabase, {
@@ -1045,6 +1133,8 @@ ${regrasBlock}`;
         ? scheduleOutcome.suggestions
         : (scheduleOutcome.created ? [] : (aiContexto.agendamento_sugestoes ?? [])),
       agendamento_ultimo_meeting_id: scheduleOutcome.meeting_id || aiContexto.agendamento_ultimo_meeting_id || null,
+      agendamento_aguardando_periodo: scheduleOutcome.awaiting_period === true,
+      agendamento_periodo_preferido: scheduleOutcome.preferred_period || aiContexto.agendamento_periodo_preferido || null,
     };
 
     await supabase
@@ -1238,6 +1328,7 @@ ${regrasBlock}`;
         mensagem_lead: mensagem,
         telefone_lead: telefone,
         isDemo,
+        whatsapp_override: scheduleOutcome.handoff_ready ? aiConfig.scheduling_handoff_whatsapp : null,
       });
     }
 
@@ -1318,10 +1409,11 @@ interface HandoffParams {
   mensagem_lead: string;
   telefone_lead: string;
   isDemo: boolean;
+  whatsapp_override?: string | null;
 }
 
 async function handleSellerHandoff(supabase: any, params: HandoffParams) {
-  const { conversa_id, prospect_id, prospect, vendedor_id, empresa_id, mensagem_lead, telefone_lead, isDemo } = params;
+  const { conversa_id, prospect_id, prospect, vendedor_id, empresa_id, mensagem_lead, telefone_lead, isDemo, whatsapp_override } = params;
 
   try {
     const { data: existingHandoff } = await supabase
@@ -1348,7 +1440,7 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
       .eq("id", vendedor_id)
       .maybeSingle();
 
-    const vendedorWhatsapp = vendedorPe?.whatsapp || vendedorPe?.phone || vendedorProfile?.telefone;
+    const vendedorWhatsapp = whatsapp_override || vendedorPe?.whatsapp || vendedorPe?.phone || vendedorProfile?.telefone;
     if (!vendedorWhatsapp) {
       console.log("[orbit-ai-agent] Vendedor sem WhatsApp/telefone, não pode enviar handoff");
       await supabase.from("orbit_handoffs").insert({
