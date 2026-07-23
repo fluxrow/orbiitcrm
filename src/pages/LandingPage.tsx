@@ -169,12 +169,6 @@ function Hero() {
             Quero minha agenda cheia
             <ArrowRight className="w-4 h-4" />
           </a>
-          <a
-            href="/apresentacao/orbit-2026"
-            className="inline-flex items-center gap-2 px-6 py-3.5 rounded-full bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 transition-colors text-sm"
-          >
-            Ver apresentação completa
-          </a>
         </motion.div>
 
         <motion.div
