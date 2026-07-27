@@ -2,6 +2,7 @@
 // Rodar: deno test --allow-net --allow-env supabase/functions/orbit-ai-agent/auto_schedule_test.ts
 import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  explicitTimeBounds,
   normalizePreferredPeriod,
   resolveBookingDateHint,
   resolveTenantSchedulingDecision,
@@ -206,6 +207,44 @@ Deno.test("sem data consulta freeBusy e oferece os 2 horários úteis mais próx
   assertEquals(queriedDays, ["2026-07-20T12:00:00.000Z"]);
   assert(String(res.response_override).includes("Qual deles você prefere?"));
   assert(!state.order.includes("orbit_meetings.insert"));
+});
+
+Deno.test("faixa horária explícita prevalece sobre período genérico", () => {
+  assertEquals(explicitTimeBounds("Durante a semana no horário da tarde entre 15 e 17 h"), {
+    start: 15 * 60,
+    end: 17 * 60,
+  });
+  assertEquals(explicitTimeBounds("Consigo das 15:30 às 17:30"), {
+    start: 15 * 60 + 30,
+    end: 17 * 60 + 30,
+  });
+});
+
+Deno.test("regressão Fábrica: entre 15 e 17 sugere 15h e 16h, nunca 12h e 13h", async () => {
+  const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
+  const params = baseParams() as any;
+  params.mensagem_cliente = "Durante a semana no horário da tarde entre 15 e 17 h";
+  params.agendamento = { data_iso: null, tem_horario: false, duracao_min: 60 };
+  const queried: Array<{ min: string; max: string; tz: string }> = [];
+  const res = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, params, {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => "at",
+    checkAvailability: async (_at, _cal, min, max, tz) => {
+      queried.push({ min: String(min), max: String(max), tz: String(tz) });
+      return { busy: [] };
+    },
+    now: () => new Date("2026-07-27T13:00:00.000Z"), // segunda, 10h BRT
+  });
+  assertEquals(res.handled, true);
+  assertEquals(res.created, false);
+  assertEquals(res.suggestions?.map((slot) => slot.label), ["15:00", "16:00"]);
+  assertEquals(queried, [{
+    min: "2026-07-27T18:00:00.000Z",
+    max: "2026-07-27T20:00:00.000Z",
+    tz: "America/Sao_Paulo",
+  }]);
+  assert(!String(res.response_override).includes("12:00"));
+  assert(!String(res.response_override).includes("13:00"));
 });
 
 Deno.test("horário explícito fora do expediente não cria evento e oferece alternativas válidas", async () => {

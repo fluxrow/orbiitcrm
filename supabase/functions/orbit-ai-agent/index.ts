@@ -2045,11 +2045,53 @@ function preferredPeriod(message: string): "morning" | "afternoon" | "evening" |
   return null;
 }
 
-function availabilityBoundsForPeriod(
+type AvailabilityBounds = { start: number; end: number };
+
+function clockMinutes(hourValue: string, minuteValue?: string): number | null {
+  const hour = Number(hourValue);
+  const minute = Number(minuteValue || 0);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return null;
+  }
+  return hour * 60 + minute;
+}
+
+export function explicitTimeBounds(message: string): AvailabilityBounds | null {
+  const text = normalizePt(message || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const time = "(\\d{1,2})(?:[:h](\\d{2}))?";
+  const rangePatterns = [
+    new RegExp(`\\bentre\\s+${time}\\s*(?:h(?:oras?)?)?\\s*(?:e|as|a|ate|-)\\s*${time}\\s*(?:h(?:oras?)?)?\\b`),
+    new RegExp(`\\b(?:de|das?)\\s+${time}\\s*(?:h(?:oras?)?)?\\s*(?:as|a|ate|-)\\s*${time}\\s*(?:h(?:oras?)?)?\\b`),
+    new RegExp(`\\b${time}\\s*h(?:oras?)?\\s*(?:as|a|ate|-)\\s*${time}\\s*(?:h(?:oras?)?)?\\b`),
+  ];
+
+  for (const pattern of rangePatterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const start = clockMinutes(match[1], match[2]);
+    const end = clockMinutes(match[3], match[4]);
+    if (start !== null && end !== null && end > start) return { start, end };
+  }
+
+  return null;
+}
+
+function availabilityBoundsForMessage(
   startMinutes: number,
   endMinutes: number,
-  period: ReturnType<typeof preferredPeriod>,
-): { start: number; end: number } {
+  message: string,
+): AvailabilityBounds {
+  const explicit = explicitTimeBounds(message);
+  if (explicit) {
+    return {
+      start: Math.max(startMinutes, explicit.start),
+      end: Math.min(endMinutes, explicit.end),
+    };
+  }
+
+  const period = preferredPeriod(message);
   if (period === "morning") return { start: startMinutes, end: Math.min(endMinutes, 12 * 60) };
   if (period === "afternoon") return { start: Math.max(startMinutes, 12 * 60), end: Math.min(endMinutes, 18 * 60) };
   if (period === "evening") return { start: Math.max(startMinutes, 18 * 60), end: endMinutes };
@@ -2073,7 +2115,7 @@ async function findNearestAvailableSlots(params: {
   const availabilityEnd = parseAvailabilityTime(params.token.availability_end, 18);
   const configuredStart = availabilityStart.hour * 60 + availabilityStart.minute;
   const configuredEnd = availabilityEnd.hour * 60 + availabilityEnd.minute;
-  const bounds = availabilityBoundsForPeriod(configuredStart, configuredEnd, preferredPeriod(params.message));
+  const bounds = availabilityBoundsForMessage(configuredStart, configuredEnd, params.message);
   const durationMs = params.durationMinutes * 60_000;
   const stepMs = Math.max(30, params.durationMinutes) * 60_000;
   const noticeFloor = params.now.getTime() + params.minNoticeMinutes * 60_000;
