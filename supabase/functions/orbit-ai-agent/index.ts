@@ -1543,7 +1543,8 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
   }
 }
 
-async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: string, conversa_id: string, isDemo: boolean, empresaId?: string | null) {
+async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw: string, conversa_id: string, isDemo: boolean, empresaId?: string | null) {
+  const mensagem = normalizeAgentText(mensagemRaw);
   try {
     if (isDemo) {
       console.log("[orbit-ai-agent] Demo mode — simulando envio");
