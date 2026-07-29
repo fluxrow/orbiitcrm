@@ -912,6 +912,10 @@ serve(async (req) => {
 
     const systemPrompt = `${promptIdentidade}
 
+ESTILO DE ESCRITA (PT-BR, INVIOLÁVEL):
+${PT_BR_STYLE_GUARDRAILS}
+
+
 Tom de voz: ${aiConfig.tom_conversa || "profissional e amigável"}
 Idioma: ${idioma === "pt-BR" ? "Português do Brasil" : idioma === "en" ? "Inglês" : "Espanhol"}
 ${campaignContinuity}${stateInstruction}${classificationInstruction}
