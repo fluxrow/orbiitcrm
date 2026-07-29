@@ -95,6 +95,7 @@ export function buildSystemPrompt(cfg: LoadedAIConfig, mockLead?: MockLead | nul
   return [
     `[AMBIENTE DE TESTE / SANDBOX — sem persistência]`,
     `=== IDENTIDADE E ANTI-AUTORREVELAÇÃO (GLOBAL, INVIOLÁVEL) ===\n${ANTI_SELF_REVEAL}\n=== FIM ===`,
+    `=== ESTILO DE ESCRITA (PT-BR, INVIOLÁVEL) ===\n${PT_BR_STYLE_GUARDRAILS}\n=== FIM ===`,
     identidade,
     `Tom: ${tom}. Idioma: ${idioma}.`,
     roteiro ? `\n=== ROTEIRO ===\n${roteiro}\n=== FIM ===` : "",
