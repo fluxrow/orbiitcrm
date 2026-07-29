@@ -12,6 +12,7 @@ import {
   createCalendarEvent,
 } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
+import { normalizeAgentText, PT_BR_STYLE_GUARDRAILS } from "../_shared/pt-br-normalizer.ts";
 
 // ── Estado da conversa (máquina de estados) ──
 type ConversationState = "novo" | "aguardando_resposta" | "auto_reply_detected" | "human_detected" | "qualificando" | "qualificado" | "handoff" | "encerrado";
@@ -911,6 +912,10 @@ serve(async (req) => {
 
     const systemPrompt = `${promptIdentidade}
 
+ESTILO DE ESCRITA (PT-BR, INVIOLÁVEL):
+${PT_BR_STYLE_GUARDRAILS}
+
+
 Tom de voz: ${aiConfig.tom_conversa || "profissional e amigável"}
 Idioma: ${idioma === "pt-BR" ? "Português do Brasil" : idioma === "en" ? "Inglês" : "Espanhol"}
 ${campaignContinuity}${stateInstruction}${classificationInstruction}
@@ -1542,7 +1547,8 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
   }
 }
 
-async function sendWhatsAppMessage(supabase: any, telefone: string, mensagem: string, conversa_id: string, isDemo: boolean, empresaId?: string | null) {
+async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw: string, conversa_id: string, isDemo: boolean, empresaId?: string | null) {
+  const mensagem = normalizeAgentText(mensagemRaw);
   try {
     if (isDemo) {
       console.log("[orbit-ai-agent] Demo mode — simulando envio");

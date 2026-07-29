@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { getCorsHeaders, corsOptionsResponse } from "../_shared/cors.ts";
 import { callAnthropic, toAnthropicMessages, ANTHROPIC_DEFAULT_MODEL } from "../_shared/anthropic.ts";
+import { normalizeAgentText, PT_BR_STYLE_GUARDRAILS } from "../_shared/pt-br-normalizer.ts";
 
 interface SandboxMessage {
   role: "user" | "assistant" | "system";
@@ -94,6 +95,7 @@ export function buildSystemPrompt(cfg: LoadedAIConfig, mockLead?: MockLead | nul
   return [
     `[AMBIENTE DE TESTE / SANDBOX — sem persistência]`,
     `=== IDENTIDADE E ANTI-AUTORREVELAÇÃO (GLOBAL, INVIOLÁVEL) ===\n${ANTI_SELF_REVEAL}\n=== FIM ===`,
+    `=== ESTILO DE ESCRITA (PT-BR, INVIOLÁVEL) ===\n${PT_BR_STYLE_GUARDRAILS}\n=== FIM ===`,
     identidade,
     `Tom: ${tom}. Idioma: ${idioma}.`,
     roteiro ? `\n=== ROTEIRO ===\n${roteiro}\n=== FIM ===` : "",
@@ -181,7 +183,7 @@ serve(async (req) => {
       return json(200, {
         ok: true,
         data: {
-          message: renderWelcomeMessage(cfg.mensagem_boas_vindas, mockLead),
+          message: normalizeAgentText(renderWelcomeMessage(cfg.mensagem_boas_vindas, mockLead)),
           source: "configured_welcome",
         },
       });
@@ -219,7 +221,7 @@ serve(async (req) => {
       });
     }
 
-    return json(200, { ok: true, data: { message: result.text || "(sem resposta)" } });
+    return json(200, { ok: true, data: { message: normalizeAgentText(result.text) || "(sem resposta)" } });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Erro desconhecido";
     return new Response(JSON.stringify({ ok: false, error: msg }), {
