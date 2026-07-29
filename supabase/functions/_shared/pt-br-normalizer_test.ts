@@ -40,3 +40,10 @@ Deno.test("preserva capitalização inicial ao corrigir acento", () => {
   assertEquals(normalizeAgentText("Nao sei"), "Não sei");
   assertEquals(normalizeAgentText("nao sei"), "não sei");
 });
+
+Deno.test("não corrompe 'esta' como pronome demonstrativo", () => {
+  assertEquals(
+    normalizeAgentText("Esta mensagem está correta."),
+    "Esta mensagem está correta.",
+  );
+});

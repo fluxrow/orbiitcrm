@@ -13,6 +13,11 @@
 
 // Mapa de correções (chave em minúsculo, sem acento). O replace é
 // case-insensitive e preserva a capitalização da primeira letra.
+//
+// IMPORTANTE: só entram aqui palavras cuja forma SEM acento é
+// inequivocamente incorreta em PT-BR. Palavras ambíguas ficam de fora
+// (ex: "esta" é pronome demonstrativo válido; "meta" é substantivo válido;
+// "hoje/ontem/ideia" já são a forma correta).
 const ACCENT_FIXES: Record<string, string> = {
   voce: "você",
   voces: "vocês",
@@ -23,64 +28,34 @@ const ACCENT_FIXES: Record<string, string> = {
   avanco: "avanço",
   nao: "não",
   entao: "então",
-  eh: "é",
-  esta: "está",
   estao: "estão",
   ja: "já",
   tambem: "também",
-  atencao: "atenção",
   informacao: "informação",
   informacoes: "informações",
-  proximo: "próximo",
-  proxima: "próxima",
-  atras: "atrás",
-  seria: "seria",
   duvida: "dúvida",
   duvidas: "dúvidas",
   possivel: "possível",
-  facil: "fácil",
-  dificil: "difícil",
-  ninguem: "ninguém",
-  alguem: "alguém",
-  porem: "porém",
-  atraves: "através",
-  historia: "história",
   reuniao: "reunião",
   reunioes: "reuniões",
   opcao: "opção",
   opcoes: "opções",
   decisao: "decisão",
   decisoes: "decisões",
-  producao: "produção",
-  formacao: "formação",
-  operacao: "operação",
-  situacao: "situação",
-  condicao: "condição",
-  condicoes: "condições",
-  posicao: "posição",
-  posicoes: "posições",
   servico: "serviço",
   servicos: "serviços",
   preco: "preço",
   precos: "preços",
-  comercio: "comércio",
   negocio: "negócio",
   negocios: "negócios",
   numero: "número",
   numeros: "números",
   ate: "até",
   apos: "após",
-  ontem: "ontem",
-  hoje: "hoje",
   amanha: "amanhã",
-  familia: "família",
-  ideia: "ideia",
-  ideias: "ideias",
-  meta: "meta",
-  esta_ai: "está aí",
   vao: "vão",
-  vamos: "vamos",
 };
+
 
 function preserveCase(source: string, replacement: string): string {
   if (!source) return replacement;
