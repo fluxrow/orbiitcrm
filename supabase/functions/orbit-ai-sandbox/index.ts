@@ -183,7 +183,7 @@ serve(async (req) => {
       return json(200, {
         ok: true,
         data: {
-          message: renderWelcomeMessage(cfg.mensagem_boas_vindas, mockLead),
+          message: normalizeAgentText(renderWelcomeMessage(cfg.mensagem_boas_vindas, mockLead)),
           source: "configured_welcome",
         },
       });
