@@ -221,7 +221,7 @@ serve(async (req) => {
       });
     }
 
-    return json(200, { ok: true, data: { message: result.text || "(sem resposta)" } });
+    return json(200, { ok: true, data: { message: normalizeAgentText(result.text) || "(sem resposta)" } });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Erro desconhecido";
     return new Response(JSON.stringify({ ok: false, error: msg }), {
