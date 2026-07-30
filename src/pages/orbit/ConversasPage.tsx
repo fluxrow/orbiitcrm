@@ -135,7 +135,15 @@ export default function ConversasPage() {
   const release = useEndHumanTakeover();
   const { data: handoff } = useOrbitHandoff(activeId || undefined);
 
-  const filtered = conversas?.filter((c) => (tab === "all" || c.canal === tab) && (!search || c.telefone_whatsapp.includes(search)));
+  // Busca server-side (RLS por tenant): nome, contato, empresa, email, telefone e última mensagem.
+  const { results: searchResults, active: searchActive } = useOrbitSearch(search, ["conversa"]);
+  const matchedIds = new Set(searchResults.map((r) => r.conversa_id ?? r.id));
+  const filtered = conversas?.filter((c) => {
+    if (tab !== "all" && c.canal !== tab) return false;
+    if (!searchActive) return true;
+    return matchedIds.has(c.id);
+  });
+
   const active = conversas?.find((c) => c.id === activeId);
 
   useEffect(() => {
