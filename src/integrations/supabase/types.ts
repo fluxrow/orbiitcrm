@@ -5299,10 +5299,25 @@ export type Database = {
         Args: { p_operation_id: string; p_rolled_back_by: string }
         Returns: Json
       }
+      orbit_global_search: {
+        Args: { _empresa_id: string; _limit?: number; _term: string }
+        Returns: {
+          conversa_id: string
+          detail: string
+          id: string
+          kind: string
+          prospect_id: string
+          subtitle: string
+          title: string
+          updated_at: string
+        }[]
+      }
       orbit_resend_has_api_key: {
         Args: { p_empresa_id: string }
         Returns: boolean
       }
+      orbit_search_digits: { Args: { _input: string }; Returns: string }
+      orbit_search_normalize: { Args: { _input: string }; Returns: string }
       orbit_seed_default_pipeline: {
         Args: { _empresa_id: string }
         Returns: undefined
