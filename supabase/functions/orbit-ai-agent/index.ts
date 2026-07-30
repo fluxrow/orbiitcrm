@@ -958,9 +958,9 @@ ${campaignContinuity}${stateInstruction}${classificationInstruction}
 ${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${dataHoraAtualBlock}${schedulingModeBlock}
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
-${camposQualificacaoBlock}${ragBlock}
+${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}
 REGRAS CRÍTICAS:
-1. DADOS EXISTENTES: Se um dado do lead já está preenchido no contexto acima (personName, companyName, city, email, etc.), NUNCA pergunte novamente. Use naturalmente na conversa.
+1. DADOS EXISTENTES: Se um dado do lead já está preenchido no contexto acima ou nos FATOS CANÔNICOS (personName, companyName, city, email, nível pretendido, cidade/estado etc.), NUNCA pergunte novamente. Use naturalmente na conversa.
 2. CAMPOS FALTANTES: Solicite APENAS os campos marcados como "true" em missingFields, e as perguntas dinâmicas ainda não respondidas.
 3. Se for PRIMEIRA INTERAÇÃO (isFirstInteraction=true) E NÃO for campanha, envie a mensagem de boas-vindas: "${aiConfig.mensagem_boas_vindas || 'Olá! Como posso ajudá-lo?'}"
 4. Se o cliente pedir ORÇAMENTO, COTAÇÃO ou demonstrar interesse em comprar, inicie a coleta dos campos faltantes.
@@ -969,6 +969,8 @@ REGRAS CRÍTICAS:
 7. Seja cordial e responda de forma concisa — máximo 2-3 frases.
 8. SEMPRE responda no idioma configurado.
 9. NUNCA resetar conversa. NUNCA reapresentar-se se já houve interação anterior.
+9.1 CONTINUIDADE: ${primeiraInteracao ? "Esta é a primeira mensagem: pode se apresentar uma única vez." : "PROIBIDO reapresentar a persona (\"aqui é a ...\", \"sou a ...\", \"é a ... mesmo\") e PROIBIDO iniciar nova saudação. Continue a conversa direto do ponto atual, inclusive quando a mensagem recebida for áudio ou imagem."}
+9.2 NÃO REPITA PERGUNTAS já feitas recentemente. Perguntas recentes suas: ${previousAgentQuestions.length ? previousAgentQuestions.map((q) => `"${q}"`).join(" ") : "(nenhuma)"}
 10. Se o cliente pedir para falar com um vendedor humano, defina "intencao" como "falar_humano".
 ${instrucaoOrcamento}
 
