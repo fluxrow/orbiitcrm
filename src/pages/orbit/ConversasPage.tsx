@@ -20,6 +20,7 @@ import { AudioLibraryPicker } from "@/components/orbit/AudioLibraryPicker";
 import { ZapiConnectionAlert } from "@/components/orbit/ZapiConnectionAlert";
 import type { AudioClip } from "@/hooks/useOrbitAudioLibrary";
 import { useSignedOrbitMedia } from "@/lib/orbit-media";
+import { useOrbitSearch } from "@/hooks/useOrbitSearch";
 
 function stripHtml(html: string): string {
   return html
