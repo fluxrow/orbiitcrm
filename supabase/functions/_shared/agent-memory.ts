@@ -353,36 +353,65 @@ export function buildDeterministicFallback(
 
 // ── Identidade e continuidade ──
 
+const NAME = "[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ.'-]*";
+const CAP_NAME = "[A-ZÀ-Ý][A-Za-zÀ-ÿ.'-]*";
+
+// Frases de auto-apresentação. Recortamos apenas a oração, nunca a frase inteira.
 const PERSONA_PATTERNS: RegExp[] = [
-  /\b(aqui|quem fala)\s+(é|e)\s+(a|o)\s+[A-Za-zÀ-ÿ]+/i,
-  /\b(sou|aqui\s+quem\s+fala\s+é)\s+(a|o)\s+[A-Za-zÀ-ÿ]+\b/i,
-  /\b(é|e)\s+(a|o)\s+[A-Za-zÀ-ÿ]+\s+mesm(a|o)\b/i,
-  /\bme\s+chamo\s+[A-Za-zÀ-ÿ]+/i,
-  /\bmeu\s+nome\s+(é|e)\s+[A-Za-zÀ-ÿ]+/i,
-  /\bfalando\s+(aqui\s+)?d(a|o)\s+[A-Za-zÀ-ÿ]+\s+novamente\b/i,
+  new RegExp(`(?:aqui\\s+)?quem\\s+fala\\s+(?:é|e)\\s+(?:a|o)\\s+${NAME}`, "giu"),
+  new RegExp(`aqui\\s+(?:é|e)\\s+(?:a|o)\\s+${NAME}`, "giu"),
+  new RegExp(`(?:é|e)\\s+(?:a|o)\\s+${NAME}\\s+mesm[ao]`, "giu"),
+  new RegExp(`sou\\s+(?:a|o)\\s+${CAP_NAME}`, "gu"),
+  new RegExp(`me\\s+chamo\\s+${CAP_NAME}`, "gu"),
+  new RegExp(`meu\\s+nome\\s+(?:é|e)\\s+${CAP_NAME}`, "giu"),
 ];
 
 const GREETING_ONLY_RE = /^(oi|ol[áa]|opa|e a[íi]|bom dia|boa tarde|boa noite)[\s,!.]*(tudo bem|tudo bom|como vai)?[\s,!?.]*$/i;
+
+function cleanupClause(value: string): string {
+  return value
+    .replace(/\s*,\s*,/g, ",")
+    .replace(/^[\s,;.!-]+/, "")
+    .replace(/\s+([,.;!?])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function capitalizeFirst(value: string): string {
+  if (!value) return value;
+  return value[0].toUpperCase() + value.slice(1);
+}
 
 /** Remove reapresentações de persona e saudações redundantes (após a 1ª mensagem). */
 export function stripPersonaReintroduction(text: string): string {
   if (!text) return "";
   const sentences = String(text).split(/(?<=[.!?])\s+/);
-  const kept = sentences.filter((s) => {
-    const t = s.trim();
-    if (!t) return false;
-    if (GREETING_ONLY_RE.test(t.replace(/[.!?]+$/, ""))) return false;
-    if (PERSONA_PATTERNS.some((re) => re.test(t))) return false;
-    return true;
-  });
-  let out = kept.join(" ").trim();
-  // Remove saudação inicial colada ao restante ("Oi! Sobre o edital..." já tratado acima;
-  // aqui cobrimos "Olá, sobre o edital...").
-  out = out.replace(/^(oi|ol[áa]|opa|bom dia|boa tarde|boa noite)[\s,!]+/i, "");
-  if (!out) out = String(text).trim();
-  return out.replace(/\s{2,}/g, " ").trim();
+  const kept: string[] = [];
+  for (const raw of sentences) {
+    const sentence = raw.trim();
+    if (!sentence) continue;
+    if (GREETING_ONLY_RE.test(sentence.replace(/[.!?]+$/, ""))) continue;
+    let cleaned = sentence;
+    for (const re of PERSONA_PATTERNS) {
+      re.lastIndex = 0;
+      cleaned = cleaned.replace(re, "");
+    }
+    cleaned = cleanupClause(cleaned);
+    // Sobrou apenas pontuação/saudação → descarta a frase.
+    if (!cleaned || /^[,.;!?\s]*$/.test(cleaned)) continue;
+    cleaned = cleaned.replace(/^(oi|ol[áa]|opa|bom dia|boa tarde|boa noite)[\s,!]+/i, "");
+    cleaned = cleanupClause(cleaned);
+    if (!cleaned) continue;
+    kept.push(capitalizeFirst(cleaned));
+  }
+  const out = kept.join(" ").replace(/\s{2,}/g, " ").trim();
+  return out;
 }
 
 export function containsPersonaReintroduction(text: string): boolean {
-  return PERSONA_PATTERNS.some((re) => re.test(String(text ?? "")));
+  const value = String(text ?? "");
+  return PERSONA_PATTERNS.some((re) => {
+    re.lastIndex = 0;
+    return re.test(value);
+  });
 }

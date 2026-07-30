@@ -70,7 +70,7 @@ Deno.test("REGRESSÃO: não pode perguntar cidade/estado já conhecidos", () => 
 
 Deno.test("não bloqueia pergunta sobre campo realmente ausente", () => {
   const facts = hydrateCanonicalFacts({ prospect: prospectEbsamar });
-  assertEquals(detectRepetition("Qual o prazo do edital que você quer?", facts, []).violates, true);
+  assertEquals(detectRepetition("Qual área você pretende seguir?", facts, []).violates, true);
   assertEquals(detectRepetition("Como está sua rotina de estudos hoje?", facts, []).violates, false);
 });
 
