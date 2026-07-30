@@ -174,6 +174,31 @@ function put(
   seen[key] = priority;
 }
 
+function putNestedFacts(
+  facts: CanonicalFacts,
+  value: unknown,
+  source: CanonicalFact["source"],
+  priority: number,
+  seen: Record<string, number>,
+) {
+  if (Array.isArray(value)) {
+    for (const item of value) putNestedFacts(facts, item, source, priority, seen);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+
+  for (const [rawKey, rawValue] of Object.entries(value as Record<string, unknown>)) {
+    const canonicalKey = resolveCanonicalKey(rawKey);
+    const isContainer = rawValue !== null && typeof rawValue === "object";
+    if (canonicalKey && !isContainer) {
+      put(facts, canonicalKey, rawValue, source, priority, seen);
+    }
+    if (isContainer) {
+      putNestedFacts(facts, rawValue, source, priority, seen);
+    }
+  }
+}
+
 const CORRECTION_RE = /\b(na verdade|corrigindo|corrijo|nao e|não é|nao sou|não sou|errado|me confundi|e (o|a)? ?contrario|quis dizer)\b/i;
 
 /**
@@ -212,9 +237,7 @@ export function hydrateCanonicalFacts(params: {
   const camposColetados = (aiContexto.campos_coletados ?? {}) as Record<string, unknown>;
 
   // Prioridade 1 (menor): dados_adicionais do formulário
-  for (const [k, v] of Object.entries(dadosAdicionais)) {
-    put(facts, resolveCanonicalKey(k), v, "dados_adicionais", 1, seen);
-  }
+  putNestedFacts(facts, dadosAdicionais, "dados_adicionais", 1, seen);
   // Prioridade 2: colunas do prospect
   for (const f of CANONICAL_FIELDS) {
     for (const col of f.prospectColumns ?? []) {
@@ -222,9 +245,7 @@ export function hydrateCanonicalFacts(params: {
     }
   }
   // Prioridade 3: ai_contexto.campos_coletados
-  for (const [k, v] of Object.entries(camposColetados)) {
-    put(facts, resolveCanonicalKey(k), v, "ai_contexto", 3, seen);
-  }
+  putNestedFacts(facts, camposColetados, "ai_contexto", 3, seen);
   // Prioridade 4 (maior): correções explícitas do lead
   const corrections = extractExplicitCorrections(params.mensagens ?? []);
   for (const [k, v] of Object.entries(corrections)) {
@@ -286,6 +307,33 @@ export interface RepetitionVerdict {
   question?: string;
 }
 
+const FIELD_QUESTION_PATTERNS: Array<{ key: string; patterns: RegExp[] }> = [
+  { key: "prazo", patterns: [/\b(qual|tem|existe).{0,15}prazo\b/i, /\bpara quando\b/i, /\bquando (voce )?(pretende|quer|precisa|planeja)\b/i, /\bdata limite\b/i] },
+  { key: "nome", patterns: [/\bqual (e )?(o )?seu nome\b/i, /\bcomo (voce )?se chama\b/i, /\bcomo posso te chamar\b/i] },
+  { key: "email", patterns: [/\bqual (e )?(o )?seu e?-?mail\b/i, /\bmelhor e?-?mail\b/i] },
+  { key: "telefone", patterns: [/\bqual (e )?(o )?seu (telefone|whatsapp|celular)\b/i, /\bnumero (de contato|do whatsapp)\b/i] },
+  { key: "cidade", patterns: [/\bqual (e )?(a )?sua cidade\b/i, /\bde qual cidade\b/i, /\bonde voce mora\b/i, /\bde onde voce (e|fala)\b/i] },
+  { key: "estado", patterns: [/\bqual (e )?(o )?seu estado\b/i, /\bqual estado\b/i, /\bde qual estado\b/i] },
+  { key: "formacao", patterns: [/\bqual (e )?(a )?sua formacao\b/i, /\b(voce )?(e|foi) (formado|graduado) em\b/i] },
+  { key: "area_pretendida", patterns: [/\bqual area (voce )?(pretende|quer|deseja)\b/i, /\barea de interesse\b/i, /\blinha de pesquisa\b/i] },
+  { key: "edital", patterns: [/\b(voce )?(ja )?(tem|possui|definiu).{0,20}edital\b/i, /\bqual edital\b/i, /\bprocesso seletivo (definido|aberto)\b/i] },
+  { key: "instituicao", patterns: [/\bqual instituicao\b/i, /\bqual universidade\b/i, /\b(voce )?(ja )?(tem|escolheu|definiu).{0,20}(instituicao|universidade)\b/i] },
+  { key: "objetivo_nivel", patterns: [/\b(mestrado ou doutorado|doutorado ou mestrado)\b/i, /\b(voce )?(busca|quer|pretende|deseja|esta pensando (em )?).{0,20}(mestrado|doutorado)\b/i] },
+  { key: "etapa_atual", patterns: [/\bem que (fase|etapa)\b/i, /\bqual (e )?(a )?sua etapa atual\b/i, /\bcomo esta seu processo\b/i] },
+  { key: "dificuldade", patterns: [/\bqual (e )?(a )?sua (maior|principal) dificuldade\b/i, /\bo que (mais )?(te trava|esta dificultando|te impede)\b/i, /\bprincipal desafio\b/i] },
+  { key: "renda_capital", patterns: [/\bquanto (voce )?(tem|pode|consegue).{0,25}(investir|disponivel)\b/i, /\bqual (e )?(a )?sua (renda|faixa de investimento)\b/i, /\bcapital disponivel\b/i] },
+  { key: "empresa", patterns: [/\bqual (e )?(o )?nome da (sua )?empresa\b/i, /\bqual (e )?(a )?sua empresa\b/i] },
+  { key: "segmento", patterns: [/\bqual (e )?(o )?seu segmento\b/i, /\bem qual ramo\b/i, /\barea de atuacao\b/i] },
+];
+
+export function detectQuestionField(question: string): string | null {
+  const normalized = normalizeKey(question);
+  for (const entry of FIELD_QUESTION_PATTERNS) {
+    if (entry.patterns.some((pattern) => pattern.test(normalized))) return entry.key;
+  }
+  return null;
+}
+
 export function detectRepetition(
   resposta: string,
   facts: CanonicalFacts,
@@ -293,17 +341,9 @@ export function detectRepetition(
 ): RepetitionVerdict {
   const questions = extractQuestions(resposta);
   for (const q of questions) {
-    const nq = normalizeKey(q);
-    for (const fact of Object.values(facts)) {
-      const def = CANONICAL_FIELDS.find((f) => f.key === fact.key);
-      const aliases = [fact.key, ...(def?.aliases ?? [])];
-      for (const alias of aliases) {
-        const na = normalizeKey(alias);
-        if (na.length < 4) continue;
-        if (nq.includes(na)) {
-          return { violates: true, reason: "asks_known_field", field: fact.key, question: q };
-        }
-      }
+    const field = detectQuestionField(q);
+    if (field && facts[field]) {
+      return { violates: true, reason: "asks_known_field", field, question: q };
     }
     for (const prev of previousQuestions) {
       if (questionSimilarity(q, prev) >= 0.6) {
@@ -385,7 +425,11 @@ function capitalizeFirst(value: string): string {
 /** Remove reapresentações de persona e saudações redundantes (após a 1ª mensagem). */
 export function stripPersonaReintroduction(text: string): string {
   if (!text) return "";
-  const sentences = String(text).split(/(?<=[.!?])\s+/);
+  const withoutGreetingPersona = String(text).replace(
+    new RegExp(`^(?:oi|ol[áa]|bom dia|boa tarde|boa noite)[, !]*${NAME}[!,. ]+aqui\\s+(?:é|e)\\s+(?:a|o)\\s+${NAME}(?:\\s+mesm[ao])?[.!]?\\s*`, "iu"),
+    "",
+  );
+  const sentences = withoutGreetingPersona.split(/(?<=[.!?])\s+/);
   const kept: string[] = [];
   for (const raw of sentences) {
     const sentence = raw.trim();

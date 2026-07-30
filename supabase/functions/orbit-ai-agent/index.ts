@@ -822,12 +822,22 @@ serve(async (req) => {
       .map((m) => `${m.direcao === "IN" ? "Cliente" : "Assistente"}: ${messageTextForAgent(m)}`)
       .join("\n");
 
-    const mensagensIN = mensagens?.filter((m) => m.direcao === "IN").length || 0;
-    const mensagensOUT = mensagens?.filter((m) => m.direcao === "OUT").length || 0;
+    // A janela de contexto tem só 20 mensagens. A primeira interação precisa usar
+    // o histórico total para áudio/imagem ou conversas longas nunca reiniciarem a persona.
+    const { count: totalOutboundCount, error: outboundCountError } = await supabase
+      .from("orbit_mensagens")
+      .select("id", { count: "exact", head: true })
+      .eq("conversa_id", conversa_id)
+      .eq("direcao", "OUT");
+    if (outboundCountError) {
+      console.error("[orbit-ai-agent] Falha ao contar mensagens OUT:", outboundCountError);
+    }
+    const mensagensOUT = totalOutboundCount ?? mensagens?.filter((m) => m.direcao === "OUT").length ?? 0;
     const aiContexto = conversa?.ai_contexto || {};
     const introAlreadySent = aiContexto.intro_already_sent === true;
     const isFromCampaign = aiContexto.origin === "outbound_campaign";
-    const primeiraInteracao = !introAlreadySent && (mensagensOUT === 0 || mensagensIN <= 1);
+    // Uma conversa só é nova quando nunca houve saída. Áudio/imagem não reinicia a persona.
+    const primeiraInteracao = !introAlreadySent && mensagensOUT === 0;
 
     const emColetaOrcamento = aiContexto.em_coleta_orcamento || false;
     const camposColetados = aiContexto.campos_coletados || {};
@@ -1816,6 +1826,9 @@ async function sendAIResponse(
   aiConfig: any,
   allowIntro = true
 ) {
+  // Normaliza antes de qualquer formato de saida. Assim TTS e texto seguem
+  // exatamente os mesmos guards de continuidade e estilo.
+  const safeTexto = finalizeAgentMessage(texto, allowIntro);
   const ttsAtivo = aiConfig?.tts_ativo === true;
   const ttsApiKey = aiConfig?.tts_api_key;
   const ttsVoiceId = aiConfig?.tts_voice_id || "EXAVITQu4vr4xnSDxMaL";
@@ -1825,7 +1838,7 @@ async function sendAIResponse(
     try {
       console.log("[orbit-ai-agent] TTS ativo, gerando áudio via ElevenLabs...");
 
-      const audioBuffer = await generateTTS(texto, ttsVoiceId, ttsApiKey);
+      const audioBuffer = await generateTTS(safeTexto, ttsVoiceId, ttsApiKey);
 
       const path = `tts/${empresaId}/${conversa_id}/${Date.now()}.mp3`;
       const { error: uploadError } = await supabase.storage
@@ -1837,7 +1850,7 @@ async function sendAIResponse(
 
       if (uploadError) {
         console.error("[orbit-ai-agent] Erro upload TTS:", uploadError.message);
-        await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId, allowIntro);
+        await sendWhatsAppMessage(supabase, telefone, safeTexto, conversa_id, isDemo, empresaId, allowIntro);
         return;
       }
 
@@ -1847,18 +1860,18 @@ async function sendAIResponse(
       await sendWhatsAppAudio(supabase, telefone, path, conversa_id, empresaId);
 
       if (ttsModo === "ambos") {
-        await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId, allowIntro);
+        await sendWhatsAppMessage(supabase, telefone, safeTexto, conversa_id, isDemo, empresaId, allowIntro);
       }
 
       return;
     } catch (ttsError) {
       console.error("[orbit-ai-agent] Erro TTS, fallback para texto:", ttsError);
-      await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId, allowIntro);
+      await sendWhatsAppMessage(supabase, telefone, safeTexto, conversa_id, isDemo, empresaId, allowIntro);
       return;
     }
   }
 
-  await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId, allowIntro);
+  await sendWhatsAppMessage(supabase, telefone, safeTexto, conversa_id, isDemo, empresaId, allowIntro);
 }
 
 // ── CHATBOT FLOWS: processar fluxo condicional ──

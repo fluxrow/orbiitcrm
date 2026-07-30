@@ -12,6 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { useOrbitTasks, useCompleteOrbitTask, useUpdateOrbitTask } from "@/hooks/useOrbitTasks";
 import { useOrbitTasksAndMeetings } from "@/hooks/useOrbitTasksAndMeetings";
+import { useOrbitSearch } from "@/hooks/useOrbitSearch";
 import { OrbitTaskKanban } from "@/components/orbit/OrbitTaskKanban";
 import { OrbitTaskCard } from "@/components/orbit/OrbitTaskCard";
 import { OrbitTaskDialog } from "@/components/orbit/OrbitTaskDialog";
@@ -45,11 +46,18 @@ export default function TarefasPage() {
   };
 
 
+  const { results: taskSearchResults, active: taskSearchActive } = useOrbitSearch(
+    search,
+    ["tarefa", "reuniao"],
+    200,
+  );
+  const matchedTaskIds = taskSearchResults.filter((result) => result.kind === "tarefa").map((result) => result.id);
+  const matchedMeetingIds = taskSearchResults.filter((result) => result.kind === "reuniao").map((result) => result.id);
   const { data: tasks, isLoading } = useOrbitTasksAndMeetings({
-    search: search || undefined,
+    matched_ids: taskSearchActive ? matchedTaskIds : undefined,
     status: statusFilter !== "all" ? statusFilter : undefined,
     prioridade: prioridadeFilter !== "all" ? prioridadeFilter : undefined,
-  });
+  }, taskSearchActive ? matchedMeetingIds : undefined);
   const completeTask = useCompleteOrbitTask();
   const updateTask = useUpdateOrbitTask();
 

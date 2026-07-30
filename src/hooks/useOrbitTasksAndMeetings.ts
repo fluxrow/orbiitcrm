@@ -12,18 +12,21 @@ import { useOrbitTasks, OrbitTaskFilters } from "./useOrbitTasks";
  *   tipo_tarefa: "meeting"     (usado pelo ícone do OrbitTaskCard → 📅)
  *   status, due_date, due_time derivados de scheduled_at
  */
-export function useOrbitMeetingsAsTasks() {
+export function useOrbitMeetingsAsTasks(matchedIds?: string[]) {
   const { empresaId } = useTenant();
   return useQuery({
-    queryKey: ["orbit_meetings_as_tasks", empresaId],
+    queryKey: ["orbit_meetings_as_tasks", empresaId, matchedIds],
     enabled: !!empresaId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      if (matchedIds && matchedIds.length === 0) return [];
+      let query = supabase
         .from("orbit_meetings" as any)
         .select("*")
         .eq("empresa_id", empresaId!)
         .in("status", ["scheduled", "rescheduled"])
         .order("scheduled_at", { ascending: true });
+      if (matchedIds) query = query.in("id", matchedIds);
+      const { data, error } = await query;
       if (error) throw error;
 
       const prospectIds = Array.from(
@@ -73,9 +76,9 @@ export function useOrbitMeetingsAsTasks() {
 /**
  * Painel unificado: orbit_tasks + orbit_meetings, ordenados por due_date/due_time.
  */
-export function useOrbitTasksAndMeetings(filters?: OrbitTaskFilters) {
+export function useOrbitTasksAndMeetings(filters?: OrbitTaskFilters, matchedMeetingIds?: string[]) {
   const tasksQ = useOrbitTasks(filters);
-  const meetingsQ = useOrbitMeetingsAsTasks();
+  const meetingsQ = useOrbitMeetingsAsTasks(matchedMeetingIds);
 
   const normalizedSearch = filters?.search?.trim().toLowerCase();
   const filteredMeetings = (meetingsQ.data || []).filter((meeting: any) => {

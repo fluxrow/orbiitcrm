@@ -12,6 +12,7 @@ type ProspectUpdate = TablesUpdate<"orbit_prospects">;
 
 interface ProspectFilters {
   search?: string;
+  matched_ids?: string[];
   status_qualificacao?: string;
   origem_contato?: string;
   responsavel_id?: string;
@@ -41,6 +42,7 @@ export function useOrbitProspects(filters?: ProspectFilters) {
     queryKey: [...orbitProspectKeys.list(filters), empresaId],
     enabled: !!empresaId,
     queryFn: async () => {
+      if (filters?.matched_ids && filters.matched_ids.length === 0) return [];
       const trimmedSearch = filters?.search?.trim();
       let query = supabase
         .from("orbit_prospects")
@@ -50,7 +52,9 @@ export function useOrbitProspects(filters?: ProspectFilters) {
         .order("created_at", { ascending: false });
 
 
-      if (trimmedSearch) {
+      if (filters?.matched_ids) {
+        query = query.in("id", filters.matched_ids);
+      } else if (trimmedSearch) {
         query = query.textSearch("search_vector", trimmedSearch, {
           type: "websearch",
           config: "portuguese",

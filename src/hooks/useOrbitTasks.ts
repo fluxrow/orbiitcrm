@@ -10,6 +10,7 @@ export interface OrbitTaskFilters {
   assigned_to?: string;
   prospect_id?: string;
   search?: string;
+  matched_ids?: string[];
 }
 
 export function useOrbitTasks(filters?: OrbitTaskFilters) {
@@ -18,6 +19,7 @@ export function useOrbitTasks(filters?: OrbitTaskFilters) {
     queryKey: ["orbit_tasks", empresaId, filters],
     enabled: !!empresaId,
     queryFn: async () => {
+      if (filters?.matched_ids && filters.matched_ids.length === 0) return [];
       let query = supabase
         .from("orbit_tasks" as any)
         .select("*, prospect:orbit_prospects!orbit_tasks_prospect_id_fkey(id, nome_razao), assignee:profiles!orbit_tasks_assigned_to_fkey(id, nome, email)")
@@ -37,7 +39,9 @@ export function useOrbitTasks(filters?: OrbitTaskFilters) {
       if (filters?.prospect_id) {
         query = query.eq("prospect_id", filters.prospect_id);
       }
-      if (filters?.search) {
+      if (filters?.matched_ids) {
+        query = query.in("id", filters.matched_ids);
+      } else if (filters?.search) {
         query = query.or(`titulo.ilike.%${filters.search}%,descricao.ilike.%${filters.search}%`);
       }
 

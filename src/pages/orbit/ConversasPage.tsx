@@ -128,7 +128,11 @@ export default function ConversasPage() {
   const [attachedFile, setAttachedFile] = useState<{ file: File; previewUrl: string; tipo: string } | null>(null);
   const [drawerProspectOpen, setDrawerProspectOpen] = useState(false);
 
-  const { data: conversas, isLoading } = useOrbitConversas();
+  // Busca server-side (RLS por tenant): nome, contato, empresa, email,
+  // telefone, última mensagem e conteúdo do histórico.
+  const { results: searchResults, active: searchActive } = useOrbitSearch(search, ["conversa"], 100);
+  const matchedConversationIds = searchResults.map((r) => r.conversa_id ?? r.id);
+  const { data: conversas, isLoading } = useOrbitConversas(undefined, searchActive ? matchedConversationIds : undefined);
   const { data: mensagens } = useOrbitMensagens(activeId || undefined);
   const { user } = useAuth();
   const sendMessage = useSendMensagem();
@@ -136,13 +140,9 @@ export default function ConversasPage() {
   const release = useEndHumanTakeover();
   const { data: handoff } = useOrbitHandoff(activeId || undefined);
 
-  // Busca server-side (RLS por tenant): nome, contato, empresa, email, telefone e última mensagem.
-  const { results: searchResults, active: searchActive } = useOrbitSearch(search, ["conversa"]);
-  const matchedIds = new Set(searchResults.map((r) => r.conversa_id ?? r.id));
   const filtered = conversas?.filter((c) => {
     if (tab !== "all" && c.canal !== tab) return false;
-    if (!searchActive) return true;
-    return matchedIds.has(c.id);
+    return true;
   });
 
   const active = conversas?.find((c) => c.id === activeId);

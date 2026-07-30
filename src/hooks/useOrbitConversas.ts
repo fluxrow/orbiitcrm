@@ -7,7 +7,7 @@ import { useTenant } from "@/contexts/TenantContext";
 type Conversa = Tables<"orbit_conversas">;
 type ConversaUpdate = TablesUpdate<"orbit_conversas">;
 
-export function useOrbitConversas(canal?: string) {
+export function useOrbitConversas(canal?: string, matchedIds?: string[]) {
   const queryClient = useQueryClient();
   const { empresaId } = useTenant();
 
@@ -34,9 +34,10 @@ export function useOrbitConversas(canal?: string) {
   }, [queryClient]);
 
   return useQuery({
-    queryKey: ["orbit_conversas", empresaId, canal],
+    queryKey: ["orbit_conversas", empresaId, canal, matchedIds],
     enabled: !!empresaId,
     queryFn: async () => {
+      if (matchedIds && matchedIds.length === 0) return [];
       let query = supabase
         .from("orbit_conversas")
         .select(`
@@ -51,6 +52,9 @@ export function useOrbitConversas(canal?: string) {
 
       if (canal && canal !== "all") {
         query = query.eq("canal", canal);
+      }
+      if (matchedIds) {
+        query = query.in("id", matchedIds);
       }
 
       const { data, error } = await query;

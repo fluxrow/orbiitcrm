@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/contexts/TenantContext";
 import { useDebounce } from "@/hooks/useDebounce";
 
-export type OrbitSearchKind = "conversa" | "prospect" | "deal" | "tarefa";
+export type OrbitSearchKind = "conversa" | "prospect" | "deal" | "tarefa" | "reuniao";
 
 export interface OrbitSearchResult {
   kind: OrbitSearchKind;
@@ -36,7 +36,7 @@ export function useOrbitSearch(term: string, kinds?: OrbitSearchKind[], limit = 
   const normalized = normalizeSearchTerm(debounced);
 
   const query = useQuery({
-    queryKey: ["orbit_global_search", empresaId, normalized, limit],
+    queryKey: ["orbit_global_search", empresaId, normalized, kinds, limit],
     enabled: !!empresaId && isSearchable(normalized),
     queryFn: async (): Promise<OrbitSearchResult[]> => {
       const { data, error } = await supabase.rpc("orbit_global_search", {

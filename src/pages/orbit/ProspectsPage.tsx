@@ -21,6 +21,7 @@ import { ImportHistoryPanel } from "@/components/orbit/ImportHistoryPanel";
 import { Badge } from "@/components/ui/badge";
 import { useOrbitProspects, useDeleteProspect, useOrbitProspect } from "@/hooks/useOrbitProspects";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useOrbitSearch } from "@/hooks/useOrbitSearch";
 import { useOrbitPeLinks } from "@/hooks/usePromoteProspect";
 import { useAuth } from "@/hooks/useAuth";
 import { useTenant } from "@/contexts/TenantContext";
@@ -80,9 +81,14 @@ export default function ProspectsPage() {
   // Prevents cross-tenant data leak for users with access to multiple empresas.
   const { empresaId: tenantEmpresaId } = useTenant();
   const myProfile = tenantEmpresaId ? { empresa_id: tenantEmpresaId } : null;
+  const { results: prospectSearchResults, active: prospectSearchActive } = useOrbitSearch(
+    debouncedSearch,
+    ["prospect"],
+    200,
+  );
 
   const { data: prospects, isLoading } = useOrbitProspects({
-    search: debouncedSearch || undefined,
+    matched_ids: prospectSearchActive ? prospectSearchResults.map((result) => result.id) : undefined,
     status_qualificacao: statusFilter,
   });
   const { data: peLinks } = useOrbitPeLinks();

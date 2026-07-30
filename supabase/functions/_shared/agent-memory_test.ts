@@ -7,6 +7,7 @@ import {
   buildDeterministicFallback,
   stripPersonaReintroduction,
   containsPersonaReintroduction,
+  detectQuestionField,
   resolveCanonicalKey,
 } from "./agent-memory.ts";
 import { normalizeAgentText } from "./pt-br-normalizer.ts";
@@ -33,6 +34,14 @@ Deno.test("hidrata fatos do formulário (nível + localização)", () => {
   assertEquals(facts.cidade.value, "Belo Horizonte");
   assertEquals(facts.estado.value, "MG");
   assertEquals(facts.nome.value, "Ana");
+});
+
+Deno.test("hidrata fatos aninhados no raw do Typebot", () => {
+  const facts = hydrateCanonicalFacts({
+    prospect: { dados_adicionais: { raw: { nivel_pretendido: "Doutorado", cidade: "Recife" } } },
+  });
+  assertEquals(facts.objetivo_nivel.value, "Doutorado");
+  assertEquals(facts.cidade.value, "Recife");
 });
 
 Deno.test("bloco canônico é autoritativo no prompt", () => {
@@ -74,6 +83,12 @@ Deno.test("não bloqueia pergunta sobre campo realmente ausente", () => {
   assertEquals(detectRepetition("Como está sua rotina de estudos hoje?", facts, []).violates, false);
 });
 
+Deno.test("não confunde pergunta de prazo com objetivo já conhecido", () => {
+  const facts = hydrateCanonicalFacts({ prospect: prospectEbsamar });
+  assertEquals(detectQuestionField("Quando você pretende iniciar o mestrado?"), "prazo");
+  assertEquals(detectRepetition("Quando você pretende iniciar o mestrado?", facts, []).violates, false);
+});
+
 Deno.test("bloqueia repetição de pergunta recente do agente", () => {
   const mensagens = [
     { direcao: "OUT", mensagem: "Você já tem um projeto de pesquisa escrito?" },
@@ -107,6 +122,11 @@ Deno.test("REGRESSÃO: resposta a áudio não reapresenta a persona nem traz tra
   assertEquals(out.includes("—"), false);
   assertEquals(out.includes("–"), false);
   assertStringIncludes(out, "você");
+});
+
+Deno.test("REGRESSÃO: remove saudação nominal junto da reapresentação", () => {
+  const out = finalize("Oi, Ebsamar! Aqui é a Patrícia mesmo. Entendi o que você explicou no áudio.", false);
+  assertEquals(out, "Entendi o que você explicou no áudio.");
 });
 
 Deno.test("variantes de reapresentação são removidas", () => {
