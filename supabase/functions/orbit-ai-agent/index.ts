@@ -843,6 +843,23 @@ serve(async (req) => {
     );
     const cadastroCompleto = camposFaltantes.length === 0;
 
+    // ── MEMÓRIA CANÔNICA: hidratar fatos já conhecidos do lead ──
+    const canonicalFacts = hydrateCanonicalFacts({
+      prospect,
+      aiContexto,
+      mensagens: mensagens || [],
+    });
+    const canonicalFactsBlock = buildCanonicalFactsBlock(canonicalFacts);
+    const previousAgentQuestions = recentAgentQuestions(mensagens || []);
+    console.log(
+      "[orbit-ai-agent] Fatos canônicos:",
+      Object.keys(canonicalFacts).join(", ") || "(nenhum)",
+      "| perguntas recentes:",
+      previousAgentQuestions.length,
+    );
+
+
+
     // ── Montar contexto estruturado do lead ──
     const leadContext = buildLeadContext(prospect, conversa, aiContexto, camposFaltantes, primeiraInteracao);
     console.log("[orbit-ai-agent] LeadContext:", JSON.stringify(leadContext.conversation), "missing:", Object.keys(leadContext.missingFields));
