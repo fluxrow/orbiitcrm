@@ -1158,7 +1158,8 @@ ${regrasBlock}`;
         }
       }
       if (scheduleOutcome.response_override) {
-        resposta = scheduleOutcome.response_override;
+        // Override de agenda também passa pela validação/normalização final.
+        resposta = finalizeAgentMessage(scheduleOutcome.response_override, primeiraInteracao);
       }
     }
 
@@ -1433,7 +1434,7 @@ ${regrasBlock}`;
     }
 
     // Enviar resposta via WhatsApp (fallback: texto)
-    await sendAIResponse(supabase, telefone, resposta, conversa_id, isDemo, empresaId, aiConfig);
+    await sendAIResponse(supabase, telefone, resposta, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
 
     return new Response(JSON.stringify({ ok: true, resposta, parsed, state: novoContexto.estado, simulated: isDemo }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -1620,8 +1621,8 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
   }
 }
 
-async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw: string, conversa_id: string, isDemo: boolean, empresaId?: string | null) {
-  const mensagem = normalizeAgentText(mensagemRaw);
+async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw: string, conversa_id: string, isDemo: boolean, empresaId?: string | null, allowIntro = true) {
+  const mensagem = finalizeAgentMessage(mensagemRaw, allowIntro);
   try {
     if (isDemo) {
       console.log("[orbit-ai-agent] Demo mode — simulando envio");
@@ -1812,7 +1813,8 @@ async function sendAIResponse(
   conversa_id: string,
   isDemo: boolean,
   empresaId: string | null | undefined,
-  aiConfig: any
+  aiConfig: any,
+  allowIntro = true
 ) {
   const ttsAtivo = aiConfig?.tts_ativo === true;
   const ttsApiKey = aiConfig?.tts_api_key;
@@ -1835,7 +1837,7 @@ async function sendAIResponse(
 
       if (uploadError) {
         console.error("[orbit-ai-agent] Erro upload TTS:", uploadError.message);
-        await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId);
+        await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId, allowIntro);
         return;
       }
 
@@ -1845,18 +1847,18 @@ async function sendAIResponse(
       await sendWhatsAppAudio(supabase, telefone, path, conversa_id, empresaId);
 
       if (ttsModo === "ambos") {
-        await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId);
+        await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId, allowIntro);
       }
 
       return;
     } catch (ttsError) {
       console.error("[orbit-ai-agent] Erro TTS, fallback para texto:", ttsError);
-      await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId);
+      await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId, allowIntro);
       return;
     }
   }
 
-  await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId);
+  await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId, allowIntro);
 }
 
 // ── CHATBOT FLOWS: processar fluxo condicional ──
