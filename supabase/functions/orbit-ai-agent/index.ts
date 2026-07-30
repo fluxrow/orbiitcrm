@@ -1056,6 +1056,41 @@ ${regrasBlock}`;
     let resposta = parsed.mensagem || content;
     console.log("[orbit-ai-agent] Resposta gerada:", resposta.substring(0, 100));
 
+    // ── GUARD DETERMINÍSTICO: nunca perguntar campo conhecido nem repetir pergunta recente ──
+    {
+      let verdict = detectRepetition(resposta, canonicalFacts, previousAgentQuestions);
+      if (verdict.violates) {
+        console.warn("[orbit-ai-agent] Guard de repetição acionado:", verdict.reason, verdict.field || verdict.question);
+        const retry = await callAnthropic({
+          model: ((aiConfig as any).modelo_ia && String((aiConfig as any).modelo_ia).trim()) || ANTHROPIC_DEFAULT_MODEL,
+          system: systemPrompt,
+          messages: toAnthropicMessages([
+            { role: "user", content: userTurn },
+            { role: "assistant", content: resposta },
+            { role: "user", content: buildCorrectiveInstruction(verdict, canonicalFacts) + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+          ]),
+          temperature: 0.5,
+          max_tokens: maxTokens,
+        });
+        const retryText = retry.ok ? String(retry.text || "").trim() : "";
+        if (retryText) {
+          const retryVerdict = detectRepetition(retryText, canonicalFacts, previousAgentQuestions);
+          if (!retryVerdict.violates) {
+            resposta = retryText;
+            verdict = { violates: false };
+          } else {
+            verdict = retryVerdict;
+          }
+        }
+        if (verdict.violates) {
+          resposta = buildDeterministicFallback(canonicalFacts, camposQualificacao, previousAgentQuestions);
+          console.warn("[orbit-ai-agent] Fallback determinístico aplicado.");
+        }
+        parsed.mensagem = resposta;
+      }
+    }
+
+
     // ── Validar dados extraídos antes de salvar ──
     const dadosValidados = parsed.dados_extraidos 
       ? validateExtractedData(parsed.dados_extraidos) 
