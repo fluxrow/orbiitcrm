@@ -20,6 +20,7 @@ import { AudioLibraryPicker } from "@/components/orbit/AudioLibraryPicker";
 import { ZapiConnectionAlert } from "@/components/orbit/ZapiConnectionAlert";
 import type { AudioClip } from "@/hooks/useOrbitAudioLibrary";
 import { useSignedOrbitMedia } from "@/lib/orbit-media";
+import { useOrbitSearch } from "@/hooks/useOrbitSearch";
 
 function stripHtml(html: string): string {
   return html
@@ -33,6 +34,40 @@ function stripHtml(html: string): string {
     .replace(/&#39;/gi, "'")
     .replace(/&nbsp;/gi, ' ')
     .trim();
+}
+
+/** Deduz o MIME/codec do áudio a partir do caminho/URL. Inbound do WhatsApp
+ *  costuma ser OGG/Opus; sem o `type` explícito alguns browsers mostram 0:00. */
+export function guessAudioMime(source?: string | null): string {
+  const clean = (source || "").split("?")[0].toLowerCase();
+  if (clean.endsWith(".mp3")) return "audio/mpeg";
+  if (clean.endsWith(".m4a") || clean.endsWith(".mp4")) return "audio/mp4";
+  if (clean.endsWith(".wav")) return "audio/wav";
+  if (clean.endsWith(".webm")) return "audio/webm";
+  if (clean.endsWith(".oga") || clean.endsWith(".ogg") || clean.endsWith(".opus")) return "audio/ogg; codecs=opus";
+  return "audio/ogg; codecs=opus";
+}
+
+function AudioMessage({ signedUrl, source, refresh }: { signedUrl: string; source?: string | null; refresh: () => void }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const mime = guessAudioMime(source || signedUrl);
+
+  // Signed URLs expiram e são renovadas: força o reload do elemento.
+  useEffect(() => {
+    audioRef.current?.load();
+  }, [signedUrl]);
+
+  return (
+    <div className="mb-1 space-y-1">
+      <audio ref={audioRef} controls className="max-w-full" preload="metadata" onError={refresh}>
+        <source src={signedUrl} type={mime} />
+        <source src={signedUrl} />
+      </audio>
+      <a href={signedUrl} target="_blank" rel="noopener noreferrer" className="block text-xs underline opacity-70 hover:opacity-100">
+        Baixar áudio
+      </a>
+    </div>
+  );
 }
 
 function MediaPreview({ tipo_midia, storage_path, url_midia, mensagem }: { tipo_midia: string | null; storage_path?: string | null; url_midia: string | null; mensagem?: string }) {
@@ -50,13 +85,8 @@ function MediaPreview({ tipo_midia, storage_path, url_midia, mensagem }: { tipo_
         </div>
       );
     case "audio":
-      return (
-        <div className="mb-1">
-          <audio controls className="max-w-full" preload="metadata" onError={refresh}>
-            <source src={signedUrl} />
-          </audio>
-        </div>
-      );
+      return <AudioMessage signedUrl={signedUrl} source={source} refresh={refresh} />;
+
     case "video":
       return (
         <div className="mb-1">
@@ -106,7 +136,15 @@ export default function ConversasPage() {
   const release = useEndHumanTakeover();
   const { data: handoff } = useOrbitHandoff(activeId || undefined);
 
-  const filtered = conversas?.filter((c) => (tab === "all" || c.canal === tab) && (!search || c.telefone_whatsapp.includes(search)));
+  // Busca server-side (RLS por tenant): nome, contato, empresa, email, telefone e última mensagem.
+  const { results: searchResults, active: searchActive } = useOrbitSearch(search, ["conversa"]);
+  const matchedIds = new Set(searchResults.map((r) => r.conversa_id ?? r.id));
+  const filtered = conversas?.filter((c) => {
+    if (tab !== "all" && c.canal !== tab) return false;
+    if (!searchActive) return true;
+    return matchedIds.has(c.id);
+  });
+
   const active = conversas?.find((c) => c.id === activeId);
 
   useEffect(() => {

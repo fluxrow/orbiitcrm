@@ -13,6 +13,25 @@ import {
 } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 import { normalizeAgentText, PT_BR_STYLE_GUARDRAILS } from "../_shared/pt-br-normalizer.ts";
+import {
+  hydrateCanonicalFacts,
+  buildCanonicalFactsBlock,
+  recentAgentQuestions,
+  detectRepetition,
+  buildCorrectiveInstruction,
+  buildDeterministicFallback,
+  stripPersonaReintroduction,
+} from "../_shared/agent-memory.ts";
+
+/**
+ * Normalização final aplicada em TODOS os caminhos de saída do agente.
+ * `allowIntro=false` remove reapresentação de persona e saudação redundante.
+ */
+export function finalizeAgentMessage(text: string, allowIntro = true): string {
+  const normalized = normalizeAgentText(text);
+  if (allowIntro) return normalized;
+  return normalizeAgentText(stripPersonaReintroduction(normalized));
+}
 
 // ── Estado da conversa (máquina de estados) ──
 type ConversationState = "novo" | "aguardando_resposta" | "auto_reply_detected" | "human_detected" | "qualificando" | "qualificado" | "handoff" | "encerrado";
@@ -824,6 +843,23 @@ serve(async (req) => {
     );
     const cadastroCompleto = camposFaltantes.length === 0;
 
+    // ── MEMÓRIA CANÔNICA: hidratar fatos já conhecidos do lead ──
+    const canonicalFacts = hydrateCanonicalFacts({
+      prospect,
+      aiContexto,
+      mensagens: mensagens || [],
+    });
+    const canonicalFactsBlock = buildCanonicalFactsBlock(canonicalFacts);
+    const previousAgentQuestions = recentAgentQuestions(mensagens || []);
+    console.log(
+      "[orbit-ai-agent] Fatos canônicos:",
+      Object.keys(canonicalFacts).join(", ") || "(nenhum)",
+      "| perguntas recentes:",
+      previousAgentQuestions.length,
+    );
+
+
+
     // ── Montar contexto estruturado do lead ──
     const leadContext = buildLeadContext(prospect, conversa, aiContexto, camposFaltantes, primeiraInteracao);
     console.log("[orbit-ai-agent] LeadContext:", JSON.stringify(leadContext.conversation), "missing:", Object.keys(leadContext.missingFields));
@@ -922,9 +958,9 @@ ${campaignContinuity}${stateInstruction}${classificationInstruction}
 ${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${dataHoraAtualBlock}${schedulingModeBlock}
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
-${camposQualificacaoBlock}${ragBlock}
+${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}
 REGRAS CRÍTICAS:
-1. DADOS EXISTENTES: Se um dado do lead já está preenchido no contexto acima (personName, companyName, city, email, etc.), NUNCA pergunte novamente. Use naturalmente na conversa.
+1. DADOS EXISTENTES: Se um dado do lead já está preenchido no contexto acima ou nos FATOS CANÔNICOS (personName, companyName, city, email, nível pretendido, cidade/estado etc.), NUNCA pergunte novamente. Use naturalmente na conversa.
 2. CAMPOS FALTANTES: Solicite APENAS os campos marcados como "true" em missingFields, e as perguntas dinâmicas ainda não respondidas.
 3. Se for PRIMEIRA INTERAÇÃO (isFirstInteraction=true) E NÃO for campanha, envie a mensagem de boas-vindas: "${aiConfig.mensagem_boas_vindas || 'Olá! Como posso ajudá-lo?'}"
 4. Se o cliente pedir ORÇAMENTO, COTAÇÃO ou demonstrar interesse em comprar, inicie a coleta dos campos faltantes.
@@ -933,6 +969,8 @@ REGRAS CRÍTICAS:
 7. Seja cordial e responda de forma concisa — máximo 2-3 frases.
 8. SEMPRE responda no idioma configurado.
 9. NUNCA resetar conversa. NUNCA reapresentar-se se já houve interação anterior.
+9.1 CONTINUIDADE: ${primeiraInteracao ? "Esta é a primeira mensagem: pode se apresentar uma única vez." : "PROIBIDO reapresentar a persona (\"aqui é a ...\", \"sou a ...\", \"é a ... mesmo\") e PROIBIDO iniciar nova saudação. Continue a conversa direto do ponto atual, inclusive quando a mensagem recebida for áudio ou imagem."}
+9.2 NÃO REPITA PERGUNTAS já feitas recentemente. Perguntas recentes suas: ${previousAgentQuestions.length ? previousAgentQuestions.map((q) => `"${q}"`).join(" ") : "(nenhuma)"}
 10. Se o cliente pedir para falar com um vendedor humano, defina "intencao" como "falar_humano".
 ${instrucaoOrcamento}
 
@@ -1018,6 +1056,41 @@ ${regrasBlock}`;
     let resposta = parsed.mensagem || content;
     console.log("[orbit-ai-agent] Resposta gerada:", resposta.substring(0, 100));
 
+    // ── GUARD DETERMINÍSTICO: nunca perguntar campo conhecido nem repetir pergunta recente ──
+    {
+      let verdict = detectRepetition(resposta, canonicalFacts, previousAgentQuestions);
+      if (verdict.violates) {
+        console.warn("[orbit-ai-agent] Guard de repetição acionado:", verdict.reason, verdict.field || verdict.question);
+        const retry = await callAnthropic({
+          model: ((aiConfig as any).modelo_ia && String((aiConfig as any).modelo_ia).trim()) || ANTHROPIC_DEFAULT_MODEL,
+          system: systemPrompt,
+          messages: toAnthropicMessages([
+            { role: "user", content: userTurn },
+            { role: "assistant", content: resposta },
+            { role: "user", content: buildCorrectiveInstruction(verdict, canonicalFacts) + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+          ]),
+          temperature: 0.5,
+          max_tokens: maxTokens,
+        });
+        const retryText = retry.ok ? String(retry.text || "").trim() : "";
+        if (retryText) {
+          const retryVerdict = detectRepetition(retryText, canonicalFacts, previousAgentQuestions);
+          if (!retryVerdict.violates) {
+            resposta = retryText;
+            verdict = { violates: false };
+          } else {
+            verdict = retryVerdict;
+          }
+        }
+        if (verdict.violates) {
+          resposta = buildDeterministicFallback(canonicalFacts, camposQualificacao, previousAgentQuestions);
+          console.warn("[orbit-ai-agent] Fallback determinístico aplicado.");
+        }
+        parsed.mensagem = resposta;
+      }
+    }
+
+
     // ── Validar dados extraídos antes de salvar ──
     const dadosValidados = parsed.dados_extraidos 
       ? validateExtractedData(parsed.dados_extraidos) 
@@ -1085,7 +1158,8 @@ ${regrasBlock}`;
         }
       }
       if (scheduleOutcome.response_override) {
-        resposta = scheduleOutcome.response_override;
+        // Override de agenda também passa pela validação/normalização final.
+        resposta = finalizeAgentMessage(scheduleOutcome.response_override, primeiraInteracao);
       }
     }
 
@@ -1360,7 +1434,7 @@ ${regrasBlock}`;
     }
 
     // Enviar resposta via WhatsApp (fallback: texto)
-    await sendAIResponse(supabase, telefone, resposta, conversa_id, isDemo, empresaId, aiConfig);
+    await sendAIResponse(supabase, telefone, resposta, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
 
     return new Response(JSON.stringify({ ok: true, resposta, parsed, state: novoContexto.estado, simulated: isDemo }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -1547,8 +1621,8 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
   }
 }
 
-async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw: string, conversa_id: string, isDemo: boolean, empresaId?: string | null) {
-  const mensagem = normalizeAgentText(mensagemRaw);
+async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw: string, conversa_id: string, isDemo: boolean, empresaId?: string | null, allowIntro = true) {
+  const mensagem = finalizeAgentMessage(mensagemRaw, allowIntro);
   try {
     if (isDemo) {
       console.log("[orbit-ai-agent] Demo mode — simulando envio");
@@ -1739,7 +1813,8 @@ async function sendAIResponse(
   conversa_id: string,
   isDemo: boolean,
   empresaId: string | null | undefined,
-  aiConfig: any
+  aiConfig: any,
+  allowIntro = true
 ) {
   const ttsAtivo = aiConfig?.tts_ativo === true;
   const ttsApiKey = aiConfig?.tts_api_key;
@@ -1762,7 +1837,7 @@ async function sendAIResponse(
 
       if (uploadError) {
         console.error("[orbit-ai-agent] Erro upload TTS:", uploadError.message);
-        await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId);
+        await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId, allowIntro);
         return;
       }
 
@@ -1772,18 +1847,18 @@ async function sendAIResponse(
       await sendWhatsAppAudio(supabase, telefone, path, conversa_id, empresaId);
 
       if (ttsModo === "ambos") {
-        await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId);
+        await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId, allowIntro);
       }
 
       return;
     } catch (ttsError) {
       console.error("[orbit-ai-agent] Erro TTS, fallback para texto:", ttsError);
-      await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId);
+      await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId, allowIntro);
       return;
     }
   }
 
-  await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId);
+  await sendWhatsAppMessage(supabase, telefone, texto, conversa_id, isDemo, empresaId, allowIntro);
 }
 
 // ── CHATBOT FLOWS: processar fluxo condicional ──
