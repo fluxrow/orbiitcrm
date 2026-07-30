@@ -13,6 +13,25 @@ import {
 } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 import { normalizeAgentText, PT_BR_STYLE_GUARDRAILS } from "../_shared/pt-br-normalizer.ts";
+import {
+  hydrateCanonicalFacts,
+  buildCanonicalFactsBlock,
+  recentAgentQuestions,
+  detectRepetition,
+  buildCorrectiveInstruction,
+  buildDeterministicFallback,
+  stripPersonaReintroduction,
+} from "../_shared/agent-memory.ts";
+
+/**
+ * Normalização final aplicada em TODOS os caminhos de saída do agente.
+ * `allowIntro=false` remove reapresentação de persona e saudação redundante.
+ */
+export function finalizeAgentMessage(text: string, allowIntro = true): string {
+  const normalized = normalizeAgentText(text);
+  if (allowIntro) return normalized;
+  return normalizeAgentText(stripPersonaReintroduction(normalized));
+}
 
 // ── Estado da conversa (máquina de estados) ──
 type ConversationState = "novo" | "aguardando_resposta" | "auto_reply_detected" | "human_detected" | "qualificando" | "qualificado" | "handoff" | "encerrado";
