@@ -361,8 +361,8 @@ const PERSONA_PATTERNS: RegExp[] = [
   new RegExp(`(?:aqui\\s+)?quem\\s+fala\\s+(?:é|e)\\s+(?:a|o)\\s+${NAME}`, "giu"),
   new RegExp(`aqui\\s+(?:é|e)\\s+(?:a|o)\\s+${NAME}`, "giu"),
   new RegExp(`(?:é|e)\\s+(?:a|o)\\s+${NAME}\\s+mesm[ao]`, "giu"),
-  new RegExp(`sou\\s+(?:a|o)\\s+${CAP_NAME}`, "gu"),
-  new RegExp(`me\\s+chamo\\s+${CAP_NAME}`, "gu"),
+  new RegExp(`[Ss]ou\\s+(?:a|o)\\s+${CAP_NAME}`, "gu"),
+  new RegExp(`[Mm]e\\s+chamo\\s+${CAP_NAME}`, "gu"),
   new RegExp(`meu\\s+nome\\s+(?:é|e)\\s+${CAP_NAME}`, "giu"),
 ];
 
