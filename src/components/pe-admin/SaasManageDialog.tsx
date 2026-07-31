@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Mail } from "lucide-react";
+import { Copy, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUpdateSaasEmpresa, useSaasPlans, type SaasEmpresa } from "@/hooks/useSaasPlans";
 
@@ -48,6 +48,7 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
   const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviting, setInviting] = useState(false);
+  const [generatedInvite, setGeneratedInvite] = useState<{ email: string; url: string } | null>(null);
 
   // Users list
   const [users, setUsers] = useState<any[]>([]);
@@ -61,6 +62,7 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
     setTrialEndsAt(empresa?.trial_ends_at?.slice(0, 10) || "");
     setInviteName(empresa?.responsible_name || "");
     setInviteEmail(empresa?.responsible_email || "");
+    setGeneratedInvite(null);
 
     (async () => {
       setLoadingCadastro(true);
@@ -156,13 +158,40 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
       });
       if (error) throw error;
       if (data && data.ok === false) throw new Error(data.error?.message || "Falha ao convidar");
-      toast.success(`Convite enviado para ${inviteEmail.trim()}`);
+      const activationUrl = data?.data?.activation_url;
+      if (typeof activationUrl === "string" && activationUrl) {
+        setGeneratedInvite({ email: inviteEmail.trim().toLowerCase(), url: activationUrl });
+      }
+      const delivery = data?.data?.email_delivery;
+      if (delivery?.status === "sent") {
+        toast.success(`Convite enviado para ${inviteEmail.trim()}`);
+      } else if (delivery?.status === "failed") {
+        toast.warning("Convite criado, mas o e-mail não foi enviado", {
+          description: delivery.error || "O provedor de e-mail recusou o envio.",
+        });
+      } else if (delivery?.status === "not_configured") {
+        toast.warning("Convite criado sem envio de e-mail", {
+          description: "O provedor de e-mail não está configurado.",
+        });
+      } else {
+        toast.warning("Convite criado; entrega do e-mail não confirmada");
+      }
       setInviteName("");
       setInviteEmail("");
     } catch (err: any) {
       toast.error(err.message || "Erro ao enviar convite");
     } finally {
       setInviting(false);
+    }
+  };
+
+  const handleCopyInviteLink = async () => {
+    if (!generatedInvite) return;
+    try {
+      await navigator.clipboard.writeText(generatedInvite.url);
+      toast.success(`Link de ${generatedInvite.email} copiado`);
+    } catch {
+      toast.error("Não foi possível copiar o link");
     }
   };
 
@@ -293,6 +322,19 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
                 <Mail className="w-4 h-4 mr-2" />
                 {inviting ? "Enviando..." : "Enviar convite"}
               </Button>
+              {generatedInvite && (
+                <div className="space-y-2 rounded-md border p-3">
+                  <div className="text-xs text-muted-foreground">
+                    Link gerado para {generatedInvite.email}. Ele expira em 48 horas.
+                  </div>
+                  <div className="flex gap-2">
+                    <Input value={generatedInvite.url} readOnly aria-label="Link do convite" />
+                    <Button type="button" variant="outline" size="icon" onClick={handleCopyInviteLink} title="Copiar link">
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </TabsContent>
         </Tabs>

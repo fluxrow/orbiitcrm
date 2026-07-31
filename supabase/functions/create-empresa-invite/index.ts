@@ -136,14 +136,27 @@ Deno.serve(async (req) => {
         empresa_id: empresa.id, email: body.responsible_email.trim().toLowerCase(),
         responsible_name: body.responsible_name.trim(), token_hash: tokenHash,
         expires_at: expiresAt, created_by_user_id: user.id,
-      }).select("id, expires_at").single();
+      }).select("id, expires_at, metadata").single();
       if (invErr) throw new Error(`saas_invites: ${invErr.message}`);
 
       const { apiKey: resendKey, fromEmail } = await getSystemEmailConfig(supabase);
       const planName = plan?.name || "Orbit";
+      const activationUrl = `${getAppUrl(req)}/accept-invite?token=${tokenPlaintext}`;
+      let emailDelivery: {
+        status: "sent" | "failed" | "not_configured";
+        provider: "resend";
+        provider_id: string | null;
+        attempted_at: string;
+        error: string | null;
+      } = {
+        status: "not_configured",
+        provider: "resend",
+        provider_id: null,
+        attempted_at: new Date().toISOString(),
+        error: "RESEND_API_KEY não configurada",
+      };
+
       if (resendKey) {
-        const appUrl = getAppUrl(req);
-        const activationUrl = `${appUrl}/accept-invite?token=${tokenPlaintext}`;
         console.log("Sending invite email", { to: body.responsible_email.trim(), activationUrl });
         const emailHtml = buildEmailHtml(empresa.nome, planName, activationUrl);
         const emailRes = await fetch("https://api.resend.com/emails", {
@@ -154,17 +167,59 @@ Deno.serve(async (req) => {
             subject: `Convite: ative sua conta em ${empresa.nome} no Orbit`, html: emailHtml,
           }),
         });
-        if (!emailRes.ok) { const err = await emailRes.json(); console.error("Erro Resend:", err); }
+        const emailPayload = await emailRes.json().catch(() => ({}));
+        emailDelivery = emailRes.ok
+          ? {
+              status: "sent",
+              provider: "resend",
+              provider_id: typeof emailPayload?.id === "string" ? emailPayload.id : null,
+              attempted_at: new Date().toISOString(),
+              error: null,
+            }
+          : {
+              status: "failed",
+              provider: "resend",
+              provider_id: null,
+              attempted_at: new Date().toISOString(),
+              error: typeof emailPayload?.message === "string"
+                ? emailPayload.message
+                : JSON.stringify(emailPayload),
+            };
+        if (!emailRes.ok) console.error("Erro Resend:", emailPayload);
       } else {
         console.warn("RESEND_API_KEY não configurada — email não enviado");
       }
 
+      const { error: deliveryMetaErr } = await supabase.from("saas_invites").update({
+        metadata: {
+          ...((invite.metadata && typeof invite.metadata === "object" && !Array.isArray(invite.metadata))
+            ? invite.metadata
+            : {}),
+          email_delivery: emailDelivery,
+        },
+      }).eq("id", invite.id);
+      if (deliveryMetaErr) {
+        console.error("Erro ao persistir rastreabilidade do convite:", deliveryMetaErr);
+      }
+
       await supabase.from("pe_audit_log").insert({
         actor_user_id: user.id, action: reuseExisting ? "EMPRESA_USER_INVITED" : "EMPRESA_INVITED", entity_type: "saas_invites", entity_id: invite.id,
-        metadata: { empresa_id: empresa.id, email: body.responsible_email.trim().toLowerCase(), plan_code: body.plan_code, reuse_existing: reuseExisting },
+        metadata: {
+          empresa_id: empresa.id,
+          email: body.responsible_email.trim().toLowerCase(),
+          plan_code: body.plan_code,
+          reuse_existing: reuseExisting,
+          email_delivery: emailDelivery,
+        },
       });
 
-      return ok({ empresa_id: empresa.id, invite_id: invite.id, expires_at: invite.expires_at }, undefined, req);
+      return ok({
+        empresa_id: empresa.id,
+        invite_id: invite.id,
+        expires_at: invite.expires_at,
+        activation_url: activationUrl,
+        email_delivery: emailDelivery,
+      }, undefined, req);
     } catch (innerErr: unknown) {
       if (!reuseExisting) {
         await supabase.from("orbit_empresas").delete().eq("id", empresa.id);
