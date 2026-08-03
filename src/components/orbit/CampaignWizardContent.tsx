@@ -23,7 +23,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { uploadCampaignImage } from "@/lib/campaignImages";
 import { toast } from "sonner";
 import { orbitCampaignKeys } from "@/lib/query-keys";
-import { buildCampaignAudienceFilters } from "@/lib/orbit/campaign-audience";
+import { buildCampaignAudienceFilters, isManualOnlyCampaignAudience } from "@/lib/orbit/campaign-audience";
 
 interface CampaignWizardContentProps {
   onComplete: () => void;
@@ -351,6 +351,11 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
       const profile = { empresa_id: tenantEmpresaId };
       const recipientIds = calculateAllRecipientIds();
       const recipientProspects = prospects?.filter(p => recipientIds.includes(p.id)) || [];
+      const manualOnlyAudience = isManualOnlyCampaignAudience(
+        data.filtros,
+        data.selected_prospect_ids,
+        data.selected_group_ids,
+      );
       const campaign = await createCampaign.mutateAsync({
         nome: data.nome, canal: data.canal, publico_origem: data.publico_origem,
         template_id: data.template_id || null,
@@ -378,6 +383,18 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
         if (popError) throw popError;
         const inserted = (popResult as any)?.inserted ?? 0;
         const total = (popResult as any)?.total ?? 0;
+
+        if (manualOnlyAudience && total !== recipientIds.length) {
+          const { error: cleanupError } = await supabase
+            .from("orbit_campaigns")
+            .delete()
+            .eq("id", campaign.id);
+          if (cleanupError) throw cleanupError;
+          throw new Error(
+            `A campanha foi cancelada por segurança: a revisão tinha ${recipientIds.length} destinatário(s), mas o banco materializou ${total}.`,
+          );
+        }
+
         await queryClient.invalidateQueries({ queryKey: orbitCampaignKeys.all });
         if (total === 0) {
           toast.warning("Campanha criada, mas nenhum destinatário elegível foi encontrado.");
