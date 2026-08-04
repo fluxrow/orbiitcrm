@@ -13,6 +13,11 @@ import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 import { checkEligibility } from "../_shared/orbit-whatsapp-outbox.ts";
 import { checkCampaignRecipientEligibility } from "../_shared/campaign-safety.ts";
+import {
+  consumesProspectingQuota,
+  PROSPECTING_QUOTA_SOURCES,
+  saoPauloDayStartIso,
+} from "../_shared/outbox-quota.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -66,14 +71,17 @@ async function getSendingConfig(empresa_id: string): Promise<SendingConfig | nul
 }
 
 async function getDailyUsage(empresa_id: string): Promise<number> {
-  const today = new Date().toISOString().slice(0, 10);
-  const { data } = await supabase
-    .from("orbit_whatsapp_daily_usage")
-    .select("sent_count")
+  // Deriva a cota da fonte de verdade. O agregado legado pode conter respostas
+  // da IA e mensagens manuais enviadas antes da separação desta cota.
+  const { count, error } = await supabase
+    .from("orbit_whatsapp_outbox")
+    .select("id", { count: "exact", head: true })
     .eq("empresa_id", empresa_id)
-    .eq("usage_date", today)
-    .maybeSingle();
-  return Number((data as any)?.sent_count ?? 0);
+    .eq("status", "sent")
+    .in("source_type", [...PROSPECTING_QUOTA_SOURCES])
+    .gte("sent_at", saoPauloDayStartIso());
+  if (error) throw new Error(`daily_usage_query_failed: ${error.message}`);
+  return Number(count ?? 0);
 }
 
 async function bumpDailyUsage(empresa_id: string, delta: number): Promise<void> {
@@ -375,7 +383,7 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
   // meeting_confirmation) NÃO são bloqueados pelo daily_limit — precisam responder
   // ao lead mesmo quando a cota diária de prospecção já se esgotou. Eles continuam
   // sujeitos a max_per_minute, kill switch, opt-out, terminal deal, handoff etc.
-  if (!URGENT_SOURCES.has(item.source_type)) {
+  if (consumesProspectingQuota(item.source_type)) {
     const used = await getDailyUsage(item.empresa_id);
     const limit = cfg.daily_limit ?? null;
     if (limit != null && used >= limit) {
@@ -487,7 +495,9 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
 
     await updateCampaignRecipient(item, { status: "enviado" });
 
-    await bumpDailyUsage(item.empresa_id, 1);
+    if (consumesProspectingQuota(item.source_type)) {
+      await bumpDailyUsage(item.empresa_id, 1);
+    }
     await auditZapiSendAttempt(supabase, {
       empresa_id: item.empresa_id,
       function_name: "orbit-whatsapp-outbox-tick",
