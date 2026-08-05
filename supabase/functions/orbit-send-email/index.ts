@@ -162,7 +162,14 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    if (!resendApiKey) resendApiKey = Deno.env.get("RESEND_API_KEY") || null;
+    // Platform fallback used by system emails. Tenant-specific credentials keep
+    // precedence, but tenants without their own key can use the shared Resend
+    // account already configured for Orbit invitations and notifications.
+    if (!resendApiKey) {
+      resendApiKey = Deno.env.get("PE_RESEND_API_KEY") ||
+        Deno.env.get("RESEND_API_KEY") ||
+        null;
+    }
 
     if (!resendApiKey) {
       return respondFail(
