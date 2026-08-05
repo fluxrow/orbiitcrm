@@ -12,7 +12,16 @@ interface EmailRequest {
 }
 
 const handler = async (req: Request): Promise<Response> => {
-  if (req.method === "OPTIONS") return optionsResponse();
+  if (req.method === "OPTIONS") return optionsResponse(req);
+
+  const respondOk = (data: unknown = {}, meta?: Record<string, unknown>) =>
+    ok(data, meta, req);
+  const respondFail = (
+    code: string,
+    message: string,
+    status = 400,
+    details?: Record<string, unknown>,
+  ) => fail(code, message, status, details, req);
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -22,7 +31,7 @@ const handler = async (req: Request): Promise<Response> => {
     // ── JWT auth: require a valid user token ──
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return fail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401);
+      return respondFail(ErrorCodes.UNAUTHORIZED, "Não autorizado", 401);
     }
     const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authHeader } },
@@ -30,14 +39,14 @@ const handler = async (req: Request): Promise<Response> => {
     const token = authHeader.replace("Bearer ", "");
     const { data: claimsRes, error: claimsErr } = await userClient.auth.getClaims(token);
     if (claimsErr || !claimsRes?.claims) {
-      return fail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401);
+      return respondFail(ErrorCodes.UNAUTHORIZED, "Token inválido", 401);
     }
     const userId = claimsRes.claims.sub as string;
 
     const { to, subject, html, empresa_id: bodyEmpresaId, sender_user_id }: EmailRequest = await req.json();
 
     if (!to || !subject || !html) {
-      return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios: to, subject, html", 200);
+      return respondFail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios: to, subject, html", 200);
     }
 
     // ── Resolve caller identity (super_admin, profile empresa, memberships) ──
@@ -57,7 +66,7 @@ const handler = async (req: Request): Promise<Response> => {
     let empresa_id: string | null = bodyEmpresaId || profile?.empresa_id || null;
 
     if (!empresa_id) {
-      return fail(
+      return respondFail(
         ErrorCodes.VALIDATION_ERROR,
         "empresa_id é obrigatório (não foi possível resolver pelo perfil do usuário)",
         400,
@@ -77,7 +86,7 @@ const handler = async (req: Request): Promise<Response> => {
         belongs = !!membership;
       }
       if (!belongs) {
-        return fail(ErrorCodes.UNAUTHORIZED, "Usuário não pertence à empresa", 403);
+        return respondFail(ErrorCodes.UNAUTHORIZED, "Usuário não pertence à empresa", 403);
       }
     }
 
@@ -118,7 +127,7 @@ const handler = async (req: Request): Promise<Response> => {
           p_feature_code: "email_send",
           p_amount: 1,
         });
-        return ok({ id: "simulated" }, { simulated: true });
+        return respondOk({ id: "simulated" }, { simulated: true });
       }
     }
 
@@ -156,7 +165,7 @@ const handler = async (req: Request): Promise<Response> => {
     if (!resendApiKey) resendApiKey = Deno.env.get("RESEND_API_KEY") || null;
 
     if (!resendApiKey) {
-      return fail(
+      return respondFail(
         ErrorCodes.PROVIDER_NOT_CONFIGURED,
         "API Key do Resend não configurada. Configure a API Key nas configurações de email.",
         200,
@@ -217,7 +226,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (!emailResponse.ok) {
       console.error("Erro Resend:", result);
-      return fail(
+      return respondFail(
         ErrorCodes.PROVIDER_SEND_FAILED,
         result.message || "Erro ao enviar email",
         200,
@@ -233,10 +242,10 @@ const handler = async (req: Request): Promise<Response> => {
     });
 
     console.log("Email enviado com sucesso:", result);
-    return ok(result);
+    return respondOk(result);
   } catch (error: any) {
     console.error("Erro ao enviar email:", error);
-    return fail(ErrorCodes.INTERNAL_ERROR, error.message, 200);
+    return respondFail(ErrorCodes.INTERNAL_ERROR, error.message, 200);
   }
 };
 

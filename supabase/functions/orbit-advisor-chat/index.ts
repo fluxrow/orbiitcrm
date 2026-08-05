@@ -9,7 +9,7 @@
 //   6. Ao final, persiste user+assistant messages na thread.
 //
 // Tools disponíveis: get_flow_definition, get_recent_flow_errors,
-// get_stage_drop_sample, get_template_content.
+// get_stage_drop_sample, get_template_content, get_whatsapp_runtime_status.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders, corsOptionsResponse } from "../_shared/cors.ts";
 
@@ -72,6 +72,14 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "get_whatsapp_runtime_status",
+      description: "Retorna o estado atual e seguro do canal WhatsApp, sem expor credenciais.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
 ];
 
 function buildSystemPrompt(snapshot: any) {
@@ -89,6 +97,9 @@ Você é o **Orbit Advisor** — consultor sênior de Customer Success in-app do
 4. **Nunca aplique nada sozinho.** Termine toda proposta de mudança com uma pergunta explícita: "posso aplicar essa alteração?" — o usuário confirma no botão "Aplicar", que mostra o diff antes de executar.
 5. Use tools só para dados que não estão no snapshot pré-agregado.
 6. Português brasileiro, sem jargão gringo desnecessário.
+7. **Diferencie histórico de estado atual.** Um erro antigo não prova que o problema continua. Sempre cite data/hora e consulte o estado atual antes de recomendar reconexão ou troca de configuração.
+8. **Sem suposições sobre erros técnicos.** \`OUTBOX_ADAPTER_REQUIRED\` significa que, naquela execução, o envio real exigia o adaptador de outbox habilitado. Não significa template ausente nem Z-API desconectada. Confirme template com \`get_template_content\` e canal com \`get_whatsapp_runtime_status\`.
+9. Se uma tool retornar erro, informe a falha da consulta. Nunca converta erro de banco em "registro inexistente".
 
 # Formato da resposta (quando for propor uma otimização)
 1. **Diagnóstico** — 1 frase com a métrica que disparou o alerta.
@@ -101,7 +112,7 @@ Para perguntas informativas (sem proposta), seja ainda mais breve: número + int
 # Exemplos de tom (few-shot)
 
 **Ex. 1 — spike de erro em fluxo**
-"O fluxo *Boas-vindas WhatsApp* rodou 47x nas últimas 24h e falhou 12 vezes — 25% de erro, o triplo do que seria aceitável. Olhando o último erro (timeout no envio da Z-API), o gargalo é externo, não lógico. Sugiro **pausar esse fluxo por 2h** enquanto você confirma a conectividade da Z-API. Impacto: nenhum lead novo entra na régua até destravar, mas você para de queimar tentativas contra uma API que está caindo. Posso aplicar essa pausa?"
+"O fluxo *Boas-vindas WhatsApp* rodou 47x nas últimas 24h e falhou 12 vezes — 25% de erro. O último erro ocorreu às 14:32 com o código informado pela execução. Antes de atribuir a causa à Z-API, vou consultar o estado atual do canal e o template usado. Quer que eu faça essa verificação?"
 
 **Ex. 2 — estagnação de etapa**
 "A etapa *Proposta Enviada* tem 18 leads parados há mais de 7 dias sem movimentação. Provavelmente falta um lembrete pro vendedor — nenhuma tarefa de follow-up dispara automaticamente ao entrar nessa etapa. Sugiro **criar uma tarefa de follow-up de 3 dias** para todos os leads futuros que caírem aí. Impacto: cada vendedor recebe um empurrão sem depender de memória. Posso aplicar?"
@@ -227,22 +238,25 @@ Deno.serve(async (req) => {
     async function executeTool(name: string, args: any): Promise<string> {
       try {
         if (name === "get_flow_definition") {
-          const { data } = await admin
+          const { data, error } = await admin
             .from("orbit_flows")
             .select("id, nome, trigger_type, condicoes, ativo")
             .eq("id", args.flow_id)
             .eq("empresa_id", empresa_id)
             .maybeSingle();
-          const { data: actions } = await admin
+          if (error) return JSON.stringify({ error: "flow_query_failed", details: error.message });
+          const { data: actions, error: actionsError } = await admin
             .from("orbit_flow_actions")
             .select("*")
             .eq("flow_id", args.flow_id)
             .order("ordem");
+          if (actionsError) return JSON.stringify({ error: "flow_actions_query_failed", details: actionsError.message });
+          if (!data) return JSON.stringify({ error: "flow_not_found", flow_id: args.flow_id });
           return JSON.stringify({ flow: data, actions }).slice(0, 4000);
         }
         if (name === "get_recent_flow_errors") {
           const lim = Math.min(Math.max(Number(args.limit ?? 5), 1), 10);
-          const { data } = await admin
+          const { data, error } = await admin
             .from("orbit_flow_runs")
             .select("id, status, error, created_at, finished_at")
             .eq("flow_id", args.flow_id)
@@ -250,6 +264,7 @@ Deno.serve(async (req) => {
             .not("error", "is", null)
             .order("created_at", { ascending: false })
             .limit(lim);
+          if (error) return JSON.stringify({ error: "flow_errors_query_failed", details: error.message });
           return JSON.stringify(data ?? []).slice(0, 3000);
         }
         if (name === "get_stage_drop_sample") {
@@ -264,13 +279,40 @@ Deno.serve(async (req) => {
           return JSON.stringify(data ?? []).slice(0, 3000);
         }
         if (name === "get_template_content") {
-          const { data } = await admin
+          const { data, error } = await admin
             .from("orbit_message_templates")
-            .select("id, nome, slug, canal, conteudo")
+            .select("id, nome, slug, canal, categoria, assunto_email, corpo_texto, corpo_html, imagem_url, ativo, updated_at")
             .eq("id", args.template_id)
             .eq("empresa_id", empresa_id)
             .maybeSingle();
-          return JSON.stringify(data ?? null).slice(0, 3000);
+          if (error) return JSON.stringify({ error: "template_query_failed", details: error.message });
+          if (!data) return JSON.stringify({ error: "template_not_found", template_id: args.template_id });
+          return JSON.stringify(data).slice(0, 5000);
+        }
+        if (name === "get_whatsapp_runtime_status") {
+          const [{ data: sending, error: sendingError }, { data: zapi, error: zapiError }] = await Promise.all([
+            admin
+              .from("orbit_whatsapp_sending_config")
+              .select("enabled, daily_limit, max_per_minute, min_delay_ms, max_delay_ms, warmup_enabled, warmup_start_date, outbox_adapter_enabled, updated_at")
+              .eq("empresa_id", empresa_id)
+              .maybeSingle(),
+            admin
+              .from("orbit_zapi_config")
+              .select("ativo, envio_real_liberado, numero_instancia, updated_at")
+              .eq("empresa_id", empresa_id)
+              .maybeSingle(),
+          ]);
+          if (sendingError || zapiError) {
+            return JSON.stringify({
+              error: "whatsapp_runtime_query_failed",
+              details: sendingError?.message ?? zapiError?.message,
+            });
+          }
+          return JSON.stringify({
+            checked_at: new Date().toISOString(),
+            sending_config: sending ?? null,
+            zapi_config: zapi ?? null,
+          }).slice(0, 3000);
         }
       } catch (e) {
         return JSON.stringify({ error: (e as Error).message });

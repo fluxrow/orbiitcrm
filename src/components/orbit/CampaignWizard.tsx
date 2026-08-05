@@ -22,6 +22,7 @@ import { RecipientSelector } from "./RecipientSelector";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/contexts/TenantContext";
 import { uploadCampaignImage } from "@/lib/campaignImages";
+import { extractTemplateVariables, renderTemplateVariables } from "@/lib/templateVariables";
 import { toast } from "sonner";
 
 interface CampaignWizardProps {
@@ -296,19 +297,12 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
     link: "https://exemplo.com", responsavel: "Maria Responsável", segmento: "Tecnologia",
   };
 
-  const extractVariables = (text: string): string[] => {
-    const matches = text.match(/\{(\w+)\}/g);
-    if (!matches) return [];
-    return [...new Set(matches.map(m => m.replace(/[{}]/g, "")))];
-  };
-
-  const substituteVars = (text: string, vars: Record<string, string>) => {
-    return text.replace(/\{(\w+)\}/g, (_, key) => vars[key] || `{${key}}`);
-  };
-
   const handleOpenTestEmail = () => {
     if (!selectedTemplate) return;
-    const vars = extractVariables(selectedTemplate.corpo_texto || "");
+    const vars = extractTemplateVariables(
+      selectedTemplate.assunto_email,
+      selectedTemplate.corpo_texto,
+    );
     const initial: Record<string, string> = {};
     vars.forEach(v => { initial[v] = defaultVarValues[v] || ""; });
     setTestVars(initial);
@@ -324,8 +318,8 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
       if (!user) throw new Error("Usuário não autenticado");
       const profile = tenantEmpresaId ? { empresa_id: tenantEmpresaId } : null;
       
-      const bodyText = substituteVars(selectedTemplate.corpo_texto || "", testVars);
-      const subject = substituteVars(selectedTemplate.assunto_email || "Teste", testVars);
+      const bodyText = renderTemplateVariables(selectedTemplate.corpo_texto || "", testVars);
+      const subject = renderTemplateVariables(selectedTemplate.assunto_email || "Teste", testVars);
       const templateImg = (selectedTemplate as any).imagem_url || "";
       let html = "";
       if (templateImg) {
