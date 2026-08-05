@@ -36,11 +36,14 @@ export function useOrbitProspectsCount() {
 }
 
 
-export function useOrbitProspects(filters?: ProspectFilters) {
+export function useOrbitProspects(
+  filters?: ProspectFilters,
+  options?: { enabled?: boolean },
+) {
   const { empresaId } = useTenant();
   return useQuery({
     queryKey: [...orbitProspectKeys.list(filters), empresaId],
-    enabled: !!empresaId,
+    enabled: !!empresaId && (options?.enabled ?? true),
     queryFn: async () => {
       if (filters?.matched_ids && filters.matched_ids.length === 0) return [];
       const trimmedSearch = filters?.search?.trim();

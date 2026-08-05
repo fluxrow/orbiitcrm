@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -99,10 +99,14 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
 
   const queryClient = useQueryClient();
   const { data: templates } = useOrbitTemplates();
-  const { data: prospects } = useOrbitProspects();
+  const { data: prospects } = useOrbitProspects(undefined, {
+    enabled: currentStep >= 3,
+  });
   const createCampaign = useCreateCampaign();
   const createTemplate = useCreateTemplate();
-  const { data: sendGroups } = useOrbitSendGroups();
+  const { data: sendGroups } = useOrbitSendGroups({
+    enabled: currentStep >= 3,
+  });
 
   // Pre-populate from follow-up flow (navigated from CampaignAnalyticsDialog)
   const location = useLocation();
@@ -140,41 +144,6 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-
-  const { data: companyProfiles } = useQuery({
-    queryKey: ["company-profiles-for-filter"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("profiles").select("id, nome, email").eq("ativo", true);
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const { data: currentProfile } = useQuery({
-    queryKey: ["orbit-current-profile"],
-    queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("empresa_id")
-        .eq("id", user.id)
-        .single();
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const distinctValues = useMemo(() => {
-    if (!prospects) return { segmentos: [], estados: [], origens_contato: [], origens_lead: [], tags: [] };
-    const segmentos = [...new Set(prospects.map(p => p.segmento).filter(Boolean))] as string[];
-    const estados = [...new Set(prospects.map(p => p.estado).filter(Boolean))] as string[];
-    const origens_contato = [...new Set(prospects.map(p => p.origem_contato).filter(Boolean))] as string[];
-    const origens_lead = [...new Set(prospects.map(p => p.origem_lead).filter(Boolean))] as string[];
-    const allTags = prospects.flatMap(p => (p.tags as string[]) || []);
-    const tags = [...new Set(allTags.filter(Boolean))] as string[];
-    return { segmentos, estados, origens_contato, origens_lead, tags };
-  }, [prospects]);
 
   const filteredTemplates = templates?.filter(t => t.canal === data.canal && t.ativo) || [];
   const selectedTemplate = templates?.find(t => t.id === data.template_id);
@@ -768,7 +737,7 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
                                 {selectedTemplate?.assunto_email && (
                                   <div>
                                     <p className="text-xs font-medium text-muted-foreground">Assunto:</p>
-                                    <p className="text-sm font-medium">{substituteVars(selectedTemplate.assunto_email, testVars)}</p>
+                                    <p className="text-sm font-medium">{renderTemplateVariables(selectedTemplate.assunto_email, testVars)}</p>
                                   </div>
                                 )}
                                 {(selectedTemplate as any)?.imagem_url && (
@@ -780,7 +749,7 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
                                 <div>
                                   <p className="text-xs font-medium text-muted-foreground">Corpo:</p>
                                   <div className="bg-background border rounded p-3 text-sm whitespace-pre-wrap max-h-[200px] overflow-y-auto">
-                                    {substituteVars(selectedTemplate?.corpo_texto || "", testVars)}
+                                    {renderTemplateVariables(selectedTemplate?.corpo_texto || "", testVars)}
                                   </div>
                                 </div>
                               </div>
@@ -878,9 +847,10 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
               </div>
               <div className="flex justify-end">
                 <Button
+                  type="button"
                   variant="outline"
                   onClick={() => setShowRecipientPreview(true)}
-                  disabled={!currentProfile?.empresa_id}
+                  disabled={!tenantEmpresaId}
                 >
                   Ver destinatários ({estimatedRecipients})
                 </Button>
@@ -911,7 +881,7 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
       <CampaignRecipientsPreviewDrawer
         open={showRecipientPreview}
         onOpenChange={setShowRecipientPreview}
-        empresaId={currentProfile?.empresa_id}
+        empresaId={tenantEmpresaId || ""}
         canal={data.canal}
         filtros={buildCampaignAudienceFilters(
           data.filtros,
