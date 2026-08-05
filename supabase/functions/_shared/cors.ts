@@ -1,8 +1,18 @@
+function normalizeOrigin(origin: string): string {
+  const value = origin.trim().replace(/\/$/, "");
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value)) return value;
+
+  // Supabase project secrets are sometimes stored as a bare hostname.
+  // CORS requires a serialized origin, including its scheme.
+  return `https://${value}`;
+}
+
 const STATIC_ALLOWED_ORIGINS = [
   "https://app.orbiitcrm.com.br",
   "https://orbiitcrm.lovable.app",
   "https://orbit.fluxrow.pro",
-  Deno.env.get("APP_URL") ?? "",
+  normalizeOrigin(Deno.env.get("APP_URL") ?? ""),
 ].filter(Boolean);
 
 const ALLOWED_ORIGIN_PATTERNS: RegExp[] = [
@@ -30,9 +40,11 @@ export function getCorsHeaders(
   req?: Request,
   options: CorsOptions = {},
 ): Record<string, string> {
-  const origin = req?.headers.get("Origin") ?? "";
+  const origin = normalizeOrigin(req?.headers.get("Origin") ?? "");
   const fallbackOrigin =
-    Deno.env.get("APP_URL") ?? STATIC_ALLOWED_ORIGINS[0] ?? "*";
+    normalizeOrigin(Deno.env.get("APP_URL") ?? "") ||
+    STATIC_ALLOWED_ORIGINS[0] ||
+    "*";
 
   return {
     "Access-Control-Allow-Origin": isAllowedOrigin(origin) ? origin : fallbackOrigin,
