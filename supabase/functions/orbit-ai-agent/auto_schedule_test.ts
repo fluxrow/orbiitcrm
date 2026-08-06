@@ -116,8 +116,16 @@ const TOKEN: any = {
   timezone: "America/Sao_Paulo",
   availability_start: "09:00",
   availability_end: "18:00",
+  availability_break_start: null,
+  availability_break_end: null,
   booking_min_notice_minutes: 60,
   booking_max_horizon_days: 60,
+};
+
+const TOKEN_WITH_BREAK = {
+  ...TOKEN,
+  availability_break_start: "12:00:00",
+  availability_break_end: "14:00:00",
 };
 
 Deno.test("modo de agendamento padrao permanece auto_calendar", () => {
@@ -656,6 +664,61 @@ Deno.test("data futura com horário continua fluindo normalmente (regressão)", 
   assertEquals(res.created, true);
   assert(res.meeting_id);
   assert(state.order.includes("orbit_meetings.insert"));
+});
+
+Deno.test("Fábrica: horário exato dentro da pausa 12h–14h é recusado", async () => {
+  const futureDay = localFutureDay(7);
+  const requestedStart = `${futureDay}T16:00:00.000Z`; // 13h BRT
+  const state: FakeState = {
+    meetings: [], deals: [{ id: "deal-1", etapa_id: null }],
+    pipeline_stages: [], flow_events: [], order: [],
+  };
+  const supa = makeFakeSupabase(state);
+  const params = baseParams() as any;
+  params.mensagem_cliente = "Pode ser às 13h";
+  params.agendamento = { ...params.agendamento, data_iso: requestedStart, tem_horario: true };
+  let created = false;
+
+  const res = await tryAutoScheduleMeeting(supa as any, params, {
+    getTokenForEmpresa: async () => TOKEN_WITH_BREAK,
+    ensureFreshAccessToken: async () => "at",
+    checkAvailability: async () => ({ busy: [] }),
+    createCalendarEvent: async () => { created = true; return { id: "unexpected" }; },
+    deleteCalendarEvent: async () => {},
+  });
+
+  assertEquals(res.handled, true);
+  assertEquals(res.created, false);
+  assertEquals(created, false);
+  assert(res.response_override?.includes("pausa de 12:00 às 14:00"));
+  assert(!state.order.includes("orbit_meetings.insert"));
+});
+
+Deno.test("Fábrica: sugestões da tarde começam após a pausa", async () => {
+  const futureDay = localFutureDay(7);
+  const state: FakeState = {
+    meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [],
+  };
+  const supa = makeFakeSupabase(state);
+  const params = baseParams() as any;
+  params.mensagem_cliente = "Prefiro no período da tarde";
+  params.agendamento = {
+    ...params.agendamento,
+    data_iso: `${futureDay}T15:00:00.000Z`,
+    tem_horario: false,
+  };
+
+  const res = await tryAutoScheduleMeeting(supa as any, params, {
+    getTokenForEmpresa: async () => TOKEN_WITH_BREAK,
+    ensureFreshAccessToken: async () => "at",
+    checkAvailability: async () => ({ busy: [] }),
+    createCalendarEvent: async () => ({ id: "unexpected" }),
+    deleteCalendarEvent: async () => {},
+  });
+
+  assertEquals(res.handled, true);
+  assertEquals(res.created, false);
+  assertEquals(res.suggestions?.map((slot: any) => slot.label), ["14:00", "15:00"]);
 });
 
 function localFutureDay(days: number): string {

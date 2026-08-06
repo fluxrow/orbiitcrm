@@ -725,7 +725,7 @@ serve(async (req) => {
     const { data: agendaSettings } = empresaId
       ? await supabase
           .from("orbit_google_tokens")
-          .select("timezone, availability_start, availability_end, booking_min_notice_minutes, booking_max_horizon_days")
+          .select("timezone, availability_start, availability_end, availability_break_start, availability_break_end, booking_min_notice_minutes, booking_max_horizon_days")
           .eq("empresa_id", empresaId)
           .maybeSingle()
       : { data: null };
@@ -951,7 +951,10 @@ serve(async (req) => {
     const _agendaTz = agendaSettings?.timezone || "America/Sao_Paulo";
     const _nowFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: _agendaTz, weekday: "long", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date());
     const _nowISO = new Date().toISOString();
-    const dataHoraAtualBlock = `\nDATA/HORA ATUAL (referência para agendamentos): ${_nowFmt} (${_agendaTz}) — ISO: ${_nowISO}\nJANELA DA AGENDA: ${agendaSettings?.availability_start || "09:00"}–${agendaSettings?.availability_end || "18:00"}; antecedência mínima ${agendaSettings?.booking_min_notice_minutes ?? 60} min; horizonte máximo ${agendaSettings?.booking_max_horizon_days ?? 60} dias.\nREGRA CRÍTICA DE AGENDAMENTO: NUNCA devolva "data_iso" no passado nem além do horizonte. Se o cliente citar um dia da semana, resolva para a próxima ocorrência FUTURA no fuso acima. Se disser apenas "semana que vem" sem indicar o dia, deixe data_iso=null e pergunte o dia. Ano correto é derivado da data atual; nunca invente janeiro ou outro mês sem apoio na mensagem.\n`;
+    const _agendaBreak = agendaSettings?.availability_break_start && agendaSettings?.availability_break_end
+      ? ` PAUSA SEM AGENDAMENTO: ${String(agendaSettings.availability_break_start).slice(0, 5)} às ${String(agendaSettings.availability_break_end).slice(0, 5)}.`
+      : "";
+    const dataHoraAtualBlock = `\nDATA/HORA ATUAL (referência para agendamentos): ${_nowFmt} (${_agendaTz}) — ISO: ${_nowISO}\nJANELA DA AGENDA: ${agendaSettings?.availability_start || "09:00"}–${agendaSettings?.availability_end || "18:00"}.${_agendaBreak} Antecedência mínima ${agendaSettings?.booking_min_notice_minutes ?? 60} min; horizonte máximo ${agendaSettings?.booking_max_horizon_days ?? 60} dias.\nREGRA CRÍTICA DE AGENDAMENTO: NUNCA devolva "data_iso" no passado nem além do horizonte. Se o cliente citar um dia da semana, resolva para a próxima ocorrência FUTURA no fuso acima. Se disser apenas "semana que vem" sem indicar o dia, deixe data_iso=null e pergunte o dia. Ano correto é derivado da data atual; nunca invente janeiro ou outro mês sem apoio na mensagem.\n`;
     const schedulingModeBlock = aiConfig.scheduling_mode === "human_handoff_after_period"
       ? `\nMODO DE AGENDAMENTO DESTE TENANT: HANDOFF HUMANO APOS PERIODO.\n- Quando o lead aceitar a conversa/reuniao, use intencao=agendar_call e pergunte apenas se prefere manha, tarde ou noite.\n- Quando ele responder o periodo, use intencao=agendar_call e preencha agendamento.periodo_preferido.\n- Nao ofereca dia ou horario e nao prometa evento criado. O sistema transfere para o responsavel.\n`
       : `\nMODO DE AGENDAMENTO DESTE TENANT: AGENDA AUTOMATICA. O sistema consulta o calendario e oferece dois horarios livres; nao pergunte qual horario o lead prefere antes dessa consulta.\n`;
@@ -2150,6 +2153,15 @@ function clockMinutes(hourValue: string, minuteValue?: string): number | null {
   return hour * 60 + minute;
 }
 
+function availabilityBreakBounds(token: any): AvailabilityBounds | null {
+  const startParts = String(token?.availability_break_start || "").match(/^(\d{1,2}):(\d{2})/);
+  const endParts = String(token?.availability_break_end || "").match(/^(\d{1,2}):(\d{2})/);
+  if (!startParts || !endParts) return null;
+  const start = clockMinutes(startParts[1], startParts[2]);
+  const end = clockMinutes(endParts[1], endParts[2]);
+  return start !== null && end !== null && end > start ? { start, end } : null;
+}
+
 export function explicitTimeBounds(message: string): AvailabilityBounds | null {
   const text = normalizePt(message || "")
     .replace(/\s+/g, " ")
@@ -2210,6 +2222,7 @@ async function findNearestAvailableSlots(params: {
   const configuredStart = availabilityStart.hour * 60 + availabilityStart.minute;
   const configuredEnd = availabilityEnd.hour * 60 + availabilityEnd.minute;
   const bounds = availabilityBoundsForMessage(configuredStart, configuredEnd, params.message);
+  const breakBounds = availabilityBreakBounds(params.token);
   const durationMs = params.durationMinutes * 60_000;
   const stepMs = Math.max(30, params.durationMinutes) * 60_000;
   const noticeFloor = params.now.getTime() + params.minNoticeMinutes * 60_000;
@@ -2225,6 +2238,12 @@ async function findNearestAvailableSlots(params: {
     const dayEnd = isoWithOffset(day, Math.floor(bounds.end / 60), bounds.end % 60, params.timezone);
     const endMs = new Date(dayEnd).getTime();
     const dayStartMs = new Date(dayStart).getTime();
+    const breakStartMs = breakBounds
+      ? new Date(isoWithOffset(day, Math.floor(breakBounds.start / 60), breakBounds.start % 60, params.timezone)).getTime()
+      : null;
+    const breakEndMs = breakBounds
+      ? new Date(isoWithOffset(day, Math.floor(breakBounds.end / 60), breakBounds.end % 60, params.timezone)).getTime()
+      : null;
     let cursor = Math.max(dayStartMs, noticeFloor);
     cursor = dayStartMs + Math.ceil((cursor - dayStartMs) / stepMs) * stepMs;
     if (cursor + durationMs > endMs) continue;
@@ -2251,7 +2270,9 @@ async function findNearestAvailableSlots(params: {
         const busyEnd = new Date(item.end).getTime();
         return cursor < busyEnd && slotEnd > busyStart;
       });
-      if (!overlaps) {
+      const overlapsBreak = breakStartMs !== null && breakEndMs !== null &&
+        cursor < breakEndMs && slotEnd > breakStartMs;
+      if (!overlaps && !overlapsBreak) {
         const start = new Date(cursor);
         const label = new Intl.DateTimeFormat("pt-BR", {
           timeZone: params.timezone,
@@ -2487,6 +2508,43 @@ export async function tryAutoScheduleMeeting(
           handled: true,
           created: false,
           response_override: `Esse horário fica fora do nosso expediente de ${String(token.availability_start || "09:00").slice(0, 5)} às ${String(token.availability_end || "18:00").slice(0, 5)}. ${formatSuggestionsResponse(suggestions)}`,
+          suggestions,
+        };
+      } catch {
+        return { handled: false, error: "freeBusy falhou" };
+      }
+    }
+
+    const breakBounds = availabilityBreakBounds(token);
+    const overlapsBreak = Boolean(
+      breakBounds && appointmentStart < breakBounds.end && appointmentEnd > breakBounds.start,
+    );
+    if (overlapsBreak) {
+      console.warn("[orbit-ai-agent] horário rejeitado durante pausa da agenda:", {
+        effectiveDataIso,
+        availabilityBreakStart: token.availability_break_start,
+        availabilityBreakEnd: token.availability_break_end,
+        timezone: tz,
+      });
+      const access = await deps.ensureFreshAccessToken(token);
+      try {
+        const suggestions = await findNearestAvailableSlots({
+          deps,
+          token,
+          accessToken: access,
+          calendarId: calId,
+          timezone: tz,
+          startDay: dayStr,
+          durationMinutes: duracaoMin,
+          minNoticeMinutes,
+          maxDays: Math.min(maxHorizonDays, 14),
+          now,
+          message: params.mensagem_cliente || "",
+        });
+        return {
+          handled: true,
+          created: false,
+          response_override: `Esse horário coincide com nossa pausa de ${String(token.availability_break_start).slice(0, 5)} às ${String(token.availability_break_end).slice(0, 5)}. ${formatSuggestionsResponse(suggestions)}`,
           suggestions,
         };
       } catch {

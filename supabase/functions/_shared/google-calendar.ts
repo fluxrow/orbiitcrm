@@ -97,6 +97,8 @@ export interface GoogleTokenRow {
   timezone: string;
   availability_start: string;
   availability_end: string;
+  availability_break_start?: string | null;
+  availability_break_end?: string | null;
   booking_min_notice_minutes: number;
   booking_max_horizon_days: number;
 }
