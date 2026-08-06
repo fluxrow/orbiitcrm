@@ -19,6 +19,7 @@ import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbo
 import { resolveEventId, buildScheduledActionContext, restoreRunFromScheduled } from "./flow-run-events.ts";
 import { computeCadenceKey } from "./cadence-key.ts";
 import { isActionDisabled } from "./action-guards.ts";
+import { buildMeetingTemplateVars } from "./template-vars.ts";
 
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -140,6 +141,18 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
 
   const p: any = prospect;
   const payloadVars: any = run.context?.payload ?? {};
+  let meetingTimezone: string | null = null;
+  if (payloadVars.scheduled_at) {
+    try {
+      meetingTimezone = (await getTokenForEmpresa(run.empresa_id))?.timezone ?? null;
+    } catch (error) {
+      console.warn("meeting template timezone fallback", {
+        empresa_id: run.empresa_id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  const meetingVars = buildMeetingTemplateVars(payloadVars, meetingTimezone);
   const vars: Json = {
     nome:
       p.nome_contato ??
@@ -154,6 +167,7 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
     telefone: p.whatsapp ?? p.telefone ?? "",
     cidade: p.cidade ?? "",
     segmento: p.segmento ?? "",
+    ...meetingVars,
     ...(payloadVars.vars ?? {}),
   };
   const mensagem = renderTemplateVars(tpl.corpo_texto || "", vars);
