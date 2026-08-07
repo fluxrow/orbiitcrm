@@ -749,7 +749,7 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
                                 {selectedTemplate?.assunto_email && (
                                   <div>
                                     <p className="text-xs font-medium text-muted-foreground">Assunto:</p>
-                                    <p className="text-sm font-medium">{substituteVars(selectedTemplate.assunto_email, testVars)}</p>
+                                    <p className="text-sm font-medium">{renderTemplateVariables(selectedTemplate.assunto_email, testVars)}</p>
                                   </div>
                                 )}
                                 {(selectedTemplate as any)?.imagem_url && (
@@ -761,7 +761,7 @@ export function CampaignWizard({ open, onOpenChange }: CampaignWizardProps) {
                                 <div>
                                   <p className="text-xs font-medium text-muted-foreground">Corpo:</p>
                                   <div className="bg-background border rounded p-3 text-sm whitespace-pre-wrap max-h-[200px] overflow-y-auto">
-                                    {substituteVars(selectedTemplate?.corpo_texto || "", testVars)}
+                                    {renderTemplateVariables(selectedTemplate?.corpo_texto || "", testVars)}
                                   </div>
                                 </div>
                               </div>
