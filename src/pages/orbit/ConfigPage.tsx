@@ -234,15 +234,20 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
         client_token: zapiForm.client_token.trim(),
         numero_origem: zapiForm.numero_origem.trim(),
         webhook_url: webhookUrl,
-        ativo: true,
+        ativo: zapiForm.ativo,
       });
 
       if (!saved?.id || !saved?.has_token || !saved?.has_client_token) {
         throw new Error("A configuração não foi confirmada pelo banco. Tente salvar novamente.");
       }
 
-      setZapiForm((current) => ({ ...current, token: "", client_token: "", ativo: saved.ativo ?? true }));
-      toast.success("Configuração Z-API salva e confirmada.");
+      const savedAtivo = saved.ativo ?? zapiForm.ativo;
+      setZapiForm((current) => ({ ...current, token: "", client_token: "", ativo: savedAtivo }));
+      toast.success(
+        savedAtivo
+          ? "Configuração Z-API salva e confirmada (integração ativa)."
+          : "Configuração Z-API salva e confirmada (integração desativada).",
+      );
     } catch (error: any) {
       toast.error(error.message || "Erro ao salvar configuração Z-API");
     }
