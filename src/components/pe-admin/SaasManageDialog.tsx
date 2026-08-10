@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Copy, Mail } from "lucide-react";
+import { Copy, Mail, MessageCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUpdateSaasEmpresa, useSaasPlans, type SaasEmpresa } from "@/hooks/useSaasPlans";
 
@@ -52,6 +52,11 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
 
   // Users list
   const [users, setUsers] = useState<any[]>([]);
+
+  // Pending invites
+  const [pendingInvites, setPendingInvites] = useState<any[]>([]);
+  const [rotatingId, setRotatingId] = useState<string | null>(null);
+
 
   const currentEmpresaId = empresa?.empresa_id;
 
@@ -97,8 +102,20 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
       } else {
         setUsers([]);
       }
+
+      await loadInvites(currentEmpresaId);
     })();
   }, [currentEmpresaId, open]);
+
+  const loadInvites = async (empresaId: string) => {
+    const { data } = await supabase
+      .from("saas_invites")
+      .select("id, email, responsible_name, expires_at, used_at, created_at")
+      .eq("empresa_id", empresaId)
+      .order("created_at", { ascending: false });
+    setPendingInvites(data || []);
+  };
+
 
   if (!empresa) return null;
 
@@ -178,6 +195,7 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
       }
       setInviteName("");
       setInviteEmail("");
+      if (currentEmpresaId) await loadInvites(currentEmpresaId);
     } catch (err: any) {
       toast.error(err.message || "Erro ao enviar convite");
     } finally {
@@ -185,15 +203,64 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
     }
   };
 
-  const handleCopyInviteLink = async () => {
-    if (!generatedInvite) return;
+  const copyToClipboard = async (url: string) => {
     try {
-      await navigator.clipboard.writeText(generatedInvite.url);
-      toast.success(`Link de ${generatedInvite.email} copiado`);
+      await navigator.clipboard.writeText(url);
+      toast.success("Link copiado");
+      return true;
     } catch {
       toast.error("Não foi possível copiar o link");
+      return false;
     }
   };
+
+  const handleCopyInviteLink = async () => {
+    if (!generatedInvite) return;
+    await copyToClipboard(generatedInvite.url);
+  };
+
+  const buildWhatsAppHref = (url: string) => {
+    const msg = `Olá! Seu acesso ao Orbit (${empresa?.empresa_nome || "sua empresa"}) está pronto. Use este link para ativar sua conta (válido por 48h): ${url}`;
+    return `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  };
+
+  const rotateInviteLink = async (inviteId: string): Promise<string | null> => {
+    setRotatingId(inviteId);
+    try {
+      const { data, error } = await supabase.functions.invoke("rotate-empresa-invite", {
+        body: { invite_id: inviteId },
+      });
+      if (error) throw error;
+      if (data && data.ok === false) throw new Error(data.error?.message || "Falha ao gerar link");
+      const url = data?.data?.activation_url;
+      if (typeof url !== "string" || !url) throw new Error("Link não retornado");
+      if (currentEmpresaId) await loadInvites(currentEmpresaId);
+      return url;
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao gerar novo link");
+      return null;
+    } finally {
+      setRotatingId(null);
+    }
+  };
+
+  const handleRotateAndCopy = async (inviteId: string) => {
+    const url = await rotateInviteLink(inviteId);
+    if (url) await copyToClipboard(url);
+  };
+
+  const handleRotateAndWhatsApp = async (inviteId: string) => {
+    const url = await rotateInviteLink(inviteId);
+    if (!url) return;
+    window.open(buildWhatsAppHref(url), "_blank", "noopener,noreferrer");
+  };
+
+  const inviteState = (inv: any): "used" | "expired" | "pending" => {
+    if (inv.used_at) return "used";
+    if (new Date(inv.expires_at) < new Date()) return "expired";
+    return "pending";
+  };
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -332,10 +399,76 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
                     <Button type="button" variant="outline" size="icon" onClick={handleCopyInviteLink} title="Copiar link">
                       <Copy className="h-4 w-4" />
                     </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      title="Enviar por WhatsApp"
+                      onClick={() => window.open(buildWhatsAppHref(generatedInvite.url), "_blank", "noopener,noreferrer")}
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               )}
             </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <div>
+                <div className="text-sm font-medium">Convites</div>
+                <div className="text-xs text-muted-foreground">
+                  Gere um novo link para reenviar manualmente. Nenhum email é enviado nesta ação.
+                </div>
+              </div>
+              {pendingInvites.length === 0 ? (
+                <div className="text-sm text-muted-foreground text-center py-3">Nenhum convite registrado.</div>
+              ) : (
+                <div className="space-y-2">
+                  {pendingInvites.map((inv) => {
+                    const state = inviteState(inv);
+                    return (
+                      <div key={inv.id} className="flex flex-wrap items-center justify-between gap-2 rounded border p-2">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium truncate">{inv.responsible_name || inv.email}</div>
+                          <div className="text-xs text-muted-foreground truncate">{inv.email}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {state === "used" ? (
+                            <Badge variant="secondary">Utilizado</Badge>
+                          ) : state === "expired" ? (
+                            <Badge variant="destructive">Expirado</Badge>
+                          ) : (
+                            <Badge variant="outline">Pendente</Badge>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={state === "used" || rotatingId === inv.id}
+                            onClick={() => handleRotateAndCopy(inv.id)}
+                          >
+                            <Copy className="h-3 w-3 mr-1" />
+                            {rotatingId === inv.id ? "Gerando..." : "Gerar novo link e copiar"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={state === "used" || rotatingId === inv.id}
+                            onClick={() => handleRotateAndWhatsApp(inv.id)}
+                            title="Gerar novo link e enviar por WhatsApp"
+                          >
+                            <MessageCircle className="h-3 w-3 mr-1" />
+                            WhatsApp
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
           </TabsContent>
         </Tabs>
 
