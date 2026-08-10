@@ -195,6 +195,7 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
       }
       setInviteName("");
       setInviteEmail("");
+      if (currentEmpresaId) await loadInvites(currentEmpresaId);
     } catch (err: any) {
       toast.error(err.message || "Erro ao enviar convite");
     } finally {
@@ -202,15 +203,64 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
     }
   };
 
-  const handleCopyInviteLink = async () => {
-    if (!generatedInvite) return;
+  const copyToClipboard = async (url: string) => {
     try {
-      await navigator.clipboard.writeText(generatedInvite.url);
-      toast.success(`Link de ${generatedInvite.email} copiado`);
+      await navigator.clipboard.writeText(url);
+      toast.success("Link copiado");
+      return true;
     } catch {
       toast.error("Não foi possível copiar o link");
+      return false;
     }
   };
+
+  const handleCopyInviteLink = async () => {
+    if (!generatedInvite) return;
+    await copyToClipboard(generatedInvite.url);
+  };
+
+  const buildWhatsAppHref = (url: string) => {
+    const msg = `Olá! Seu acesso ao Orbit (${empresa?.empresa_nome || "sua empresa"}) está pronto. Use este link para ativar sua conta (válido por 48h): ${url}`;
+    return `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  };
+
+  const rotateInviteLink = async (inviteId: string): Promise<string | null> => {
+    setRotatingId(inviteId);
+    try {
+      const { data, error } = await supabase.functions.invoke("rotate-empresa-invite", {
+        body: { invite_id: inviteId },
+      });
+      if (error) throw error;
+      if (data && data.ok === false) throw new Error(data.error?.message || "Falha ao gerar link");
+      const url = data?.data?.activation_url;
+      if (typeof url !== "string" || !url) throw new Error("Link não retornado");
+      if (currentEmpresaId) await loadInvites(currentEmpresaId);
+      return url;
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao gerar novo link");
+      return null;
+    } finally {
+      setRotatingId(null);
+    }
+  };
+
+  const handleRotateAndCopy = async (inviteId: string) => {
+    const url = await rotateInviteLink(inviteId);
+    if (url) await copyToClipboard(url);
+  };
+
+  const handleRotateAndWhatsApp = async (inviteId: string) => {
+    const url = await rotateInviteLink(inviteId);
+    if (!url) return;
+    window.open(buildWhatsAppHref(url), "_blank", "noopener,noreferrer");
+  };
+
+  const inviteState = (inv: any): "used" | "expired" | "pending" => {
+    if (inv.used_at) return "used";
+    if (new Date(inv.expires_at) < new Date()) return "expired";
+    return "pending";
+  };
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
