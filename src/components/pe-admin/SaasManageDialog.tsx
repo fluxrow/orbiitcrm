@@ -102,8 +102,20 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
       } else {
         setUsers([]);
       }
+
+      await loadInvites(currentEmpresaId);
     })();
   }, [currentEmpresaId, open]);
+
+  const loadInvites = async (empresaId: string) => {
+    const { data } = await supabase
+      .from("saas_invites")
+      .select("id, email, responsible_name, expires_at, used_at, created_at")
+      .eq("empresa_id", empresaId)
+      .order("created_at", { ascending: false });
+    setPendingInvites(data || []);
+  };
+
 
   if (!empresa) return null;
 
