@@ -53,6 +53,11 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
   // Users list
   const [users, setUsers] = useState<any[]>([]);
 
+  // Pending invites
+  const [pendingInvites, setPendingInvites] = useState<any[]>([]);
+  const [rotatingId, setRotatingId] = useState<string | null>(null);
+
+
   const currentEmpresaId = empresa?.empresa_id;
 
   useEffect(() => {
