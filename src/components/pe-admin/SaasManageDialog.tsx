@@ -399,10 +399,76 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
                     <Button type="button" variant="outline" size="icon" onClick={handleCopyInviteLink} title="Copiar link">
                       <Copy className="h-4 w-4" />
                     </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      title="Enviar por WhatsApp"
+                      onClick={() => window.open(buildWhatsAppHref(generatedInvite.url), "_blank", "noopener,noreferrer")}
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               )}
             </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <div>
+                <div className="text-sm font-medium">Convites</div>
+                <div className="text-xs text-muted-foreground">
+                  Gere um novo link para reenviar manualmente. Nenhum email é enviado nesta ação.
+                </div>
+              </div>
+              {pendingInvites.length === 0 ? (
+                <div className="text-sm text-muted-foreground text-center py-3">Nenhum convite registrado.</div>
+              ) : (
+                <div className="space-y-2">
+                  {pendingInvites.map((inv) => {
+                    const state = inviteState(inv);
+                    return (
+                      <div key={inv.id} className="flex flex-wrap items-center justify-between gap-2 rounded border p-2">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium truncate">{inv.responsible_name || inv.email}</div>
+                          <div className="text-xs text-muted-foreground truncate">{inv.email}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {state === "used" ? (
+                            <Badge variant="secondary">Utilizado</Badge>
+                          ) : state === "expired" ? (
+                            <Badge variant="destructive">Expirado</Badge>
+                          ) : (
+                            <Badge variant="outline">Pendente</Badge>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={state === "used" || rotatingId === inv.id}
+                            onClick={() => handleRotateAndCopy(inv.id)}
+                          >
+                            <Copy className="h-3 w-3 mr-1" />
+                            {rotatingId === inv.id ? "Gerando..." : "Gerar novo link e copiar"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={state === "used" || rotatingId === inv.id}
+                            onClick={() => handleRotateAndWhatsApp(inv.id)}
+                            title="Gerar novo link e enviar por WhatsApp"
+                          >
+                            <MessageCircle className="h-3 w-3 mr-1" />
+                            WhatsApp
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
           </TabsContent>
         </Tabs>
 
