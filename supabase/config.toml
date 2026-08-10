@@ -57,6 +57,9 @@ verify_jwt = false
 [functions.create-empresa-invite]
 verify_jwt = false
 
+[functions.rotate-empresa-invite]
+verify_jwt = false
+
 [functions.accept-invitation]
 verify_jwt = false
 
