@@ -5166,6 +5166,10 @@ export type Database = {
         Args: { p_empresa: string; p_stage: string; p_template: Json }
         Returns: Json
       }
+      cancel_cadence_on_reply: {
+        Args: { _empresa_id: string; _prospect_id: string; _reason?: string }
+        Returns: Json
+      }
       cancel_scheduled_actions: {
         Args: {
           _deal_id?: string
