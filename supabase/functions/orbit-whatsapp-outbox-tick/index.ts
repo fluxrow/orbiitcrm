@@ -13,14 +13,14 @@ import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 import { checkEligibility } from "../_shared/orbit-whatsapp-outbox.ts";
 import { checkCampaignRecipientEligibility } from "../_shared/campaign-safety.ts";
-import { saoPauloDayStartIso } from "../_shared/outbox-quota.ts";
 import {
+  saoPauloDayStartIso,
   effectiveDailyLimit,
   nextAttemptForRetain,
   RETAIN_REASON_DAILY,
   RETAIN_REASON_RATE,
   type EffectiveLimit,
-} from "../_shared/warmup-schedule.ts";
+} from "../_shared/outbox-quota.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
