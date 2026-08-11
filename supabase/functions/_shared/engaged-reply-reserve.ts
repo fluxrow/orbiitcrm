@@ -129,11 +129,15 @@ export async function evaluateEngagedReserve(
   if (!isEngagedReserveCandidate(item)) return deny("not_engaged_reply");
   const inboundId = String((item.metadata as any)?.inbound_message_id ?? "");
 
-  const { data: inbound } = await supabase
+  // orbit_mensagens usa a coluna `timestamp` como instante da mensagem.
+  const { data: inboundRow } = await supabase
     .from("orbit_mensagens")
-    .select("id, empresa_id, conversa_id, direcao, created_at")
+    .select("id, empresa_id, conversa_id, direcao, timestamp")
     .eq("id", inboundId)
     .maybeSingle();
+  const inbound: InboundLike | null = inboundRow
+    ? { ...inboundRow, created_at: (inboundRow as any).timestamp ?? null }
+    : null;
 
   let cutoff = opts?.cutoff ?? null;
   if (opts?.cutoff === undefined) {
@@ -145,7 +149,7 @@ export async function evaluateEngagedReserve(
     cutoff = data?.auto_reply_new_leads_from ?? null;
   }
 
-  return validateEngagedInbound({ item, inbound: inbound ?? null, cutoff });
+  return validateEngagedInbound({ item, inbound, cutoff });
 }
 
 /** Marca (idempotente) o item como consumidor da reserva antes do envio. */
