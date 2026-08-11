@@ -124,7 +124,10 @@ interface QuotaState {
   limitInfo: EffectiveLimit;
   remainingDaily: number;
   remainingMinute: number;
+  /** Reserva separada de respostas engajadas (ai_reply com inbound real). */
+  remainingReserve?: number;
 }
+
 
 interface ProcessResult {
   outcome: "sent" | "simulated" | "canceled" | "failed" | "deferred" | "blocked" | "retained";
