@@ -9,6 +9,8 @@ import { usePipelineStages } from "@/hooks/useOrbitPipelineConfig";
 import { useOrbitFlows } from "@/hooks/useOrbitFlows";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { getConversaOwnership } from "@/lib/conversa-ownership";
+
 
 interface Props {
   prospect: any;
