@@ -3,25 +3,39 @@
 // PROBLEMA: com warm-up ativo (D1=10), respostas conversacionais do agente a leads
 // que ESCREVERAM ficam retidas por WARMUP_DAILY_LIMIT junto com prospecção.
 //
-// SOLUÇÃO ESTRITAMENTE LIMITADA: uma reserva SEPARADA (teto próprio, default 5/dia)
-// aplicável APENAS a `source_type='ai_reply'` com inbound REAL comprovado, e apenas
-// para tenants explicitamente listados abaixo. Não altera `daily_limit`, não amplia
-// prospecção (campaign / flow_initial / flow_followup / notification NUNCA usam a
-// reserva) e não relaxa nenhum outro gate (cutoff, human_talk, quarentena,
-// kill switch, ritmo por minuto, idempotência).
+// SOLUÇÃO ESTRITAMENTE LIMITADA: uma reserva SEPARADA (teto próprio global por dia,
+// mais um teto por conversa por dia) aplicável APENAS a `source_type='ai_reply'` com
+// inbound REAL comprovado nas últimas 24h, e apenas para tenants explicitamente
+// listados abaixo. Não altera `daily_limit`, não amplia prospecção (campaign /
+// flow_initial / flow_followup / notification NUNCA usam a reserva) e não relaxa
+// nenhum outro gate (cutoff, human_talk, quarentena, kill switch, ritmo por minuto,
+// idempotência).
 //
-// Quando a reserva do dia acaba, o item volta a ser retido até a virada do dia,
-// exatamente como hoje.
+// Quando a reserva do dia (ou da conversa) acaba, o item volta a ser retido até a
+// virada do dia São Paulo, com reason específico.
 
 import { saoPauloDayStartIso } from "./outbox-quota.ts";
 
 export const ENGAGED_REPLY_RESERVE_REASON = "engaged_reply_reserve";
 
-/** Tenants com reserva liberada e o teto diário de cada um. */
+/** Retain reasons específicos da reserva. */
+export const RETAIN_REASON_RESERVE_DAILY = "ENGAGED_RESERVE_DAILY_LIMIT";
+export const RETAIN_REASON_RESERVE_CONVERSA = "ENGAGED_RESERVE_CONVERSA_LIMIT";
+
+/** Tenants com reserva liberada e o teto diário global de cada um. */
 export const ENGAGED_REPLY_RESERVE_TENANTS: Readonly<Record<string, number>> = {
   // Bullink
-  "4f6b4a18-f3aa-4bfb-a13f-926e4a07ad18": 5,
+  "4f6b4a18-f3aa-4bfb-a13f-926e4a07ad18": 30,
 };
+
+/** Teto adicional por conversa por dia (America/Sao_Paulo). */
+export const ENGAGED_RESERVE_CONVERSA_LIMIT = 12;
+
+/** Janela máxima entre a inbound do lead e a resposta do agente. */
+export const ENGAGED_RESERVE_INBOUND_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** Percentual de consumo que dispara auditoria/alerta estruturado. */
+export const ENGAGED_RESERVE_ALERT_RATIO = 0.8;
 
 /** Fontes elegíveis à reserva. Somente resposta conversacional do agente. */
 export const ENGAGED_RESERVE_SOURCES = new Set(["ai_reply"]);
@@ -48,6 +62,15 @@ export interface InboundLike {
   conversa_id?: string | null;
   direcao?: string | null;
   created_at?: string | null;
+}
+
+export interface ConversaLike {
+  id?: string;
+  empresa_id?: string | null;
+  human_talk?: boolean | null;
+  archived_at?: string | null;
+  quarantine_reason?: string | null;
+  status?: string | null;
 }
 
 export interface ReserveDecision {
@@ -81,14 +104,16 @@ export function isEngagedReserveCandidate(item: OutboxItemLike): boolean {
 }
 
 /**
- * Validação pura da inbound que justifica a reserva.
+ * Validação pura da inbound (e do estado da conversa) que justifica a reserva.
  * Exige: mesma empresa, mesma conversa, direcao=IN, posterior ao cutoff (quando
- * houver) e anterior/igual à geração da resposta.
+ * houver), dentro da janela de 24h e anterior/igual à geração da resposta.
+ * A conversa precisa estar ativa: não arquivada, não em quarentena e sem humano.
  */
 export function validateEngagedInbound(input: {
   item: OutboxItemLike;
   inbound: InboundLike | null;
   cutoff?: string | null;
+  conversa?: ConversaLike | null;
 }): ReserveDecision {
   const { item, inbound } = input;
   if (!isEngagedReserveCandidate(item)) return deny("not_engaged_reply");
@@ -113,11 +138,26 @@ export function validateEngagedInbound(input: {
   const itemAt = Date.parse(String(item.created_at ?? ""));
   if (Number.isNaN(itemAt)) return deny("item_without_timestamp", inboundId);
   if (inboundAt > itemAt) return deny("inbound_after_reply", inboundId);
+  if (itemAt - inboundAt > ENGAGED_RESERVE_INBOUND_WINDOW_MS) {
+    return deny("inbound_outside_24h_window", inboundId);
+  }
+
+  // Estado da conversa: quando informado, precisa estar ativo e sob a IA.
+  const conversa = input.conversa;
+  if (conversa !== undefined) {
+    if (!conversa) return deny("conversa_not_found", inboundId);
+    if (String(conversa.empresa_id ?? "") !== String(item.empresa_id ?? "")) {
+      return deny("conversa_cross_tenant", inboundId);
+    }
+    if (conversa.archived_at) return deny("conversa_archived", inboundId);
+    if (conversa.quarantine_reason) return deny("conversa_quarantined", inboundId);
+    if (conversa.human_talk === true) return deny("conversa_human_talk", inboundId);
+  }
 
   return { eligible: true, reason: null, inbound_message_id: inboundId };
 }
 
-/** Consumo da reserva no dia (America/Sao_Paulo). Conta itens já enviados com a marca. */
+/** Consumo global da reserva no dia (America/Sao_Paulo). */
 export async function countEngagedReserveUsedToday(
   supabase: any,
   empresaId: string,
@@ -132,7 +172,44 @@ export async function countEngagedReserveUsedToday(
   return Number(count ?? 0);
 }
 
-/** Avaliação completa (lê a inbound real e o cutoff do tenant). */
+/** Consumo da reserva no dia por conversa (America/Sao_Paulo). */
+export async function countEngagedReserveUsedTodayForConversa(
+  supabase: any,
+  empresaId: string,
+  conversaId: string,
+): Promise<number> {
+  const { count } = await supabase
+    .from("orbit_whatsapp_outbox")
+    .select("id", { count: "exact", head: true })
+    .eq("empresa_id", empresaId)
+    .eq("conversa_id", conversaId)
+    .eq("status", "sent")
+    .gte("sent_at", saoPauloDayStartIso())
+    .eq("metadata->>quota_reason", ENGAGED_REPLY_RESERVE_REASON);
+  return Number(count ?? 0);
+}
+
+/**
+ * Idempotência por inbound: já existe (outro) item enviado/simulado respondendo
+ * a MESMA inbound? Nesse caso a reserva é negada e nada é reenviado.
+ */
+export async function inboundAlreadyAnswered(
+  supabase: any,
+  item: OutboxItemLike,
+  inboundId: string,
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("orbit_whatsapp_outbox")
+    .select("id, status")
+    .eq("empresa_id", item.empresa_id)
+    .eq("source_type", "ai_reply")
+    .in("status", ["sent", "simulated"])
+    .ilike("metadata->>inbound_message_id", `${inboundId}%`)
+    .limit(5);
+  return ((data ?? []) as any[]).some((r) => String(r.id) !== String(item.id ?? ""));
+}
+
+/** Avaliação completa (lê a inbound real, a conversa e o cutoff do tenant). */
 export async function evaluateEngagedReserve(
   supabase: any,
   item: OutboxItemLike,
@@ -161,7 +238,23 @@ export async function evaluateEngagedReserve(
     cutoff = data?.auto_reply_new_leads_from ?? null;
   }
 
-  return validateEngagedInbound({ item, inbound, cutoff });
+  let conversa: ConversaLike | null = null;
+  if (item.conversa_id) {
+    const { data } = await supabase
+      .from("orbit_conversas")
+      .select("id, empresa_id, human_talk, archived_at, quarantine_reason, status")
+      .eq("id", item.conversa_id)
+      .maybeSingle();
+    conversa = (data as ConversaLike) ?? null;
+  }
+
+  const decision = validateEngagedInbound({ item, inbound, cutoff, conversa });
+  if (!decision.eligible) return decision;
+
+  if (await inboundAlreadyAnswered(supabase, item, inboundId)) {
+    return deny("inbound_already_answered", inboundId);
+  }
+  return decision;
 }
 
 /** Marca (idempotente) o item como consumidor da reserva antes do envio. */
@@ -169,6 +262,7 @@ export async function markEngagedReserveUse(
   supabase: any,
   item: OutboxItemLike,
   decision: ReserveDecision,
+  counters?: { daily_used?: number; daily_limit?: number; conversa_used?: number; conversa_limit?: number },
 ): Promise<void> {
   const metadata = {
     ...(item.metadata ?? {}),
@@ -176,8 +270,47 @@ export async function markEngagedReserveUse(
     engaged_reply_reserve: {
       at: new Date().toISOString(),
       inbound_message_id: decision.inbound_message_id,
+      daily_used: counters?.daily_used ?? null,
+      daily_limit: counters?.daily_limit ?? engagedReserveLimit(item.empresa_id),
+      conversa_used: counters?.conversa_used ?? null,
+      conversa_limit: counters?.conversa_limit ?? ENGAGED_RESERVE_CONVERSA_LIMIT,
     },
   };
   (item as any).metadata = metadata;
   await supabase.from("orbit_whatsapp_outbox").update({ metadata }).eq("id", item.id);
+}
+
+/** Auditoria/alerta estruturado ao cruzar 80% do teto global do dia. */
+export async function auditEngagedReserveUsage(
+  supabase: any,
+  input: { empresa_id: string; used: number; limit: number; conversa_id?: string | null; outbox_id?: string | null },
+): Promise<void> {
+  const { empresa_id, used, limit } = input;
+  if (limit <= 0) return;
+  const threshold = Math.ceil(limit * ENGAGED_RESERVE_ALERT_RATIO);
+  const exhausted = used >= limit;
+  if (used < threshold) return;
+  const detalhes = {
+    used,
+    limit,
+    ratio: Number((used / limit).toFixed(2)),
+    threshold,
+    exhausted,
+    conversa_id: input.conversa_id ?? null,
+    outbox_id: input.outbox_id ?? null,
+  };
+  console.warn(
+    JSON.stringify({ alert: "engaged_reply_reserve_usage", empresa_id, ...detalhes }),
+  );
+  try {
+    await supabase.from("orbit_audit_log").insert({
+      empresa_id,
+      acao: exhausted ? "engaged_reserve_exhausted" : "engaged_reserve_threshold_80",
+      entidade: "orbit_whatsapp_outbox",
+      entidade_id: input.outbox_id ?? null,
+      detalhes,
+    });
+  } catch (_e) {
+    // auditoria é best-effort; nunca bloqueia o envio.
+  }
 }

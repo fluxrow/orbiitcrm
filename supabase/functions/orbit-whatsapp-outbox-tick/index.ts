@@ -23,11 +23,17 @@ import {
 } from "../_shared/outbox-quota.ts";
 import {
   countEngagedReserveUsedToday,
+  countEngagedReserveUsedTodayForConversa,
   engagedReserveLimit,
   evaluateEngagedReserve,
   isEngagedReserveCandidate,
   markEngagedReserveUse,
+  auditEngagedReserveUsage,
+  ENGAGED_RESERVE_CONVERSA_LIMIT,
+  RETAIN_REASON_RESERVE_CONVERSA,
+  RETAIN_REASON_RESERVE_DAILY,
 } from "../_shared/engaged-reply-reserve.ts";
+
 
 
 const corsHeaders = {
@@ -338,15 +344,20 @@ async function retainPendingForTenant(empresa_id: string, reason: string, limitI
   const nowIso = new Date().toISOString();
   const { data: pend } = await supabase
     .from("orbit_whatsapp_outbox")
-    .select("id, metadata")
+    .select("id, empresa_id, source_type, metadata")
     .eq("empresa_id", empresa_id)
     .eq("status", "pending")
     .lte("scheduled_for", nowIso)
     .or(`next_attempt_at.is.null,next_attempt_at.lte.${nowIso}`)
     .limit(max);
   for (const row of (pend ?? []) as any[]) {
-    await retainItem(row, reason, limitInfo);
+    // Reserva esgotada: respostas engajadas recebem reason específico.
+    const r = reason === RETAIN_REASON_DAILY && isEngagedReserveCandidate(row)
+      ? RETAIN_REASON_RESERVE_DAILY
+      : reason;
+    await retainItem(row, r, limitInfo);
   }
+
   return (pend ?? []).length;
 }
 
@@ -469,23 +480,54 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
 
   // ── Reserva de resposta engajada ──
   // Só quando a cota base já esgotou. Exige ai_reply + inbound REAL da MESMA
-  // conversa/tenant, posterior ao cutoff e anterior à geração da resposta.
+  // conversa/tenant, dentro de 24h, posterior ao cutoff e anterior à geração da
+  // resposta, conversa ativa e uma única resposta por inbound.
   // Prospecção (campaign/flow_*) e notificações nunca entram aqui.
+  // A avaliação acontece na MESMA passagem, antes de qualquer retenção diária.
   let usedReserve = false;
   if (q.remainingDaily <= 0) {
+    const reserveLimit = engagedReserveLimit(item.empresa_id);
     const reserveLeft = q.remainingReserve ?? 0;
-    if (reserveLeft > 0 && isEngagedReserveCandidate(item)) {
-      const decision = await evaluateEngagedReserve(supabase, item);
-      if (decision.eligible) {
-        usedReserve = true;
-        await markEngagedReserveUse(supabase, item, decision);
+    let retainReason = RETAIN_REASON_DAILY;
+    if (reserveLimit > 0 && isEngagedReserveCandidate(item)) {
+      if (reserveLeft <= 0) {
+        retainReason = RETAIN_REASON_RESERVE_DAILY;
+      } else {
+        const decision = await evaluateEngagedReserve(supabase, item);
+        if (decision.eligible) {
+          const conversaUsed = await countEngagedReserveUsedTodayForConversa(
+            supabase,
+            item.empresa_id,
+            item.conversa_id,
+          );
+          if (conversaUsed >= ENGAGED_RESERVE_CONVERSA_LIMIT) {
+            retainReason = RETAIN_REASON_RESERVE_CONVERSA;
+          } else {
+            usedReserve = true;
+            const dailyUsed = reserveLimit - reserveLeft;
+            await markEngagedReserveUse(supabase, item, decision, {
+              daily_used: dailyUsed + 1,
+              daily_limit: reserveLimit,
+              conversa_used: conversaUsed + 1,
+              conversa_limit: ENGAGED_RESERVE_CONVERSA_LIMIT,
+            });
+            await auditEngagedReserveUsage(supabase, {
+              empresa_id: item.empresa_id,
+              used: dailyUsed + 1,
+              limit: reserveLimit,
+              conversa_id: item.conversa_id,
+              outbox_id: item.id,
+            });
+          }
+        }
       }
     }
     if (!usedReserve) {
-      await retainItem(item, RETAIN_REASON_DAILY, q.limitInfo);
-      return { outcome: "retained", reason: RETAIN_REASON_DAILY };
+      await retainItem(item, retainReason, q.limitInfo);
+      return { outcome: "retained", reason: retainReason };
     }
   }
+
   if (q.remainingMinute <= 0) {
     await retainItem(item, RETAIN_REASON_RATE, q.limitInfo);
     return { outcome: "retained", reason: RETAIN_REASON_RATE };
