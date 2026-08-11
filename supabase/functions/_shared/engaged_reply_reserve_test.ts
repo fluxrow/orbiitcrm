@@ -127,7 +127,8 @@ Deno.test("R9 contagem do dia usa a marca quota_reason", async () => {
 });
 
 Deno.test("R10 evaluate lê inbound real e cutoff do tenant", async () => {
-  const ok = await evaluateEngagedReserve(stub({ inbound: inbound(), cutoff: CUTOFF }), item());
+  const row = { ...inbound(), timestamp: inbound().created_at };
+  const ok = await evaluateEngagedReserve(stub({ inbound: row, cutoff: CUTOFF }), item());
   assertEquals(ok.eligible, true);
   const bad = await evaluateEngagedReserve(stub({ inbound: null, cutoff: CUTOFF }), item());
   assertEquals(bad.eligible, false);
