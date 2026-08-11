@@ -21,6 +21,15 @@ import {
   RETAIN_REASON_RATE,
   type EffectiveLimit,
 } from "../_shared/outbox-quota.ts";
+import {
+  ENGAGED_REPLY_RESERVE_REASON,
+  countEngagedReserveUsedToday,
+  engagedReserveLimit,
+  evaluateEngagedReserve,
+  isEngagedReserveCandidate,
+  markEngagedReserveUse,
+} from "../_shared/engaged-reply-reserve.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
