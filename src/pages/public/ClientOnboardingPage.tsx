@@ -75,11 +75,19 @@ export default function ClientOnboardingPage() {
     );
   }
 
+  // Aceita valor direto OU updater funcional. O updater é obrigatório para
+  // uploads concorrentes: sem ele, dois uploads simultâneos calculam a lista
+  // a partir do mesmo snapshot e o último sobrescreve o resultado do primeiro
+  // (bug que deixava itens presos em upload_status="uploading").
   const setField = (sectionKey: string, fieldKey: string, value: any) => {
-    setResponses((prev) => ({
-      ...prev,
-      [sectionKey]: { ...(prev[sectionKey] ?? {}), [fieldKey]: value },
-    }));
+    setResponses((prev) => {
+      const prevVal = prev?.[sectionKey]?.[fieldKey];
+      const nextVal = typeof value === "function" ? value(prevVal) : value;
+      return {
+        ...prev,
+        [sectionKey]: { ...(prev[sectionKey] ?? {}), [fieldKey]: nextVal },
+      };
+    });
     // Limpa highlight assim que o usuário começa a preencher.
     const composite = `${sectionKey}.${fieldKey}`;
     if (missingKeys.has(composite)) {
@@ -91,8 +99,29 @@ export default function ClientOnboardingPage() {
     }
   };
 
+  // Uploads em andamento em qualquer seção — trava Salvar/Avançar/Enviar.
+  const uploadingCount = useMemo(() => {
+    let n = 0;
+    for (const sec of Object.values(responses ?? {})) {
+      for (const v of Object.values(sec ?? {})) {
+        if (Array.isArray(v)) {
+          for (const it of v) {
+            if (it && typeof it === "object" && (it as any).upload_status === "uploading") n++;
+          }
+        }
+      }
+    }
+    return n;
+  }, [responses]);
+  const hasUploading = uploadingCount > 0;
+
+
   const persist = async () => {
     if (!token) return;
+    if (hasUploading) {
+      toast.warning("Aguarde o envio dos arquivos terminar antes de salvar.");
+      return;
+    }
     try {
       await save.mutateAsync({ token, responses });
     } catch (e: any) {
@@ -107,6 +136,13 @@ export default function ClientOnboardingPage() {
 
   const finish = async () => {
     if (!token) return;
+    if (hasUploading) {
+      toast.warning(
+        `${uploadingCount} arquivo(s) ainda em envio. Aguarde a conclusão para enviar as respostas.`,
+      );
+      return;
+    }
+
     // Sempre persistir as respostas antes do submit para garantir que
     // nada preenchido seja perdido, mesmo se algo abaixo falhar.
     try {
@@ -251,21 +287,28 @@ export default function ClientOnboardingPage() {
                 </Button>
 
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" onClick={persist} disabled={save.isPending} className="gap-1.5">
+                  {hasUploading && (
+                    <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      {uploadingCount} arquivo(s) enviando…
+                    </span>
+                  )}
+                  <Button variant="outline" onClick={persist} disabled={save.isPending || hasUploading} className="gap-1.5">
                     <Save className="w-4 h-4" />
                     {save.isPending ? "Salvando…" : "Salvar"}
                   </Button>
                   {stepIdx < total - 1 ? (
-                    <Button onClick={next} className="gap-1.5">
+                    <Button onClick={next} disabled={hasUploading} className="gap-1.5">
                       Avançar <ChevronRight className="w-4 h-4" />
                     </Button>
                   ) : (
-                    <Button onClick={finish} disabled={submit.isPending} className="gap-1.5">
+                    <Button onClick={finish} disabled={submit.isPending || hasUploading} className="gap-1.5">
                       <Send className="w-4 h-4" />
                       {submit.isPending ? "Enviando…" : "Enviar respostas"}
                     </Button>
                   )}
                 </div>
+
               </div>
             </Card>
 
@@ -390,7 +433,9 @@ function AssetListInput({
   value, onChange, token, sectionKey, fieldKey,
 }: {
   value: StructuredMaterial[];
-  onChange: (v: StructuredMaterial[]) => void;
+  onChange: (
+    v: StructuredMaterial[] | ((prev: StructuredMaterial[]) => StructuredMaterial[]),
+  ) => void;
   token?: string;
   sectionKey: string;
   fieldKey: string;
@@ -399,17 +444,41 @@ function AssetListInput({
   // Signed URLs em memória (não persistidas). Chave = item.id.
   const [previews, setPreviews] = useState<Record<string, string>>({});
 
+  // Todas as mutações usam updater funcional sobre a lista MAIS RECENTE e
+  // casam o item por `id` (nunca por índice), tornando uploads concorrentes
+  // seguros: cada promise persiste o próprio resultado sem sobrescrever os outros.
+  const updateById = (itemId: string, patch: Partial<StructuredMaterial>) => {
+    onChange((prev) => {
+      const list = Array.isArray(prev) ? prev : [];
+      return list.map((it) => (it?.id === itemId ? { ...it, ...patch } : it));
+    });
+  };
   const update = (idx: number, patch: Partial<StructuredMaterial>) => {
-    const next = items.map((it, i) => (i === idx ? { ...it, ...patch } : it));
-    onChange(next);
+    const target = items[idx];
+    if (target?.id) return updateById(target.id, patch);
+    onChange((prev) => {
+      const list = Array.isArray(prev) ? prev : [];
+      return list.map((it, i) => (i === idx ? { ...it, ...patch } : it));
+    });
   };
   const genId = () =>
     (typeof crypto !== "undefined" && "randomUUID" in crypto)
       ? crypto.randomUUID()
       : Math.random().toString(36).slice(2);
   const add = () =>
-    onChange([...items, { id: genId(), tipo: "PDF", titulo: "", link: "", obs: "" }]);
-  const remove = (idx: number) => onChange(items.filter((_, i) => i !== idx));
+    onChange((prev) => [
+      ...(Array.isArray(prev) ? prev : []),
+      { id: genId(), tipo: "PDF", titulo: "", link: "", obs: "" },
+    ]);
+  const remove = (idx: number) => {
+    const target = items[idx];
+    onChange((prev) => {
+      const list = Array.isArray(prev) ? prev : [];
+      return target?.id
+        ? list.filter((it) => it?.id !== target.id)
+        : list.filter((_, i) => i !== idx);
+    });
+  };
 
   const handleUpload = async (idx: number, file: File) => {
     if (!token) {
@@ -418,6 +487,7 @@ function AssetListInput({
     }
     const item = items[idx];
     const itemId = item?.id ?? genId();
+    const tituloAtual = item?.titulo;
     // Preview otimista via ObjectURL enquanto o upload roda.
     const localUrl = URL.createObjectURL(file);
     setPreviews((p) => ({ ...p, [itemId]: localUrl }));
@@ -430,7 +500,8 @@ function AssetListInput({
         item_id: itemId,
         file,
       });
-      update(idx, {
+      // Persistência por id, no momento em que ESTA promise conclui.
+      updateById(itemId, {
         id: itemId,
         asset_id: res.asset_id,
         storage_path: res.storage_path,
@@ -438,7 +509,8 @@ function AssetListInput({
         mime: res.mime,
         size_bytes: res.size_bytes,
         upload_status: "uploaded",
-        titulo: item?.titulo || res.filename,
+        upload_error: undefined,
+        titulo: tituloAtual || res.filename,
       });
       // Substitui preview local pela signed URL persistente.
       if (res.signed_url) {
@@ -447,10 +519,11 @@ function AssetListInput({
       }
       toast.success(`Arquivo enviado: ${res.filename}`);
     } catch (e: any) {
-      update(idx, { upload_status: "error", upload_error: e?.message || String(e) });
+      updateById(itemId, { upload_status: "error", upload_error: e?.message || String(e) });
       toast.error(`Falha no upload: ${e?.message || e}`);
     }
   };
+
 
 
   const TIPO_OPTS = ["PDF", "Vídeo", "Áudio", "Link", "Imagem", "Apresentação", "Planilha", "Outro"];

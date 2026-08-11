@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
-import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList, Download, Loader2, Trash2, Sparkles, FileSearch, LayoutList, Check, X, RotateCcw } from "lucide-react";
+import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList, Download, Loader2, Trash2, Sparkles, FileSearch, LayoutList, Check, X, RotateCcw, AlertCircle } from "lucide-react";
 import { useSignedOrbitMedia } from "@/lib/orbit-media";
 import { toast } from "sonner";
 import {
@@ -25,6 +25,8 @@ import {
   useOnboardingAssets,
   useOnboardingDraft,
   useReviewInsight,
+  useReconcileOrphanAsset,
+
   ClientOnboarding,
   OnboardingAsset,
   OnboardingAssetInsight,
@@ -838,6 +840,8 @@ function MaterialsReviewDrawer({
   const assets = assetsQuery.data ?? [];
   const reviewMutation = useReviewInsight();
   const process = useProcessOnboardingAssets();
+  const reconcile = useReconcileOrphanAsset();
+
 
   const insightsByAsset = new Map<string, OnboardingAssetInsight>();
   for (const i of insights) if (i?.asset_id) insightsByAsset.set(i.asset_id, i);
@@ -850,6 +854,9 @@ function MaterialsReviewDrawer({
     if (rm.data?.asset_id) respByAssetId.set(rm.data.asset_id, rm);
     else respWithoutAsset.push(rm);
   }
+
+  // Assets órfãos: arquivo existe, mas nenhum item do formulário aponta para ele
+  const orphanAssets = assets.filter((a) => !respByAssetId.has(a.id));
 
   const flows = draft?.draft?.flows ?? [];
   const templates = draft?.draft?.templates ?? [];
@@ -920,7 +927,61 @@ function MaterialsReviewDrawer({
           </div>
         </div>
 
+        {orphanAssets.length > 0 && (
+          <Card className="glass-card mt-4 p-4 space-y-3 border-amber-500/30">
+            <div className="text-sm font-medium flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-500" />
+              {orphanAssets.length} material(is) enviado(s) sem vínculo no formulário
+            </div>
+            <p className="text-xs text-muted-foreground">
+              O arquivo chegou ao armazenamento, mas o item correspondente no wizard ficou sem
+              referência. Religue para que ele apareça na resposta do cliente.
+            </p>
+            <div className="space-y-2">
+              {orphanAssets.map((asset) => {
+                const { sectionTitle, fieldLabel } = fieldLabelFor(asset.section_key, asset.field_key);
+                return (
+                  <div
+                    key={asset.id}
+                    className="flex items-center justify-between gap-3 rounded-md border border-border/60 p-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium truncate">{asset.filename}</p>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {sectionTitle} · {fieldLabel}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs shrink-0"
+                      disabled={reconcile.isPending}
+                      onClick={() =>
+                        reconcile.mutate(
+                          { onboardingId: onboarding.id, asset },
+                          {
+                            onSuccess: () => toast.success("Material religado ao formulário."),
+                            onError: (e: any) => toast.error(e?.message || "Falha ao religar material"),
+                          },
+                        )
+                      }
+                    >
+                      {reconcile.isPending ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        "Religar ao formulário"
+                      )}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        )}
+
         <div className="mt-4 space-y-4">
+
           {assetsQuery.isLoading && (
             <Card className="glass-card p-4 text-sm text-muted-foreground flex items-center gap-2">
               <Loader2 className="w-4 h-4 animate-spin" /> Carregando materiais…

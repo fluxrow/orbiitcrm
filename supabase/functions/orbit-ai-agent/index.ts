@@ -475,6 +475,107 @@ async function getAudioClip(supabase: any, empresaId: string | null | undefined,
   }
 }
 
+// ── Prova social (mídia aprovada da biblioteca do tenant) ──
+// Dispara SOMENTE em pedido explícito de prova/depoimento/resultado.
+// NUNCA chama a Z-API direto: produz ação estruturada e enfileira no outbox.
+// A signed URL não é gerada aqui — o worker assina no momento do processamento.
+const PROOF_REQUEST_RE =
+  /\b(prova|provas|comprova\w*|depoiment\w*|testemunh\w*|result\w*|case|cases|print|prints|alu[no]{2,}s?\s+(que|com)|funciona\s+mesmo)\b/i;
+
+export function isProofRequest(texto: string | null | undefined): boolean {
+  const t = (texto || "").toLowerCase();
+  if (!t.trim()) return false;
+  return PROOF_REQUEST_RE.test(t);
+}
+
+async function maybeQueueProofMedia(
+  supabase: any,
+  params: {
+    empresa_id: string;
+    conversa_id: string;
+    prospect_id?: string | null;
+    mensagem_lead: string;
+  },
+): Promise<{ queued: boolean; reason?: string; media_id?: string }> {
+  const { empresa_id, conversa_id, prospect_id, mensagem_lead } = params;
+  if (!isProofRequest(mensagem_lead)) return { queued: false, reason: "no_explicit_request" };
+
+  const { data: media } = await supabase
+    .from("orbit_media_library")
+    .select("id, kind, caption, storage_path, mime, trigger_keywords, uso_count")
+    .eq("empresa_id", empresa_id)
+    .eq("purpose", "prova_social")
+    .eq("aprovado", true)
+    .eq("ativo", true)
+    .order("uso_count", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (!media) return { queued: false, reason: "no_approved_media" };
+
+  const keywords: string[] = Array.isArray(media.trigger_keywords) ? media.trigger_keywords : [];
+  const lower = (mensagem_lead || "").toLowerCase();
+  if (keywords.length && !keywords.some((k) => lower.includes(String(k).toLowerCase()))) {
+    return { queued: false, reason: "keyword_mismatch" };
+  }
+
+  const { data: lastIn } = await supabase
+    .from("orbit_mensagens")
+    .select("id")
+    .eq("conversa_id", conversa_id)
+    .eq("direcao", "IN")
+    .order("timestamp", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const inboundId = (lastIn as any)?.id ?? conversa_id;
+
+  // Linha visual única — legenda apenas, sem storage_path/filename no texto.
+  const { data: novaMidia } = await supabase
+    .from("orbit_mensagens")
+    .insert({
+      conversa_id,
+      direcao: "OUT",
+      mensagem: media.caption ?? "",
+      canal: "whatsapp",
+      status: "queued",
+      tipo_midia: media.kind === "video" ? "video" : media.kind,
+      storage_path: media.storage_path,
+      empresa_id,
+    })
+    .select("id")
+    .single();
+
+  const routed = await enqueueOutbox(supabase, {
+    empresa_id,
+    conversa_id,
+    prospect_id: prospect_id ?? null,
+    source_type: "ai_reply",
+    inbound_message_id: `${inboundId}:media:${media.id}`,
+    source_id: `${inboundId}:media:${media.id}`,
+    payload_type: media.kind === "video" ? "video" : "image",
+    payload: {
+      // `mensagem` é a legenda enviada ao lead. Sem fileName para vídeo.
+      mensagem: media.caption ?? "",
+      storage_path: media.storage_path,
+      media_library_id: media.id,
+    },
+    metadata: { orbit_message_id: novaMidia?.id ?? null, dry_run: true, purpose: "prova_social" },
+  });
+
+  if (!routed.enqueued && novaMidia?.id) {
+    await supabase.from("orbit_mensagens").delete().eq("id", novaMidia.id);
+    return { queued: false, reason: routed.reason ?? "not_eligible", media_id: media.id };
+  }
+
+  await supabase
+    .from("orbit_media_library")
+    .update({ uso_count: Number(media.uso_count ?? 0) + 1 })
+    .eq("id", media.id);
+
+  console.log("[orbit-ai-agent] prova social enfileirada:", { media_id: media.id, outbox_id: routed.outbox_id });
+  return { queued: true, media_id: media.id };
+}
+
+
 async function sendWhatsAppAudio(
   supabase: any,
   telefone: string,
@@ -1424,6 +1525,22 @@ ${regrasBlock}`;
       });
     }
 
+    // ── Prova social: pedido explícito de prova/depoimento/resultado ──
+    // Sempre enfileirado (nunca chamada direta à Z-API). O envio real continua
+    // barrado pelo kill switch global do tenant enquanto envio_real_liberado=false.
+    if (!isDemo && empresaId) {
+      try {
+        await maybeQueueProofMedia(supabase, {
+          empresa_id: empresaId,
+          conversa_id,
+          prospect_id,
+          mensagem_lead: mensagem,
+        });
+      } catch (e) {
+        console.warn("[orbit-ai-agent] prova social falhou:", (e as Error).message);
+      }
+    }
+
     // ── Audio library: enviar clip pré-gravado se disponível ──
     if (!isDemo && empresaId) {
       const audioContexto = primeiraInteracao
@@ -1445,6 +1562,7 @@ ${regrasBlock}`;
         }
       }
     }
+
 
     // Enviar resposta via WhatsApp (fallback: texto)
     await sendAIResponse(supabase, telefone, resposta, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);

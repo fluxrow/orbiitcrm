@@ -2764,6 +2764,75 @@ export type Database = {
           },
         ]
       }
+      orbit_media_library: {
+        Row: {
+          aprovado: boolean
+          ativo: boolean
+          caption: string | null
+          created_at: string
+          created_by: string | null
+          duration_seconds: number | null
+          empresa_id: string
+          height: number | null
+          id: string
+          kind: string
+          metadata: Json
+          mime: string | null
+          nome: string
+          purpose: string
+          size_bytes: number | null
+          storage_path: string
+          trigger_keywords: string[]
+          updated_at: string
+          uso_count: number
+          width: number | null
+        }
+        Insert: {
+          aprovado?: boolean
+          ativo?: boolean
+          caption?: string | null
+          created_at?: string
+          created_by?: string | null
+          duration_seconds?: number | null
+          empresa_id: string
+          height?: number | null
+          id?: string
+          kind: string
+          metadata?: Json
+          mime?: string | null
+          nome: string
+          purpose?: string
+          size_bytes?: number | null
+          storage_path: string
+          trigger_keywords?: string[]
+          updated_at?: string
+          uso_count?: number
+          width?: number | null
+        }
+        Update: {
+          aprovado?: boolean
+          ativo?: boolean
+          caption?: string | null
+          created_at?: string
+          created_by?: string | null
+          duration_seconds?: number | null
+          empresa_id?: string
+          height?: number | null
+          id?: string
+          kind?: string
+          metadata?: Json
+          mime?: string | null
+          nome?: string
+          purpose?: string
+          size_bytes?: number | null
+          storage_path?: string
+          trigger_keywords?: string[]
+          updated_at?: string
+          uso_count?: number
+          width?: number | null
+        }
+        Relationships: []
+      }
       orbit_meetings: {
         Row: {
           conversa_id: string | null
@@ -3062,14 +3131,17 @@ export type Database = {
       orbit_onboarding_asset_insights: {
         Row: {
           asset_id: string
+          attempts: number
           created_at: string
           detected_kind: string | null
           empresa_id: string
           error: string | null
           extracted: Json
           id: string
+          last_attempt_at: string | null
           model: string | null
           onboarding_id: string
+          process_status: string
           review_status: string
           reviewed_at: string | null
           reviewed_by: string | null
@@ -3080,14 +3152,17 @@ export type Database = {
         }
         Insert: {
           asset_id: string
+          attempts?: number
           created_at?: string
           detected_kind?: string | null
           empresa_id: string
           error?: string | null
           extracted?: Json
           id?: string
+          last_attempt_at?: string | null
           model?: string | null
           onboarding_id: string
+          process_status?: string
           review_status?: string
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -3098,14 +3173,17 @@ export type Database = {
         }
         Update: {
           asset_id?: string
+          attempts?: number
           created_at?: string
           detected_kind?: string | null
           empresa_id?: string
           error?: string | null
           extracted?: Json
           id?: string
+          last_attempt_at?: string | null
           model?: string | null
           onboarding_id?: string
+          process_status?: string
           review_status?: string
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -5310,6 +5388,19 @@ export type Database = {
           subtitle: string
           title: string
           updated_at: string
+        }[]
+      }
+      orbit_onboarding_orphan_assets: {
+        Args: { p_onboarding_id: string }
+        Returns: {
+          asset_id: string
+          field_key: string
+          filename: string
+          item_id: string
+          mime: string
+          section_key: string
+          size_bytes: number
+          storage_path: string
         }[]
       }
       orbit_resend_has_api_key: {
