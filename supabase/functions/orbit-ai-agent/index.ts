@@ -22,6 +22,12 @@ import {
 
 import { normalizeAgentText, PT_BR_STYLE_GUARDRAILS } from "../_shared/pt-br-normalizer.ts";
 import {
+  resolveInternalNotificationTarget,
+  isValidNotificationPhone,
+  normalizeE164Digits,
+} from "../_shared/internal-notification.ts";
+
+import {
   hydrateCanonicalFacts,
   buildCanonicalFactsBlock,
   recentAgentQuestions,
@@ -259,63 +265,20 @@ async function notifyCommercialHumanDetected(
 ) {
   const { prospect, telefone_lead, mensagem, classification, empresa_id, isDemo } = params;
 
-  // Determinar vendedor a notificar — DEVE ser da mesma empresa que o prospect.
-  // Nada de fallback hardcoded entre tenants (vazamento de dados).
-  let vendedorId: string | null = prospect?.responsavel_id || null;
+  // Destinatário SEMPRE resolvido pela configuração do MESMO empresa_id.
+  // Nunca canary_phone_numbers, nunca fallback hardcoded/cross-tenant.
+  const target = await resolveInternalNotificationTarget(supabase, empresa_id, {
+    vendedorId: prospect?.responsavel_id || null,
+  });
 
-  // Se o responsável existe mas é de outra empresa, ignorar.
-  if (vendedorId && empresa_id) {
-    const { data: resp } = await supabase
-      .from("profiles")
-      .select("empresa_id")
-      .eq("id", vendedorId)
-      .maybeSingle();
-    if (resp?.empresa_id && resp.empresa_id !== empresa_id) {
-      console.warn("[orbit-ai-agent] Responsável de empresa diferente — ignorando", { vendedorId, empresa_id });
-      vendedorId = null;
-    }
-  }
-
-  // Fallback: primeiro admin/owner da MESMA empresa com telefone preenchido
-  if (!vendedorId && empresa_id) {
-    const { data: candidato } = await supabase
-      .from("profiles")
-      .select("id, telefone")
-      .eq("empresa_id", empresa_id)
-      .not("telefone", "is", null)
-      .limit(1)
-      .maybeSingle();
-    vendedorId = candidato?.id || null;
-  }
-
-  if (!vendedorId) {
-    console.log("[orbit-ai-agent] Sem vendedor da empresa para notificar — pulando notificação", { empresa_id });
+  if (!target.phone) {
+    console.log("[orbit-ai-agent] Sem destinatário de notificação interna para o tenant — pulando", {
+      empresa_id,
+      reason: target.reason,
+    });
     return;
   }
 
-  const { data: vendedorProfile } = await supabase
-    .from("profiles")
-    .select("id, nome, telefone, empresa_id")
-    .eq("id", vendedorId)
-    .single();
-
-  // Última checagem: nunca notificar alguém de outra empresa
-  if (empresa_id && vendedorProfile?.empresa_id && vendedorProfile.empresa_id !== empresa_id) {
-    console.warn("[orbit-ai-agent] Vendedor resolvido pertence a outra empresa — abortando notificação");
-    return;
-  }
-
-  const { data: vendedorPe } = await supabase
-    .from("pe_users")
-    .select("whatsapp, phone")
-    .eq("id", vendedorId)
-    .maybeSingle();
-
-  const vendedorWhatsapp = vendedorPe?.whatsapp || vendedorPe?.phone || vendedorProfile?.telefone;
-  if (!vendedorWhatsapp) {
-    console.log("[orbit-ai-agent] Vendedor sem WhatsApp para notificação comercial");
-    return;
-  }
 
 
   const leadPhone = telefone_lead?.replace(/\D/g, "") || "";
@@ -345,12 +308,13 @@ async function notifyCommercialHumanDetected(
     `${dataHora}`,
   ].join("\n");
 
-  const vendedorPhone = vendedorWhatsapp.replace(/\D/g, "");
+  const vendedorPhone = target.phone;
 
   if (isDemo) {
-    console.log("[orbit-ai-agent] Demo — notificação comercial simulada:", vendedorPhone);
+    console.log("[orbit-ai-agent] Demo — notificação comercial simulada:", { vendedorPhone, source: target.source });
     return;
   }
+
 
   const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresa_id);
   const notifyBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
@@ -1642,25 +1606,26 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
       .eq("id", vendedor_id)
       .single();
 
-    const { data: vendedorPe } = await supabase
-      .from("pe_users")
-      .select("whatsapp, phone")
-      .eq("id", vendedor_id)
-      .maybeSingle();
+    // Destinatário do resumo: override explícito do fluxo de agendamento OU
+    // configuração de notificação interna do MESMO tenant (nunca canário/hardcode).
+    const overrideTarget = isValidNotificationPhone(whatsapp_override)
+      ? { phone: normalizeE164Digits(whatsapp_override), source: "ai_config_scheduling_handoff" as const }
+      : await resolveInternalNotificationTarget(supabase, empresa_id, { vendedorId: vendedor_id });
 
-    const vendedorWhatsapp = whatsapp_override || vendedorPe?.whatsapp || vendedorPe?.phone || vendedorProfile?.telefone;
+    const vendedorWhatsapp = overrideTarget.phone;
     if (!vendedorWhatsapp) {
-      console.log("[orbit-ai-agent] Vendedor sem WhatsApp/telefone, não pode enviar handoff");
+      console.log("[orbit-ai-agent] Tenant sem destinatário de notificação interna, handoff não enviado", { empresa_id });
       await supabase.from("orbit_handoffs").insert({
         empresa_id,
         conversa_id,
         prospect_id,
         vendedor_id,
-        resumo: "Vendedor sem WhatsApp cadastrado",
+        resumo: "Tenant sem telefone de notificação interna configurado",
         status: "failed",
       });
       return;
     }
+
 
     let empresaNome = "";
     if (empresa_id) {
@@ -1705,7 +1670,7 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
       status: "pending",
     }).select().single();
 
-    const vendedorPhone = vendedorWhatsapp.replace(/\D/g, "");
+    const vendedorPhone = vendedorWhatsapp;
 
     if (isDemo) {
       console.log("[orbit-ai-agent] Demo mode — handoff simulado para vendedor:", vendedorPhone);
