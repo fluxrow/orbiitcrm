@@ -3,6 +3,8 @@
 // creates flow runs, and invokes the executor. Runs on cron (1 min) and on demand.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -60,12 +62,50 @@ function matchesConditions(condicoes: Json, payload: Json, triggerConfig: Json, 
   return true;
 }
 
+/** Resolve o prospect do evento (payload direto, entidade prospect, deal ou meeting). */
+async function resolveEventProspectId(event: any): Promise<string | null> {
+  const p = (event?.payload ?? {}) as any;
+  if (typeof p.prospect_id === "string" && p.prospect_id) return p.prospect_id;
+  if (event?.entity_type === "prospect" && event?.entity_id) return String(event.entity_id);
+  const dealId = typeof p.deal_id === "string" ? p.deal_id : (event?.entity_type === "deal" ? event?.entity_id : null);
+  if (dealId) {
+    const { data } = await supabase.from("orbit_deals").select("prospect_id").eq("id", dealId).maybeSingle();
+    if (data?.prospect_id) return data.prospect_id;
+  }
+  const meetingId = typeof p.meeting_id === "string" ? p.meeting_id : (event?.entity_type === "meeting" ? event?.entity_id : null);
+  if (meetingId) {
+    const { data } = await supabase.from("orbit_meetings").select("prospect_id").eq("id", meetingId).maybeSingle();
+    if (data?.prospect_id) return data.prospect_id;
+  }
+  return null;
+}
+
+
 async function processEvent(event: any) {
   // anti-loop: skip events emitted by a flow action
   if (event.payload?.triggered_by_flow_id) {
     await supabase.from("orbit_flow_events").update({ processed: true, processed_at: new Date().toISOString() }).eq("id", event.id);
     return { event_id: event.id, skipped: "triggered_by_flow" };
   }
+
+  // ── Corte de automação do tenant: nenhuma cadência nova (D0/D+1/D+3) nasce
+  // para prospect anterior ao corte. Evento é marcado processado e auditado.
+  const evProspectId = await resolveEventProspectId(event);
+  if (evProspectId) {
+    const cutoff = await evaluateAutomationCutoff(supabase, {
+      empresa_id: event.empresa_id,
+      prospect_id: evProspectId,
+    });
+    if (!cutoff.allowed) {
+      console.log("[dispatcher] evento bloqueado pelo corte de automação", {
+        event_id: event.id, empresa_id: event.empresa_id, prospect_id: evProspectId, reason: cutoff.reason,
+      });
+      await supabase.from("orbit_flow_events").update({ processed: true, processed_at: new Date().toISOString() }).eq("id", event.id);
+      return { event_id: event.id, skipped: cutoff.reason ?? "automation_cutoff" };
+    }
+  }
+
+
 
   const { data: flows, error: flowsErr } = await supabase
     .from("orbit_flows")
