@@ -593,8 +593,8 @@ async function actionNotifyVendedor(cfg: Json, run: Json): Promise<StepResult> {
       body: JSON.stringify({
         empresa_id: run.empresa_id,
         canal: cfg.canal || "email",
-        deal_id: run.context?.payload?.deal_id ?? null,
-        prospect_id: run.context?.payload?.prospect_id ?? null,
+        deal_id: (await resolveDealId(run)) ?? run.context?.payload?.deal_id ?? null,
+        prospect_id: (await resolveProspectId(run)) ?? run.context?.payload?.prospect_id ?? null,
         triggered_by_flow_id: run.flow_id,
       }),
     });
