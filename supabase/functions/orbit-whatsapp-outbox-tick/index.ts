@@ -647,7 +647,16 @@ async function processTenant(empresa_id: string, batch: number): Promise<Record<
   const remainingDaily = limitInfo.limit == null
     ? Number.POSITIVE_INFINITY
     : limitInfo.limit - usedToday;
-  if (remainingDaily <= 0) {
+
+  // Reserva de resposta engajada: teto separado, só tenants habilitados.
+  let remainingReserve = 0;
+  if (remainingDaily <= 0 && engagedReserveLimit(empresa_id) > 0) {
+    remainingReserve = Math.max(
+      0,
+      engagedReserveLimit(empresa_id) - (await countEngagedReserveUsedToday(supabase, empresa_id)),
+    );
+  }
+  if (remainingDaily <= 0 && remainingReserve <= 0) {
     stats.retained = await retainPendingForTenant(empresa_id, RETAIN_REASON_DAILY, limitInfo);
     return stats;
   }
@@ -661,13 +670,14 @@ async function processTenant(empresa_id: string, batch: number): Promise<Record<
     }
   }
 
-  const quota: QuotaState = { limitInfo, remainingDaily, remainingMinute };
+  const quota: QuotaState = { limitInfo, remainingDaily, remainingMinute, remainingReserve };
+  const budget = remainingDaily > 0 ? remainingDaily : remainingReserve;
   const cap = Math.max(
     1,
     Math.min(
       batch,
       cfg?.batch_size && cfg.batch_size > 0 ? cfg.batch_size : batch,
-      Number.isFinite(remainingDaily) ? remainingDaily : batch,
+      Number.isFinite(budget) ? budget : batch,
       Number.isFinite(remainingMinute) ? remainingMinute : batch,
     ),
   );
@@ -686,13 +696,14 @@ async function processTenant(empresa_id: string, batch: number): Promise<Record<
   }
 
   // Sobrou fila e a cota estourou durante o lote: retém o restante como queued.
-  if (quota.remainingDaily <= 0) {
+  if (quota.remainingDaily <= 0 && (quota.remainingReserve ?? 0) <= 0) {
     stats.retained += await retainPendingForTenant(empresa_id, RETAIN_REASON_DAILY, limitInfo);
   } else if (quota.remainingMinute <= 0) {
     stats.retained += await retainPendingForTenant(empresa_id, RETAIN_REASON_RATE, limitInfo);
   }
   return stats;
 }
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
