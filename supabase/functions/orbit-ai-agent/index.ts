@@ -506,11 +506,10 @@ async function maybeQueueProofMedia(
     .maybeSingle();
   if (!media) return { queued: false, reason: "no_approved_media" };
 
-  const keywords: string[] = Array.isArray(media.trigger_keywords) ? media.trigger_keywords : [];
-  const lower = (mensagem_lead || "").toLowerCase();
-  if (keywords.length && !keywords.some((k) => lower.includes(String(k).toLowerCase()))) {
+  if (!matchesTriggerKeywords(mensagem_lead, media.trigger_keywords)) {
     return { queued: false, reason: "keyword_mismatch" };
   }
+
 
   const { data: lastIn } = await supabase
     .from("orbit_mensagens")
