@@ -1600,25 +1600,26 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
       .eq("id", vendedor_id)
       .single();
 
-    const { data: vendedorPe } = await supabase
-      .from("pe_users")
-      .select("whatsapp, phone")
-      .eq("id", vendedor_id)
-      .maybeSingle();
+    // Destinatário do resumo: override explícito do fluxo de agendamento OU
+    // configuração de notificação interna do MESMO tenant (nunca canário/hardcode).
+    const overrideTarget = isValidNotificationPhone(whatsapp_override)
+      ? { phone: normalizeE164Digits(whatsapp_override), source: "ai_config_scheduling_handoff" as const }
+      : await resolveInternalNotificationTarget(supabase, empresa_id, { vendedorId: vendedor_id });
 
-    const vendedorWhatsapp = whatsapp_override || vendedorPe?.whatsapp || vendedorPe?.phone || vendedorProfile?.telefone;
+    const vendedorWhatsapp = overrideTarget.phone;
     if (!vendedorWhatsapp) {
-      console.log("[orbit-ai-agent] Vendedor sem WhatsApp/telefone, não pode enviar handoff");
+      console.log("[orbit-ai-agent] Tenant sem destinatário de notificação interna, handoff não enviado", { empresa_id });
       await supabase.from("orbit_handoffs").insert({
         empresa_id,
         conversa_id,
         prospect_id,
         vendedor_id,
-        resumo: "Vendedor sem WhatsApp cadastrado",
+        resumo: "Tenant sem telefone de notificação interna configurado",
         status: "failed",
       });
       return;
     }
+
 
     let empresaNome = "";
     if (empresa_id) {
