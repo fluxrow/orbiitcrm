@@ -57,7 +57,14 @@ async function ask(turns: Array<{ role: "user" | "assistant"; content: string }>
 }
 
 function frases(t: string): number {
-  return t.split(/[.!?…]+\s|\n+/).map((s) => s.trim()).filter(Boolean).length;
+  // Neutraliza pontos que não terminam frase: decimais/milhares (R$ 6.500,00),
+  // siglas (F.A.) e URLs — senão a contagem estoura por artefato de parsing.
+  const norm = t
+    .replace(/https?:\/\/\S+/g, "URL")
+    .replace(/(\d)[.,](\d)/g, "$1$2")
+    .replace(/\b([A-Z])\.(?=[A-Z]\.)/g, "$1")
+    .replace(/\b([A-Z])\.(?=\s|$)/g, "$1");
+  return norm.split(/[.!?…]+\s|\n+/).map((s) => s.trim()).filter(Boolean).length;
 }
 
 const results: Record<string, unknown> = {};
@@ -111,7 +118,8 @@ check("D3.1 sem link antes da escolha", !/hypercash/i.test(r3a));
 check("D3.2 informa 12x de R$ 642,44", /12x\s*de\s*R\$\s*642[.,]44/i.test(r3b));
 check("D3.2 envia link Hypercash correto", r3b.includes("https://pay.hypercash.com.br/pt/payment-link/043ec27e-a362-4d27-82c3-f66f61b867bb"));
 check("D3.2 sem total acumulado", !/7\.?709|7709|total de r\$/i.test(r3b));
-check("D3 respostas curtas", frases(r3a) <= 3 && frases(r3b) <= 4);
+check("D3 respostas curtas (1-3 frases)", frases(r3a) >= 1 && frases(r3a) <= 3 && frases(r3b) >= 1 && frases(r3b) <= 3);
+check("D3.1 sem valores antes da escolha", !/642[.,]44|6\.?500/.test(r3a));
 results.d3 = { lead1: leadPreco, fernando1: r3a, lead2: leadCartao, fernando2: r3b };
 
 // ── Zero fetch externo à Z-API ──
