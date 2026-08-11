@@ -94,3 +94,38 @@ Se necessário, desativar apenas o worker:
 UPDATE cron.job SET active=false WHERE jobname='orbit-whatsapp-outbox-tick-1min';
 ```
 A tabela `orbit_whatsapp_outbox` continua recebendo itens (shadow) — nada é enviado até a próxima ativação.
+
+## Warm-up determinístico (global)
+
+Implementação: `supabase/functions/_shared/outbox-quota.ts` (`effectiveDailyLimit`,
+`nextAttemptForRetain`) — reexportado por `_shared/warmup-schedule.ts`.
+
+Rampa por dias desde `warmup_start_date` (D1 = dia do início):
+
+| Dia | Cota diária |
+| --- | --- |
+| D1 | 10 |
+| D2 | 15 |
+| D3 | 25 |
+| D4 | 40 |
+| D5+ | 60 |
+
+Semântica de `daily_limit` (importante): com `warmup_enabled=true`, `daily_limit`
+é o **piso do D1**, não um teto que congela o crescimento. A rampa evolui até 60
+mesmo com `daily_limit=10`. `daily_limit` só age como teto quando é **maior ou
+igual ao topo da rampa** (>= 60). Com `warmup_enabled=false`, vale `daily_limit` puro.
+
+Regras de aplicação no worker `orbit-whatsapp-outbox-tick`:
+
+- Seleção/claim, contagem diária e contagem por minuto são feitas **por `empresa_id`
+  antes de qualquer fetch externo**.
+- A cota vale para **todas** as `source_type` e `payload_type` (agente, fluxo,
+  follow-up, campanha, notificação). Não existe bypass por origem.
+- Ao atingir o limite, o item **não falha**: permanece `queued`/retido com
+  `next_attempt_at` na próxima janela e `last_error` estruturado
+  `WARMUP_DAILY_LIMIT` (próximo dia) ou `WARMUP_RATE_LIMIT` (próximo minuto).
+- O gate fail-closed `envio_real_liberado` continua acima de tudo; em `dry_run`
+  nenhum fetch à Z-API acontece.
+
+Testes: `supabase/functions/_shared/warmup_schedule_test.ts` (W1–W8), incluindo o
+caso D1 com 15 mensagens → 10 processadas e 5 retidas por `WARMUP_DAILY_LIMIT`.
