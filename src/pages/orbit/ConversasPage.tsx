@@ -147,6 +147,38 @@ export default function ConversasPage() {
 
   const active = conversas?.find((c) => c.id === activeId);
 
+  // Posse da conversa (IA / IA pausada / aguardando humano / humano responsável).
+  const { empresaId } = useTenant();
+  const { data: aiConfig } = useOrbitAIConfig(empresaId);
+  const ownership = getConversaOwnership({
+    conversa: active as any,
+    prospect: (active as any)?.prospect ?? null,
+    aiConfig: aiConfig as any,
+  });
+
+  const handleAssume = async () => {
+    try {
+      await assume.mutateAsync({ conversa_id: active!.id, user_id: user?.id });
+      toast.success("Você assumiu esta conversa. A IA não responderá.");
+    } catch (e: any) {
+      toast.error(e?.message || "Não foi possível assumir a conversa.");
+    }
+  };
+
+  const handleRelease = async () => {
+    if (!ownership.canRelease) {
+      toast.error(ownership.releaseBlockedReason || "Devolução para a IA indisponível.");
+      return;
+    }
+    try {
+      await release.mutateAsync(active!.id);
+      toast.success("Conversa devolvida para a IA. Nenhuma resposta retroativa foi enviada.");
+    } catch (e: any) {
+      toast.error(e?.message || "Não foi possível devolver para a IA.");
+    }
+  };
+
+
   useEffect(() => {
     const idParam = searchParams.get("id");
     if (idParam) setActiveId(idParam);
