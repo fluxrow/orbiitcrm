@@ -344,15 +344,20 @@ async function retainPendingForTenant(empresa_id: string, reason: string, limitI
   const nowIso = new Date().toISOString();
   const { data: pend } = await supabase
     .from("orbit_whatsapp_outbox")
-    .select("id, metadata")
+    .select("id, empresa_id, source_type, metadata")
     .eq("empresa_id", empresa_id)
     .eq("status", "pending")
     .lte("scheduled_for", nowIso)
     .or(`next_attempt_at.is.null,next_attempt_at.lte.${nowIso}`)
     .limit(max);
   for (const row of (pend ?? []) as any[]) {
-    await retainItem(row, reason, limitInfo);
+    // Reserva esgotada: respostas engajadas recebem reason específico.
+    const r = reason === RETAIN_REASON_DAILY && isEngagedReserveCandidate(row)
+      ? RETAIN_REASON_RESERVE_DAILY
+      : reason;
+    await retainItem(row, r, limitInfo);
   }
+
   return (pend ?? []).length;
 }
 
