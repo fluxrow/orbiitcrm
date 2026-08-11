@@ -116,15 +116,16 @@ Deno.test("R8 IN pré-cutoff bloqueia; IN posterior à resposta bloqueia", () =>
 
 Deno.test("R8b janela de 24h: inbound mais antiga bloqueia", () => {
   assertEquals(
-    validateEngagedInbound({ item: item(), inbound: inbound({ created_at: "2026-08-10T20:00:00.000Z" }), cutoff: CUTOFF }).reason,
+    validateEngagedInbound({ item: item(), inbound: inbound({ created_at: "2026-08-10T20:00:00.000Z" }), cutoff: null }).reason,
     "inbound_outside_24h_window",
   );
   // 23h59 ainda passa.
   assertEquals(
-    validateEngagedInbound({ item: item(), inbound: inbound({ created_at: "2026-08-10T21:01:00.000Z" }), cutoff: CUTOFF }).eligible,
+    validateEngagedInbound({ item: item(), inbound: inbound({ created_at: "2026-08-10T21:01:00.000Z" }), cutoff: null }).eligible,
     true,
   );
 });
+
 
 Deno.test("R8c conversa arquivada, em quarentena ou com humano bloqueia", () => {
   const cases: Array<[Record<string, unknown>, string]> = [
