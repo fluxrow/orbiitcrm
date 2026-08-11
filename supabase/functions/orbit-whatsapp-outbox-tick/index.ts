@@ -13,11 +13,14 @@ import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 import { checkEligibility } from "../_shared/orbit-whatsapp-outbox.ts";
 import { checkCampaignRecipientEligibility } from "../_shared/campaign-safety.ts";
+import { saoPauloDayStartIso } from "../_shared/outbox-quota.ts";
 import {
-  consumesProspectingQuota,
-  PROSPECTING_QUOTA_SOURCES,
-  saoPauloDayStartIso,
-} from "../_shared/outbox-quota.ts";
+  effectiveDailyLimit,
+  nextAttemptForRetain,
+  RETAIN_REASON_DAILY,
+  RETAIN_REASON_RATE,
+  type EffectiveLimit,
+} from "../_shared/warmup-schedule.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -59,26 +62,26 @@ interface SendingConfig {
   warmup_enabled: boolean | null;
   warmup_start_date: string | null;
   outbox_adapter_enabled: boolean;
+  batch_size: number | null;
 }
 
 async function getSendingConfig(empresa_id: string): Promise<SendingConfig | null> {
   const { data } = await supabase
     .from("orbit_whatsapp_sending_config")
-    .select("enabled, daily_limit, max_per_minute, min_delay_ms, max_delay_ms, warmup_enabled, warmup_start_date, outbox_adapter_enabled")
+    .select("enabled, daily_limit, max_per_minute, min_delay_ms, max_delay_ms, warmup_enabled, warmup_start_date, outbox_adapter_enabled, batch_size")
     .eq("empresa_id", empresa_id)
     .maybeSingle();
   return (data as SendingConfig) ?? null;
 }
 
 async function getDailyUsage(empresa_id: string): Promise<number> {
-  // Deriva a cota da fonte de verdade. O agregado legado pode conter respostas
-  // da IA e mensagens manuais enviadas antes da separação desta cota.
+  // Cota diária de warm-up: conta TODOS os envios reais do tenant no dia,
+  // qualquer source_type e qualquer payload_type. Sem bypass por origem.
   const { count, error } = await supabase
     .from("orbit_whatsapp_outbox")
     .select("id", { count: "exact", head: true })
     .eq("empresa_id", empresa_id)
     .eq("status", "sent")
-    .in("source_type", [...PROSPECTING_QUOTA_SOURCES])
     .gte("sent_at", saoPauloDayStartIso());
   if (error) throw new Error(`daily_usage_query_failed: ${error.message}`);
   return Number(count ?? 0);
@@ -117,8 +120,14 @@ async function countRecentSends(empresa_id: string, seconds: number): Promise<nu
   return Number(count ?? 0);
 }
 
+interface QuotaState {
+  limitInfo: EffectiveLimit;
+  remainingDaily: number;
+  remainingMinute: number;
+}
+
 interface ProcessResult {
-  outcome: "sent" | "simulated" | "canceled" | "failed" | "deferred" | "blocked";
+  outcome: "sent" | "simulated" | "canceled" | "failed" | "deferred" | "blocked" | "retained";
   reason?: string;
   provider_message_id?: string | null;
   status_message?: string;
@@ -285,7 +294,52 @@ async function ensureCampaignConversa(item: any, telefone: string): Promise<stri
   return item.conversa_id;
 }
 
-async function processItem(item: any, cfg: SendingConfig | null): Promise<ProcessResult> {
+// Retém item na fila (queued) quando a cota de warm-up ou o ritmo por minuto
+// foram atingidos. NUNCA marca falha: status volta a pending com next_attempt_at
+// na próxima janela e razão estruturada em last_error + metadata.retained.
+async function retainItem(item: any, reason: string, limitInfo: EffectiveLimit): Promise<void> {
+  const nowIso = new Date().toISOString();
+  const metadata = {
+    ...(item.metadata ?? {}),
+    retained: {
+      reason,
+      at: nowIso,
+      warmup_day: limitInfo.warmup_day,
+      effective_daily_limit: limitInfo.limit,
+      limit_source: limitInfo.source,
+    },
+  };
+  await supabase
+    .from("orbit_whatsapp_outbox")
+    .update({
+      status: "pending",
+      locked_at: null,
+      locked_by: null,
+      next_attempt_at: nextAttemptForRetain(reason),
+      last_error: reason,
+      metadata,
+    })
+    .eq("id", item.id);
+}
+
+// Retém em lote os pendentes do tenant sem nenhum claim/fetch externo.
+async function retainPendingForTenant(empresa_id: string, reason: string, limitInfo: EffectiveLimit, max = 100): Promise<number> {
+  const nowIso = new Date().toISOString();
+  const { data: pend } = await supabase
+    .from("orbit_whatsapp_outbox")
+    .select("id, metadata")
+    .eq("empresa_id", empresa_id)
+    .eq("status", "pending")
+    .lte("scheduled_for", nowIso)
+    .or(`next_attempt_at.is.null,next_attempt_at.lte.${nowIso}`)
+    .limit(max);
+  for (const row of (pend ?? []) as any[]) {
+    await retainItem(row, reason, limitInfo);
+  }
+  return (pend ?? []).length;
+}
+
+async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaState): Promise<ProcessResult> {
   // Kill switch por tenant + horário comercial para não-urgentes
   if (!URGENT_SOURCES.has(item.source_type) && !nowInBusinessWindow()) {
     // reagenda para próxima janela (default: próximo horário 08:00)
@@ -380,34 +434,30 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
     return { outcome: "canceled", reason: "campaign_adapter_disabled" };
   }
 
-  // Daily quota / warmup — cota de prospecção automatizada.
-  // Aplica-se APENAS a sources outbound automatizados (campaign, flow_initial,
-  // flow_followup). Sources conversacionais urgentes (ai_reply, manual,
-  // meeting_confirmation) NÃO são bloqueados pelo daily_limit — precisam responder
-  // ao lead mesmo quando a cota diária de prospecção já se esgotou. Eles continuam
-  // sujeitos a max_per_minute, kill switch, opt-out, terminal deal, handoff etc.
-  if (consumesProspectingQuota(item.source_type)) {
-    const used = await getDailyUsage(item.empresa_id);
-    const limit = cfg.daily_limit ?? null;
-    if (limit != null && used >= limit) {
-      await supabase
-        .from("orbit_whatsapp_outbox")
-        .update({ status: "pending", locked_at: null, locked_by: null, next_attempt_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(), last_error: "daily_limit_reached" })
-        .eq("id", item.id);
-      return { outcome: "deferred", reason: "daily_limit_reached" };
+  // ── Cota de warm-up (diária) e ritmo por minuto ──
+  // Vale para TODAS as origens (ai_reply, manual, meeting_confirmation, flow_*,
+  // campaign) e todos os payload_type. Nenhuma origem fura a cota.
+  // Ao atingir o limite o item NÃO falha: continua queued (status=pending) com
+  // next_attempt_at na próxima janela e last_error/metadata estruturados.
+  const q: QuotaState = quota ?? {
+    limitInfo: effectiveDailyLimit(cfg ?? {}),
+    remainingDaily: Number.POSITIVE_INFINITY,
+    remainingMinute: Number.POSITIVE_INFINITY,
+  };
+  if (!quota) {
+    const usedNow = await getDailyUsage(item.empresa_id);
+    q.remainingDaily = q.limitInfo.limit == null ? Number.POSITIVE_INFINITY : q.limitInfo.limit - usedNow;
+    if (cfg?.max_per_minute && cfg.max_per_minute > 0) {
+      q.remainingMinute = cfg.max_per_minute - (await countRecentSends(item.empresa_id, 60));
     }
   }
-
-  // Ritmo por minuto (global)
-  if (cfg.max_per_minute && cfg.max_per_minute > 0) {
-    const perMin = await countRecentSends(item.empresa_id, 60);
-    if (perMin >= cfg.max_per_minute) {
-      await supabase
-        .from("orbit_whatsapp_outbox")
-        .update({ status: "pending", locked_at: null, locked_by: null, next_attempt_at: new Date(Date.now() + 60 * 1000).toISOString(), last_error: "rate_limited" })
-        .eq("id", item.id);
-      return { outcome: "deferred", reason: "rate_limited" };
-    }
+  if (q.remainingDaily <= 0) {
+    await retainItem(item, RETAIN_REASON_DAILY, q.limitInfo);
+    return { outcome: "retained", reason: RETAIN_REASON_DAILY };
+  }
+  if (q.remainingMinute <= 0) {
+    await retainItem(item, RETAIN_REASON_RATE, q.limitInfo);
+    return { outcome: "retained", reason: RETAIN_REASON_RATE };
   }
 
   // Resolver telefone
@@ -440,6 +490,8 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
       .eq("id", item.id);
     await upsertVisualMensagem(item, { status: "simulated" });
     await updateCampaignRecipient(item, { status: "simulated" });
+    q.remainingDaily -= 1;
+    q.remainingMinute -= 1;
     return { outcome: "simulated" };
   }
 
@@ -498,9 +550,9 @@ async function processItem(item: any, cfg: SendingConfig | null): Promise<Proces
 
     await updateCampaignRecipient(item, { status: "enviado" });
 
-    if (consumesProspectingQuota(item.source_type)) {
-      await bumpDailyUsage(item.empresa_id, 1);
-    }
+    q.remainingDaily -= 1;
+    q.remainingMinute -= 1;
+    await bumpDailyUsage(item.empresa_id, 1);
     await auditZapiSendAttempt(supabase, {
       empresa_id: item.empresa_id,
       function_name: "orbit-whatsapp-outbox-tick",
@@ -547,20 +599,59 @@ function sortClaimed(items: any[]): any[] {
   });
 }
 
-async function processTenant(empresa_id: string, batch: number): Promise<{ claimed: number; sent: number; simulated: number; canceled: number; deferred: number; failed: number; blocked: number }> {
+async function processTenant(empresa_id: string, batch: number): Promise<Record<string, number>> {
+  const stats = { claimed: 0, sent: 0, simulated: 0, canceled: 0, deferred: 0, failed: 0, blocked: 0, retained: 0 };
   const cfg = await getSendingConfig(empresa_id);
+
+  // ── Contagem e decisão de cota ANTES de qualquer claim ou fetch externo ──
+  const limitInfo = effectiveDailyLimit(cfg ?? {});
+  const usedToday = await getDailyUsage(empresa_id);
+  const remainingDaily = limitInfo.limit == null
+    ? Number.POSITIVE_INFINITY
+    : limitInfo.limit - usedToday;
+  if (remainingDaily <= 0) {
+    stats.retained = await retainPendingForTenant(empresa_id, RETAIN_REASON_DAILY, limitInfo);
+    return stats;
+  }
+
+  let remainingMinute = Number.POSITIVE_INFINITY;
+  if (cfg?.max_per_minute && cfg.max_per_minute > 0) {
+    remainingMinute = cfg.max_per_minute - (await countRecentSends(empresa_id, 60));
+    if (remainingMinute <= 0) {
+      stats.retained = await retainPendingForTenant(empresa_id, RETAIN_REASON_RATE, limitInfo);
+      return stats;
+    }
+  }
+
+  const quota: QuotaState = { limitInfo, remainingDaily, remainingMinute };
+  const cap = Math.max(
+    1,
+    Math.min(
+      batch,
+      cfg?.batch_size && cfg.batch_size > 0 ? cfg.batch_size : batch,
+      Number.isFinite(remainingDaily) ? remainingDaily : batch,
+      Number.isFinite(remainingMinute) ? remainingMinute : batch,
+    ),
+  );
+
   const { data: claimed, error } = await supabase.rpc("outbox_claim_batch", {
     _empresa_id: empresa_id,
-    _batch: batch,
+    _batch: cap,
     _worker_id: WORKER_ID,
     _lease_seconds: 120,
   });
   if (error) throw error;
-  const stats = { claimed: 0, sent: 0, simulated: 0, canceled: 0, deferred: 0, failed: 0, blocked: 0 };
   for (const item of sortClaimed((claimed ?? []) as any[])) {
     stats.claimed++;
-    const r = await processItem(item, cfg);
+    const r = await processItem(item, cfg, quota);
     stats[r.outcome as keyof typeof stats]++;
+  }
+
+  // Sobrou fila e a cota estourou durante o lote: retém o restante como queued.
+  if (quota.remainingDaily <= 0) {
+    stats.retained += await retainPendingForTenant(empresa_id, RETAIN_REASON_DAILY, limitInfo);
+  } else if (quota.remainingMinute <= 0) {
+    stats.retained += await retainPendingForTenant(empresa_id, RETAIN_REASON_RATE, limitInfo);
   }
   return stats;
 }
