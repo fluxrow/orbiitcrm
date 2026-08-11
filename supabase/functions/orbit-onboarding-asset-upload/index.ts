@@ -62,20 +62,81 @@ serve(async (req) => {
     if (rowErr || !row) return fail(ErrorCodes.NOT_FOUND, "Onboarding não encontrado", 404, undefined, req);
     if (row.archived) return fail(ErrorCodes.FORBIDDEN, "Onboarding arquivado", 403, undefined, req);
 
-    const bytes = base64ToBytes(body.data_base64);
+    const mime = body.mime || "application/octet-stream";
+    if (!ALLOWED_MIME_PREFIXES.some((p) => mime.startsWith(p))) {
+      return fail(ErrorCodes.VALIDATION_ERROR, `Tipo não permitido: ${mime}`, 400, { mime }, req);
+    }
+
+    // Validação de tamanho ANTES de decodificar: base64 tem ~4/3 do tamanho real.
+    // Evita alocar centenas de MB só para descobrir que o arquivo excede o limite.
+    const b64 = body.data_base64.includes(",") ? body.data_base64.split(",", 2)[1] : body.data_base64;
+    const approxBytes = Math.floor((b64.length * 3) / 4);
+    if (approxBytes === 0) {
+      return fail(ErrorCodes.VALIDATION_ERROR, "Arquivo vazio", 400, undefined, req);
+    }
+    if (approxBytes > MAX_SIZE) {
+      return fail(
+        ErrorCodes.VALIDATION_ERROR,
+        `Arquivo excede 20MB (~${approxBytes} bytes)`,
+        400,
+        { approx_bytes: approxBytes, max_bytes: MAX_SIZE },
+        req,
+      );
+    }
+
+    const fname = safeName(body.filename);
+
+    // ── Idempotência: retry do MESMO item/campo com o mesmo arquivo devolve o
+    // asset já registrado em vez de criar duplicata no Storage e na tabela.
+    if (body.item_id) {
+      const { data: prev } = await supabase
+        .from("orbit_onboarding_assets")
+        .select("id, storage_path, filename, mime, size_bytes")
+        .eq("onboarding_id", row.id)
+        .eq("field_key", body.field_key)
+        .eq("item_id", body.item_id)
+        .eq("filename", fname)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (prev && Math.abs(Number(prev.size_bytes ?? 0) - approxBytes) <= 4) {
+        let signed_url: string | null = null;
+        try {
+          const { data: sig } = await supabase.storage
+            .from("orbit-media")
+            .createSignedUrl(prev.storage_path, 60 * 60);
+          signed_url = sig?.signedUrl ?? null;
+        } catch (_e) { /* preview best-effort */ }
+        return ok(
+          {
+            asset_id: prev.id,
+            storage_path: prev.storage_path,
+            filename: prev.filename,
+            mime: prev.mime,
+            size_bytes: prev.size_bytes,
+            signed_url,
+            idempotent: true,
+          },
+          undefined,
+          req,
+        );
+      }
+    }
+
+    let bytes: Uint8Array;
+    try {
+      bytes = base64ToBytes(body.data_base64);
+    } catch (_e) {
+      return fail(ErrorCodes.VALIDATION_ERROR, "data_base64 inválido", 400, undefined, req);
+    }
     if (bytes.byteLength === 0) return fail(ErrorCodes.VALIDATION_ERROR, "Arquivo vazio", 400, undefined, req);
     if (bytes.byteLength > MAX_SIZE) {
       return fail(ErrorCodes.VALIDATION_ERROR, `Arquivo excede 20MB (${bytes.byteLength} bytes)`, 400, undefined, req);
     }
 
-    const mime = body.mime || "application/octet-stream";
-    if (!ALLOWED_MIME_PREFIXES.some((p) => mime.startsWith(p))) {
-      return fail(ErrorCodes.VALIDATION_ERROR, `Tipo não permitido: ${mime}`, 400, undefined, req);
-    }
-
     const assetId = crypto.randomUUID();
-    const fname = safeName(body.filename);
     const storagePath = `${row.empresa_id}/onboarding/${row.id}/${assetId}-${fname}`;
+
 
     const { error: upErr } = await supabase.storage
       .from("orbit-media")

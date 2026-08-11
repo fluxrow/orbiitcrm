@@ -132,8 +132,11 @@ async function sendViaZapi(item: any, telefone: string, config: any): Promise<{ 
   let body: any = { phone: telefone, message: payload.mensagem ?? "" };
 
   // Padroniza em url_midia; aceita legado payload.url e storage_path.
+  // A signed URL é gerada AQUI (momento do processamento) com TTL de 6h para
+  // tolerar retries do item sem expirar no meio da entrega.
   const mediaSource = payload.storage_path || payload.url_midia || payload.url || null;
-  const mediaUrl = mediaSource ? await signOrbitMediaUrl(supabase, mediaSource, 3600) : null;
+  const mediaUrl = mediaSource ? await signOrbitMediaUrl(supabase, mediaSource, 21600) : null;
+
 
   if (item.payload_type === "image" && mediaUrl) {
     url = `${base}/send-image`;

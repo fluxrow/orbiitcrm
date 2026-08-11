@@ -358,6 +358,74 @@ export function useReviewInsight() {
   });
 }
 
+/**
+ * Reconciliação de asset órfão: o arquivo existe no Storage/tabela de assets,
+ * mas o item correspondente no formulário ficou sem asset_id (ou preso em
+ * "uploading"). Religa os dois pelo item_id do asset, sem inventar conteúdo.
+ */
+export function useReconcileOrphanAsset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      onboardingId,
+      asset,
+    }: {
+      onboardingId: string;
+      asset: OnboardingAsset;
+    }) => {
+      const { data: ob, error: obErr } = await supabase
+        .from("orbit_client_onboardings" as any)
+        .select("id, responses")
+        .eq("id", onboardingId)
+        .maybeSingle();
+      if (obErr) throw obErr;
+      const responses: any = (ob as any)?.responses ?? {};
+      const list = responses?.[asset.section_key]?.[asset.field_key];
+      if (!Array.isArray(list)) throw new Error("Campo do formulário não encontrado para este material.");
+
+      const patch = {
+        asset_id: asset.id,
+        storage_path: asset.storage_path,
+        filename: asset.filename,
+        mime: asset.mime,
+        size_bytes: asset.size_bytes,
+        upload_status: "uploaded",
+      };
+
+      let matched = false;
+      let nextList = list.map((it: any) => {
+        if (it && typeof it === "object" && asset.item_id && it.id === asset.item_id) {
+          matched = true;
+          return { ...it, ...patch, titulo: it.titulo || asset.filename };
+        }
+        return it;
+      });
+      if (!matched) {
+        nextList = [
+          ...nextList,
+          { id: asset.item_id ?? asset.id, tipo: "Outro", titulo: asset.filename, link: "", obs: "", ...patch },
+        ];
+      }
+
+      const nextResponses = {
+        ...responses,
+        [asset.section_key]: { ...(responses?.[asset.section_key] ?? {}), [asset.field_key]: nextList },
+      };
+
+      const { error } = await supabase
+        .from("orbit_client_onboardings" as any)
+        .update({ responses: nextResponses })
+        .eq("id", onboardingId);
+      if (error) throw error;
+      return { onboardingId };
+    },
+    onSuccess: ({ onboardingId }) => {
+      qc.invalidateQueries({ queryKey: ["client-onboardings"] });
+      qc.invalidateQueries({ queryKey: ["onboarding-assets", onboardingId] });
+    },
+  });
+}
+
 export function useSubmitPublicOnboarding() {
   return useMutation({
     mutationFn: async ({ token, responses }: { token: string; responses: Record<string, any> }) => {

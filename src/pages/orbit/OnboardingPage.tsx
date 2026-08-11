@@ -25,6 +25,8 @@ import {
   useOnboardingAssets,
   useOnboardingDraft,
   useReviewInsight,
+  useReconcileOrphanAsset,
+
   ClientOnboarding,
   OnboardingAsset,
   OnboardingAssetInsight,
@@ -838,6 +840,8 @@ function MaterialsReviewDrawer({
   const assets = assetsQuery.data ?? [];
   const reviewMutation = useReviewInsight();
   const process = useProcessOnboardingAssets();
+  const reconcile = useReconcileOrphanAsset();
+
 
   const insightsByAsset = new Map<string, OnboardingAssetInsight>();
   for (const i of insights) if (i?.asset_id) insightsByAsset.set(i.asset_id, i);
