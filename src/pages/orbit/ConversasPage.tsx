@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, Send, MessageSquare, Bot, User, Loader2, CheckCircle, Paperclip, Mic, MicOff, X, Image as ImageIcon, FileText, Play, Square } from "lucide-react";
+import { Search, Send, MessageSquare, Bot, User, Loader2, CheckCircle, Paperclip, Mic, MicOff, X, Image as ImageIcon, FileText, Play, Square, PauseCircle, AlertTriangle } from "lucide-react";
 import { useOrbitConversas, useStartHumanTakeover, useEndHumanTakeover } from "@/hooks/useOrbitConversas";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrbitMensagens, useSendMensagem } from "@/hooks/useOrbitMensagens";
