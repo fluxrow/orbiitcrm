@@ -855,6 +855,9 @@ function MaterialsReviewDrawer({
     else respWithoutAsset.push(rm);
   }
 
+  // Assets órfãos: arquivo existe, mas nenhum item do formulário aponta para ele
+  const orphanAssets = assets.filter((a) => !respByAssetId.has(a.id));
+
   const flows = draft?.draft?.flows ?? [];
   const templates = draft?.draft?.templates ?? [];
 
