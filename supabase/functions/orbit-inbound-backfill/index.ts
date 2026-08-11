@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
     empresa_id: empresaId,
     logs_scanned: events.length,
     eligible: candidates.length,
-    already_present: candidates.length - (candidates.length - existing.size) === 0 ? existing.size : existing.size,
+    already_present: existing.size,
     missing: missing.length,
     skipped,
   };
