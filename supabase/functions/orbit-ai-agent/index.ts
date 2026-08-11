@@ -12,6 +12,13 @@ import {
   createCalendarEvent,
 } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
+import {
+  isProofRequest,
+  matchesTriggerKeywords,
+  proofPayloadType,
+  buildProofOutboxPayload,
+} from "../_shared/proof-media.ts";
+
 import { normalizeAgentText, PT_BR_STYLE_GUARDRAILS } from "../_shared/pt-br-normalizer.ts";
 import {
   hydrateCanonicalFacts,
@@ -479,14 +486,8 @@ async function getAudioClip(supabase: any, empresaId: string | null | undefined,
 // Dispara SOMENTE em pedido explícito de prova/depoimento/resultado.
 // NUNCA chama a Z-API direto: produz ação estruturada e enfileira no outbox.
 // A signed URL não é gerada aqui — o worker assina no momento do processamento.
-const PROOF_REQUEST_RE =
-  /\b(prova|provas|comprova\w*|depoiment\w*|testemunh\w*|result\w*|case|cases|print|prints|alu[no]{2,}s?\s+(que|com)|funciona\s+mesmo)\b/i;
+export { isProofRequest };
 
-export function isProofRequest(texto: string | null | undefined): boolean {
-  const t = (texto || "").toLowerCase();
-  if (!t.trim()) return false;
-  return PROOF_REQUEST_RE.test(t);
-}
 
 async function maybeQueueProofMedia(
   supabase: any,
@@ -512,11 +513,10 @@ async function maybeQueueProofMedia(
     .maybeSingle();
   if (!media) return { queued: false, reason: "no_approved_media" };
 
-  const keywords: string[] = Array.isArray(media.trigger_keywords) ? media.trigger_keywords : [];
-  const lower = (mensagem_lead || "").toLowerCase();
-  if (keywords.length && !keywords.some((k) => lower.includes(String(k).toLowerCase()))) {
+  if (!matchesTriggerKeywords(mensagem_lead, media.trigger_keywords)) {
     return { queued: false, reason: "keyword_mismatch" };
   }
+
 
   const { data: lastIn } = await supabase
     .from("orbit_mensagens")
@@ -551,13 +551,10 @@ async function maybeQueueProofMedia(
     source_type: "ai_reply",
     inbound_message_id: `${inboundId}:media:${media.id}`,
     source_id: `${inboundId}:media:${media.id}`,
-    payload_type: media.kind === "video" ? "video" : "image",
-    payload: {
-      // `mensagem` é a legenda enviada ao lead. Sem fileName para vídeo.
-      mensagem: media.caption ?? "",
-      storage_path: media.storage_path,
-      media_library_id: media.id,
-    },
+    payload_type: proofPayloadType(media.kind),
+    // Payload sem fileName/nome local (ver _shared/proof-media.ts).
+    payload: buildProofOutboxPayload(media),
+
     metadata: { orbit_message_id: novaMidia?.id ?? null, dry_run: true, purpose: "prova_social" },
   });
 
