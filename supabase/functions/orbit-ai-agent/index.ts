@@ -22,6 +22,12 @@ import {
 
 import { normalizeAgentText, PT_BR_STYLE_GUARDRAILS } from "../_shared/pt-br-normalizer.ts";
 import {
+  resolveInternalNotificationTarget,
+  isValidNotificationPhone,
+  normalizeE164Digits,
+} from "../_shared/internal-notification.ts";
+
+import {
   hydrateCanonicalFacts,
   buildCanonicalFactsBlock,
   recentAgentQuestions,
