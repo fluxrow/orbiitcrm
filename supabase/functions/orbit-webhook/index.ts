@@ -399,14 +399,27 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       }
     }
 
+    // Quarentena: prospect arquivado reversivelmente (deleted_at + dados_adicionais.quarantined)
+    // continua recebendo histórico, mas NUNCA aciona a IA. Atendimento fica humano.
+    const prospectQuarantined =
+      !!prospect &&
+      prospect.deleted_at != null &&
+      (prospect.dados_adicionais as any)?.quarantined === true;
+    if (prospectQuarantined) {
+      console.log("[orbit-webhook] Prospect em quarentena, IA bloqueada:", prospect.id);
+    }
+
     // 2. Find or create conversation — match by prospect + phone variants
     // para evitar duplicar quando entrada/saída usam formatos diferentes (com/sem 9)
+    // Prospect em quarentena: conversa arquivada está com status 'fechada' — buscamos
+    // também esse status para NÃO criar conversa nova (e não reabrir a IA).
+    const conversaStatuses = prospectQuarantined ? ["aberta", "fechada"] : ["aberta"];
     let conversaQuery = supabase
       .from("orbit_conversas")
       .select("*")
       .eq("prospect_id", prospect.id)
       .eq("canal", "whatsapp")
-      .eq("status", "aberta")
+      .in("status", conversaStatuses)
       .order("ultima_mensagem_at", { ascending: false, nullsFirst: false })
       .limit(1);
     if (empresaId) conversaQuery = conversaQuery.eq("empresa_id", empresaId);
@@ -420,13 +433,14 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
         .select("*")
         .in("telefone_whatsapp", phoneVariants)
         .eq("canal", "whatsapp")
-        .eq("status", "aberta")
+        .in("status", conversaStatuses)
         .order("ultima_mensagem_at", { ascending: false, nullsFirst: false })
         .limit(1);
       if (empresaId) altQuery = altQuery.eq("empresa_id", empresaId);
       const { data: altRows } = await altQuery;
       conversa = altRows?.[0] || null;
     }
+
 
     if (conversa && conversa.telefone_whatsapp !== normalizedPhone) {
       await supabase
