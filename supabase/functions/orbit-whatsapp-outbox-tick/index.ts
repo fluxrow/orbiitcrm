@@ -23,11 +23,17 @@ import {
 } from "../_shared/outbox-quota.ts";
 import {
   countEngagedReserveUsedToday,
+  countEngagedReserveUsedTodayForConversa,
   engagedReserveLimit,
   evaluateEngagedReserve,
   isEngagedReserveCandidate,
   markEngagedReserveUse,
+  auditEngagedReserveUsage,
+  ENGAGED_RESERVE_CONVERSA_LIMIT,
+  RETAIN_REASON_RESERVE_CONVERSA,
+  RETAIN_REASON_RESERVE_DAILY,
 } from "../_shared/engaged-reply-reserve.ts";
+
 
 
 const corsHeaders = {
