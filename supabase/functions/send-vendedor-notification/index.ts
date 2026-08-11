@@ -3,10 +3,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
 import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
 import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
+import { resolveInternalNotificationTarget } from "../_shared/internal-notification.ts";
 
 interface NotificationRequest {
   prospect_id: string;
-  vendedor_id: string;
+  vendedor_id?: string | null;
   empresa_id: string;
   tipo?: "atribuicao" | "transferencia";
 }
@@ -43,8 +44,8 @@ const handler = async (req: Request): Promise<Response> => {
 
     const { prospect_id, vendedor_id, empresa_id, tipo = "atribuicao" }: NotificationRequest = await req.json();
 
-    if (!prospect_id || !vendedor_id || !empresa_id) {
-      return fail(ErrorCodes.VALIDATION_ERROR, "prospect_id, vendedor_id e empresa_id são obrigatórios");
+    if (!prospect_id || !empresa_id) {
+      return fail(ErrorCodes.VALIDATION_ERROR, "prospect_id e empresa_id são obrigatórios");
     }
 
     // SECURITY: when called by a user, enforce tenant membership.
@@ -59,11 +60,21 @@ const handler = async (req: Request): Promise<Response> => {
       if (!belongs) return fail(ErrorCodes.UNAUTHORIZED, "Acesso negado ao tenant", 403);
     }
 
-    const { data: prospect } = await supabase.from("orbit_prospects").select("*").eq("id", prospect_id).single();
+    const { data: prospect } = await supabase
+      .from("orbit_prospects").select("*").eq("id", prospect_id).eq("empresa_id", empresa_id).maybeSingle();
     if (!prospect) return fail(ErrorCodes.NOT_FOUND, "Prospect não encontrado", 404);
 
-    const { data: vendedor } = await supabase.from("profiles").select("*").eq("id", vendedor_id).single();
-    if (!vendedor || !vendedor.telefone) return fail(ErrorCodes.NOT_FOUND, "Vendedor não encontrado ou sem telefone", 404);
+    // Destinatário resolvido SEMPRE pela configuração do MESMO empresa_id.
+    // canary_phone_numbers nunca é destinatário; sem fallback hardcoded.
+    const target = await resolveInternalNotificationTarget(supabase, empresa_id, { vendedorId: vendedor_id ?? null });
+    if (!target.phone) {
+      return fail(
+        ErrorCodes.VALIDATION_ERROR,
+        "Tenant sem telefone de notificação interna configurado (notification_recipient_whatsapp / scheduling_handoff_whatsapp)",
+        422,
+        { reason: target.reason },
+      );
+    }
 
     const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresa_id);
     if (!zapiConfig) return fail(ErrorCodes.PROVIDER_NOT_CONFIGURED, "Z-API não configurado");
@@ -94,12 +105,12 @@ const handler = async (req: Request): Promise<Response> => {
         zapi_config_id: zapiConfig?.id ?? null,
         prospect_id,
         created_by: callerUserId,
-        payload_summary: { tipo, telefone: vendedor.telefone },
+        payload_summary: { tipo, telefone: target.phone, recipient_source: target.source },
       });
       return fail(ErrorCodes.PROVIDER_NOT_CONFIGURED, vendedorBlockReason, 403, { code: "ZAPI_REAL_SEND_BLOCKED" });
     }
 
-    const phone = vendedor.telefone.replace(/\D/g, "");
+    const phone = target.phone;
     const zapiRes = await fetch(
       `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}/send-text`,
       { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone, message: mensagem }) },
@@ -110,7 +121,7 @@ const handler = async (req: Request): Promise<Response> => {
       return fail(ErrorCodes.PROVIDER_SEND_FAILED, err.message || "Erro ao enviar notificação", 502, { provider: "zapi" });
     }
 
-    if (tipo === "transferencia") {
+    if (tipo === "transferencia" && vendedor_id) {
       await supabase.from("orbit_transferencias").update({ notificacao_enviada: true }).eq("prospect_id", prospect_id).eq("para_vendedor_id", vendedor_id).eq("notificacao_enviada", false);
     }
 
