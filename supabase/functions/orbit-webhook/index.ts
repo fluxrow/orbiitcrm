@@ -640,7 +640,7 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       } catch (mediaErr) {
         console.error("[orbit-webhook] media processor indisponível:", mediaErr instanceof Error ? mediaErr.message : mediaErr);
       }
-    } else if (!fromMe && !conversa.human_talk && prospect?.id && !((tipoMidia === "image" || tipoMidia === "audio") && !shouldProcessMedia)) {
+    } else if (!fromMe && !conversaQuarantined && !conversa.human_talk && prospect?.id && !((tipoMidia === "image" || tipoMidia === "audio") && !shouldProcessMedia)) {
       // Safety-net: reclamar lock stale (>3min) — evita conversa travada por falha anterior
       const staleThreshold = new Date(Date.now() - 3 * 60 * 1000).toISOString();
       await supabase
