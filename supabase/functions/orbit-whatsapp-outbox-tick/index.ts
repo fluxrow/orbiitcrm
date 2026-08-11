@@ -462,15 +462,36 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
     if (cfg?.max_per_minute && cfg.max_per_minute > 0) {
       q.remainingMinute = cfg.max_per_minute - (await countRecentSends(item.empresa_id, 60));
     }
+    if (q.remainingDaily <= 0 && engagedReserveLimit(item.empresa_id) > 0) {
+      q.remainingReserve = engagedReserveLimit(item.empresa_id) -
+        (await countEngagedReserveUsedToday(supabase, item.empresa_id));
+    }
   }
+
+  // ── Reserva de resposta engajada ──
+  // Só quando a cota base já esgotou. Exige ai_reply + inbound REAL da MESMA
+  // conversa/tenant, posterior ao cutoff e anterior à geração da resposta.
+  // Prospecção (campaign/flow_*) e notificações nunca entram aqui.
+  let usedReserve = false;
   if (q.remainingDaily <= 0) {
-    await retainItem(item, RETAIN_REASON_DAILY, q.limitInfo);
-    return { outcome: "retained", reason: RETAIN_REASON_DAILY };
+    const reserveLeft = q.remainingReserve ?? 0;
+    if (reserveLeft > 0 && isEngagedReserveCandidate(item)) {
+      const decision = await evaluateEngagedReserve(supabase, item);
+      if (decision.eligible) {
+        usedReserve = true;
+        await markEngagedReserveUse(supabase, item, decision);
+      }
+    }
+    if (!usedReserve) {
+      await retainItem(item, RETAIN_REASON_DAILY, q.limitInfo);
+      return { outcome: "retained", reason: RETAIN_REASON_DAILY };
+    }
   }
   if (q.remainingMinute <= 0) {
     await retainItem(item, RETAIN_REASON_RATE, q.limitInfo);
     return { outcome: "retained", reason: RETAIN_REASON_RATE };
   }
+
 
   // Resolver telefone
   let telefone: string | null = item.payload?.telefone ?? null;
