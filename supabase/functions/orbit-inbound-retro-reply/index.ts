@@ -154,7 +154,7 @@ serve(async (req) => {
         .eq("empresa_id", empresa_id)
         .eq("conversa_id", c.id)
         .eq("source_type", "ai_reply")
-        .eq("idempotency_key", `${empresa_id}|ai_reply|${lastIn.id}:text`);
+        .eq("idempotency_key", `|ai_reply|${empresa_id}|${c.prospect_id}|${lastIn.id}:text`);
       if ((already ?? 0) > 0) { skipped.push({ conversa_id: c.id, reason: "already_enqueued" }); continue; }
 
       candidates.push({
