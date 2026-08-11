@@ -450,12 +450,14 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       conversa = newConversa;
     }
 
-    // 3. Duplicate check
+    // 3. Idempotência por (empresa_id, provider_message_id) — retry não duplica
     if (messageId) {
       const { data: existingMsg } = await supabase
         .from("orbit_mensagens")
         .select("id")
+        .eq("empresa_id", empresaId)
         .eq("provider_message_id", messageId)
+        .limit(1)
         .maybeSingle();
 
       if (existingMsg) {
@@ -469,12 +471,10 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
 
     // 4. Save message with media fields
     const direcao = fromMe ? "OUT" : "IN";
-    const previewText = tipoMidia
-      ? (messageText || `📎 ${tipoMidia}`).substring(0, 100)
-      : messageText.substring(0, 100);
+    const previewText = safePreview(messageText, tipoMidia);
 
     let shouldProcessMedia = false;
-    if (!fromMe && (tipoMidia === "image" || tipoMidia === "audio") && empresaId) {
+    if (!fromMe && (tipoMidia === "image" || tipoMidia === "audio")) {
       const { data: mediaConfig } = await supabase
         .from("orbit_ai_config")
         .select("inbound_image_understanding_enabled, inbound_audio_transcription_enabled")
@@ -493,11 +493,22 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       canal: "whatsapp",
       status: fromMe ? "enviada" : "recebida",
       empresa_id: empresaId,
+      timestamp: inboundAt,
       tipo_midia: tipoMidia,
       url_midia: urlMidia,
       media_processing_status: shouldProcessMedia ? "pending" : (tipoMidia ? "disabled" : null),
     }).select("id").single();
-    if (savedMessageError) throw savedMessageError;
+    if (savedMessageError) {
+      // Corrida com retry concorrente do provedor: índice único absorve.
+      if ((savedMessageError as any).code === "23505") {
+        if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "duplicate_message" }).eq("id", logId);
+        return new Response(JSON.stringify({ ok: true, duplicate: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw savedMessageError;
+    }
+
 
     // 4b. Email-CTA attribution: if this is an inbound message and the prospect
     // recently clicked an email CTA (last 14 days), record a one-time attribution event.
