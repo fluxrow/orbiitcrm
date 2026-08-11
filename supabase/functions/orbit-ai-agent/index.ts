@@ -302,12 +302,13 @@ async function notifyCommercialHumanDetected(
     `${dataHora}`,
   ].join("\n");
 
-  const vendedorPhone = vendedorWhatsapp.replace(/\D/g, "");
+  const vendedorPhone = target.phone;
 
   if (isDemo) {
-    console.log("[orbit-ai-agent] Demo — notificação comercial simulada:", vendedorPhone);
+    console.log("[orbit-ai-agent] Demo — notificação comercial simulada:", { vendedorPhone, source: target.source });
     return;
   }
+
 
   const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresa_id);
   const notifyBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
