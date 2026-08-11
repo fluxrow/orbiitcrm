@@ -1,6 +1,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import {
+  extractInboundContent,
+  extractInboundPhone,
+  inboundEligibility,
+  inboundTimestampIso,
+  providerMessageId,
+  resolveEmpresaByInstance,
+  safePreview,
+} from "../_shared/inbound-zapi.ts";
+
 
 /**
  * Generate phone number variants for flexible matching.
@@ -213,102 +223,65 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
         break;
     }
 
-    // ── Resolve empresa_id from Z-API config ──
-    let empresaId: string | null = null;
-
-    if (payloadInstanceId) {
-      const { data: zapiByInstance } = await supabase
-        .from("orbit_zapi_config")
-        .select("empresa_id")
-        .eq("instance_id", payloadInstanceId)
-        .maybeSingle();
-      empresaId = zapiByInstance?.empresa_id || null;
+    // ── Resolve empresa_id EXCLUSIVAMENTE pelo instance_id ──
+    // Sem fallback por "primeiro tenant ativo": instance_id duplicado/ausente
+    // já causou gravação de inbound no tenant errado. Falha explícita é melhor.
+    if (!payloadInstanceId) {
+      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "instance_id_missing" }).eq("id", logId);
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "instance_id_missing" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    if (!empresaId) {
-      const { data: zapiActive } = await supabase
-        .from("orbit_zapi_config")
-        .select("empresa_id, notificar_enviadas_por_mim")
-        .eq("ativo", true)
-        .limit(1)
-        .maybeSingle();
-      empresaId = zapiActive?.empresa_id || null;
+    const { data: zapiRows } = await supabase
+      .from("orbit_zapi_config")
+      .select("empresa_id, notificar_enviadas_por_mim")
+      .eq("instance_id", payloadInstanceId);
 
-      if (eventType === "on-send" && !zapiActive?.notificar_enviadas_por_mim) {
-        if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "own messages disabled" }).eq("id", logId);
-        return new Response(JSON.stringify({ ok: true, skipped: true, reason: "own messages disabled" }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-    } else if (eventType === "on-send") {
-      const { data: zapiCfg } = await supabase
-        .from("orbit_zapi_config")
-        .select("notificar_enviadas_por_mim")
-        .eq("empresa_id", empresaId)
-        .maybeSingle();
-      if (!zapiCfg?.notificar_enviadas_por_mim) {
-        if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "own messages disabled" }).eq("id", logId);
-        return new Response(JSON.stringify({ ok: true, skipped: true, reason: "own messages disabled" }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+    const resolved = resolveEmpresaByInstance(zapiRows);
+    const empresaId: string | null = resolved.empresaId;
+    if (!empresaId) {
+      console.error("[orbit-webhook] instance não resolvida:", resolved.reason);
+      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "failed", error_message: resolved.reason ?? "instance_unresolved" }).eq("id", logId);
+      return new Response(JSON.stringify({ ok: false, reason: resolved.reason }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (eventType === "on-send" && !zapiRows?.[0]?.notificar_enviadas_por_mim) {
+      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "own messages disabled" }).eq("id", logId);
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "own messages disabled" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     console.log("[orbit-webhook] Resolved empresa_id:", empresaId);
 
-    // Main message processing
-    const phone = payload.phone?.replace(/\D/g, "") || payload.from?.replace(/\D/g, "");
-    const fromMe = payload.fromMe || eventType === "on-send";
+    const fromMe = payload.fromMe === true || eventType === "on-send";
 
-    // ── Extract media from Z-API payload ──
-    let tipoMidia: string | null = null;
-    let urlMidia: string | null = null;
-    let messageText = payload.text?.message || payload.body || "";
-
-    if (payload.image) {
-      tipoMidia = "image";
-      urlMidia = payload.image.imageUrl || payload.image.url || null;
-      messageText = payload.image.caption || messageText || "";
-    } else if (payload.audio) {
-      tipoMidia = "audio";
-      urlMidia = payload.audio.audioUrl || payload.audio.url || null;
-    } else if (payload.video) {
-      tipoMidia = "video";
-      urlMidia = payload.video.videoUrl || payload.video.url || null;
-      messageText = payload.video.caption || messageText || "";
-    } else if (payload.document) {
-      tipoMidia = "document";
-      urlMidia = payload.document.documentUrl || payload.document.url || null;
-      messageText = payload.document.caption || payload.document.fileName || messageText || "";
-    } else if (payload.sticker) {
-      tipoMidia = "image";
-      urlMidia = payload.sticker.stickerUrl || payload.sticker.url || null;
+    // ── Elegibilidade + extração (helpers puros, cobertos por testes) ──
+    if (!fromMe) {
+      const eligibility = inboundEligibility(payload, "on-receive");
+      if (!eligibility.process) {
+        if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: eligibility.reason }).eq("id", logId);
+        return new Response(JSON.stringify({ ok: true, skipped: true, reason: eligibility.reason }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
-    // Fallback: caption at root level
-    if (!messageText && payload.caption) {
-      messageText = payload.caption;
-    }
+    const { messageText, tipoMidia, urlMidia } = extractInboundContent(payload);
+    const messageId = providerMessageId(payload);
+    const normalizedPhone = extractInboundPhone(payload);
+    const inboundAt = inboundTimestampIso(payload);
 
-    const messageId = payload.messageId || payload.id;
-
-    // Defesa em profundidade: sem conteúdo, sem mídia e sem messageId → não é mensagem
-    if (!messageText && !tipoMidia && !messageId) {
-      console.log("[orbit-webhook] Payload sem conteúdo/mídia/messageId — ignorando (provável status callback)");
-      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "empty_payload" }).eq("id", logId);
-      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "empty_payload" }), {
+    if (!normalizedPhone) {
+      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "no_phone" }).eq("id", logId);
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "no_phone" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    if (!phone || (fromMe && eventType !== "on-send")) {
-      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "no phone or skipped fromMe" }).eq("id", logId);
-      return new Response(JSON.stringify({ ok: true, skipped: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const normalizedPhone = phone.startsWith("55") ? phone : `55${phone}`;
 
     // Generate phone variants for matching (with/without 9th digit)
     const phoneVariants = generatePhoneVariants(normalizedPhone);
@@ -319,13 +292,16 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       .map(v => `whatsapp.eq.${v},telefone.eq.${v}`)
       .join(",");
 
-    let prospectQuery = supabase
+    const { data: prospectRows } = await supabase
       .from("orbit_prospects")
       .select("*")
-      .or(orFilter);
-    if (empresaId) prospectQuery = prospectQuery.eq("empresa_id", empresaId);
+      .eq("empresa_id", empresaId)
+      .or(orFilter)
+      .order("created_at", { ascending: true })
+      .limit(1);
 
-    let { data: prospect } = await prospectQuery.maybeSingle();
+    let prospect: any = prospectRows?.[0] ?? null;
+
 
     if (prospect && !prospect.whatsapp) {
       console.log("[orbit-webhook] Auto-preenchendo whatsapp para prospect:", prospect.id);
@@ -484,12 +460,14 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       conversa = newConversa;
     }
 
-    // 3. Duplicate check
+    // 3. Idempotência por (empresa_id, provider_message_id) — retry não duplica
     if (messageId) {
       const { data: existingMsg } = await supabase
         .from("orbit_mensagens")
         .select("id")
+        .eq("empresa_id", empresaId)
         .eq("provider_message_id", messageId)
+        .limit(1)
         .maybeSingle();
 
       if (existingMsg) {
@@ -503,12 +481,10 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
 
     // 4. Save message with media fields
     const direcao = fromMe ? "OUT" : "IN";
-    const previewText = tipoMidia
-      ? (messageText || `📎 ${tipoMidia}`).substring(0, 100)
-      : messageText.substring(0, 100);
+    const previewText = safePreview(messageText, tipoMidia);
 
     let shouldProcessMedia = false;
-    if (!fromMe && (tipoMidia === "image" || tipoMidia === "audio") && empresaId) {
+    if (!fromMe && (tipoMidia === "image" || tipoMidia === "audio")) {
       const { data: mediaConfig } = await supabase
         .from("orbit_ai_config")
         .select("inbound_image_understanding_enabled, inbound_audio_transcription_enabled")
@@ -527,11 +503,22 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       canal: "whatsapp",
       status: fromMe ? "enviada" : "recebida",
       empresa_id: empresaId,
+      timestamp: inboundAt,
       tipo_midia: tipoMidia,
       url_midia: urlMidia,
       media_processing_status: shouldProcessMedia ? "pending" : (tipoMidia ? "disabled" : null),
     }).select("id").single();
-    if (savedMessageError) throw savedMessageError;
+    if (savedMessageError) {
+      // Corrida com retry concorrente do provedor: índice único absorve.
+      if ((savedMessageError as any).code === "23505") {
+        if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "duplicate_message" }).eq("id", logId);
+        return new Response(JSON.stringify({ ok: true, duplicate: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw savedMessageError;
+    }
+
 
     // 4b. Email-CTA attribution: if this is an inbound message and the prospect
     // recently clicked an email CTA (last 14 days), record a one-time attribution event.
@@ -576,31 +563,50 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
     }
 
 
-    // 5. Update conversation
+    // 5. Update conversation — visibilidade imediata na UI
     await supabase
       .from("orbit_conversas")
       .update({
-        ultima_mensagem_at: new Date().toISOString(),
+        ultima_mensagem_at: inboundAt,
         ultima_mensagem_preview: previewText,
         mensagens_nao_lidas: fromMe ? 0 : (conversa.mensagens_nao_lidas || 0) + 1,
       })
       .eq("id", conversa.id);
 
-    // 6. If AI active and human_talk = false and incoming message, call AI agent
-    if (!fromMe && !conversa.human_talk && shouldProcessMedia && savedMessage?.id) {
-      const mediaResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-inbound-media-processor`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-        },
-        body: JSON.stringify({ message_id: savedMessage.id }),
+    // 5b. Lead respondeu → cancela cadência (D+1/D+3) e outbox futuro ligado a ela.
+    //     Nunca cancela a resposta atual (ai_reply/manual ficam fora do escopo).
+    if (!fromMe && prospect?.id) {
+      const { data: canceled, error: cancelError } = await supabase.rpc("cancel_cadence_on_reply", {
+        _empresa_id: empresaId,
+        _prospect_id: prospect.id,
+        _reason: "replied",
       });
-      if (!mediaResponse.ok) {
-        const detail = (await mediaResponse.text()).slice(0, 300);
-        console.error("[orbit-webhook] Erro ao processar mídia:", mediaResponse.status, detail);
+      if (cancelError) console.error("[orbit-webhook] cancel_cadence_on_reply falhou:", cancelError.message);
+      else console.log("[orbit-webhook] cadência cancelada:", canceled);
+    }
+
+    // 6. Somente APÓS o commit do inbound: pipeline de mídia / agente.
+    //    Falha aqui nunca desfaz a mensagem IN — apenas loga e libera retry.
+    const correlationId = `inbound:${empresaId}:${messageId ?? savedMessage?.id}`;
+    if (!fromMe && !conversa.human_talk && shouldProcessMedia && savedMessage?.id) {
+      try {
+        const mediaResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-inbound-media-processor`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+            "Idempotency-Key": correlationId,
+          },
+          body: JSON.stringify({ message_id: savedMessage.id }),
+        });
+        if (!mediaResponse.ok) {
+          const detail = (await mediaResponse.text()).slice(0, 300);
+          console.error("[orbit-webhook] Erro ao processar mídia:", mediaResponse.status, detail);
+        }
+      } catch (mediaErr) {
+        console.error("[orbit-webhook] media processor indisponível:", mediaErr instanceof Error ? mediaErr.message : mediaErr);
       }
-    } else if (!fromMe && !conversa.human_talk && !((tipoMidia === "image" || tipoMidia === "audio") && !shouldProcessMedia)) {
+    } else if (!fromMe && !conversa.human_talk && prospect?.id && !((tipoMidia === "image" || tipoMidia === "audio") && !shouldProcessMedia)) {
       // Safety-net: reclamar lock stale (>3min) — evita conversa travada por falha anterior
       const staleThreshold = new Date(Date.now() - 3 * 60 * 1000).toISOString();
       await supabase
@@ -619,26 +625,41 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
         .select("id");
 
       if (lockResult && lockResult.length > 0) {
-        // Lock adquirido — disparar agente
-        let aiConfigQuery = supabase.from("orbit_ai_config").select("*");
-        if (empresaId) aiConfigQuery = aiConfigQuery.eq("empresa_id", empresaId);
-        const { data: aiConfig } = await aiConfigQuery.maybeSingle();
+        const { data: aiConfig } = await supabase
+          .from("orbit_ai_config")
+          .select("modo_automatico")
+          .eq("empresa_id", empresaId)
+          .maybeSingle();
 
         if (aiConfig?.modo_automatico) {
-          fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-ai-agent`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-              "x-orbit-internal-secret": Deno.env.get("ORBIT_AI_AGENT_SECRET") ?? "",
-            },
-            body: JSON.stringify({
-              conversa_id: conversa.id,
-              prospect_id: prospect.id,
-              mensagem: messageText,
-              telefone: normalizedPhone,
-            }),
-          }).catch(err => console.error("[orbit-webhook] Erro ao chamar AI agent:", err));
+          // A resposta gerada SEMPRE entra no orbit_whatsapp_outbox (o agente é
+          // o produtor; orbit-whatsapp-outbox-tick é o único emissor).
+          try {
+            const agentResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-ai-agent`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                "x-orbit-internal-secret": Deno.env.get("ORBIT_AI_AGENT_SECRET") ?? "",
+                "Idempotency-Key": correlationId,
+              },
+              body: JSON.stringify({
+                conversa_id: conversa.id,
+                prospect_id: prospect.id,
+                mensagem: messageText,
+                telefone: normalizedPhone,
+                correlation_id: correlationId,
+              }),
+            });
+            if (!agentResponse.ok) {
+              const detail = (await agentResponse.text()).slice(0, 300);
+              console.error("[orbit-webhook] agente respondeu erro:", agentResponse.status, detail);
+              await supabase.from("orbit_conversas").update({ ai_processing: false }).eq("id", conversa.id);
+            }
+          } catch (agentErr) {
+            console.error("[orbit-webhook] Erro ao chamar AI agent:", agentErr instanceof Error ? agentErr.message : agentErr);
+            await supabase.from("orbit_conversas").update({ ai_processing: false }).eq("id", conversa.id);
+          }
         } else {
           // Liberar lock se não vai chamar IA
           await supabase.from("orbit_conversas").update({ ai_processing: false }).eq("id", conversa.id);
@@ -646,9 +667,12 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       } else {
         console.log("[orbit-webhook] AI já processando conversa, msg será agregada:", conversa.id);
       }
+    } else if (!fromMe && !prospect?.id) {
+      console.log("[orbit-webhook] contato sem prospect vinculado — visível para atendimento humano, sem resposta automática");
     }
 
     if (logId) await supabase.from("orbit_webhook_logs").update({ status: "processed" }).eq("id", logId);
+
 
     return new Response(JSON.stringify({ ok: true, event: eventType, prospect_id: prospect.id, conversa_id: conversa.id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
