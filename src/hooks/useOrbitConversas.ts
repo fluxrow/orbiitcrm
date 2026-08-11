@@ -42,11 +42,13 @@ export function useOrbitConversas(canal?: string, matchedIds?: string[]) {
         .from("orbit_conversas")
         .select(`
           *,
-          prospect:orbit_prospects!orbit_conversas_prospect_id_fkey(id, nome_razao, nome_fantasia, email_principal, segmento),
+          prospect:orbit_prospects!orbit_conversas_prospect_id_fkey(id, nome_razao, nome_fantasia, email_principal, segmento, deleted_at),
           human_user:profiles!orbit_conversas_human_user_id_fkey(id, nome)
         `)
         .eq("empresa_id", empresaId!)
         .eq("status", "aberta")
+        // Quarentena/arquivamento: conversas arquivadas não aparecem na aba ativa
+        .is("archived_at", null)
         .order("ultima_mensagem_at", { ascending: false, nullsFirst: false });
 
 
@@ -59,8 +61,10 @@ export function useOrbitConversas(canal?: string, matchedIds?: string[]) {
 
       const { data, error } = await query;
       if (error) throw error;
-      return data;
+      // Prospects arquivados (deleted_at) também ficam fora da aba ativa
+      return (data ?? []).filter((c: any) => !c.prospect?.deleted_at);
     },
+
   });
 }
 
