@@ -22,7 +22,6 @@ import {
   type EffectiveLimit,
 } from "../_shared/outbox-quota.ts";
 import {
-  ENGAGED_REPLY_RESERVE_REASON,
   countEngagedReserveUsedToday,
   engagedReserveLimit,
   evaluateEngagedReserve,
