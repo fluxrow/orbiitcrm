@@ -1,6 +1,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import {
+  extractInboundContent,
+  extractInboundPhone,
+  inboundEligibility,
+  inboundTimestampIso,
+  providerMessageId,
+  resolveEmpresaByInstance,
+  safePreview,
+} from "../_shared/inbound-zapi.ts";
+
 
 /**
  * Generate phone number variants for flexible matching.
