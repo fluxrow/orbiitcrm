@@ -153,7 +153,8 @@ serve(async (req) => {
         .select("id", { count: "exact", head: true })
         .eq("empresa_id", empresa_id)
         .eq("conversa_id", c.id)
-        .eq("inbound_message_id", `${lastIn.id}:text`);
+        .eq("source_type", "ai_reply")
+        .eq("idempotency_key", `${empresa_id}|ai_reply|${lastIn.id}:text`);
       if ((already ?? 0) > 0) { skipped.push({ conversa_id: c.id, reason: "already_enqueued" }); continue; }
 
       candidates.push({
@@ -213,7 +214,7 @@ serve(async (req) => {
     // Estado final do outbox (sem PII: nunca retorna payload/mensagem).
     const { data: outboxRows } = await supabase
       .from("orbit_whatsapp_outbox")
-      .select("id, conversa_id, source_type, payload_type, status, priority, created_at, sent_at, last_error")
+      .select("id, conversa_id, source_type, payload_type, status, priority, created_at, sent_at, last_error, idempotency_key")
       .eq("empresa_id", empresa_id)
       .order("created_at", { ascending: false })
       .limit(15);
