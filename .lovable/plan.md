@@ -1,77 +1,61 @@
-# Auditoria somente-leitura — Viver Semijoias (36f26579-66ad-4ef1-9788-141e4c727232)
+# Auditoria — Onboarding de materiais (Bullink) e envio de mídia WhatsApp
 
-Nenhum código, dado ou configuração foi alterado. Nenhuma chamada Z-API foi feita.
+Somente leitura: nada foi alterado no código nem no banco.
 
-## Estado atual (Lovable Cloud, consultado agora)
+## 1. Como o pipeline funciona hoje
 
-- `orbit_zapi_config` (id 665b6b41…): `ativo = false`, `envio_real_liberado = false`, instância preenchida (`Viver Semijoais`), `canary_phone_numbers` = vazio (0).
-- `orbit_whatsapp_sending_config`: `enabled = true`, `outbox_adapter_enabled = true`, `daily_limit = 50`, `max_per_minute = 2`, `warmup_enabled = true` (início 2026-08-03), lote 10 / pausa 60s.
-- `orbit_whatsapp_outbox`: 1222 `sent` (último em 2026-08-07), 25 `failed`. **Zero** itens em `queued`/`pending`/`processing`/`scheduled`.
-- Todos os 25 `failed` têm o mesmo `last_error`: "Envio real via Z-API bloqueado para este tenant…" (o mais recente em 2026-08-11 12:13Z) — prova de que o kill switch está atuando hoje.
-- `orbit_flow_scheduled_actions`: 162 `pending` (69 `send_whatsapp_template`, 93 `create_task`), janela 2026-08-11 13:45Z → 2026-08-25 11:53Z; 486 `success`; 232 `canceled`.
-- Campanhas: apenas 1 campanha WhatsApp, status `concluida` — nenhuma `agendada`, `aprovada_para_envio`, `enviando` ou `pausada_por_limite`. Logo o scheduler de campanhas não tem nada para retomar neste tenant.
+| Camada | Arquivo/função | O que faz |
+|---|---|---|
+| Upload público (wizard) | `src/pages/public/ClientOnboardingPage.tsx` → `AssetListInput.handleUpload` (l.414-453) | preview local, `upload_status: "uploading"`, chama helper |
+| Helper cliente | `src/lib/orbit-onboarding-upload.ts` | lê o arquivo inteiro em base64 e envia JSON para a edge function |
+| Edge function | `supabase/functions/orbit-onboarding-asset-upload/index.ts` | valida token público, limite 20MB, MIME por prefixo, sobe em `orbit-media` (privado), insere `orbit_onboarding_assets`, devolve signed URL de 1h (preview) |
+| Processamento | `supabase/functions/orbit-onboarding-process-assets/index.ts` | JWT + membership; baixa só arquivos **texto-like**, chama Lovable AI (`google/gemini-2.5-flash`), grava `orbit_onboarding_asset_insights` (upsert por `asset_id`) e `orbit_onboarding_implementation_drafts` |
+| Mídia privada | `src/lib/orbit-media.ts`, `supabase/functions/_shared/orbit-media.ts` | assina URLs sob demanda (nunca persiste signed URL) |
+| Conhecimento/RAG | `supabase/functions/orbit-knowledge-ingest/index.ts` | chunk 1200/150, embeddings `google/gemini-embedding-001`, grava `orbit_ai_knowledge` (status pending → processado); busca no `orbit-ai-agent` (l.587-620) |
 
-## 1) Caminhos que fazem fetch para endpoints de ENVIO Z-API
+## 2. Estado real da Bullink (`4f6b4a18…`), onboarding `4fa8ffc5…`
 
-Gate único e fail-closed: `getOrbitZapiRealSendBlockReason()` em `_shared/orbit-zapi.ts` — bloqueia salvo `envio_real_liberado === true`; se a coluna vier nula/ausente, assume `false`.
+- Onboarding `status = concluido`, `archived = false`, atualizado 2026-07-30 22:19.
+- 10 linhas em `orbit_onboarding_assets` (8 PNG, `audio1.MP3`, `GARANTIA.ogg`) — todas com `storage_path` e `size_bytes` válidos: **o upload em si não falhou**.
+- 10 linhas em `orbit_onboarding_asset_insights`, todas com `error = NULL`, mas `model = manual_review_2026-08-10` / `faster-whisper-base` → foram **curadas manualmente**, não geradas pela função. Draft consolidado também é `manual_curated_review_2026-08-10`.
+- `review_status`: 8 `approved`, 1 `ignored` (`GARANTIA.ogg`), **1 `pending`** → asset `a8fbb253…` (`Captura_de_tela_2026-07-30_191029.png`). O próprio summary registra: *"a referência do formulário permaneceu com status uploading e não foi exibida para revisão"*.
+- Em `responses.midias.materiais_operacao` há dois itens quebrados:
+  - `035be582…` — `upload_status: "uploading"`, **sem** `asset_id` nem `storage_path`, filename `Captura de tela 2026-07-30 191029.png` (é justamente o asset `a8fbb253…`, órfão do formulário);
+  - `3101c0e0…` — item vazio (sem arquivo, sem título);
+  - além disso `GARANTIA.ogg` está classificado como `tipo: "Imagem"` (rótulo errado do cliente).
+- `orbit_ai_knowledge` da Bullink: **0 linhas** (nenhum material virou conhecimento/embedding).
+- Z-API Bullink: `ativo = false`, `envio_real_liberado = false`, sem linha em `orbit_whatsapp_sending_config` (adapter desligado) e `orbit_audio_library` vazia.
 
-| Caminho | Endpoint | Checa `envio_real_liberado` antes do fetch | Checa `ativo` |
-| --- | --- | --- | --- |
-| `orbit-whatsapp-outbox-tick` (worker) | send-text/image/audio/document/video | Sim (fail-closed, audita e marca `failed`) | Não |
-| `orbit-flow-executor` → `sendZapi()` | send-text/image/audio/document/video | Sim (fail-closed + auditoria) | Não |
-| `orbit-ai-agent` — resposta do agente | send-text | Sim, **com exceção canary** (ver item 4) | Não |
-| `orbit-ai-agent` — áudio/TTS | send-audio | Sim | Não |
-| `orbit-ai-agent` — notificação vendedor / handoff | send-text | Sim | Não |
-| `orbit-send-message` (manual) | send-* | Sim | Não |
-| `send-orbit-campaign` | send-text/image | Sim | Não |
-| `send-vendedor-notification` | send-text | Sim | Não |
-| `request-campaign-approval` | send-text | Sim | Não |
-| `orbit-validate-whatsapp` | `phone-exists` + status da instância (não envia) | n/a | Não |
-| `orbit-migrate-phones` | `phone-exists` + status da instância (não envia) | n/a | Não |
+## 3. Causa raiz
 
-Conclusão: **todos** os caminhos de envio real passam pelo mesmo gate `envio_real_liberado`. **Nenhum** deles exige `ativo = true` — `ativo` não é gate de envio. A RPC `get_orbit_zapi_runtime_config` retorna as credenciais independentemente de `ativo`. Ou seja: manter `ativo = false` **não** é proteção; a proteção real é `envio_real_liberado = false`.
+**Causa raiz principal (o asset pending):** stale closure no `AssetListInput`. `update()` (l.402-405) recalcula a lista a partir do `items` capturado no render, e `handleUpload` chama `update()` **depois do `await`**. Com uploads em sequência rápida (assets gravados 22:16:23 → 22:16:27 → 22:16:30), o patch de um upload posterior é aplicado sobre um snapshot antigo do array e **sobrescreve o resultado do upload anterior**, deixando o item em `uploading` sem `asset_id`/`storage_path`. O arquivo está no Storage e na tabela — só a referência no `responses` foi perdida. Não houve erro de payload, MIME, tamanho, timeout ou signed URL.
 
-## 2) Toggle de Configurações
+**Causas secundárias / riscos reais de falha de upload:**
+- base64 no cliente + JSON na função: um arquivo de 20MB vira ~27MB de corpo → risco de estouro de memória/limite antes de qualquer validação (`orbit-onboarding-upload.ts` + `base64ToBytes`).
+- `upsert: false` no Storage: retry do mesmo arquivo gera novo `asset_id`, sem idempotência por (onboarding, item_id, filename).
+- Sem reconciliação: nada compara `orbit_onboarding_assets` com `responses` para achar assets órfãos.
+- `orbit-onboarding-process-assets` é **síncrono** e sequencial (até 12 assets, 1 chamada de IA cada + draft) — risco de timeout; e por design **não processa imagem/áudio/vídeo** (l.238-245: "sem transcrição"), o que explica insights vazios até a curadoria manual.
+- Não existe coluna de status/tentativas em `orbit_onboarding_asset_insights` (só `error`), então "pending" na UI é `review_status`, não estado de processamento.
 
-- UI: `src/pages/orbit/ConfigPage.tsx` (linha ~883) altera somente `zapiForm.ativo`, persistido via `useUpdateZAPIConfig` → RPC `upsert_orbit_zapi_config_secure(p_ativo)`.
-- A RPC grava apenas `nome_instancia, instance_id, numero_origem, webhook_url, notificar_enviadas_por_mim, ativo` + tokens no Vault. **Não existe parâmetro para `envio_real_liberado`** — salvar/conectar/validar a instância nunca liga o envio real implicitamente.
-- `orbit-validate-whatsapp` e `orbit-migrate-phones` só leem a config (checam conexão via status da instância e `phone-exists`); não escrevem em `ativo` nem em `envio_real_liberado`.
-- `orbit-webhook` lê `orbit_zapi_config` para resolver `empresa_id` (por `instance_id` e, no fallback, `ativo=true`); não escreve na config.
-- Efeito colateral relevante de conectar: mensagens recebidas passam a chegar no webhook e a acionar o agente (o webhook resolve o tenant por `instance_id`, mesmo com `ativo=false`). As respostas do agente serão barradas pelo kill switch e gravadas como OUT `falhou`.
+## 4. Envio de mídia via Z-API (já existente)
 
-## 3) Cron/workers ativos e o primeiro tick após conectar
+`send-image`, `send-audio`, `send-document`, `send-video`, `send-text` estão implementados em:
+- `orbit-whatsapp-outbox-tick` → `sendViaZapi` (l.127-161), corpo `{phone, image|audio|document|video, caption/fileName}`, mídia assinada por `signOrbitMediaUrl(…, 3600)`;
+- `orbit-send-message` (l.251-292), mesmo mapeamento;
+- `orbit-flow-executor` (l.429) mapeia tipo → endpoint.
 
-Jobs ativos: `orbit-whatsapp-outbox-tick-1min`, `orbit-flow-dispatcher-1min`, `orbit-flow-scheduler-tick-1min`, `orbit-campaign-scheduler-tick`, `orbit-meeting-scheduler` (10min), `orbit-advisor-scan-hourly`.
+Ponto de atenção: TTL da signed URL é 1h — se a Z-API buscar a mídia depois disso (retry/fila longa), o download falha.
 
-No primeiro tick após conectar a instância (mantendo `envio_real_liberado=false`):
+## 5. Onde `envio_real_liberado` / `dry_run` é aplicado
 
-1. `orbit-flow-scheduler-tick` reclama as ações vencidas dos 162 pending; as 93 `create_task` executam normalmente (não tocam WhatsApp).
-2. As `send_whatsapp_template` vencidas vão para o outbox (o tenant tem `outbox_adapter_enabled=true`), entrando como `queued`.
-3. `orbit-whatsapp-outbox-tick` consome, revalida elegibilidade e **falha fail-closed** no gate `envio_real_liberado`: item vira `failed` com `ZAPI_REAL_SEND_BLOCKED`, linha de auditoria em `orbit_zapi_send_audit` e mensagem visual `falhou`. Zero fetch para a Z-API.
-4. `orbit-campaign-scheduler-tick`: nada a fazer (nenhuma campanha agendada/pausada/enviando).
+`_shared/orbit-zapi.ts` → `getOrbitZapiRealSendBlockReason()` (fail-closed: só libera com `envio_real_liberado === true`), consumido por `orbit-whatsapp-outbox-tick`, `orbit-send-message`, `orbit-flow-executor`, `orbit-ai-agent`, `send-orbit-campaign`, `send-vendedor-notification`, `request-campaign-approval`, `orbit-zapi-go-live-smoke`. `dry_run` é aplicado no executor de fluxos e exige adapter habilitado. **Bullink está bloqueada em todos os caminhos.**
 
-Resultado esperado: **nenhuma mensagem sai**, mas há ruído — até 69 itens marcados como `failed` e OUT `falhou` visíveis nas conversas (é exatamente o padrão dos 25 `failed` atuais). Nenhum disparo em massa é possível enquanto o kill switch estiver `false`.
+## 6. Plano mínimo, isolado na Bullink (a executar só após aprovação)
 
-## 4) `canary_phone_numbers` vazio
+1. **Reconciliação de dados (só onboarding `4fa8ffc5…`)**: religar o item `035be582…` ao asset `a8fbb253…` (preencher `asset_id`, `storage_path`, `mime`, `size_bytes`, `upload_status: "uploaded"`), remover o item vazio `3101c0e0…` e corrigir `tipo` de `GARANTIA.ogg` para "Áudio". Backup do `responses` antes, um único UPDATE com `WHERE id = 4fa8ffc5…`.
+2. **Fechar o pending**: reprocessar/revisar o asset `a8fbb253…` e definir `review_status` explícito (approved/ignored) conforme conteúdo.
+3. **Correção de código (global, sem toque em dados de outros tenants)**: usar updater funcional/ref em `AssetListInput` para eliminar o stale closure, e bloquear "Salvar/Enviar" enquanto houver item em `uploading`.
+4. **Reconciliador de assets órfãos** (leitura + patch sob demanda): view/consulta que lista assets sem referência no `responses` do mesmo onboarding, exposta na tela de revisão de materiais.
+5. **Não mexer em Z-API**: manter `ativo=false` e `envio_real_liberado=false`; nada de knowledge/embeddings automáticos nesta etapa — ingestão de material aprovado em `orbit_ai_knowledge` fica como passo separado, com aprovação explícita.
 
-- Único consumidor: `orbit-ai-agent` (resposta ao lead). Com `envio_real_liberado=false`, ele libera o envio **apenas** se o telefone do lead estiver em `canary_phone_numbers`. Para a Viver a lista está vazia → nenhuma exceção; todas as respostas ficam bloqueadas.
-- Se `envio_real_liberado` virar `true`, a allowlist deixa de ter qualquer efeito restritivo (ela é só bypass do bloqueio, não whitelist de destino): todos os caminhos — agente, follow-ups de fluxo, campanhas, manual — passam a enviar de verdade, limitados apenas por ritmo/cota (`daily_limit=50`, `2/min`, warmup) e pelas regras de elegibilidade do outbox. É por isso que virar esse flag agora seria arriscado com 69 templates agendados.
-
-## 5) RLS / isolamento por `empresa_id`
-
-- `orbit_whatsapp_outbox`: apenas `SELECT` para `authenticated` no próprio tenant; escrita só por `service_role`.
-- `orbit_flow_scheduled_actions`: apenas `SELECT` por `empresa_id`.
-- `orbit_whatsapp_sending_config` e `orbit_zapi_config`: leitura/gestão por super-admin ou admin do próprio tenant.
-- Edge Functions de envio derivam `empresa_id` do servidor (perfil do chamador ou registro), não confiam no cliente; `orbit-validate-whatsapp` e `orbit-migrate-phones` validam o tenant do chamador antes de tocar prospects.
-- Ponto de atenção (não bloqueante): a policy `Orbit admins can manage own empresa zapi_config` é `ALL`, então um admin do próprio tenant consegue, via API de dados, escrever `envio_real_liberado = true` diretamente — o kill switch não é exclusivo de super-admin. Vale considerar um trigger/coluna protegida em fase futura.
-
-## 6) Veredito
-
-**GO** para apenas conectar/validar a instância Z-API agora, mantendo `ativo = false` e `envio_real_liberado = false`.
-
-Justificativa: os 100% dos caminhos de envio real passam pelo gate `envio_real_liberado` fail-closed; não há itens de outbox pendentes; não há campanha em estado retomável; a allowlist canary está vazia; conectar/validar não altera nenhum dos dois flags. Não recomendo liberar envio real nesta etapa.
-
-Condições para o GO:
-- Não usar "Aprovar disparo" nem criar/reativar campanhas.
-- Aceitar que até 69 ações agendadas de WhatsApp serão marcadas `failed` (ruído em conversas). Se esse ruído não for aceitável, o passo anterior seria cancelar/reagendar essas ações pendentes — mas isso é alteração de dados e está fora deste escopo somente-leitura.
-- Não popular `canary_phone_numbers` sem decisão explícita.
+Itens 1 e 2 alteram apenas linhas da Bullink; item 3 é frontend puro; item 4 é aditivo.
