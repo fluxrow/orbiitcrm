@@ -21,6 +21,14 @@ import {
   RETAIN_REASON_RATE,
   type EffectiveLimit,
 } from "../_shared/outbox-quota.ts";
+import {
+  countEngagedReserveUsedToday,
+  engagedReserveLimit,
+  evaluateEngagedReserve,
+  isEngagedReserveCandidate,
+  markEngagedReserveUse,
+} from "../_shared/engaged-reply-reserve.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -124,7 +132,10 @@ interface QuotaState {
   limitInfo: EffectiveLimit;
   remainingDaily: number;
   remainingMinute: number;
+  /** Reserva separada de respostas engajadas (ai_reply com inbound real). */
+  remainingReserve?: number;
 }
+
 
 interface ProcessResult {
   outcome: "sent" | "simulated" | "canceled" | "failed" | "deferred" | "blocked" | "retained";
@@ -450,15 +461,36 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
     if (cfg?.max_per_minute && cfg.max_per_minute > 0) {
       q.remainingMinute = cfg.max_per_minute - (await countRecentSends(item.empresa_id, 60));
     }
+    if (q.remainingDaily <= 0 && engagedReserveLimit(item.empresa_id) > 0) {
+      q.remainingReserve = engagedReserveLimit(item.empresa_id) -
+        (await countEngagedReserveUsedToday(supabase, item.empresa_id));
+    }
   }
+
+  // ── Reserva de resposta engajada ──
+  // Só quando a cota base já esgotou. Exige ai_reply + inbound REAL da MESMA
+  // conversa/tenant, posterior ao cutoff e anterior à geração da resposta.
+  // Prospecção (campaign/flow_*) e notificações nunca entram aqui.
+  let usedReserve = false;
   if (q.remainingDaily <= 0) {
-    await retainItem(item, RETAIN_REASON_DAILY, q.limitInfo);
-    return { outcome: "retained", reason: RETAIN_REASON_DAILY };
+    const reserveLeft = q.remainingReserve ?? 0;
+    if (reserveLeft > 0 && isEngagedReserveCandidate(item)) {
+      const decision = await evaluateEngagedReserve(supabase, item);
+      if (decision.eligible) {
+        usedReserve = true;
+        await markEngagedReserveUse(supabase, item, decision);
+      }
+    }
+    if (!usedReserve) {
+      await retainItem(item, RETAIN_REASON_DAILY, q.limitInfo);
+      return { outcome: "retained", reason: RETAIN_REASON_DAILY };
+    }
   }
   if (q.remainingMinute <= 0) {
     await retainItem(item, RETAIN_REASON_RATE, q.limitInfo);
     return { outcome: "retained", reason: RETAIN_REASON_RATE };
   }
+
 
   // Resolver telefone
   let telefone: string | null = item.payload?.telefone ?? null;
@@ -550,9 +582,14 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
 
     await updateCampaignRecipient(item, { status: "enviado" });
 
-    q.remainingDaily -= 1;
+    if (usedReserve) {
+      q.remainingReserve = Math.max(0, (q.remainingReserve ?? 0) - 1);
+    } else {
+      q.remainingDaily -= 1;
+    }
     q.remainingMinute -= 1;
     await bumpDailyUsage(item.empresa_id, 1);
+
     await auditZapiSendAttempt(supabase, {
       empresa_id: item.empresa_id,
       function_name: "orbit-whatsapp-outbox-tick",
@@ -609,7 +646,16 @@ async function processTenant(empresa_id: string, batch: number): Promise<Record<
   const remainingDaily = limitInfo.limit == null
     ? Number.POSITIVE_INFINITY
     : limitInfo.limit - usedToday;
-  if (remainingDaily <= 0) {
+
+  // Reserva de resposta engajada: teto separado, só tenants habilitados.
+  let remainingReserve = 0;
+  if (remainingDaily <= 0 && engagedReserveLimit(empresa_id) > 0) {
+    remainingReserve = Math.max(
+      0,
+      engagedReserveLimit(empresa_id) - (await countEngagedReserveUsedToday(supabase, empresa_id)),
+    );
+  }
+  if (remainingDaily <= 0 && remainingReserve <= 0) {
     stats.retained = await retainPendingForTenant(empresa_id, RETAIN_REASON_DAILY, limitInfo);
     return stats;
   }
@@ -623,13 +669,14 @@ async function processTenant(empresa_id: string, batch: number): Promise<Record<
     }
   }
 
-  const quota: QuotaState = { limitInfo, remainingDaily, remainingMinute };
+  const quota: QuotaState = { limitInfo, remainingDaily, remainingMinute, remainingReserve };
+  const budget = remainingDaily > 0 ? remainingDaily : remainingReserve;
   const cap = Math.max(
     1,
     Math.min(
       batch,
       cfg?.batch_size && cfg.batch_size > 0 ? cfg.batch_size : batch,
-      Number.isFinite(remainingDaily) ? remainingDaily : batch,
+      Number.isFinite(budget) ? budget : batch,
       Number.isFinite(remainingMinute) ? remainingMinute : batch,
     ),
   );
@@ -648,13 +695,14 @@ async function processTenant(empresa_id: string, batch: number): Promise<Record<
   }
 
   // Sobrou fila e a cota estourou durante o lote: retém o restante como queued.
-  if (quota.remainingDaily <= 0) {
+  if (quota.remainingDaily <= 0 && (quota.remainingReserve ?? 0) <= 0) {
     stats.retained += await retainPendingForTenant(empresa_id, RETAIN_REASON_DAILY, limitInfo);
   } else if (quota.remainingMinute <= 0) {
     stats.retained += await retainPendingForTenant(empresa_id, RETAIN_REASON_RATE, limitInfo);
   }
   return stats;
 }
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
