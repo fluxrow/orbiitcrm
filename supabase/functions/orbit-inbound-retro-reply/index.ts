@@ -100,7 +100,7 @@ serve(async (req) => {
     const sinceIso = new Date(Date.now() - hours * 3600_000).toISOString();
     const { data: convs, error: convErr } = await supabase
       .from("orbit_conversas")
-      .select("id, prospect_id, telefone, human_talk, archived_at, quarantine_reason, status, ultima_mensagem_at")
+      .select("id, prospect_id, human_talk, archived_at, quarantine_reason, status, ultima_mensagem_at")
       .eq("empresa_id", empresa_id)
       .is("archived_at", null)
       .is("quarantine_reason", null)
@@ -159,7 +159,7 @@ serve(async (req) => {
       candidates.push({
         conversa_id: c.id,
         prospect_id: c.prospect_id,
-        telefone: c.telefone ?? p.telefone ?? null,
+        telefone: p.telefone ?? null,
         last_in_id: lastIn.id,
         last_in_at: lastIn.timestamp,
         last_in_text: String(lastIn.mensagem ?? ""),
