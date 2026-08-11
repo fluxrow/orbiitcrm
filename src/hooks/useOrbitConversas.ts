@@ -3,6 +3,8 @@ import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesUpdate } from "@/integrations/supabase/types";
 import { useTenant } from "@/contexts/TenantContext";
+import { getConversaOwnership, RELEASE_BLOCKED_CUTOFF_MESSAGE } from "@/lib/conversa-ownership";
+
 
 type Conversa = Tables<"orbit_conversas">;
 type ConversaUpdate = TablesUpdate<"orbit_conversas">;
@@ -111,20 +113,28 @@ export function useUpdateConversa() {
   });
 }
 
+/**
+ * Assumir conversa: humano passa a ser o responsável.
+ * Sempre grava human_talk=true + human_user_id do usuário autenticado, com escopo
+ * de empresa (RLS). Nunca gera resposta: só troca a posse.
+ */
 export function useStartHumanTakeover() {
   const queryClient = useQueryClient();
+  const { empresaId } = useTenant();
 
   return useMutation({
-    mutationFn: async ({ conversa_id, user_id }: { conversa_id: string; user_id: string }) => {
-      const { data, error } = await supabase
+    mutationFn: async ({ conversa_id, user_id }: { conversa_id: string; user_id?: string }) => {
+      const { data: auth } = await supabase.auth.getUser();
+      const uid = auth?.user?.id || user_id || null;
+      if (!uid) throw new Error("Sessão expirada: entre novamente para assumir a conversa.");
+
+      let query = supabase
         .from("orbit_conversas")
-        .update({
-          human_talk: true,
-          human_user_id: user_id,
-        })
-        .eq("id", conversa_id)
-        .select()
-        .single();
+        .update({ human_talk: true, human_user_id: uid, ai_processing: false })
+        .eq("id", conversa_id);
+      if (empresaId) query = query.eq("empresa_id", empresaId);
+
+      const { data, error } = await query.select().single();
       if (error) throw error;
       return data;
     },
@@ -135,20 +145,49 @@ export function useStartHumanTakeover() {
   });
 }
 
+/**
+ * Devolver para IA: limpa o responsável humano.
+ * Só libera human_talk=false quando o tenant está em modo automático E o prospect
+ * nasceu a partir do corte (auto_reply_new_leads_from). Lead anterior ao corte
+ * permanece em atendimento humano obrigatório. Não dispara resposta retroativa.
+ */
 export function useEndHumanTakeover() {
   const queryClient = useQueryClient();
+  const { empresaId } = useTenant();
 
   return useMutation({
     mutationFn: async (conversa_id: string) => {
-      const { data, error } = await supabase
+      const { data: conversa, error: convErr } = await supabase
         .from("orbit_conversas")
-        .update({
-          human_talk: false,
-          human_user_id: null,
-        })
+        .select("id, empresa_id, prospect:orbit_prospects!orbit_conversas_prospect_id_fkey(created_at)")
         .eq("id", conversa_id)
-        .select()
-        .single();
+        .maybeSingle();
+      if (convErr) throw convErr;
+      if (!conversa) throw new Error("Conversa não encontrada.");
+
+      const { data: config, error: cfgErr } = await supabase
+        .from("orbit_ai_config")
+        .select("modo_automatico, auto_reply_new_leads_from")
+        .eq("empresa_id", conversa.empresa_id!)
+        .maybeSingle();
+      if (cfgErr) throw cfgErr;
+
+      const ownership = getConversaOwnership({
+        conversa: { human_talk: true, human_user_id: "any" },
+        prospect: (conversa as any).prospect ?? null,
+        aiConfig: config ?? null,
+      });
+      if (!ownership.canRelease) {
+        throw new Error(ownership.releaseBlockedReason ?? RELEASE_BLOCKED_CUTOFF_MESSAGE);
+      }
+
+      let query = supabase
+        .from("orbit_conversas")
+        .update({ human_talk: false, human_user_id: null, ai_processing: false })
+        .eq("id", conversa_id);
+      if (empresaId) query = query.eq("empresa_id", empresaId);
+
+      const { data, error } = await query.select().single();
       if (error) throw error;
       return data;
     },
@@ -158,6 +197,7 @@ export function useEndHumanTakeover() {
     },
   });
 }
+
 
 export function useMarkConversaAsRead() {
   const queryClient = useQueryClient();

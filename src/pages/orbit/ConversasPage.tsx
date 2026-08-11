@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, Send, MessageSquare, Bot, User, Loader2, CheckCircle, Paperclip, Mic, MicOff, X, Image as ImageIcon, FileText, Play, Square } from "lucide-react";
+import { Search, Send, MessageSquare, Bot, User, Loader2, CheckCircle, Paperclip, Mic, MicOff, X, Image as ImageIcon, FileText, Play, Square, PauseCircle, AlertTriangle } from "lucide-react";
 import { useOrbitConversas, useStartHumanTakeover, useEndHumanTakeover } from "@/hooks/useOrbitConversas";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrbitMensagens, useSendMensagem } from "@/hooks/useOrbitMensagens";
@@ -21,6 +21,10 @@ import { ZapiConnectionAlert } from "@/components/orbit/ZapiConnectionAlert";
 import type { AudioClip } from "@/hooks/useOrbitAudioLibrary";
 import { useSignedOrbitMedia } from "@/lib/orbit-media";
 import { useOrbitSearch } from "@/hooks/useOrbitSearch";
+import { useTenant } from "@/contexts/TenantContext";
+import { useOrbitAIConfig } from "@/hooks/useOrbitConfig";
+import { getConversaOwnership } from "@/lib/conversa-ownership";
+
 
 function stripHtml(html: string): string {
   return html
@@ -146,6 +150,38 @@ export default function ConversasPage() {
   });
 
   const active = conversas?.find((c) => c.id === activeId);
+
+  // Posse da conversa (IA / IA pausada / aguardando humano / humano responsável).
+  const { empresaId } = useTenant();
+  const { data: aiConfig } = useOrbitAIConfig(empresaId);
+  const ownership = getConversaOwnership({
+    conversa: active as any,
+    prospect: (active as any)?.prospect ?? null,
+    aiConfig: aiConfig as any,
+  });
+
+  const handleAssume = async () => {
+    try {
+      await assume.mutateAsync({ conversa_id: active!.id, user_id: user?.id });
+      toast.success("Você assumiu esta conversa. A IA não responderá.");
+    } catch (e: any) {
+      toast.error(e?.message || "Não foi possível assumir a conversa.");
+    }
+  };
+
+  const handleRelease = async () => {
+    if (!ownership.canRelease) {
+      toast.error(ownership.releaseBlockedReason || "Devolução para a IA indisponível.");
+      return;
+    }
+    try {
+      await release.mutateAsync(active!.id);
+      toast.success("Conversa devolvida para a IA. Nenhuma resposta retroativa foi enviada.");
+    } catch (e: any) {
+      toast.error(e?.message || "Não foi possível devolver para a IA.");
+    }
+  };
+
 
   useEffect(() => {
     const idParam = searchParams.get("id");
@@ -349,8 +385,34 @@ export default function ConversasPage() {
             <>
               {/* Header */}
               <div className="p-4 border-b flex justify-between">
-                <div className="flex gap-3"><Avatar><AvatarFallback>{active.telefone_whatsapp[0]}</AvatarFallback></Avatar><div><h3 className="font-semibold cursor-pointer hover:underline hover:text-primary transition-colors" onClick={() => setDrawerProspectOpen(true)}>{(() => { const p = active.prospect as any; if (p?.nome_contato?.trim()) return p.nome_contato.trim(); const n = p?.nome_razao || ""; const d = n.replace(/\D/g, ""); if (/^\d{8,}$/.test(d) || n.startsWith("WhatsApp ")) return p?.nome_fantasia?.trim() || active.telefone_whatsapp; return n || active.telefone_whatsapp; })()}</h3><div className="flex gap-2 flex-wrap"><Badge variant="outline">{active.human_talk ? <><User className="h-3 w-3 mr-1" />Humano</> : <><Bot className="h-3 w-3 mr-1" />IA</>}</Badge>{handoff?.status === "sent" && <Badge variant="secondary"><CheckCircle className="h-3 w-3 mr-1" />Vendedor notificado{handoff.vendedor?.nome ? ` • ${handoff.vendedor.nome}` : ""}{handoff.sent_at ? ` • ${format(new Date(handoff.sent_at), "dd/MM HH:mm")}` : ""}</Badge>}</div></div></div>
-                <Button variant="outline" size="sm" onClick={() => active.human_talk ? release.mutateAsync(active.id) : assume.mutateAsync({ conversa_id: active.id, user_id: user?.id || "" })}>{active.human_talk ? "Devolver IA" : "Assumir"}</Button>
+                <div className="flex gap-3"><Avatar><AvatarFallback>{active.telefone_whatsapp[0]}</AvatarFallback></Avatar><div><h3 className="font-semibold cursor-pointer hover:underline hover:text-primary transition-colors" onClick={() => setDrawerProspectOpen(true)}>{(() => { const p = active.prospect as any; if (p?.nome_contato?.trim()) return p.nome_contato.trim(); const n = p?.nome_razao || ""; const d = n.replace(/\D/g, ""); if (/^\d{8,}$/.test(d) || n.startsWith("WhatsApp ")) return p?.nome_fantasia?.trim() || active.telefone_whatsapp; return n || active.telefone_whatsapp; })()}</h3><div className="flex gap-2 flex-wrap">
+                  <Badge variant={ownership.state === "awaiting_human" ? "destructive" : "outline"} data-testid="conversa-owner-badge">
+                    {ownership.state === "ai" ? <Bot className="h-3 w-3 mr-1" /> : ownership.state === "ai_paused" ? <PauseCircle className="h-3 w-3 mr-1" /> : ownership.state === "awaiting_human" ? <AlertTriangle className="h-3 w-3 mr-1" /> : <User className="h-3 w-3 mr-1" />}
+                    {ownership.statusLabel}
+                  </Badge>
+                  {ownership.beforeCutoff && (
+                    <Badge variant="secondary" title="Lead anterior ao corte: atendimento humano obrigatório">Anterior ao corte</Badge>
+                  )}
+                  {handoff?.status === "sent" && <Badge variant="secondary"><CheckCircle className="h-3 w-3 mr-1" />Vendedor notificado{handoff.vendedor?.nome ? ` • ${handoff.vendedor.nome}` : ""}{handoff.sent_at ? ` • ${format(new Date(handoff.sent_at), "dd/MM HH:mm")}` : ""}</Badge>}
+                </div></div></div>
+                <div className="flex items-start gap-2">
+                  {ownership.canAssume && (
+                    <Button variant="outline" size="sm" onClick={handleAssume} disabled={assume.isPending} data-testid="assume-conversa">
+                      Assumir conversa
+                    </Button>
+                  )}
+                  {ownership.canRelease && (
+                    <Button variant="outline" size="sm" onClick={handleRelease} disabled={release.isPending} data-testid="release-conversa">
+                      Devolver para IA
+                    </Button>
+                  )}
+                  {!ownership.canRelease && ownership.state === "human_assigned" && (
+                    <span className="text-xs text-muted-foreground max-w-[220px] text-right" data-testid="release-blocked-reason">
+                      {ownership.releaseBlockedReason}
+                    </span>
+                  )}
+                </div>
+
               </div>
 
               {/* Messages */}
