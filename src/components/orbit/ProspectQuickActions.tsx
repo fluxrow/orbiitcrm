@@ -36,7 +36,7 @@ export function ProspectQuickActions({ prospect }: Props) {
     try {
       const { data: conv, error } = await supabase
         .from("orbit_conversas")
-        .select("id, human_talk")
+        .select("id, empresa_id, human_talk, human_user_id, prospect:orbit_prospects!orbit_conversas_prospect_id_fkey(created_at)")
         .eq("prospect_id", prospect.id)
         .eq("status", "aberta")
         .order("created_at", { ascending: false })
@@ -47,13 +47,43 @@ export function ProspectQuickActions({ prospect }: Props) {
         toast.info("Nenhuma conversa aberta para este prospect.");
         return;
       }
-      const next = !conv.human_talk;
-      const { error: upErr } = await supabase
-        .from("orbit_conversas")
-        .update({ human_talk: next })
-        .eq("id", conv.id);
-      if (upErr) throw upErr;
-      toast.success(next ? "IA pausada — controle humano" : "IA reativada");
+      const pausingIA = !conv.human_talk;
+
+      if (pausingIA) {
+        // Assumir: humano vira responsável explícito.
+        const { data: auth } = await supabase.auth.getUser();
+        const uid = auth?.user?.id;
+        if (!uid) throw new Error("Sessão expirada: entre novamente.");
+        const { error: upErr } = await supabase
+          .from("orbit_conversas")
+          .update({ human_talk: true, human_user_id: uid, ai_processing: false })
+          .eq("id", conv.id);
+        if (upErr) throw upErr;
+        toast.success("IA pausada — você assumiu a conversa");
+      } else {
+        // Devolver para IA: respeita modo automático e corte do tenant.
+        const { data: config } = await supabase
+          .from("orbit_ai_config")
+          .select("modo_automatico, auto_reply_new_leads_from")
+          .eq("empresa_id", conv.empresa_id!)
+          .maybeSingle();
+        const ownership = getConversaOwnership({
+          conversa: { human_talk: true, human_user_id: conv.human_user_id ?? "any" },
+          prospect: (conv as any).prospect ?? null,
+          aiConfig: config ?? null,
+        });
+        if (!ownership.canRelease) {
+          toast.error(ownership.releaseBlockedReason || "Devolução para a IA indisponível.");
+          return;
+        }
+        const { error: upErr } = await supabase
+          .from("orbit_conversas")
+          .update({ human_talk: false, human_user_id: null, ai_processing: false })
+          .eq("id", conv.id);
+        if (upErr) throw upErr;
+        toast.success("IA reativada — sem resposta retroativa");
+      }
+
       qc.invalidateQueries({ queryKey: ["orbit-conversas"] });
     } catch (err: any) {
       toast.error(`Erro: ${err.message}`);
