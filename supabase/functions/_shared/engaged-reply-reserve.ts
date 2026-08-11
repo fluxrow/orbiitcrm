@@ -25,11 +25,11 @@ export const RETAIN_REASON_RESERVE_CONVERSA = "ENGAGED_RESERVE_CONVERSA_LIMIT";
 /** Tenants com reserva liberada e o teto diário global de cada um. */
 export const ENGAGED_REPLY_RESERVE_TENANTS: Readonly<Record<string, number>> = {
   // Bullink
-  "4f6b4a18-f3aa-4bfb-a13f-926e4a07ad18": 30,
+  "4f6b4a18-f3aa-4bfb-a13f-926e4a07ad18": 100,
 };
 
 /** Teto adicional por conversa por dia (America/Sao_Paulo). */
-export const ENGAGED_RESERVE_CONVERSA_LIMIT = 12;
+export const ENGAGED_RESERVE_CONVERSA_LIMIT = 30;
 
 /** Janela máxima entre a inbound do lead e a resposta do agente. */
 export const ENGAGED_RESERVE_INBOUND_WINDOW_MS = 24 * 60 * 60 * 1000;

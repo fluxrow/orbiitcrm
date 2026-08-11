@@ -51,11 +51,11 @@ const conversa = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-Deno.test("R1 reserva habilitada só no Bullink, teto 30", () => {
-  assertEquals(engagedReserveLimit(BULLINK), 30);
+Deno.test("R1 reserva habilitada só no Bullink, teto 100", () => {
+  assertEquals(engagedReserveLimit(BULLINK), 100);
   assertEquals(engagedReserveLimit(OTHER), 0);
   assertEquals(engagedReserveLimit(null), 0);
-  assertEquals(ENGAGED_RESERVE_CONVERSA_LIMIT, 12);
+  assertEquals(ENGAGED_RESERVE_CONVERSA_LIMIT, 30);
 });
 
 Deno.test("R2 ai_reply com IN válida é elegível", () => {
@@ -235,24 +235,24 @@ function simulate(items: Array<{ conversa_id: string }>, limit = engagedReserveL
   return { out, used };
 }
 
-Deno.test("R11 30 respostas globais passam; a 31ª é retida", () => {
-  const items = Array.from({ length: 31 }, (_, i) => ({ conversa_id: `c-${i}` }));
+Deno.test("R11 100 respostas globais passam; a 101ª é retida", () => {
+  const items = Array.from({ length: 101 }, (_, i) => ({ conversa_id: `c-${i}` }));
   const { out, used } = simulate(items);
-  assertEquals(used, 30);
-  assertEquals(out.filter((o) => o === "sent").length, 30);
-  assertEquals(out[30], RETAIN_REASON_RESERVE_DAILY);
+  assertEquals(used, 100);
+  assertEquals(out.filter((o) => o === "sent").length, 100);
+  assertEquals(out[100], RETAIN_REASON_RESERVE_DAILY);
 });
 
-Deno.test("R11b 12 na mesma conversa passam; a 13ª é retida e outra conversa segue", () => {
+Deno.test("R11b 30 na mesma conversa passam; a 31ª é retida e outra conversa segue", () => {
   const items = [
-    ...Array.from({ length: 13 }, () => ({ conversa_id: CONVERSA })),
+    ...Array.from({ length: 31 }, () => ({ conversa_id: CONVERSA })),
     { conversa_id: CONVERSA_B },
   ];
   const { out, used } = simulate(items);
-  assertEquals(out.slice(0, 12).every((o) => o === "sent"), true);
-  assertEquals(out[12], RETAIN_REASON_RESERVE_CONVERSA);
-  assertEquals(out[13], "sent");
-  assertEquals(used, 13);
+  assertEquals(out.slice(0, 30).every((o) => o === "sent"), true);
+  assertEquals(out[30], RETAIN_REASON_RESERVE_CONVERSA);
+  assertEquals(out[31], "sent");
+  assertEquals(used, 31);
 });
 
 Deno.test("R12 retry do mesmo item não consome reserva duas vezes", () => {
