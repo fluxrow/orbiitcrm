@@ -12,6 +12,13 @@ import {
   createCalendarEvent,
 } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
+import {
+  isProofRequest,
+  matchesTriggerKeywords,
+  proofPayloadType,
+  buildProofOutboxPayload,
+} from "../_shared/proof-media.ts";
+
 import { normalizeAgentText, PT_BR_STYLE_GUARDRAILS } from "../_shared/pt-br-normalizer.ts";
 import {
   hydrateCanonicalFacts,
