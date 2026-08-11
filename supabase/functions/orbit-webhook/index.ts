@@ -213,102 +213,65 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
         break;
     }
 
-    // ── Resolve empresa_id from Z-API config ──
-    let empresaId: string | null = null;
-
-    if (payloadInstanceId) {
-      const { data: zapiByInstance } = await supabase
-        .from("orbit_zapi_config")
-        .select("empresa_id")
-        .eq("instance_id", payloadInstanceId)
-        .maybeSingle();
-      empresaId = zapiByInstance?.empresa_id || null;
+    // ── Resolve empresa_id EXCLUSIVAMENTE pelo instance_id ──
+    // Sem fallback por "primeiro tenant ativo": instance_id duplicado/ausente
+    // já causou gravação de inbound no tenant errado. Falha explícita é melhor.
+    if (!payloadInstanceId) {
+      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "instance_id_missing" }).eq("id", logId);
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "instance_id_missing" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    if (!empresaId) {
-      const { data: zapiActive } = await supabase
-        .from("orbit_zapi_config")
-        .select("empresa_id, notificar_enviadas_por_mim")
-        .eq("ativo", true)
-        .limit(1)
-        .maybeSingle();
-      empresaId = zapiActive?.empresa_id || null;
+    const { data: zapiRows } = await supabase
+      .from("orbit_zapi_config")
+      .select("empresa_id, notificar_enviadas_por_mim")
+      .eq("instance_id", payloadInstanceId);
 
-      if (eventType === "on-send" && !zapiActive?.notificar_enviadas_por_mim) {
-        if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "own messages disabled" }).eq("id", logId);
-        return new Response(JSON.stringify({ ok: true, skipped: true, reason: "own messages disabled" }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-    } else if (eventType === "on-send") {
-      const { data: zapiCfg } = await supabase
-        .from("orbit_zapi_config")
-        .select("notificar_enviadas_por_mim")
-        .eq("empresa_id", empresaId)
-        .maybeSingle();
-      if (!zapiCfg?.notificar_enviadas_por_mim) {
-        if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "own messages disabled" }).eq("id", logId);
-        return new Response(JSON.stringify({ ok: true, skipped: true, reason: "own messages disabled" }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+    const resolved = resolveEmpresaByInstance(zapiRows);
+    const empresaId: string | null = resolved.empresaId;
+    if (!empresaId) {
+      console.error("[orbit-webhook] instance não resolvida:", resolved.reason);
+      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "failed", error_message: resolved.reason ?? "instance_unresolved" }).eq("id", logId);
+      return new Response(JSON.stringify({ ok: false, reason: resolved.reason }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (eventType === "on-send" && !zapiRows?.[0]?.notificar_enviadas_por_mim) {
+      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "own messages disabled" }).eq("id", logId);
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "own messages disabled" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     console.log("[orbit-webhook] Resolved empresa_id:", empresaId);
 
-    // Main message processing
-    const phone = payload.phone?.replace(/\D/g, "") || payload.from?.replace(/\D/g, "");
-    const fromMe = payload.fromMe || eventType === "on-send";
+    const fromMe = payload.fromMe === true || eventType === "on-send";
 
-    // ── Extract media from Z-API payload ──
-    let tipoMidia: string | null = null;
-    let urlMidia: string | null = null;
-    let messageText = payload.text?.message || payload.body || "";
-
-    if (payload.image) {
-      tipoMidia = "image";
-      urlMidia = payload.image.imageUrl || payload.image.url || null;
-      messageText = payload.image.caption || messageText || "";
-    } else if (payload.audio) {
-      tipoMidia = "audio";
-      urlMidia = payload.audio.audioUrl || payload.audio.url || null;
-    } else if (payload.video) {
-      tipoMidia = "video";
-      urlMidia = payload.video.videoUrl || payload.video.url || null;
-      messageText = payload.video.caption || messageText || "";
-    } else if (payload.document) {
-      tipoMidia = "document";
-      urlMidia = payload.document.documentUrl || payload.document.url || null;
-      messageText = payload.document.caption || payload.document.fileName || messageText || "";
-    } else if (payload.sticker) {
-      tipoMidia = "image";
-      urlMidia = payload.sticker.stickerUrl || payload.sticker.url || null;
+    // ── Elegibilidade + extração (helpers puros, cobertos por testes) ──
+    if (!fromMe) {
+      const eligibility = inboundEligibility(payload, "on-receive");
+      if (!eligibility.process) {
+        if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: eligibility.reason }).eq("id", logId);
+        return new Response(JSON.stringify({ ok: true, skipped: true, reason: eligibility.reason }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
-    // Fallback: caption at root level
-    if (!messageText && payload.caption) {
-      messageText = payload.caption;
-    }
+    const { messageText, tipoMidia, urlMidia } = extractInboundContent(payload);
+    const messageId = providerMessageId(payload);
+    const normalizedPhone = extractInboundPhone(payload);
+    const inboundAt = inboundTimestampIso(payload);
 
-    const messageId = payload.messageId || payload.id;
-
-    // Defesa em profundidade: sem conteúdo, sem mídia e sem messageId → não é mensagem
-    if (!messageText && !tipoMidia && !messageId) {
-      console.log("[orbit-webhook] Payload sem conteúdo/mídia/messageId — ignorando (provável status callback)");
-      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "empty_payload" }).eq("id", logId);
-      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "empty_payload" }), {
+    if (!normalizedPhone) {
+      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "no_phone" }).eq("id", logId);
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "no_phone" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    if (!phone || (fromMe && eventType !== "on-send")) {
-      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "no phone or skipped fromMe" }).eq("id", logId);
-      return new Response(JSON.stringify({ ok: true, skipped: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const normalizedPhone = phone.startsWith("55") ? phone : `55${phone}`;
 
     // Generate phone variants for matching (with/without 9th digit)
     const phoneVariants = generatePhoneVariants(normalizedPhone);
