@@ -228,3 +228,14 @@ export function consolidateAgentReplies(
   }
   return Array.from(byConversa.values());
 }
+
+/** Variantes BR com/sem o nono dígito, para casar prospect/conversa legados. */
+export function phoneVariants(normalizedPhone: string): string[] {
+  const variants = new Set<string>([normalizedPhone]);
+  if (normalizedPhone.startsWith("55")) {
+    const rest = normalizedPhone.slice(2);
+    if (rest.length === 11 && rest.charAt(2) === "9") variants.add(`55${rest.slice(0, 2)}${rest.slice(3)}`);
+    if (rest.length === 10) variants.add(`55${rest.slice(0, 2)}9${rest.slice(2)}`);
+  }
+  return Array.from(variants);
+}
