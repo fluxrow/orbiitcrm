@@ -51,11 +51,11 @@ const conversa = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-Deno.test("R1 reserva habilitada só no Bullink, teto 30", () => {
-  assertEquals(engagedReserveLimit(BULLINK), 30);
+Deno.test("R1 reserva habilitada só no Bullink, teto 100", () => {
+  assertEquals(engagedReserveLimit(BULLINK), 100);
   assertEquals(engagedReserveLimit(OTHER), 0);
   assertEquals(engagedReserveLimit(null), 0);
-  assertEquals(ENGAGED_RESERVE_CONVERSA_LIMIT, 12);
+  assertEquals(ENGAGED_RESERVE_CONVERSA_LIMIT, 30);
 });
 
 Deno.test("R2 ai_reply com IN válida é elegível", () => {
