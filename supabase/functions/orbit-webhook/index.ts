@@ -622,7 +622,7 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
     // 6. Somente APÓS o commit do inbound: pipeline de mídia / agente.
     //    Falha aqui nunca desfaz a mensagem IN — apenas loga e libera retry.
     const correlationId = `inbound:${empresaId}:${messageId ?? savedMessage?.id}`;
-    if (!fromMe && !conversa.human_talk && shouldProcessMedia && savedMessage?.id) {
+    if (!fromMe && !conversaQuarantined && !conversa.human_talk && shouldProcessMedia && savedMessage?.id) {
       try {
         const mediaResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-inbound-media-processor`, {
           method: "POST",
