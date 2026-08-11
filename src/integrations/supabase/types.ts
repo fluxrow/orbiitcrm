@@ -1622,6 +1622,7 @@ export type Database = {
         Row: {
           ai_contexto: Json | null
           ai_processing: boolean | null
+          archived_at: string | null
           canal: string | null
           chatbot_aguardando: boolean | null
           chatbot_flow_id: string | null
@@ -1633,6 +1634,7 @@ export type Database = {
           id: string
           mensagens_nao_lidas: number | null
           prospect_id: string | null
+          quarantine_reason: string | null
           status: string | null
           telefone_whatsapp: string
           ultima_mensagem_at: string | null
@@ -1642,6 +1644,7 @@ export type Database = {
         Insert: {
           ai_contexto?: Json | null
           ai_processing?: boolean | null
+          archived_at?: string | null
           canal?: string | null
           chatbot_aguardando?: boolean | null
           chatbot_flow_id?: string | null
@@ -1653,6 +1656,7 @@ export type Database = {
           id?: string
           mensagens_nao_lidas?: number | null
           prospect_id?: string | null
+          quarantine_reason?: string | null
           status?: string | null
           telefone_whatsapp: string
           ultima_mensagem_at?: string | null
@@ -1662,6 +1666,7 @@ export type Database = {
         Update: {
           ai_contexto?: Json | null
           ai_processing?: boolean | null
+          archived_at?: string | null
           canal?: string | null
           chatbot_aguardando?: boolean | null
           chatbot_flow_id?: string | null
@@ -1673,6 +1678,7 @@ export type Database = {
           id?: string
           mensagens_nao_lidas?: number | null
           prospect_id?: string | null
+          quarantine_reason?: string | null
           status?: string | null
           telefone_whatsapp?: string
           ultima_mensagem_at?: string | null
@@ -3630,6 +3636,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      orbit_quarantine_backups: {
+        Row: {
+          batch_label: string
+          created_at: string
+          empresa_id: string
+          entity_id: string
+          entity_type: string
+          id: string
+          restored_at: string | null
+          snapshot: Json
+          updated_at: string
+        }
+        Insert: {
+          batch_label: string
+          created_at?: string
+          empresa_id: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          restored_at?: string | null
+          snapshot: Json
+          updated_at?: string
+        }
+        Update: {
+          batch_label?: string
+          created_at?: string
+          empresa_id?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          restored_at?: string | null
+          snapshot?: Json
+          updated_at?: string
+        }
+        Relationships: []
       }
       orbit_resend_config: {
         Row: {
