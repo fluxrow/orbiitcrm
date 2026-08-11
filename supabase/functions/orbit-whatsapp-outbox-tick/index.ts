@@ -583,9 +583,14 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
 
     await updateCampaignRecipient(item, { status: "enviado" });
 
-    q.remainingDaily -= 1;
+    if (usedReserve) {
+      q.remainingReserve = Math.max(0, (q.remainingReserve ?? 0) - 1);
+    } else {
+      q.remainingDaily -= 1;
+    }
     q.remainingMinute -= 1;
     await bumpDailyUsage(item.empresa_id, 1);
+
     await auditZapiSendAttempt(supabase, {
       empresa_id: item.empresa_id,
       function_name: "orbit-whatsapp-outbox-tick",
