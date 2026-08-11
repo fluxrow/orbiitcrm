@@ -56,6 +56,19 @@ export interface ReserveDecision {
   inbound_message_id: string | null;
 }
 
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+/**
+ * Extrai o UUID da inbound de forma tolerante: alguns registros legados gravaram
+ * o valor com sufixo de cast (ex.: "<uuid>:text"). Sem UUID válido -> null.
+ */
+export function readInboundMessageId(item: OutboxItemLike): string | null {
+  const raw = (item.metadata as any)?.inbound_message_id;
+  if (typeof raw !== "string") return null;
+  const m = raw.match(UUID_RE);
+  return m ? m[0].toLowerCase() : null;
+}
+
 function deny(reason: string, inboundId: string | null = null): ReserveDecision {
   return { eligible: false, reason, inbound_message_id: inboundId };
 }
@@ -64,8 +77,7 @@ function deny(reason: string, inboundId: string | null = null): ReserveDecision 
 export function isEngagedReserveCandidate(item: OutboxItemLike): boolean {
   if (engagedReserveLimit(item.empresa_id) <= 0) return false;
   if (!ENGAGED_RESERVE_SOURCES.has(String(item.source_type ?? ""))) return false;
-  const inboundId = (item.metadata as any)?.inbound_message_id;
-  return typeof inboundId === "string" && inboundId.length > 0;
+  return readInboundMessageId(item) !== null;
 }
 
 /**
@@ -81,9 +93,9 @@ export function validateEngagedInbound(input: {
   const { item, inbound } = input;
   if (!isEngagedReserveCandidate(item)) return deny("not_engaged_reply");
 
-  const inboundId = String((item.metadata as any)?.inbound_message_id ?? "");
+  const inboundId = readInboundMessageId(item)!;
   if (!inbound) return deny("inbound_not_found", inboundId);
-  if (inbound.id && String(inbound.id) !== inboundId) return deny("inbound_mismatch", inboundId);
+  if (inbound.id && String(inbound.id).toLowerCase() !== inboundId) return deny("inbound_mismatch", inboundId);
   if (String(inbound.empresa_id ?? "") !== String(item.empresa_id ?? "")) {
     return deny("inbound_cross_tenant", inboundId);
   }
@@ -127,7 +139,7 @@ export async function evaluateEngagedReserve(
   opts?: { cutoff?: string | null },
 ): Promise<ReserveDecision> {
   if (!isEngagedReserveCandidate(item)) return deny("not_engaged_reply");
-  const inboundId = String((item.metadata as any)?.inbound_message_id ?? "");
+  const inboundId = readInboundMessageId(item)!;
 
   // orbit_mensagens usa a coluna `timestamp` como instante da mensagem.
   const { data: inboundRow } = await supabase
