@@ -544,13 +544,10 @@ async function maybeQueueProofMedia(
     source_type: "ai_reply",
     inbound_message_id: `${inboundId}:media:${media.id}`,
     source_id: `${inboundId}:media:${media.id}`,
-    payload_type: media.kind === "video" ? "video" : "image",
-    payload: {
-      // `mensagem` é a legenda enviada ao lead. Sem fileName para vídeo.
-      mensagem: media.caption ?? "",
-      storage_path: media.storage_path,
-      media_library_id: media.id,
-    },
+    payload_type: proofPayloadType(media.kind),
+    // Payload sem fileName/nome local (ver _shared/proof-media.ts).
+    payload: buildProofOutboxPayload(media),
+
     metadata: { orbit_message_id: novaMidia?.id ?? null, dry_run: true, purpose: "prova_social" },
   });
 
