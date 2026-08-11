@@ -3,6 +3,8 @@ import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesUpdate } from "@/integrations/supabase/types";
 import { useTenant } from "@/contexts/TenantContext";
+import { getConversaOwnership, RELEASE_BLOCKED_CUTOFF_MESSAGE } from "@/lib/conversa-ownership";
+
 
 type Conversa = Tables<"orbit_conversas">;
 type ConversaUpdate = TablesUpdate<"orbit_conversas">;
