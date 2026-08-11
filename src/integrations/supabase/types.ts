@@ -902,6 +902,7 @@ export type Database = {
           mensagem_fora_horario: string | null
           modelo_ia: string | null
           modo_automatico: boolean | null
+          notification_recipient_whatsapp: string | null
           prompt_identidade: string | null
           prompt_regras: string | null
           prompt_roteiro: string | null
@@ -938,6 +939,7 @@ export type Database = {
           mensagem_fora_horario?: string | null
           modelo_ia?: string | null
           modo_automatico?: boolean | null
+          notification_recipient_whatsapp?: string | null
           prompt_identidade?: string | null
           prompt_regras?: string | null
           prompt_roteiro?: string | null
@@ -974,6 +976,7 @@ export type Database = {
           mensagem_fora_horario?: string | null
           modelo_ia?: string | null
           modo_automatico?: boolean | null
+          notification_recipient_whatsapp?: string | null
           prompt_identidade?: string | null
           prompt_regras?: string | null
           prompt_roteiro?: string | null
