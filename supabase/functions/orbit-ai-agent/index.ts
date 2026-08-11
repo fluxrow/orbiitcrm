@@ -1664,7 +1664,7 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
       status: "pending",
     }).select().single();
 
-    const vendedorPhone = vendedorWhatsapp.replace(/\D/g, "");
+    const vendedorPhone = vendedorWhatsapp;
 
     if (isDemo) {
       console.log("[orbit-ai-agent] Demo mode — handoff simulado para vendedor:", vendedorPhone);
