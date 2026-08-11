@@ -282,13 +282,16 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       .map(v => `whatsapp.eq.${v},telefone.eq.${v}`)
       .join(",");
 
-    let prospectQuery = supabase
+    const { data: prospectRows } = await supabase
       .from("orbit_prospects")
       .select("*")
-      .or(orFilter);
-    if (empresaId) prospectQuery = prospectQuery.eq("empresa_id", empresaId);
+      .eq("empresa_id", empresaId)
+      .or(orFilter)
+      .order("created_at", { ascending: true })
+      .limit(1);
 
-    let { data: prospect } = await prospectQuery.maybeSingle();
+    let prospect: any = prospectRows?.[0] ?? null;
+
 
     if (prospect && !prospect.whatsapp) {
       console.log("[orbit-webhook] Auto-preenchendo whatsapp para prospect:", prospect.id);
