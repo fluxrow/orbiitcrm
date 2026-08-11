@@ -385,8 +385,34 @@ export default function ConversasPage() {
             <>
               {/* Header */}
               <div className="p-4 border-b flex justify-between">
-                <div className="flex gap-3"><Avatar><AvatarFallback>{active.telefone_whatsapp[0]}</AvatarFallback></Avatar><div><h3 className="font-semibold cursor-pointer hover:underline hover:text-primary transition-colors" onClick={() => setDrawerProspectOpen(true)}>{(() => { const p = active.prospect as any; if (p?.nome_contato?.trim()) return p.nome_contato.trim(); const n = p?.nome_razao || ""; const d = n.replace(/\D/g, ""); if (/^\d{8,}$/.test(d) || n.startsWith("WhatsApp ")) return p?.nome_fantasia?.trim() || active.telefone_whatsapp; return n || active.telefone_whatsapp; })()}</h3><div className="flex gap-2 flex-wrap"><Badge variant="outline">{active.human_talk ? <><User className="h-3 w-3 mr-1" />Humano</> : <><Bot className="h-3 w-3 mr-1" />IA</>}</Badge>{handoff?.status === "sent" && <Badge variant="secondary"><CheckCircle className="h-3 w-3 mr-1" />Vendedor notificado{handoff.vendedor?.nome ? ` • ${handoff.vendedor.nome}` : ""}{handoff.sent_at ? ` • ${format(new Date(handoff.sent_at), "dd/MM HH:mm")}` : ""}</Badge>}</div></div></div>
-                <Button variant="outline" size="sm" onClick={() => active.human_talk ? release.mutateAsync(active.id) : assume.mutateAsync({ conversa_id: active.id, user_id: user?.id || "" })}>{active.human_talk ? "Devolver IA" : "Assumir"}</Button>
+                <div className="flex gap-3"><Avatar><AvatarFallback>{active.telefone_whatsapp[0]}</AvatarFallback></Avatar><div><h3 className="font-semibold cursor-pointer hover:underline hover:text-primary transition-colors" onClick={() => setDrawerProspectOpen(true)}>{(() => { const p = active.prospect as any; if (p?.nome_contato?.trim()) return p.nome_contato.trim(); const n = p?.nome_razao || ""; const d = n.replace(/\D/g, ""); if (/^\d{8,}$/.test(d) || n.startsWith("WhatsApp ")) return p?.nome_fantasia?.trim() || active.telefone_whatsapp; return n || active.telefone_whatsapp; })()}</h3><div className="flex gap-2 flex-wrap">
+                  <Badge variant={ownership.state === "awaiting_human" ? "destructive" : "outline"} data-testid="conversa-owner-badge">
+                    {ownership.state === "ai" ? <Bot className="h-3 w-3 mr-1" /> : ownership.state === "ai_paused" ? <PauseCircle className="h-3 w-3 mr-1" /> : ownership.state === "awaiting_human" ? <AlertTriangle className="h-3 w-3 mr-1" /> : <User className="h-3 w-3 mr-1" />}
+                    {ownership.statusLabel}
+                  </Badge>
+                  {ownership.beforeCutoff && (
+                    <Badge variant="secondary" title="Lead anterior ao corte: atendimento humano obrigatório">Anterior ao corte</Badge>
+                  )}
+                  {handoff?.status === "sent" && <Badge variant="secondary"><CheckCircle className="h-3 w-3 mr-1" />Vendedor notificado{handoff.vendedor?.nome ? ` • ${handoff.vendedor.nome}` : ""}{handoff.sent_at ? ` • ${format(new Date(handoff.sent_at), "dd/MM HH:mm")}` : ""}</Badge>}
+                </div></div></div>
+                <div className="flex items-start gap-2">
+                  {ownership.canAssume && (
+                    <Button variant="outline" size="sm" onClick={handleAssume} disabled={assume.isPending} data-testid="assume-conversa">
+                      Assumir conversa
+                    </Button>
+                  )}
+                  {ownership.canRelease && (
+                    <Button variant="outline" size="sm" onClick={handleRelease} disabled={release.isPending} data-testid="release-conversa">
+                      Devolver para IA
+                    </Button>
+                  )}
+                  {!ownership.canRelease && ownership.state === "human_assigned" && (
+                    <span className="text-xs text-muted-foreground max-w-[220px] text-right" data-testid="release-blocked-reason">
+                      {ownership.releaseBlockedReason}
+                    </span>
+                  )}
+                </div>
+
               </div>
 
               {/* Messages */}
