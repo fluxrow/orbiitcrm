@@ -5,6 +5,7 @@ import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_
 import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 import { callAnthropic, toAnthropicMessages, ANTHROPIC_DEFAULT_MODEL } from "../_shared/anthropic.ts";
+import { normalizeAgentModel } from "../_shared/ai-model.ts";
 import {
   getTokenForEmpresa,
   ensureFreshAccessToken,
@@ -1124,7 +1125,7 @@ ${regrasBlock}`;
     const userTurn = `Histórico da conversa:\n${historicoFormatado}\n\n---\nMensagens pendentes do cliente: "${mensagemAgregada}"\n\nContexto:\n- Estado: ${leadContext.conversation.state}\n- Primeira interação: ${primeiraInteracao}\n- Em coleta de dados: ${emColetaOrcamento}\n- Cadastro completo: ${cadastroCompleto}\n- Campos faltantes: ${camposFaltantes.join(", ") || "nenhum"}`;
 
     const aiResult = await callAnthropic({
-      model: ((aiConfig as any).modelo_ia && String((aiConfig as any).modelo_ia).trim()) || ANTHROPIC_DEFAULT_MODEL,
+      model: normalizeAgentModel((aiConfig as any).modelo_ia),
       system: systemPrompt,
       messages: toAnthropicMessages([{ role: "user", content: userTurn }]),
       temperature: 0.7,
@@ -1173,7 +1174,7 @@ ${regrasBlock}`;
       if (verdict.violates) {
         console.warn("[orbit-ai-agent] Guard de repetição acionado:", verdict.reason, verdict.field || verdict.question);
         const retry = await callAnthropic({
-          model: ((aiConfig as any).modelo_ia && String((aiConfig as any).modelo_ia).trim()) || ANTHROPIC_DEFAULT_MODEL,
+          model: normalizeAgentModel((aiConfig as any).modelo_ia),
           system: systemPrompt,
           messages: toAnthropicMessages([
             { role: "user", content: userTurn },

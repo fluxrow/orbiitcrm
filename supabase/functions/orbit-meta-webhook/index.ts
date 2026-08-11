@@ -1,3 +1,4 @@
+import { maskPreview } from "../_shared/pii-mask.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
@@ -221,7 +222,7 @@ async function processInboundMeta(body: any, supabase: any): Promise<void> {
         .from("orbit_conversas")
         .update({
           ultima_mensagem_at: new Date().toISOString(),
-          ultima_mensagem_preview: texto.substring(0, 100),
+          ultima_mensagem_preview: maskPreview(texto, 100),
           mensagens_nao_lidas: (conversa.mensagens_nao_lidas || 0) + 1,
         })
         .eq("id", conversa.id);

@@ -1,3 +1,4 @@
+import { maskPreview } from "./pii-mask.ts";
 // Helpers puros do pipeline inbound de WhatsApp (Z-API).
 //
 // Regras invioláveis (não relaxar sem revisão de segurança):
@@ -121,10 +122,13 @@ export function inboundTimestampIso(payload: ZapiPayload, now: Date = new Date()
   return now.toISOString();
 }
 
-/** Preview curto e sem PII estruturada/quebra de layout. */
+/**
+ * Preview curto e SEM PII (CPF/CNPJ, e-mail, telefone, CEP, número de endereço).
+ * O corpo original da mensagem em orbit_mensagens permanece intacto.
+ */
 export function safePreview(text: string, tipoMidia: string | null): string {
   const base = (text || (tipoMidia ? `📎 ${tipoMidia}` : "")).replace(/\s+/g, " ").trim();
-  return base.slice(0, MAX_PREVIEW_CHARS);
+  return maskPreview(base, MAX_PREVIEW_CHARS);
 }
 
 /**
