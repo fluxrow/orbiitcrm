@@ -399,14 +399,27 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       }
     }
 
+    // Quarentena: prospect arquivado reversivelmente (deleted_at + dados_adicionais.quarantined)
+    // continua recebendo histórico, mas NUNCA aciona a IA. Atendimento fica humano.
+    const prospectQuarantined =
+      !!prospect &&
+      prospect.deleted_at != null &&
+      (prospect.dados_adicionais as any)?.quarantined === true;
+    if (prospectQuarantined) {
+      console.log("[orbit-webhook] Prospect em quarentena, IA bloqueada:", prospect.id);
+    }
+
     // 2. Find or create conversation — match by prospect + phone variants
     // para evitar duplicar quando entrada/saída usam formatos diferentes (com/sem 9)
+    // Prospect em quarentena: conversa arquivada está com status 'fechada' — buscamos
+    // também esse status para NÃO criar conversa nova (e não reabrir a IA).
+    const conversaStatuses = prospectQuarantined ? ["aberta", "fechada"] : ["aberta"];
     let conversaQuery = supabase
       .from("orbit_conversas")
       .select("*")
       .eq("prospect_id", prospect.id)
       .eq("canal", "whatsapp")
-      .eq("status", "aberta")
+      .in("status", conversaStatuses)
       .order("ultima_mensagem_at", { ascending: false, nullsFirst: false })
       .limit(1);
     if (empresaId) conversaQuery = conversaQuery.eq("empresa_id", empresaId);
@@ -420,13 +433,14 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
         .select("*")
         .in("telefone_whatsapp", phoneVariants)
         .eq("canal", "whatsapp")
-        .eq("status", "aberta")
+        .in("status", conversaStatuses)
         .order("ultima_mensagem_at", { ascending: false, nullsFirst: false })
         .limit(1);
       if (empresaId) altQuery = altQuery.eq("empresa_id", empresaId);
       const { data: altRows } = await altQuery;
       conversa = altRows?.[0] || null;
     }
+
 
     if (conversa && conversa.telefone_whatsapp !== normalizedPhone) {
       await supabase
@@ -441,10 +455,16 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
         prospect_id: prospect.id,
         telefone_whatsapp: normalizedPhone,
         canal: "whatsapp",
-        status: "aberta",
-        human_talk: false,
+        // Prospect em quarentena nunca abre conversa ativa nem entrega para a IA.
+        status: prospectQuarantined ? "fechada" : "aberta",
+        human_talk: prospectQuarantined ? true : false,
         mensagens_nao_lidas: 0,
       };
+      if (prospectQuarantined) {
+        insertConversa.ai_processing = false;
+        insertConversa.archived_at = new Date().toISOString();
+        insertConversa.quarantine_reason = "legacy_fluxrow_instance_backfill";
+      }
       if (empresaId) insertConversa.empresa_id = empresaId;
 
       const { data: newConversa, error: conversaError } = await supabase
@@ -459,6 +479,20 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       }
       conversa = newConversa;
     }
+
+    // Conversa em quarentena (por prospect arquivado ou marcação própria):
+    // mantém histórico, força atendimento humano e bloqueia qualquer chamada à IA.
+    const conversaQuarantined =
+      prospectQuarantined || !!conversa?.archived_at || !!conversa?.quarantine_reason;
+    if (conversaQuarantined && (conversa.human_talk !== true || conversa.ai_processing === true)) {
+      await supabase
+        .from("orbit_conversas")
+        .update({ human_talk: true, ai_processing: false })
+        .eq("id", conversa.id);
+      conversa.human_talk = true;
+      conversa.ai_processing = false;
+    }
+
 
     // 3. Idempotência por (empresa_id, provider_message_id) — retry não duplica
     if (messageId) {
@@ -588,7 +622,7 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
     // 6. Somente APÓS o commit do inbound: pipeline de mídia / agente.
     //    Falha aqui nunca desfaz a mensagem IN — apenas loga e libera retry.
     const correlationId = `inbound:${empresaId}:${messageId ?? savedMessage?.id}`;
-    if (!fromMe && !conversa.human_talk && shouldProcessMedia && savedMessage?.id) {
+    if (!fromMe && !conversaQuarantined && !conversa.human_talk && shouldProcessMedia && savedMessage?.id) {
       try {
         const mediaResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-inbound-media-processor`, {
           method: "POST",
@@ -606,7 +640,7 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       } catch (mediaErr) {
         console.error("[orbit-webhook] media processor indisponível:", mediaErr instanceof Error ? mediaErr.message : mediaErr);
       }
-    } else if (!fromMe && !conversa.human_talk && prospect?.id && !((tipoMidia === "image" || tipoMidia === "audio") && !shouldProcessMedia)) {
+    } else if (!fromMe && !conversaQuarantined && !conversa.human_talk && prospect?.id && !((tipoMidia === "image" || tipoMidia === "audio") && !shouldProcessMedia)) {
       // Safety-net: reclamar lock stale (>3min) — evita conversa travada por falha anterior
       const staleThreshold = new Date(Date.now() - 3 * 60 * 1000).toISOString();
       await supabase
