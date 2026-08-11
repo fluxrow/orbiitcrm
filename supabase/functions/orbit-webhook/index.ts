@@ -455,10 +455,16 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
         prospect_id: prospect.id,
         telefone_whatsapp: normalizedPhone,
         canal: "whatsapp",
-        status: "aberta",
-        human_talk: false,
+        // Prospect em quarentena nunca abre conversa ativa nem entrega para a IA.
+        status: prospectQuarantined ? "fechada" : "aberta",
+        human_talk: prospectQuarantined ? true : false,
         mensagens_nao_lidas: 0,
       };
+      if (prospectQuarantined) {
+        insertConversa.ai_processing = false;
+        insertConversa.archived_at = new Date().toISOString();
+        insertConversa.quarantine_reason = "legacy_fluxrow_instance_backfill";
+      }
       if (empresaId) insertConversa.empresa_id = empresaId;
 
       const { data: newConversa, error: conversaError } = await supabase
@@ -473,6 +479,20 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       }
       conversa = newConversa;
     }
+
+    // Conversa em quarentena (por prospect arquivado ou marcação própria):
+    // mantém histórico, força atendimento humano e bloqueia qualquer chamada à IA.
+    const conversaQuarantined =
+      prospectQuarantined || !!conversa?.archived_at || !!conversa?.quarantine_reason;
+    if (conversaQuarantined && (conversa.human_talk !== true || conversa.ai_processing === true)) {
+      await supabase
+        .from("orbit_conversas")
+        .update({ human_talk: true, ai_processing: false })
+        .eq("id", conversa.id);
+      conversa.human_talk = true;
+      conversa.ai_processing = false;
+    }
+
 
     // 3. Idempotência por (empresa_id, provider_message_id) — retry não duplica
     if (messageId) {
