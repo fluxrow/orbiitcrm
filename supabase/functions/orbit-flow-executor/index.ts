@@ -16,6 +16,8 @@ import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_
 import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { getTokenForEmpresa, ensureFreshAccessToken, checkAvailability } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
+import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
+
 import { resolveEventId, buildScheduledActionContext, restoreRunFromScheduled } from "./flow-run-events.ts";
 import { computeCadenceKey } from "./cadence-key.ts";
 import { isActionDisabled } from "./action-guards.ts";
@@ -886,6 +888,25 @@ async function handleSingleAction(scheduledId: string): Promise<Response> {
   // seja propagado para o path de flow_stage (evita colisão futura no stableKey).
   const run: Json = restoreRunFromScheduled(s);
 
+  // ── Corte de automação: ação agendada de prospect anterior ao corte é cancelada,
+  // nunca executada (nenhuma cadência antiga ressuscita após o corte).
+  {
+    const pid = s.prospect_id ?? (await resolveProspectId(run));
+    const cutoff = await evaluateAutomationCutoff(supabase, { empresa_id: s.empresa_id, prospect_id: pid });
+    if (!cutoff.allowed) {
+      await supabase
+        .from("orbit_flow_scheduled_actions")
+        .update({ status: "canceled", canceled_reason: cutoff.reason ?? "automation_cutoff", updated_at: new Date().toISOString() })
+        .eq("id", s.id);
+      return new Response(
+        JSON.stringify({ ok: true, data: { skipped: true, reason: cutoff.reason ?? "automation_cutoff" }, error: null }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+  }
+
+
+
 
 
   const stepStart = new Date().toISOString();
@@ -955,6 +976,28 @@ Deno.serve(async (req) => {
       .eq("id", run_id)
       .maybeSingle();
     if (runErr || !run) throw new Error(runErr?.message || "run não encontrado");
+
+    // ── Corte de automação: run de prospect anterior ao corte não executa nenhuma action.
+    {
+      const pid = await resolveProspectId(run as Json);
+      const cutoff = await evaluateAutomationCutoff(supabase, { empresa_id: (run as any).empresa_id, prospect_id: pid });
+      if (!cutoff.allowed) {
+        await supabase
+          .from("orbit_flow_runs")
+          .update({
+            status: "skipped",
+            finished_at: new Date().toISOString(),
+            error: cutoff.reason ?? "automation_cutoff",
+          })
+          .eq("id", run_id);
+        return new Response(
+          JSON.stringify({ ok: true, data: { run_id, status: "skipped", reason: cutoff.reason ?? "automation_cutoff" }, error: null }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
+
 
     await supabase
       .from("orbit_flow_runs")

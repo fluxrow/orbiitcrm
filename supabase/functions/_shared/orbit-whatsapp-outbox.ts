@@ -17,6 +17,8 @@
 //   ai_reply=100  meeting_confirmation=90  manual=80  flow_initial=70
 //   flow_followup=40  campaign=20
 
+import { evaluateAutomationCutoff } from "./automation-cutoff.ts";
+
 export type OutboxSourceType =
   | "ai_reply"
   | "meeting_confirmation"
@@ -142,10 +144,25 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
   const idempotency_key = stableKey(ctx);
   const isManual = ctx.source_type === "manual";
 
+  // ── Corte de automação por tenant (auto_reply_new_leads_from).
+  // Prospect anterior ao corte nunca recebe automação (IA/cadência/campanha/etapa).
+  // `manual` continua livre: é o humano assumindo o atendimento.
+  if (!isManual) {
+    const cutoffDecision = await evaluateAutomationCutoff(supabase, {
+      empresa_id: ctx.empresa_id,
+      prospect_id: ctx.prospect_id ?? null,
+      conversa_id: ctx.conversa_id ?? null,
+    });
+    if (!cutoffDecision.allowed && cutoffDecision.reason) {
+      reasons.push(cutoffDecision.reason === "human_talk" ? "human_handoff" : cutoffDecision.reason);
+    }
+  }
+
   // Regra flow_initial: created deve ser true
   if (ctx.source_type === "flow_initial" && ctx.event_created !== true) {
     reasons.push("lead_not_new");
   }
+
 
   // Prospect precisa existir, ser do mesmo tenant e não estar deletado. Vale para todos
   // os source_type — inclusive manual, que é humano após handoff mas ainda respeita

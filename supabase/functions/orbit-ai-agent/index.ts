@@ -13,6 +13,8 @@ import {
   createCalendarEvent,
 } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
+import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
+
 import {
   isProofRequest,
   matchesTriggerKeywords,
@@ -761,6 +763,31 @@ serve(async (req) => {
     // Determine if demo
     let isDemo = false;
     const empresaId = prospect?.empresa_id;
+
+    // ── Corte de automação do tenant: prospect anterior ao corte nunca é atendido
+    // pela IA (mesmo se alguém invocar o agente diretamente). Atendimento fica humano.
+    const cutoff = await evaluateAutomationCutoff(supabase, {
+      empresa_id: empresaId ?? null,
+      prospect_id: prospect_id ?? null,
+      prospect,
+      conversa_id: conversa_id ?? null,
+    });
+    if (!cutoff.allowed) {
+      console.log("[orbit-ai-agent] bloqueado pelo corte de automação:", {
+        empresa_id: empresaId, prospect_id, conversa_id, reason: cutoff.reason, cutoff: cutoff.cutoff,
+      });
+      if (conversa_id) {
+        await supabase
+          .from("orbit_conversas")
+          .update({ human_talk: true, ai_processing: false })
+          .eq("id", conversa_id);
+      }
+      return new Response(
+        JSON.stringify({ ok: true, skipped: true, reason: cutoff.reason ?? "automation_cutoff" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     if (empresaId) {
       const { data: saasEmpresa } = await supabase
         .from("saas_empresa")

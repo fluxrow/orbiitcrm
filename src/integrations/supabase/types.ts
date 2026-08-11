@@ -887,6 +887,7 @@ export type Database = {
           advisor_locked_paths: Json
           advisor_playbook_flow_prefixes: string[] | null
           advisor_thresholds: Json
+          auto_reply_new_leads_from: string | null
           campos_qualificacao: Json
           created_at: string | null
           empresa_id: string | null
@@ -924,6 +925,7 @@ export type Database = {
           advisor_locked_paths?: Json
           advisor_playbook_flow_prefixes?: string[] | null
           advisor_thresholds?: Json
+          auto_reply_new_leads_from?: string | null
           campos_qualificacao?: Json
           created_at?: string | null
           empresa_id?: string | null
@@ -961,6 +963,7 @@ export type Database = {
           advisor_locked_paths?: Json
           advisor_playbook_flow_prefixes?: string[] | null
           advisor_thresholds?: Json
+          auto_reply_new_leads_from?: string | null
           campos_qualificacao?: Json
           created_at?: string | null
           empresa_id?: string | null

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
 import {
   extractInboundContent,
   extractInboundPhone,
@@ -10,6 +11,7 @@ import {
   resolveEmpresaByInstance,
   safePreview,
 } from "../_shared/inbound-zapi.ts";
+
 
 
 /**
@@ -493,6 +495,38 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       conversa.ai_processing = false;
     }
 
+    // ── Corte de automação do tenant (orbit_ai_config.auto_reply_new_leads_from) ──
+    // Prospect anterior ao corte: inbound é persistido e a UI atualiza normalmente,
+    // porém a conversa fica humana para sempre — nunca agente, nunca D+1/D+3.
+    // Tenant sem corte configurado: comportamento inalterado.
+    const cutoffDecision = await evaluateAutomationCutoff(supabase, {
+      empresa_id: empresaId,
+      prospect_id: prospect?.id ?? null,
+      prospect,
+      conversa,
+    });
+    const automationAllowed = cutoffDecision.allowed;
+    if (!automationAllowed && cutoffDecision.cutoff) {
+      console.log("[orbit-webhook] automação bloqueada pelo corte do tenant:", {
+        empresa_id: empresaId,
+        prospect_id: prospect?.id,
+        conversa_id: conversa?.id,
+        reason: cutoffDecision.reason,
+        cutoff: cutoffDecision.cutoff,
+      });
+      // Legado permanece explicitamente em atendimento humano.
+      if (conversa?.id && conversa.human_talk !== true) {
+        await supabase
+          .from("orbit_conversas")
+          .update({ human_talk: true, ai_processing: false })
+          .eq("id", conversa.id);
+        conversa.human_talk = true;
+        conversa.ai_processing = false;
+      }
+    }
+
+
+
 
     // 3. Idempotência por (empresa_id, provider_message_id) — retry não duplica
     if (messageId) {
@@ -622,7 +656,7 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
     // 6. Somente APÓS o commit do inbound: pipeline de mídia / agente.
     //    Falha aqui nunca desfaz a mensagem IN — apenas loga e libera retry.
     const correlationId = `inbound:${empresaId}:${messageId ?? savedMessage?.id}`;
-    if (!fromMe && !conversaQuarantined && !conversa.human_talk && shouldProcessMedia && savedMessage?.id) {
+    if (!fromMe && automationAllowed && !conversaQuarantined && !conversa.human_talk && shouldProcessMedia && savedMessage?.id) {
       try {
         const mediaResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-inbound-media-processor`, {
           method: "POST",
@@ -640,7 +674,7 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       } catch (mediaErr) {
         console.error("[orbit-webhook] media processor indisponível:", mediaErr instanceof Error ? mediaErr.message : mediaErr);
       }
-    } else if (!fromMe && !conversaQuarantined && !conversa.human_talk && prospect?.id && !((tipoMidia === "image" || tipoMidia === "audio") && !shouldProcessMedia)) {
+    } else if (!fromMe && automationAllowed && !conversaQuarantined && !conversa.human_talk && prospect?.id && !((tipoMidia === "image" || tipoMidia === "audio") && !shouldProcessMedia)) {
       // Safety-net: reclamar lock stale (>3min) — evita conversa travada por falha anterior
       const staleThreshold = new Date(Date.now() - 3 * 60 * 1000).toISOString();
       await supabase
