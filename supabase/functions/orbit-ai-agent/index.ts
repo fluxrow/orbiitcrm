@@ -479,14 +479,8 @@ async function getAudioClip(supabase: any, empresaId: string | null | undefined,
 // Dispara SOMENTE em pedido explícito de prova/depoimento/resultado.
 // NUNCA chama a Z-API direto: produz ação estruturada e enfileira no outbox.
 // A signed URL não é gerada aqui — o worker assina no momento do processamento.
-const PROOF_REQUEST_RE =
-  /\b(prova|provas|comprova\w*|depoiment\w*|testemunh\w*|result\w*|case|cases|print|prints|alu[no]{2,}s?\s+(que|com)|funciona\s+mesmo)\b/i;
+export { isProofRequest };
 
-export function isProofRequest(texto: string | null | undefined): boolean {
-  const t = (texto || "").toLowerCase();
-  if (!t.trim()) return false;
-  return PROOF_REQUEST_RE.test(t);
-}
 
 async function maybeQueueProofMedia(
   supabase: any,
