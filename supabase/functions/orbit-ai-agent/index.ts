@@ -487,7 +487,7 @@ async function maybeQueueProofMedia(
   // Seleção tenant-scoped: só mídia aprovada/ativa da MESMA empresa.
   const { data: mediaList } = await supabase
     .from("orbit_media_library")
-    .select("id, kind, caption, storage_path, mime, trigger_keywords, uso_count, duracao_segundos")
+    .select("id, kind, caption, storage_path, mime, trigger_keywords, uso_count, duration_seconds")
     .eq("empresa_id", empresa_id)
     .eq("purpose", "prova_social")
     .eq("aprovado", true)
