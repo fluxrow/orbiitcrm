@@ -145,7 +145,7 @@ Deno.test("PM13: sem mídia no tenant, a promessa é removida do texto", () => {
 });
 
 // ── Hotfix falso positivo (2026-08-12): gates determinísticos ──
-import { isDeliveredOutStatus, agentOfferedProof } from "./proof-media.ts";
+import { isDeliveredOutStatus, agentOfferedProof, isShortAffirmative } from "./proof-media.ts";
 
 const OPENING = "Olá! Sou o Fernando. Qual resultado você quer alcançar nos próximos meses?";
 const OFERTA = "Quer que eu te mande um vídeo de resultado de aluno?";
