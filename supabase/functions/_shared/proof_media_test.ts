@@ -32,6 +32,7 @@ Deno.test("PM1: pedido explícito de prova é detectado", () => {
 
 Deno.test("PM2: conversa comum não dispara mídia", () => {
   assertFalse(isProofRequest("qual o valor da mentoria?"));
+  assertFalse(isProofRequest("funciona mesmo isso?"));
   assertFalse(isProofRequest("boa tarde, tudo bem?"));
   assertFalse(isProofRequest(""));
   assertFalse(isProofRequest(null));
@@ -90,10 +91,10 @@ Deno.test("PM7: pedido explícito dispara prova", () => {
   assertEquals(r.reason, "explicit_request");
 });
 
-Deno.test("PM8: 'sim' após oferta do agente dispara prova", () => {
+Deno.test("PM8: 'sim' após oferta ENTREGUE do agente dispara prova", () => {
   const r = detectProofIntent({
     mensagem_lead: "sim",
-    last_agent_out: "Você quer ver resultado de aluno aplicando isso?",
+    previous_out: { mensagem: "Quer que eu te mostre um depoimento de aluno?", status: "enviada" },
   });
   assert(r.intent);
   assertEquals(r.reason, "affirmative_after_offer");
@@ -102,15 +103,15 @@ Deno.test("PM8: 'sim' após oferta do agente dispara prova", () => {
 Deno.test("PM9: 'sim' sem contexto de oferta NÃO dispara", () => {
   assertFalse(detectProofIntent({ mensagem_lead: "sim" }).intent);
   assertFalse(
-    detectProofIntent({ mensagem_lead: "sim", last_agent_out: "Qual seu nome?" }).intent,
+    detectProofIntent({ mensagem_lead: "sim", previous_out: { mensagem: "Qual seu nome?", status: "enviada" } }).intent,
   );
 });
 
-Deno.test("PM10: decisão estruturada do agente dispara prova", () => {
+Deno.test("PM10: decisão estruturada do agente NÃO dispara sozinha", () => {
   assert(readAgentProofDecision({ enviar_prova_social: true }));
   assert(readAgentProofDecision({ media_intent: "prova_social" }));
   assertFalse(readAgentProofDecision({ intencao: "preco" }));
-  assert(detectProofIntent({ mensagem_lead: "beleza", agent_decision: true }).intent);
+  assertFalse(detectProofIntent({ mensagem_lead: "beleza", agent_decision: true }).intent);
 });
 
 Deno.test("PM11: seleção prefere vídeo de ~25s; fallback imagem", () => {
