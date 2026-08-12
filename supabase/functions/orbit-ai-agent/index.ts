@@ -1556,21 +1556,42 @@ ${regrasBlock}`;
       });
     }
 
-    // ── Prova social: pedido explícito de prova/depoimento/resultado ──
+    // ── Prova social: pedido explícito, aceite curto após oferta, ou decisão do agente ──
     // Sempre enfileirado (nunca chamada direta à Z-API). O envio real continua
     // barrado pelo kill switch global do tenant enquanto envio_real_liberado=false.
+    // Se a intenção existe mas a mídia não foi enfileirada, removemos a promessa
+    // de mídia do texto para não deixar legenda órfã.
     if (!isDemo && empresaId) {
       try {
-        await maybeQueueProofMedia(supabase, {
+        const { data: lastOut } = await supabase
+          .from("orbit_mensagens")
+          .select("mensagem")
+          .eq("conversa_id", conversa_id)
+          .eq("empresa_id", empresaId)
+          .eq("direcao", "OUT")
+          .order("timestamp", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const proof = await maybeQueueProofMedia(supabase, {
           empresa_id: empresaId,
           conversa_id,
           prospect_id,
           mensagem_lead: mensagem,
+          last_agent_out: (lastOut as any)?.mensagem ?? null,
+          agent_decision: readAgentProofDecision(parsed),
         });
+
+        if (proof.intent && !proof.queued) {
+          console.warn("[orbit-ai-agent] prova social não enfileirada:", proof.reason);
+          resposta = stripUnfulfilledMediaPromise(resposta);
+        }
       } catch (e) {
         console.warn("[orbit-ai-agent] prova social falhou:", (e as Error).message);
+        resposta = stripUnfulfilledMediaPromise(resposta);
       }
     }
+
 
     // ── Audio library: enviar clip pré-gravado se disponível ──
     if (!isDemo && empresaId) {
