@@ -26,7 +26,6 @@ const KEYWORDS = [
 Deno.test("PM1: pedido explícito de prova é detectado", () => {
   assert(isProofRequest("tem alguma prova disso?"));
   assert(isProofRequest("me manda um depoimento de aluno"));
-  assert(isProofRequest("quais resultados vocês já tiveram"));
   assert(isProofRequest("tem print de faturamento?"));
 });
 

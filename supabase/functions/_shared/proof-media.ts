@@ -26,7 +26,7 @@ export const PROOF_OFFER_RE =
   /\b(prova|provas|depoiment\w*|testemunh\w*|case|cases|print|prints|v[ií]deo|videozinho)\b/i;
 
 const OFFER_VERB_RE =
-  /\b(mostrar|mostro|mostre|mandar|mando|manda|enviar|envio|te\s+mando|te\s+envio|te\s+mostro|quer\s+ver|posso\s+te\s+mandar|posso\s+te\s+enviar|posso\s+te\s+mostrar)\b/i;
+  /\b(mostr(ar|o|e|a)|mand(ar|o|a|e)|envi(ar|o|a|e)|ver|d[aá]\s+uma\s+olhada)\b/i;
 
 /** Pergunta de descoberta ("qual resultado você quer alcançar?") nunca é oferta. */
 const DISCOVERY_QUESTION_RE =
