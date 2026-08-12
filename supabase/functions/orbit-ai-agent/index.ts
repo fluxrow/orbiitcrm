@@ -37,6 +37,17 @@ import {
   enforceCommercialStage,
   buildCommercialCorrective,
 } from "../_shared/commercial-stage-guard.ts";
+import {
+  extractCommercialSignals,
+  readCommercialState,
+  computeCommercialPermissions,
+  buildCommercialV2PromptBlock,
+  buildCommercialV2Corrective,
+  evaluateCommercialV2,
+  sanitizeCommercialV2,
+  updateCommercialState,
+  EMPTY_COMMERCIAL_STATE,
+} from "../_shared/commercial-signals.ts";
 
 
 
@@ -1102,6 +1113,21 @@ serve(async (req) => {
       ? `\nMODO DE AGENDAMENTO DESTE TENANT: HANDOFF HUMANO APOS PERIODO.\n- Quando o lead aceitar a conversa/reuniao, use intencao=agendar_call e pergunte apenas se prefere manha, tarde ou noite.\n- Quando ele responder o periodo, use intencao=agendar_call e preencha agendamento.periodo_preferido.\n- Nao ofereca dia ou horario e nao prometa evento criado. O sistema transfere para o responsavel.\n`
       : `\nMODO DE AGENDAMENTO DESTE TENANT: AGENDA AUTOMATICA. O sistema consulta o calendario e oferece dois horarios livres; nao pergunte qual horario o lead prefere antes dessa consulta.\n`;
 
+    // ── CONDUÇÃO COMERCIAL v2 (tenant-scoped por commercial_stage_v2_enabled) ──
+    const commercialV2Enabled = (aiConfig as any).commercial_stage_v2_enabled === true;
+    const commercialState = commercialV2Enabled
+      ? readCommercialState(aiContexto as Record<string, unknown>)
+      : { ...EMPTY_COMMERCIAL_STATE };
+    const commercialExtracted = commercialV2Enabled
+      ? extractCommercialSignals(mensagemAgregada)
+      : { signals: new Set<never>(), paymentMethod: null, productMentioned: null } as any;
+    const commercialPerms = commercialV2Enabled
+      ? computeCommercialPermissions(commercialExtracted, commercialState)
+      : null;
+    const commercialV2Block = commercialV2Enabled && commercialPerms
+      ? buildCommercialV2PromptBlock(commercialState, commercialPerms, commercialExtracted)
+      : "";
+
     const systemPrompt = `${promptIdentidade}
 
 ESTILO DE ESCRITA (PT-BR, INVIOLÁVEL):
@@ -1114,7 +1140,7 @@ ${campaignContinuity}${stateInstruction}${classificationInstruction}
 ${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${dataHoraAtualBlock}${schedulingModeBlock}
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
-${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}
+${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}${commercialV2Block}
 REGRAS CRÍTICAS:
 1. DADOS EXISTENTES: Se um dado do lead já está preenchido no contexto acima ou nos FATOS CANÔNICOS (personName, companyName, city, email, nível pretendido, cidade/estado etc.), NUNCA pergunte novamente. Use naturalmente na conversa.
 2. CAMPOS FALTANTES: Solicite APENAS os campos marcados como "true" em missingFields, e as perguntas dinâmicas ainda não respondidas.
@@ -1277,8 +1303,42 @@ ${regrasBlock}`;
     // Ativado apenas quando orbit_ai_config.strict_commercial_stage_guard = true.
     // A mensagem ATUAL do lead precisa autorizar o avanço: dado cadastral
     // isolado (e-mail/telefone) nunca é sinal comercial. Histórico não autoriza.
-    const strictCommercialStageGuard = (aiConfig as any).strict_commercial_stage_guard === true;
-    if (strictCommercialStageGuard) {
+    // v2 (permissões independentes) tem precedência sobre o guard legado.
+    const strictCommercialStageGuard =
+      (aiConfig as any).strict_commercial_stage_guard === true && !commercialV2Enabled;
+
+    if (commercialV2Enabled && commercialPerms) {
+      const verdict = evaluateCommercialV2(resposta, commercialPerms);
+      if (verdict.violates) {
+        console.warn("[orbit-ai-agent] Condução comercial v2 acionada:", verdict.reasons.join(","));
+        const retry = await callAnthropic({
+          model: normalizeAgentModel((aiConfig as any).modelo_ia),
+          system: systemPrompt,
+          messages: toAnthropicMessages([
+            { role: "user", content: userTurn },
+            { role: "assistant", content: resposta },
+            { role: "user", content: buildCommercialV2Corrective(verdict) + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+          ]),
+          temperature: 0.5,
+          max_tokens: maxTokens,
+        });
+        const retryText = retry.ok ? String(retry.text || "").trim() : "";
+        const retryVerdict = retryText ? evaluateCommercialV2(retryText, commercialPerms) : null;
+        if (retryText && retryVerdict && !retryVerdict.violates) {
+          resposta = retryText;
+        } else {
+          // Sanitização cirúrgica: remove só o que não é permitido.
+          // Preço obrigatório nunca é apagado.
+          const enforced = sanitizeCommercialV2(retryText || resposta, commercialPerms);
+          resposta = enforced.text;
+          console.warn("[orbit-ai-agent] Condução comercial v2 sanitizada.", {
+            fallback: enforced.fallbackUsed,
+            reasons: verdict.reasons,
+          });
+        }
+        parsed.mensagem = resposta;
+      }
+    } else if (strictCommercialStageGuard) {
       const verdict = evaluateCommercialStage(mensagemAgregada, resposta);
       if (verdict.violates) {
         console.warn("[orbit-ai-agent] Guard de estágio comercial acionado:", verdict.reason);
@@ -1304,6 +1364,7 @@ ${regrasBlock}`;
         parsed.mensagem = resposta;
       }
     }
+
 
 
 
@@ -1433,7 +1494,20 @@ ${regrasBlock}`;
       agendamento_ultimo_meeting_id: scheduleOutcome.meeting_id || aiContexto.agendamento_ultimo_meeting_id || null,
       agendamento_aguardando_periodo: scheduleOutcome.awaiting_period === true,
       agendamento_periodo_preferido: scheduleOutcome.preferred_period || aiContexto.agendamento_periodo_preferido || null,
+      // Estado flexível da condução comercial v2 (sem PII: apenas rótulos e timestamps)
+      ...(commercialV2Enabled && commercialPerms
+        ? {
+            commercial_v2: updateCommercialState(
+              commercialState,
+              commercialExtracted,
+              String(parsed.mensagem || resposta || ""),
+              commercialPerms,
+              new Date().toISOString(),
+            ),
+          }
+        : {}),
     };
+
 
     await supabase
       .from("orbit_conversas")
@@ -1705,14 +1779,25 @@ ${regrasBlock}`;
         console.warn("[orbit-ai-agent] Coleta de e-mail removida na saída final.", { fallback: finalEnforced.fallbackUsed });
         resposta = finalEnforced.text;
       }
-      const finalStage = enforceCommercialStage(mensagemAgregada, resposta, strictCommercialStageGuard);
-      if (finalStage.changed) {
-        console.warn("[orbit-ai-agent] Avanço comercial removido na saída final.", {
-          reason: finalStage.verdict.reason,
-          fallback: finalStage.fallbackUsed,
-        });
-        resposta = finalStage.text;
+      if (commercialV2Enabled && commercialPerms) {
+        const finalV2 = sanitizeCommercialV2(resposta, commercialPerms);
+        if (finalV2.changed) {
+          console.warn("[orbit-ai-agent] Condução comercial v2: saída final sanitizada.", {
+            fallback: finalV2.fallbackUsed,
+          });
+          resposta = finalV2.text;
+        }
+      } else {
+        const finalStage = enforceCommercialStage(mensagemAgregada, resposta, strictCommercialStageGuard);
+        if (finalStage.changed) {
+          console.warn("[orbit-ai-agent] Avanço comercial removido na saída final.", {
+            reason: finalStage.verdict.reason,
+            fallback: finalStage.fallbackUsed,
+          });
+          resposta = finalStage.text;
+        }
       }
+
     }
 
 

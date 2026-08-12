@@ -890,6 +890,7 @@ export type Database = {
           auto_reply_new_leads_from: string | null
           block_email_collection: boolean
           campos_qualificacao: Json
+          commercial_stage_v2_enabled: boolean
           created_at: string | null
           empresa_id: string | null
           horario_fim: string | null
@@ -930,6 +931,7 @@ export type Database = {
           auto_reply_new_leads_from?: string | null
           block_email_collection?: boolean
           campos_qualificacao?: Json
+          commercial_stage_v2_enabled?: boolean
           created_at?: string | null
           empresa_id?: string | null
           horario_fim?: string | null
@@ -970,6 +972,7 @@ export type Database = {
           auto_reply_new_leads_from?: string | null
           block_email_collection?: boolean
           campos_qualificacao?: Json
+          commercial_stage_v2_enabled?: boolean
           created_at?: string | null
           empresa_id?: string | null
           horario_fim?: string | null
