@@ -788,10 +788,12 @@ serve(async (req) => {
   let conversaIdForCleanup: string | null = null;
   let supabaseForCleanup: any = null;
   try {
-    const { conversa_id, prospect_id, mensagem, telefone, recovery_tag } = await req.json();
+    const { conversa_id, prospect_id, mensagem, telefone, recovery_tag, outbox_hold_until } = await req.json();
     conversaIdForCleanup = conversa_id ?? null;
     const recoveryTag = sanitizeRecoveryTag(recovery_tag);
     if (conversa_id && recoveryTag) RECOVERY_TAGS.set(conversa_id, recoveryTag);
+    const holdUntil = sanitizeOutboxHoldUntil(outbox_hold_until);
+    if (conversa_id && holdUntil) OUTBOX_HOLDS.set(conversa_id, holdUntil);
     console.log("[orbit-ai-agent] Processando:", { conversa_id, prospect_id, recovery_tag: recoveryTag, mensagem: mensagem?.substring(0, 50) });
 
     const supabase = createClient(
@@ -1747,7 +1749,10 @@ ${regrasBlock}`;
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } finally {
-    if (conversaIdForCleanup) RECOVERY_TAGS.delete(conversaIdForCleanup);
+    if (conversaIdForCleanup) {
+      RECOVERY_TAGS.delete(conversaIdForCleanup);
+      OUTBOX_HOLDS.delete(conversaIdForCleanup);
+    }
   }
 });
 
@@ -1913,6 +1918,26 @@ export function sanitizeRecoveryTag(tag: unknown): string | null {
   return /^[a-z0-9][a-z0-9_-]{2,39}$/i.test(t) ? t : null;
 }
 
+/**
+ * Hold de envio (opt-in, apenas chamadas internas autenticadas).
+ *
+ * Permite que uma operação oficial (ex.: recuperação cirúrgica com cadência
+ * controlada) enfileire a resposta com `scheduled_for` no futuro, de modo que o
+ * worker NÃO envie antes da validação/cadência definida pelo operador.
+ * Nunca relaxa nenhum gate: apenas atrasa a elegibilidade temporal.
+ * Limite máximo: 24h à frente. Escopo por conversa; limpo no finally.
+ */
+const OUTBOX_HOLDS = new Map<string, string>();
+export function sanitizeOutboxHoldUntil(value: unknown, nowMs = Date.now()): string | null {
+  if (typeof value !== "string") return null;
+  const ms = Date.parse(value.trim());
+  if (!Number.isFinite(ms)) return null;
+  if (ms <= nowMs) return null;
+  if (ms - nowMs > 24 * 60 * 60 * 1000) return null;
+  return new Date(ms).toISOString();
+}
+
+
 async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw: string, conversa_id: string, isDemo: boolean, empresaId?: string | null, allowIntro = true) {
   const mensagem = finalizeAgentMessage(mensagemRaw, allowIntro);
   try {
@@ -1969,6 +1994,7 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw:
         .select("id")
         .single();
       const recoveryTag = RECOVERY_TAGS.get(conversa_id) ?? null;
+      const holdUntilQueued = OUTBOX_HOLDS.get(conversa_id) ?? null;
       const routed = await enqueueOutbox(supabase, {
         empresa_id: empresaId,
         conversa_id,
@@ -1979,7 +2005,12 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw:
         payload_type: "text",
         payload: { mensagem },
         idempotency_scope: recoveryTag,
-        metadata: { orbit_message_id: novaTxt?.id ?? null, ...(recoveryTag ? { recovery_tag: recoveryTag } : {}) },
+        ...(holdUntilQueued ? { scheduled_for: holdUntilQueued } : {}),
+        metadata: {
+          orbit_message_id: novaTxt?.id ?? null,
+          ...(recoveryTag ? { recovery_tag: recoveryTag } : {}),
+          ...(holdUntilQueued ? { outbox_hold_until: holdUntilQueued } : {}),
+        },
       });
       if (!routed.enqueued && routed.reason === "duplicate" && novaTxt?.id) {
         await supabase.from("orbit_mensagens").delete().eq("id", novaTxt.id);
