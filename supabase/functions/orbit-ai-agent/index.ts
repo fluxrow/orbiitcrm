@@ -26,6 +26,13 @@ import {
   proofIdempotencyScope,
   stripUnfulfilledMediaPromise,
 } from "../_shared/proof-media.ts";
+import {
+  detectEmailCollection,
+  enforceNoEmailCollection,
+  EMAIL_GUARD_CORRECTIVE,
+} from "../_shared/no-email-collection.ts";
+
+
 
 
 import { normalizeAgentText, PT_BR_STYLE_GUARDRAILS } from "../_shared/pt-br-normalizer.ts";
