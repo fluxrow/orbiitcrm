@@ -1292,8 +1292,42 @@ ${regrasBlock}`;
     // Ativado apenas quando orbit_ai_config.strict_commercial_stage_guard = true.
     // A mensagem ATUAL do lead precisa autorizar o avanço: dado cadastral
     // isolado (e-mail/telefone) nunca é sinal comercial. Histórico não autoriza.
-    const strictCommercialStageGuard = (aiConfig as any).strict_commercial_stage_guard === true;
-    if (strictCommercialStageGuard) {
+    // v2 (permissões independentes) tem precedência sobre o guard legado.
+    const strictCommercialStageGuard =
+      (aiConfig as any).strict_commercial_stage_guard === true && !commercialV2Enabled;
+
+    if (commercialV2Enabled && commercialPerms) {
+      const verdict = evaluateCommercialV2(resposta, commercialPerms);
+      if (verdict.violates) {
+        console.warn("[orbit-ai-agent] Condução comercial v2 acionada:", verdict.reasons.join(","));
+        const retry = await callAnthropic({
+          model: normalizeAgentModel((aiConfig as any).modelo_ia),
+          system: systemPrompt,
+          messages: toAnthropicMessages([
+            { role: "user", content: userTurn },
+            { role: "assistant", content: resposta },
+            { role: "user", content: buildCommercialV2Corrective(verdict) + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+          ]),
+          temperature: 0.5,
+          max_tokens: maxTokens,
+        });
+        const retryText = retry.ok ? String(retry.text || "").trim() : "";
+        const retryVerdict = retryText ? evaluateCommercialV2(retryText, commercialPerms) : null;
+        if (retryText && retryVerdict && !retryVerdict.violates) {
+          resposta = retryText;
+        } else {
+          // Sanitização cirúrgica: remove só o que não é permitido.
+          // Preço obrigatório nunca é apagado.
+          const enforced = sanitizeCommercialV2(retryText || resposta, commercialPerms);
+          resposta = enforced.text;
+          console.warn("[orbit-ai-agent] Condução comercial v2 sanitizada.", {
+            fallback: enforced.fallbackUsed,
+            reasons: verdict.reasons,
+          });
+        }
+        parsed.mensagem = resposta;
+      }
+    } else if (strictCommercialStageGuard) {
       const verdict = evaluateCommercialStage(mensagemAgregada, resposta);
       if (verdict.violates) {
         console.warn("[orbit-ai-agent] Guard de estágio comercial acionado:", verdict.reason);
@@ -1319,6 +1353,7 @@ ${regrasBlock}`;
         parsed.mensagem = resposta;
       }
     }
+
 
 
 
