@@ -285,7 +285,6 @@ export interface CommercialPermissions {
   mayMentionPrice: boolean;
   mustAnswerPriceNow: boolean;
   mayAskPaymentMethod: boolean;
-  mayateSharePaymentDetails?: never;
   maySharePaymentDetails: boolean;
   chosenMethod: "pix" | "cartao" | null;
   closingRecognized: boolean;
