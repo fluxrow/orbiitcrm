@@ -20,7 +20,13 @@ import {
   matchesTriggerKeywords,
   proofPayloadType,
   buildProofOutboxPayload,
+  detectProofIntent,
+  readAgentProofDecision,
+  selectProofMedia,
+  proofIdempotencyScope,
+  stripUnfulfilledMediaPromise,
 } from "../_shared/proof-media.ts";
+
 
 import { normalizeAgentText, PT_BR_STYLE_GUARDRAILS } from "../_shared/pt-br-normalizer.ts";
 import {
