@@ -5535,6 +5535,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      outbox_hold_until_ts: { Args: { _metadata: Json }; Returns: string }
       pe_backfill_import_as_lista: {
         Args: {
           p_empresa_id: string
