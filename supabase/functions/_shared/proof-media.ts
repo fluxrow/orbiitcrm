@@ -88,6 +88,7 @@ export type ProofMedia = {
   caption?: string | null;
   storage_path: string;
   duracao_segundos?: number | null;
+  duration_seconds?: number | null;
   uso_count?: number | null;
 };
 
@@ -106,7 +107,7 @@ export function selectProofMedia<T extends ProofMedia>(list: T[] | null | undefi
   if (items.length === 0) return null;
   const score = (m: T) => {
     const isVideo = m.kind === "video";
-    const dur = Number(m.duracao_segundos ?? NaN);
+    const dur = Number(m.duracao_segundos ?? m.duration_seconds ?? NaN);
     const durDelta = Number.isFinite(dur) ? Math.abs(dur - PREFERRED_VIDEO_SECONDS) : 9999;
     return [isVideo ? 0 : 1, isVideo ? durDelta : 0, Number(m.uso_count ?? 0)];
   };
