@@ -1269,6 +1269,40 @@ ${regrasBlock}`;
       parsed.mensagem = resposta;
     }
 
+    // ── GUARD TENANT-SCOPED: estágio comercial (preço/pagamento/fechamento) ──
+    // Ativado apenas quando orbit_ai_config.strict_commercial_stage_guard = true.
+    // A mensagem ATUAL do lead precisa autorizar o avanço: dado cadastral
+    // isolado (e-mail/telefone) nunca é sinal comercial. Histórico não autoriza.
+    const strictCommercialStageGuard = (aiConfig as any).strict_commercial_stage_guard === true;
+    if (strictCommercialStageGuard) {
+      const verdict = evaluateCommercialStage(mensagemAgregada, resposta);
+      if (verdict.violates) {
+        console.warn("[orbit-ai-agent] Guard de estágio comercial acionado:", verdict.reason);
+        const retry = await callAnthropic({
+          model: normalizeAgentModel((aiConfig as any).modelo_ia),
+          system: systemPrompt,
+          messages: toAnthropicMessages([
+            { role: "user", content: userTurn },
+            { role: "assistant", content: resposta },
+            { role: "user", content: buildCommercialCorrective(verdict) + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+          ]),
+          temperature: 0.5,
+          max_tokens: maxTokens,
+        });
+        const retryText = retry.ok ? String(retry.text || "").trim() : "";
+        if (retryText && !evaluateCommercialStage(mensagemAgregada, retryText).violates) {
+          resposta = retryText;
+        } else {
+          const enforced = enforceCommercialStage(mensagemAgregada, retryText || resposta, true);
+          resposta = enforced.text;
+          console.warn("[orbit-ai-agent] Avanço comercial sanitizado.", { fallback: enforced.fallbackUsed });
+        }
+        parsed.mensagem = resposta;
+      }
+    }
+
+
+
 
 
 
