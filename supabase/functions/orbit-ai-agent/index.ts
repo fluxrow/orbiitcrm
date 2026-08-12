@@ -1235,6 +1235,35 @@ ${regrasBlock}`;
       }
     }
 
+    // ── GUARD TENANT-SCOPED: proibido solicitar e-mail ao lead ──
+    // Ativado apenas quando orbit_ai_config.block_email_collection = true.
+    const blockEmailCollection = (aiConfig as any).block_email_collection === true;
+    if (blockEmailCollection && detectEmailCollection(resposta).violates) {
+      console.warn("[orbit-ai-agent] Guard de coleta de e-mail acionado.");
+      const retry = await callAnthropic({
+        model: normalizeAgentModel((aiConfig as any).modelo_ia),
+        system: systemPrompt,
+        messages: toAnthropicMessages([
+          { role: "user", content: userTurn },
+          { role: "assistant", content: resposta },
+          { role: "user", content: EMAIL_GUARD_CORRECTIVE + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+        ]),
+        temperature: 0.5,
+        max_tokens: maxTokens,
+      });
+      const retryText = retry.ok ? String(retry.text || "").trim() : "";
+      if (retryText && !detectEmailCollection(retryText).violates) {
+        resposta = retryText;
+      } else {
+        const enforced = enforceNoEmailCollection(retryText || resposta, true);
+        resposta = enforced.text;
+        console.warn("[orbit-ai-agent] Coleta de e-mail sanitizada.", { fallback: enforced.fallbackUsed });
+      }
+      parsed.mensagem = resposta;
+    }
+
+
+
 
     // ── Validar dados extraídos antes de salvar ──
     const dadosValidados = parsed.dados_extraidos 
