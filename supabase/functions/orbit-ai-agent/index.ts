@@ -1652,6 +1652,15 @@ ${regrasBlock}`;
     }
 
 
+    // Sanitização final determinística (cobre overrides posteriores do texto).
+    {
+      const finalEnforced = enforceNoEmailCollection(resposta, blockEmailCollection);
+      if (finalEnforced.changed) {
+        console.warn("[orbit-ai-agent] Coleta de e-mail removida na saída final.", { fallback: finalEnforced.fallbackUsed });
+        resposta = finalEnforced.text;
+      }
+    }
+
     // Enviar resposta via WhatsApp (fallback: texto)
     await sendAIResponse(supabase, telefone, resposta, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
 
