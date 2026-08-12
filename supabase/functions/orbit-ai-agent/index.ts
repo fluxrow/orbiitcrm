@@ -456,11 +456,13 @@ async function getAudioClip(supabase: any, empresaId: string | null | undefined,
 }
 
 // ── Prova social (mídia aprovada da biblioteca do tenant) ──
-// Dispara SOMENTE em pedido explícito de prova/depoimento/resultado.
-// NUNCA chama a Z-API direto: produz ação estruturada e enfileira no outbox.
+// Dispara em: pedido explícito do lead, aceite curto após oferta do agente, ou
+// decisão estruturada do agente. NUNCA chama a Z-API direto: enfileira no outbox
+// com os mesmos gates de engaged reply (inbound real + cutoff + human_talk).
 // A signed URL não é gerada aqui — o worker assina no momento do processamento.
 export { isProofRequest };
 
+const UUID_RE_AGENT = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 async function maybeQueueProofMedia(
   supabase: any,
@@ -469,37 +471,49 @@ async function maybeQueueProofMedia(
     conversa_id: string;
     prospect_id?: string | null;
     mensagem_lead: string;
+    last_agent_out?: string | null;
+    agent_decision?: boolean | null;
   },
-): Promise<{ queued: boolean; reason?: string; media_id?: string }> {
+): Promise<{ queued: boolean; reason?: string; media_id?: string; intent?: boolean }> {
   const { empresa_id, conversa_id, prospect_id, mensagem_lead } = params;
-  if (!isProofRequest(mensagem_lead)) return { queued: false, reason: "no_explicit_request" };
 
-  const { data: media } = await supabase
+  const intent = detectProofIntent({
+    mensagem_lead,
+    last_agent_out: params.last_agent_out ?? null,
+    agent_decision: params.agent_decision ?? null,
+  });
+  if (!intent.intent) return { queued: false, intent: false, reason: intent.reason };
+
+  // Seleção tenant-scoped: só mídia aprovada/ativa da MESMA empresa.
+  const { data: mediaList } = await supabase
     .from("orbit_media_library")
-    .select("id, kind, caption, storage_path, mime, trigger_keywords, uso_count")
+    .select("id, kind, caption, storage_path, mime, trigger_keywords, uso_count, duracao_segundos")
     .eq("empresa_id", empresa_id)
     .eq("purpose", "prova_social")
     .eq("aprovado", true)
     .eq("ativo", true)
-    .order("uso_count", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (!media) return { queued: false, reason: "no_approved_media" };
+    .limit(50);
 
-  if (!matchesTriggerKeywords(mensagem_lead, media.trigger_keywords)) {
-    return { queued: false, reason: "keyword_mismatch" };
-  }
-
+  const candidates = (mediaList ?? []).filter((m: any) =>
+    intent.reason === "explicit_request"
+      ? matchesTriggerKeywords(mensagem_lead, m.trigger_keywords)
+      : true
+  );
+  const media = selectProofMedia(candidates as any);
+  if (!media) return { queued: false, intent: true, reason: "no_approved_media" };
 
   const { data: lastIn } = await supabase
     .from("orbit_mensagens")
     .select("id")
     .eq("conversa_id", conversa_id)
+    .eq("empresa_id", empresa_id)
     .eq("direcao", "IN")
     .order("timestamp", { ascending: false })
     .limit(1)
     .maybeSingle();
-  const inboundId = (lastIn as any)?.id ?? conversa_id;
+  const rawInbound = String((lastIn as any)?.id ?? "");
+  const inboundId = rawInbound.match(UUID_RE_AGENT)?.[0]?.toLowerCase() ?? null;
+  if (!inboundId) return { queued: false, intent: true, reason: "no_inbound_message" };
 
   // Linha visual única — legenda apenas, sem storage_path/filename no texto.
   const { data: novaMidia } = await supabase
@@ -510,7 +524,7 @@ async function maybeQueueProofMedia(
       mensagem: media.caption ?? "",
       canal: "whatsapp",
       status: "queued",
-      tipo_midia: media.kind === "video" ? "video" : media.kind,
+      tipo_midia: proofPayloadType(media.kind),
       storage_path: media.storage_path,
       empresa_id,
     })
@@ -522,18 +536,35 @@ async function maybeQueueProofMedia(
     conversa_id,
     prospect_id: prospect_id ?? null,
     source_type: "ai_reply",
-    inbound_message_id: `${inboundId}:media:${media.id}`,
-    source_id: `${inboundId}:media:${media.id}`,
+    // inbound REAL (UUID puro) para passar pelos gates da engaged reply reserve.
+    inbound_message_id: inboundId,
+    source_id: inboundId,
+    // Escopo garante 1 mídia por inbound+media sem colidir com a resposta de texto.
+    idempotency_scope: proofIdempotencyScope(inboundId, media.id),
     payload_type: proofPayloadType(media.kind),
     // Payload sem fileName/nome local (ver _shared/proof-media.ts).
     payload: buildProofOutboxPayload(media),
-
-    metadata: { orbit_message_id: novaMidia?.id ?? null, dry_run: true, purpose: "prova_social" },
+    metadata: {
+      orbit_message_id: novaMidia?.id ?? null,
+      inbound_message_id: inboundId,
+      media_library_id: media.id,
+      media_intent: "prova_social",
+      media_intent_reason: intent.reason,
+      purpose: "prova_social",
+    },
   });
 
-  if (!routed.enqueued && novaMidia?.id) {
-    await supabase.from("orbit_mensagens").delete().eq("id", novaMidia.id);
-    return { queued: false, reason: routed.reason ?? "not_eligible", media_id: media.id };
+  if (!routed.enqueued) {
+    if (novaMidia?.id) {
+      await supabase.from("orbit_mensagens").delete().eq("id", novaMidia.id);
+    }
+    // duplicate = já existe envio para este inbound+media: não conta uso de novo.
+    return {
+      queued: routed.reason === "duplicate",
+      intent: true,
+      reason: routed.reason ?? "not_eligible",
+      media_id: media.id,
+    };
   }
 
   await supabase
@@ -541,9 +572,14 @@ async function maybeQueueProofMedia(
     .update({ uso_count: Number(media.uso_count ?? 0) + 1 })
     .eq("id", media.id);
 
-  console.log("[orbit-ai-agent] prova social enfileirada:", { media_id: media.id, outbox_id: routed.outbox_id });
-  return { queued: true, media_id: media.id };
+  console.log("[orbit-ai-agent] prova social enfileirada:", {
+    media_id: media.id,
+    outbox_id: routed.outbox_id,
+    reason: intent.reason,
+  });
+  return { queued: true, intent: true, media_id: media.id };
 }
+
 
 
 async function sendWhatsAppAudio(
