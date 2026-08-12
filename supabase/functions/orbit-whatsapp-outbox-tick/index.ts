@@ -33,6 +33,16 @@ import {
   RETAIN_REASON_RESERVE_CONVERSA,
   RETAIN_REASON_RESERVE_DAILY,
 } from "../_shared/engaged-reply-reserve.ts";
+import {
+  evaluateHoldGate,
+  lastRecoverySentAtMs,
+  recoveryTagOf,
+  revalidateRecoveryTarget,
+  parseHoldUntilMs,
+  OUTBOX_HOLD_REASON,
+  RECOVERY_SPACING_REASON,
+  DEFAULT_RECOVERY_SPACING_SECONDS,
+} from "../_shared/outbox-hold.ts";
 
 
 
@@ -361,7 +371,78 @@ async function retainPendingForTenant(empresa_id: string, reason: string, limitI
   return (pend ?? []).length;
 }
 
+// Devolve o item a pending SEM incrementar attempts (compensa o incremento do
+// claim) e SEM qualquer chamada externa. Usado pelo gate de hold/cadência.
+async function releaseHeldItem(item: any, reason: string, retryAtIso: string | null): Promise<void> {
+  const attempts = Math.max(0, Number(item.attempts ?? 0) - 1);
+  await supabase
+    .from("orbit_whatsapp_outbox")
+    .update({
+      status: "pending",
+      locked_at: null,
+      locked_by: null,
+      attempts,
+      next_attempt_at: retryAtIso ?? new Date(Date.now() + 30 * 1000).toISOString(),
+      last_error: reason,
+    })
+    .eq("id", item.id);
+}
+
+// Gate de hold/cadência. Usa o MESMO avaliador antes do claim e depois do claim.
+async function evaluateItemHold(item: any, nowMs = Date.now()) {
+  const tag = recoveryTagOf(item.metadata);
+  const lastMs = tag ? await lastRecoverySentAtMs(supabase, item.empresa_id, tag) : null;
+  return evaluateHoldGate({
+    metadata: item.metadata,
+    nowMs,
+    lastRecoverySentAtMs: lastMs,
+    spacingSeconds: DEFAULT_RECOVERY_SPACING_SECONDS,
+  });
+}
+
+// PRÉ-CLAIM: empurra next_attempt_at dos pendentes retidos por hold/cadência,
+// de modo que outbox_claim_batch nem os selecione. Nunca toca attempts.
+async function deferHeldPendingForTenant(empresa_id: string): Promise<number> {
+  const nowIso = new Date().toISOString();
+  const { data: pend } = await supabase
+    .from("orbit_whatsapp_outbox")
+    .select("id, empresa_id, attempts, metadata")
+    .eq("empresa_id", empresa_id)
+    .eq("status", "pending")
+    .lte("scheduled_for", nowIso)
+    .or(`next_attempt_at.is.null,next_attempt_at.lte.${nowIso}`)
+    .limit(200);
+
+  let deferred = 0;
+  const nowMs = Date.now();
+  for (const row of (pend ?? []) as any[]) {
+    if (parseHoldUntilMs(row.metadata) === null && !recoveryTagOf(row.metadata)) continue;
+    const verdict = await evaluateItemHold(row, nowMs);
+    if (verdict.allowed) continue;
+    await supabase
+      .from("orbit_whatsapp_outbox")
+      .update({
+        locked_at: null,
+        locked_by: null,
+        next_attempt_at: verdict.retryAtIso ?? new Date(nowMs + 30 * 1000).toISOString(),
+        last_error: verdict.reason,
+      })
+      .eq("id", row.id)
+      .eq("status", "pending");
+    deferred++;
+  }
+  return deferred;
+}
+
 async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaState): Promise<ProcessResult> {
+  // ── GATE 1 (pós-claim, anti-corrida): hold explícito e cadência por recovery.
+  // Roda ANTES de horário comercial, elegibilidade, cota e qualquer fetch externo.
+  const holdVerdict = await evaluateItemHold(item);
+  if (!holdVerdict.allowed) {
+    await releaseHeldItem(item, holdVerdict.reason ?? OUTBOX_HOLD_REASON, holdVerdict.retryAtIso);
+    return { outcome: "deferred", reason: holdVerdict.reason ?? OUTBOX_HOLD_REASON };
+  }
+
   // Kill switch por tenant + horário comercial para não-urgentes
   if (!URGENT_SOURCES.has(item.source_type) && !nowInBusinessWindow()) {
     // reagenda para próxima janela (default: próximo horário 08:00)
@@ -556,6 +637,30 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
     await ensureCampaignConversa(item, telefone);
   }
 
+  // ── GATE 2: revalidação do alvo da recovery imediatamente antes do envio ──
+  const recheck = await revalidateRecoveryTarget(supabase, item);
+  if (!recheck.valid) {
+    await supabase
+      .from("orbit_whatsapp_outbox")
+      .update({
+        status: "canceled",
+        canceled_at: new Date().toISOString(),
+        canceled_reason: recheck.reason ?? "recovery_target_invalid",
+        locked_at: null,
+        locked_by: null,
+      })
+      .eq("id", item.id);
+    await upsertVisualMensagem(item, { status: "cancelada", erro: recheck.reason ?? "recovery_target_invalid" });
+    return { outcome: "canceled", reason: recheck.reason ?? "recovery_target_invalid" };
+  }
+
+  // ── GATE 3 (último instante): re-avalia hold/cadência já com o telefone resolvido.
+  const holdFinal = await evaluateItemHold(item);
+  if (!holdFinal.allowed) {
+    await releaseHeldItem(item, holdFinal.reason ?? RECOVERY_SPACING_REASON, holdFinal.retryAtIso);
+    return { outcome: "deferred", reason: holdFinal.reason ?? RECOVERY_SPACING_REASON };
+  }
+
   // Modo simulated para testes: metadata.simulate=true força simulação sem tocar Z-API
   if (item.metadata?.simulate === true) {
     await supabase
@@ -679,8 +784,11 @@ function sortClaimed(items: any[]): any[] {
 }
 
 async function processTenant(empresa_id: string, batch: number): Promise<Record<string, number>> {
-  const stats = { claimed: 0, sent: 0, simulated: 0, canceled: 0, deferred: 0, failed: 0, blocked: 0, retained: 0 };
+  const stats = { claimed: 0, sent: 0, simulated: 0, canceled: 0, deferred: 0, failed: 0, blocked: 0, retained: 0, held: 0 };
   const cfg = await getSendingConfig(empresa_id);
+
+  // ── Hold/cadência ANTES de qualquer contagem de cota, claim ou fetch externo ──
+  stats.held = await deferHeldPendingForTenant(empresa_id);
 
   // ── Contagem e decisão de cota ANTES de qualquer claim ou fetch externo ──
   const limitInfo = effectiveDailyLimit(cfg ?? {});
