@@ -31,6 +31,12 @@ import {
   enforceNoEmailCollection,
   EMAIL_GUARD_CORRECTIVE,
 } from "../_shared/no-email-collection.ts";
+import {
+  evaluateCommercialStage,
+  enforceCommercialStage,
+  buildCommercialCorrective,
+} from "../_shared/commercial-stage-guard.ts";
+
 
 
 
