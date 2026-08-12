@@ -485,7 +485,7 @@ async function maybeQueueProofMedia(
     conversa_id: string;
     prospect_id?: string | null;
     mensagem_lead: string;
-    last_agent_out?: string | null;
+    previous_out?: { mensagem?: string | null; status?: string | null; offered_proof_social?: boolean | null } | null;
     agent_decision?: boolean | null;
   },
 ): Promise<{ queued: boolean; reason?: string; media_id?: string; intent?: boolean }> {
@@ -493,10 +493,11 @@ async function maybeQueueProofMedia(
 
   const intent = detectProofIntent({
     mensagem_lead,
-    last_agent_out: params.last_agent_out ?? null,
+    previous_out: params.previous_out ?? null,
     agent_decision: params.agent_decision ?? null,
   });
   if (!intent.intent) return { queued: false, intent: false, reason: intent.reason };
+
 
   // Seleção tenant-scoped: só mídia aprovada/ativa da MESMA empresa.
   const { data: mediaList } = await supabase
