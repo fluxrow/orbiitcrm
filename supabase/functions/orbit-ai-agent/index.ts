@@ -26,6 +26,13 @@ import {
   proofIdempotencyScope,
   stripUnfulfilledMediaPromise,
 } from "../_shared/proof-media.ts";
+import {
+  detectEmailCollection,
+  enforceNoEmailCollection,
+  EMAIL_GUARD_CORRECTIVE,
+} from "../_shared/no-email-collection.ts";
+
+
 
 
 import { normalizeAgentText, PT_BR_STYLE_GUARDRAILS } from "../_shared/pt-br-normalizer.ts";
@@ -1235,6 +1242,35 @@ ${regrasBlock}`;
       }
     }
 
+    // ── GUARD TENANT-SCOPED: proibido solicitar e-mail ao lead ──
+    // Ativado apenas quando orbit_ai_config.block_email_collection = true.
+    const blockEmailCollection = (aiConfig as any).block_email_collection === true;
+    if (blockEmailCollection && detectEmailCollection(resposta).violates) {
+      console.warn("[orbit-ai-agent] Guard de coleta de e-mail acionado.");
+      const retry = await callAnthropic({
+        model: normalizeAgentModel((aiConfig as any).modelo_ia),
+        system: systemPrompt,
+        messages: toAnthropicMessages([
+          { role: "user", content: userTurn },
+          { role: "assistant", content: resposta },
+          { role: "user", content: EMAIL_GUARD_CORRECTIVE + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+        ]),
+        temperature: 0.5,
+        max_tokens: maxTokens,
+      });
+      const retryText = retry.ok ? String(retry.text || "").trim() : "";
+      if (retryText && !detectEmailCollection(retryText).violates) {
+        resposta = retryText;
+      } else {
+        const enforced = enforceNoEmailCollection(retryText || resposta, true);
+        resposta = enforced.text;
+        console.warn("[orbit-ai-agent] Coleta de e-mail sanitizada.", { fallback: enforced.fallbackUsed });
+      }
+      parsed.mensagem = resposta;
+    }
+
+
+
 
     // ── Validar dados extraídos antes de salvar ──
     const dadosValidados = parsed.dados_extraidos 
@@ -1615,6 +1651,15 @@ ${regrasBlock}`;
       }
     }
 
+
+    // Sanitização final determinística (cobre overrides posteriores do texto).
+    {
+      const finalEnforced = enforceNoEmailCollection(resposta, blockEmailCollection);
+      if (finalEnforced.changed) {
+        console.warn("[orbit-ai-agent] Coleta de e-mail removida na saída final.", { fallback: finalEnforced.fallbackUsed });
+        resposta = finalEnforced.text;
+      }
+    }
 
     // Enviar resposta via WhatsApp (fallback: texto)
     await sendAIResponse(supabase, telefone, resposta, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
