@@ -31,6 +31,12 @@ import {
   enforceNoEmailCollection,
   EMAIL_GUARD_CORRECTIVE,
 } from "../_shared/no-email-collection.ts";
+import {
+  evaluateCommercialStage,
+  enforceCommercialStage,
+  buildCommercialCorrective,
+} from "../_shared/commercial-stage-guard.ts";
+
 
 
 
@@ -1269,6 +1275,40 @@ ${regrasBlock}`;
       parsed.mensagem = resposta;
     }
 
+    // ── GUARD TENANT-SCOPED: estágio comercial (preço/pagamento/fechamento) ──
+    // Ativado apenas quando orbit_ai_config.strict_commercial_stage_guard = true.
+    // A mensagem ATUAL do lead precisa autorizar o avanço: dado cadastral
+    // isolado (e-mail/telefone) nunca é sinal comercial. Histórico não autoriza.
+    const strictCommercialStageGuard = (aiConfig as any).strict_commercial_stage_guard === true;
+    if (strictCommercialStageGuard) {
+      const verdict = evaluateCommercialStage(mensagemAgregada, resposta);
+      if (verdict.violates) {
+        console.warn("[orbit-ai-agent] Guard de estágio comercial acionado:", verdict.reason);
+        const retry = await callAnthropic({
+          model: normalizeAgentModel((aiConfig as any).modelo_ia),
+          system: systemPrompt,
+          messages: toAnthropicMessages([
+            { role: "user", content: userTurn },
+            { role: "assistant", content: resposta },
+            { role: "user", content: buildCommercialCorrective(verdict) + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+          ]),
+          temperature: 0.5,
+          max_tokens: maxTokens,
+        });
+        const retryText = retry.ok ? String(retry.text || "").trim() : "";
+        if (retryText && !evaluateCommercialStage(mensagemAgregada, retryText).violates) {
+          resposta = retryText;
+        } else {
+          const enforced = enforceCommercialStage(mensagemAgregada, retryText || resposta, true);
+          resposta = enforced.text;
+          console.warn("[orbit-ai-agent] Avanço comercial sanitizado.", { fallback: enforced.fallbackUsed });
+        }
+        parsed.mensagem = resposta;
+      }
+    }
+
+
+
 
 
 
@@ -1659,7 +1699,16 @@ ${regrasBlock}`;
         console.warn("[orbit-ai-agent] Coleta de e-mail removida na saída final.", { fallback: finalEnforced.fallbackUsed });
         resposta = finalEnforced.text;
       }
+      const finalStage = enforceCommercialStage(mensagemAgregada, resposta, strictCommercialStageGuard);
+      if (finalStage.changed) {
+        console.warn("[orbit-ai-agent] Avanço comercial removido na saída final.", {
+          reason: finalStage.verdict.reason,
+          fallback: finalStage.fallbackUsed,
+        });
+        resposta = finalStage.text;
+      }
     }
+
 
     // Enviar resposta via WhatsApp (fallback: texto)
     await sendAIResponse(supabase, telefone, resposta, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
