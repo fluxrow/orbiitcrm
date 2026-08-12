@@ -1102,6 +1102,21 @@ serve(async (req) => {
       ? `\nMODO DE AGENDAMENTO DESTE TENANT: HANDOFF HUMANO APOS PERIODO.\n- Quando o lead aceitar a conversa/reuniao, use intencao=agendar_call e pergunte apenas se prefere manha, tarde ou noite.\n- Quando ele responder o periodo, use intencao=agendar_call e preencha agendamento.periodo_preferido.\n- Nao ofereca dia ou horario e nao prometa evento criado. O sistema transfere para o responsavel.\n`
       : `\nMODO DE AGENDAMENTO DESTE TENANT: AGENDA AUTOMATICA. O sistema consulta o calendario e oferece dois horarios livres; nao pergunte qual horario o lead prefere antes dessa consulta.\n`;
 
+    // ── CONDUÇÃO COMERCIAL v2 (tenant-scoped por commercial_stage_v2_enabled) ──
+    const commercialV2Enabled = (aiConfig as any).commercial_stage_v2_enabled === true;
+    const commercialState = commercialV2Enabled
+      ? readCommercialState(aiContexto as Record<string, unknown>)
+      : { ...EMPTY_COMMERCIAL_STATE };
+    const commercialExtracted = commercialV2Enabled
+      ? extractCommercialSignals(mensagemAgregada)
+      : { signals: new Set<never>(), paymentMethod: null, productMentioned: null } as any;
+    const commercialPerms = commercialV2Enabled
+      ? computeCommercialPermissions(commercialExtracted, commercialState)
+      : null;
+    const commercialV2Block = commercialV2Enabled && commercialPerms
+      ? buildCommercialV2PromptBlock(commercialState, commercialPerms, commercialExtracted)
+      : "";
+
     const systemPrompt = `${promptIdentidade}
 
 ESTILO DE ESCRITA (PT-BR, INVIOLÁVEL):
