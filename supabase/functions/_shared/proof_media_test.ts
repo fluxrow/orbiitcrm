@@ -69,3 +69,76 @@ Deno.test("PM6: corpo Z-API de vídeo é nativo e sem fileName", () => {
   assertEquals(Object.keys(body).sort(), ["caption", "phone", "video"]);
   assertFalse(JSON.stringify(body).toLowerCase().includes("filename"));
 });
+
+// ── Detecção contextual + seleção (dry-run, sem Z-API e sem DB) ──
+import {
+  detectProofIntent,
+  readAgentProofDecision,
+  selectProofMedia,
+  proofIdempotencyScope,
+  stripUnfulfilledMediaPromise,
+  NO_MEDIA_FALLBACK,
+} from "./proof-media.ts";
+
+const VIDEO = { id: "vid-1", kind: "video", caption: MEDIA.caption, storage_path: "t/media/v.mp4", duracao_segundos: 25, uso_count: 3 };
+const VIDEO_LONGO = { id: "vid-2", kind: "video", caption: "x", storage_path: "t/media/v2.mp4", duracao_segundos: 300, uso_count: 0 };
+const IMG = { id: "img-1", kind: "image", caption: "print", storage_path: "t/media/p.jpg", uso_count: 0 };
+
+Deno.test("PM7: pedido explícito dispara prova", () => {
+  const r = detectProofIntent({ mensagem_lead: "tem prova?" });
+  assert(r.intent);
+  assertEquals(r.reason, "explicit_request");
+});
+
+Deno.test("PM8: 'sim' após oferta do agente dispara prova", () => {
+  const r = detectProofIntent({
+    mensagem_lead: "sim",
+    last_agent_out: "Você quer ver resultado de aluno aplicando isso?",
+  });
+  assert(r.intent);
+  assertEquals(r.reason, "affirmative_after_offer");
+});
+
+Deno.test("PM9: 'sim' sem contexto de oferta NÃO dispara", () => {
+  assertFalse(detectProofIntent({ mensagem_lead: "sim" }).intent);
+  assertFalse(
+    detectProofIntent({ mensagem_lead: "sim", last_agent_out: "Qual seu nome?" }).intent,
+  );
+});
+
+Deno.test("PM10: decisão estruturada do agente dispara prova", () => {
+  assert(readAgentProofDecision({ enviar_prova_social: true }));
+  assert(readAgentProofDecision({ media_intent: "prova_social" }));
+  assertFalse(readAgentProofDecision({ intencao: "preco" }));
+  assert(detectProofIntent({ mensagem_lead: "beleza", agent_decision: true }).intent);
+});
+
+Deno.test("PM11: seleção prefere vídeo de ~25s; fallback imagem", () => {
+  assertEquals(selectProofMedia([IMG, VIDEO_LONGO, VIDEO])!.id, "vid-1");
+  assertEquals(selectProofMedia([IMG])!.id, "img-1");
+  assertEquals(selectProofMedia([]), null);
+  assertEquals(selectProofMedia(null), null);
+});
+
+Deno.test("PM12: idempotência por inbound+media (retry não duplica, mídias diferem)", () => {
+  const inbound = "0fe6e5a0-2170-40d4-a99b-64fd18763f68";
+  assertEquals(
+    proofIdempotencyScope(inbound, VIDEO.id),
+    proofIdempotencyScope(inbound, VIDEO.id),
+  );
+  assert(proofIdempotencyScope(inbound, VIDEO.id) !== proofIdempotencyScope(inbound, IMG.id));
+  assert(proofIdempotencyScope("outro", VIDEO.id) !== proofIdempotencyScope(inbound, VIDEO.id));
+});
+
+Deno.test("PM13: sem mídia no tenant, a promessa é removida do texto", () => {
+  const t = stripUnfulfilledMediaPromise(
+    "Fechado. Dá uma olhada no resultado recente de um dos nossos alunos:",
+  );
+  assertFalse(/olhada|resultado|aluno/i.test(t));
+  assertEquals(stripUnfulfilledMediaPromise(""), NO_MEDIA_FALLBACK);
+  assertEquals(
+    stripUnfulfilledMediaPromise("Vou te mandar o vídeo do aluno agora."),
+    NO_MEDIA_FALLBACK,
+  );
+  assert(stripUnfulfilledMediaPromise("Qual seu maior desafio hoje?").includes("desafio"));
+});
