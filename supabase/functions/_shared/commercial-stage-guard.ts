@@ -23,13 +23,15 @@ const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
 /** Saudações/polidez curtas admitidas junto com o dado cadastral. */
 const COURTESY_RE = new RegExp(
   "\\b(?:" +
-    "bom\\s+dia|boa\\s+tarde|boa\\s+noite|oi|ola|opa|eae|e\\s+ai|blz|beleza|" +
-    "obrigado|obrigada|obg|vlw|valeu|por\\s+favor|pfv|pf|desculpa|desculpe|" +
-    "meu|o|a|e|eh|esse|este|segue|ai|aqui|esta|ta|to|tou|estou|" +
-    "email|e-?mail|endereco|eletronico|contato|nome|telefone|whats|whatsapp|zap|numero" +
+    "bom\\s+dia|boa\\s+tarde|boa\\s+noite|" +
+    "obrigado|obrigada|obg|vlw|valeu|por\\s+favor|pfv|desculpa|desculpe|" +
+    "e-?mails?|enderecos?|eletronicos?|contato|nome|telefone|whatsapp|whats|zap|numero|" +
+    "beleza|blz|segue|aqui|esse|este|esta|estou|" +
+    "oi|ola|opa|eae|meu|tou|to|ta|eh|pf|ai|o|a|e" +
     ")\\b",
   "g",
 );
+
 
 /** Telefone brasileiro simples (com ou sem máscara). */
 const PHONE_RE = /(?:\+?55\s*)?(?:\(?\d{2}\)?[\s.-]*)?9?\d{4}[\s.-]?\d{4}/g;
