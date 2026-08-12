@@ -913,6 +913,7 @@ export type Database = {
           scheduling_handoff_whatsapp: string | null
           scheduling_meeting_duration_minutes: number
           scheduling_mode: string
+          strict_commercial_stage_guard: boolean
           tempo_espera: number | null
           tom_conversa: string | null
           tts_api_key: string | null
@@ -952,6 +953,7 @@ export type Database = {
           scheduling_handoff_whatsapp?: string | null
           scheduling_meeting_duration_minutes?: number
           scheduling_mode?: string
+          strict_commercial_stage_guard?: boolean
           tempo_espera?: number | null
           tom_conversa?: string | null
           tts_api_key?: string | null
@@ -991,6 +993,7 @@ export type Database = {
           scheduling_handoff_whatsapp?: string | null
           scheduling_meeting_duration_minutes?: number
           scheduling_mode?: string
+          strict_commercial_stage_guard?: boolean
           tempo_espera?: number | null
           tom_conversa?: string | null
           tts_api_key?: string | null
