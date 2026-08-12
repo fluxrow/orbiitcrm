@@ -1693,7 +1693,16 @@ ${regrasBlock}`;
         console.warn("[orbit-ai-agent] Coleta de e-mail removida na saída final.", { fallback: finalEnforced.fallbackUsed });
         resposta = finalEnforced.text;
       }
+      const finalStage = enforceCommercialStage(mensagemAgregada, resposta, strictCommercialStageGuard);
+      if (finalStage.changed) {
+        console.warn("[orbit-ai-agent] Avanço comercial removido na saída final.", {
+          reason: finalStage.verdict.reason,
+          fallback: finalStage.fallbackUsed,
+        });
+        resposta = finalStage.text;
+      }
     }
+
 
     // Enviar resposta via WhatsApp (fallback: texto)
     await sendAIResponse(supabase, telefone, resposta, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
