@@ -37,6 +37,17 @@ import {
   enforceCommercialStage,
   buildCommercialCorrective,
 } from "../_shared/commercial-stage-guard.ts";
+import {
+  extractCommercialSignals,
+  readCommercialState,
+  computeCommercialPermissions,
+  buildCommercialV2PromptBlock,
+  buildCommercialV2Corrective,
+  evaluateCommercialV2,
+  sanitizeCommercialV2,
+  updateCommercialState,
+  EMPTY_COMMERCIAL_STATE,
+} from "../_shared/commercial-signals.ts";
 
 
 
