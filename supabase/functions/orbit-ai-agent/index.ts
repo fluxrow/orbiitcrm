@@ -1494,7 +1494,20 @@ ${regrasBlock}`;
       agendamento_ultimo_meeting_id: scheduleOutcome.meeting_id || aiContexto.agendamento_ultimo_meeting_id || null,
       agendamento_aguardando_periodo: scheduleOutcome.awaiting_period === true,
       agendamento_periodo_preferido: scheduleOutcome.preferred_period || aiContexto.agendamento_periodo_preferido || null,
+      // Estado flexível da condução comercial v2 (sem PII: apenas rótulos e timestamps)
+      ...(commercialV2Enabled && commercialPerms
+        ? {
+            commercial_v2: updateCommercialState(
+              commercialState,
+              commercialExtracted,
+              String(parsed.mensagem || resposta || ""),
+              commercialPerms,
+              new Date().toISOString(),
+            ),
+          }
+        : {}),
     };
+
 
     await supabase
       .from("orbit_conversas")
