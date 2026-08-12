@@ -152,7 +152,7 @@ function stub(rows: {
   inbound?: unknown;
   cutoff?: string | null;
   conversa?: unknown;
-  answered?: Array<{ id: string; status: string }>;
+  answered?: Array<{ id: string; status: string; metadata?: Record<string, unknown> }>;
 }) {
   const filters: Record<string, unknown> = {};
   const api: any = {
@@ -218,6 +218,22 @@ Deno.test("R10b uma resposta por inbound: segunda tentativa bloqueada", async ()
   const same = stub({ inbound: row, cutoff: CUTOFF, answered: [{ id: item().id, status: "sent" }] });
   assertEquals((await evaluateEngagedReserve(same, item())).eligible, true);
 });
+
+Deno.test("R10c fallback marcado como substituído não conta como resposta", async () => {
+  const row = { ...inbound(), timestamp: inbound().created_at };
+  const s = stub({
+    inbound: row,
+    cutoff: CUTOFF,
+    answered: [{
+      id: "fallback-item",
+      status: "sent",
+      metadata: { recovery_superseded_by: "recovery-fora-horario-20260812" },
+    }],
+  });
+  assertEquals((await evaluateEngagedReserve(s, item())).eligible, true);
+});
+
+
 
 // ── Simulação do orçamento global + por conversa (espelha o worker) ──
 function simulate(items: Array<{ conversa_id: string }>, limit = engagedReserveLimit(BULLINK)) {
