@@ -1779,14 +1779,25 @@ ${regrasBlock}`;
         console.warn("[orbit-ai-agent] Coleta de e-mail removida na saída final.", { fallback: finalEnforced.fallbackUsed });
         resposta = finalEnforced.text;
       }
-      const finalStage = enforceCommercialStage(mensagemAgregada, resposta, strictCommercialStageGuard);
-      if (finalStage.changed) {
-        console.warn("[orbit-ai-agent] Avanço comercial removido na saída final.", {
-          reason: finalStage.verdict.reason,
-          fallback: finalStage.fallbackUsed,
-        });
-        resposta = finalStage.text;
+      if (commercialV2Enabled && commercialPerms) {
+        const finalV2 = sanitizeCommercialV2(resposta, commercialPerms);
+        if (finalV2.changed) {
+          console.warn("[orbit-ai-agent] Condução comercial v2: saída final sanitizada.", {
+            fallback: finalV2.fallbackUsed,
+          });
+          resposta = finalV2.text;
+        }
+      } else {
+        const finalStage = enforceCommercialStage(mensagemAgregada, resposta, strictCommercialStageGuard);
+        if (finalStage.changed) {
+          console.warn("[orbit-ai-agent] Avanço comercial removido na saída final.", {
+            reason: finalStage.verdict.reason,
+            fallback: finalStage.fallbackUsed,
+          });
+          resposta = finalStage.text;
+        }
       }
+
     }
 
 
