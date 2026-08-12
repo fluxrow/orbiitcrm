@@ -7,18 +7,61 @@
 //  - nunca promete mídia sem mídia enfileirada (ver stripUnfulfilledMediaPromise).
 
 export const PROOF_REQUEST_RE =
-  /\b(prova|provas|comprova\w*|depoiment\w*|testemunh\w*|result\w*|case|cases|print|prints|alu[no]{2,}s?\s+(que|com)|funciona\s+mesmo)\b/i;
+  /\b(prova|provas|comprova\w*|depoiment\w*|testemunh\w*|case|cases|print|prints)\b|\b(quero|queria|posso|pode|manda|mandar|envia|enviar|mostra|mostrar|tem|ver)\b[^.!?\n]{0,40}\b(v[ií]deo|videozinho|resultado\w*|alu[no]{2,}s?)\b/i;
 
-/** Aceite curto do lead ("sim", "quero ver", "manda aí", "claro"...). */
+/**
+ * Aceite INEQUÍVOCO do lead. Interjeições ambíguas ("opa", "ok", "blz", "top",
+ * "legal", "show", "s", "ss", "aham", "uhum", "beleza") foram removidas: elas
+ * aparecem em saudações normais e causaram envio indevido de mídia.
+ */
 export const AFFIRMATIVE_RE =
-  /^(s|sim|ss|isso|claro|bora|quero|quero\s+ver|pode|pode\s+ser|pode\s+mandar|manda|manda\s+a[ií]|mostra|mostre|show|com\s+certeza|por\s+favor|opa|aham|uhum|ok|okay|blz|beleza|vamos|vamo|top|legal|gostaria|adoraria|sim\s+quero|claro\s+que\s+sim|isso\s+mesmo|positivo|afirmativo|👍|👌|✅)[\s!.,]*$/i;
+  /^(sim|sim\s+quero|quero|quero\s+ver|quero\s+sim|manda|manda\s+a[ií]|manda\s+sim|pode\s+mandar|pode\s+enviar|mostra|mostra\s+a[ií]|mostre|claro|claro\s+que\s+sim|com\s+certeza|por\s+favor|positivo|👍|👌|✅)[\s!.,]*$/i;
 
-/** Oferta do agente na última mensagem OUT ("quer ver o resultado de um aluno?"). */
+/**
+ * Oferta EXPLÍCITA de mídia/prova na OUT anterior. Exige substantivo de prova
+ * (prova/depoimento/testemunho/case/print/vídeo) + verbo de exibição/envio.
+ * "resultado" isolado NUNCA caracteriza oferta.
+ */
 export const PROOF_OFFER_RE =
-  /\b(prova|provas|depoiment\w*|testemunh\w*|result\w*|case|cases|print|prints|v[ií]deo|videozinho|alu[no]{2,}s?)\b/i;
+  /\b(prova|provas|depoiment\w*|testemunh\w*|case|cases|print|prints|v[ií]deo|videozinho)\b/i;
 
 const OFFER_VERB_RE =
-  /\b(quer|queres|posso|gostaria|te\s+mando|te\s+envio|mandar|enviar|mostrar|te\s+mostro|ver|d[aá]\s+uma\s+olhada)\b/i;
+  /\b(mostrar|mostro|mostre|mandar|mando|manda|enviar|envio|te\s+mando|te\s+envio|te\s+mostro|quer\s+ver|posso\s+te\s+mandar|posso\s+te\s+enviar|posso\s+te\s+mostrar)\b/i;
+
+/** Pergunta de descoberta ("qual resultado você quer alcançar?") nunca é oferta. */
+const DISCOVERY_QUESTION_RE =
+  /\b(qual|quais|quanto|como|onde|quando|que)\b[^.!?\n]{0,60}\b(resultado\w*|objetivo\w*|meta\w*|desafio\w*|faturament\w*)\b/i;
+
+/** Status de OUT realmente entregue ao lead (schema real do orbit_mensagens). */
+export const DELIVERED_OUT_STATUS = [
+  "enviada",
+  "sent",
+  "entregue",
+  "delivered",
+  "lida",
+  "read",
+];
+
+const NOT_DELIVERED_OUT_STATUS = [
+  "simulated",
+  "queued",
+  "pending",
+  "processing",
+  "canceled",
+  "cancelled",
+  "cancelada",
+  "failed",
+  "falhou",
+  "erro",
+  "error",
+];
+
+export function isDeliveredOutStatus(status: string | null | undefined): boolean {
+  const s = String(status ?? "").trim().toLowerCase();
+  if (!s) return false;
+  if (NOT_DELIVERED_OUT_STATUS.includes(s)) return false;
+  return DELIVERED_OUT_STATUS.includes(s);
+}
 
 export function isProofRequest(texto: string | null | undefined): boolean {
   const t = (texto || "").toLowerCase();
@@ -26,51 +69,77 @@ export function isProofRequest(texto: string | null | undefined): boolean {
   return PROOF_REQUEST_RE.test(t);
 }
 
-/** Aceite curto: no máximo poucas palavras e sem conteúdo novo. */
+/** Aceite curto inequívoco: frase completa de aceite, sem conteúdo novo. */
 export function isShortAffirmative(texto: string | null | undefined): boolean {
   const t = (texto || "").trim();
   if (!t || t.length > 40) return false;
   return AFFIRMATIVE_RE.test(t);
 }
 
-/** A última mensagem OUT do agente ofereceu mostrar prova/resultado/depoimento? */
-export function agentOfferedProof(lastAgentOut: string | null | undefined): boolean {
-  const t = (lastAgentOut || "").trim();
+/** OUT anterior (imediatamente anterior, mesma empresa+conversa). */
+export type PreviousOut = {
+  mensagem?: string | null;
+  status?: string | null;
+  /** Metadata estruturada preferencial. Regex é só compatibilidade. */
+  offered_proof_social?: boolean | null;
+};
+
+/** A OUT anterior ofereceu explicitamente mostrar/mandar prova/vídeo/depoimento? */
+export function agentOfferedProof(previous: PreviousOut | string | null | undefined): boolean {
+  const prev: PreviousOut = typeof previous === "string" ? { mensagem: previous } : (previous ?? {});
+  if (prev.offered_proof_social === true) return true;
+  const t = (prev.mensagem || "").trim();
   if (!t) return false;
+  if (DISCOVERY_QUESTION_RE.test(t) && !PROOF_OFFER_RE.test(t)) return false;
   return PROOF_OFFER_RE.test(t) && OFFER_VERB_RE.test(t);
 }
 
 export type ProofIntentReason =
   | "explicit_request"
   | "affirmative_after_offer"
-  | "agent_decision"
-  | "no_intent";
+  | "no_intent"
+  | "affirmative_without_offer"
+  | "previous_out_not_delivered"
+  | "agent_decision_without_evidence";
 
 /**
- * Detecção contextual de media intent `prova_social`. Genérica e pura:
- * qualquer tenant se beneficia, nenhum efeito colateral.
+ * Critério final (fail-closed):
+ *   explicit_request
+ *   OU (affirmative_unambiguous AND previous_out_delivered AND previous_out_offered_proof)
+ * `agent_decision` apenas CONFIRMA — nunca dispara sozinho.
  */
 export function detectProofIntent(input: {
   mensagem_lead?: string | null;
-  last_agent_out?: string | null;
+  previous_out?: PreviousOut | null;
   agent_decision?: boolean | null;
 }): { intent: boolean; reason: ProofIntentReason } {
-  if (input.agent_decision === true) return { intent: true, reason: "agent_decision" };
   if (isProofRequest(input.mensagem_lead)) return { intent: true, reason: "explicit_request" };
-  if (isShortAffirmative(input.mensagem_lead) && agentOfferedProof(input.last_agent_out)) {
+
+  if (isShortAffirmative(input.mensagem_lead)) {
+    const prev = input.previous_out ?? null;
+    if (!prev) return { intent: false, reason: "affirmative_without_offer" };
+    if (!isDeliveredOutStatus(prev.status)) {
+      return { intent: false, reason: "previous_out_not_delivered" };
+    }
+    if (!agentOfferedProof(prev)) return { intent: false, reason: "affirmative_without_offer" };
     return { intent: true, reason: "affirmative_after_offer" };
+  }
+
+  if (input.agent_decision === true) {
+    return { intent: false, reason: "agent_decision_without_evidence" };
   }
   return { intent: false, reason: "no_intent" };
 }
 
-/** Lê a decisão estruturada do agente (tolerante a variações de campo). */
+/** Lê a decisão estruturada do agente. Parse estreito: só valores exatos. */
 export function readAgentProofDecision(parsed: unknown): boolean {
   const p = (parsed ?? {}) as Record<string, unknown>;
-  const flags = [p.enviar_prova_social, p.enviar_prova, p.send_proof, p.prova_social];
+  const flags = [p.enviar_prova_social, p.enviar_prova, p.send_proof];
   if (flags.some((f) => f === true)) return true;
-  const intents = [p.media_intent, p.midia_intencao, p.acao, p.action];
-  return intents.some((v) => typeof v === "string" && /prova_social|enviar_prova/i.test(v));
+  const intents = [p.media_intent, p.midia_intencao];
+  return intents.some((v) => typeof v === "string" && v.trim().toLowerCase() === "prova_social");
 }
+
 
 export function matchesTriggerKeywords(
   texto: string | null | undefined,
