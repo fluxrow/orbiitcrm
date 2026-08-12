@@ -31,6 +31,7 @@ import {
   enforceNoEmailCollection,
   EMAIL_GUARD_CORRECTIVE,
 } from "../_shared/no-email-collection.ts";
+import { currentSaoPauloTime, evaluateBusinessHours } from "../_shared/business-hours.ts";
 import {
   evaluateCommercialStage,
   enforceCommercialStage,
@@ -875,30 +876,22 @@ serve(async (req) => {
           .maybeSingle()
       : { data: null };
 
-    // Verificar horário de atendimento no fuso de São Paulo
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/Sao_Paulo",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-    const parts = formatter.formatToParts(new Date());
-    const hh = parts.find(p => p.type === "hour")!.value;
-    const mm = parts.find(p => p.type === "minute")!.value;
-    const currentTime = `${hh}:${mm}`;
-    console.log("[orbit-ai-agent] Horário São Paulo:", currentTime);
-    const startTime = (aiConfig.horario_inicio || "08:00").substring(0, 5);
-    const endTime = (aiConfig.horario_fim || "18:00").substring(0, 5);
-    const isWithinHours = currentTime >= startTime && currentTime <= endTime;
+    // Horário de atendimento (fuso São Paulo).
+    // responder_fora_horario=true => atendimento 24h: pula integralmente o fallback
+    // de horário e segue a geração normal. Opt-in estrito por tenant.
+    const currentTime = currentSaoPauloTime();
+    const hoursDecision = evaluateBusinessHours(aiConfig as any, currentTime);
+    console.log("[orbit-ai-agent] Horário São Paulo:", currentTime, "->", hoursDecision.reason);
 
-    if (!isWithinHours && !aiConfig.responder_fora_horario) {
-      if (aiConfig.mensagem_fora_horario) {
-        await sendWhatsAppMessage(supabase, telefone, aiConfig.mensagem_fora_horario, conversa_id, isDemo, empresaId);
+    if (hoursDecision.halt) {
+      if (hoursDecision.fallbackMessage) {
+        await sendWhatsAppMessage(supabase, telefone, hoursDecision.fallbackMessage, conversa_id, isDemo, empresaId);
       }
       return new Response(JSON.stringify({ ok: true, outside_hours: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
 
     // Buscar conversa com contexto
     const { data: conversa } = await supabase
