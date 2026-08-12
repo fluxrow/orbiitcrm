@@ -1636,9 +1636,10 @@ ${regrasBlock}`;
     // de mídia do texto para não deixar legenda órfã.
     if (!isDemo && empresaId) {
       try {
+        // OUT imediatamente anterior da MESMA empresa+conversa, com status real.
         const { data: lastOut } = await supabase
           .from("orbit_mensagens")
-          .select("mensagem")
+          .select("mensagem, status")
           .eq("conversa_id", conversa_id)
           .eq("empresa_id", empresaId)
           .eq("direcao", "OUT")
@@ -1651,7 +1652,9 @@ ${regrasBlock}`;
           conversa_id,
           prospect_id,
           mensagem_lead: mensagem,
-          last_agent_out: (lastOut as any)?.mensagem ?? null,
+          previous_out: lastOut
+            ? { mensagem: (lastOut as any).mensagem ?? null, status: (lastOut as any).status ?? null }
+            : null,
           agent_decision: readAgentProofDecision(parsed),
         });
 
@@ -1659,11 +1662,16 @@ ${regrasBlock}`;
           console.warn("[orbit-ai-agent] prova social não enfileirada:", proof.reason);
           resposta = stripUnfulfilledMediaPromise(resposta);
         }
+        if (!proof.intent) {
+          // Sem evidência determinística: nunca deixar promessa de mídia órfã.
+          resposta = stripUnfulfilledMediaPromise(resposta);
+        }
       } catch (e) {
         console.warn("[orbit-ai-agent] prova social falhou:", (e as Error).message);
         resposta = stripUnfulfilledMediaPromise(resposta);
       }
     }
+
 
 
     // ── Audio library: enviar clip pré-gravado se disponível ──
