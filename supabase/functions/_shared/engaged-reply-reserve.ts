@@ -192,6 +192,11 @@ export async function countEngagedReserveUsedTodayForConversa(
 /**
  * Idempotência por inbound: já existe (outro) item enviado/simulado respondendo
  * a MESMA inbound? Nesse caso a reserva é negada e nada é reenviado.
+ *
+ * Exceção auditável: itens marcados com `metadata.recovery_superseded_by` não
+ * contam como resposta real (ex.: fallback de fora do horário substituído por
+ * uma recuperação oficial). A marcação é feita explicitamente por operação de
+ * recuperação, nunca pelo caminho normal do agente.
  */
 export async function inboundAlreadyAnswered(
   supabase: any,
@@ -200,14 +205,19 @@ export async function inboundAlreadyAnswered(
 ): Promise<boolean> {
   const { data } = await supabase
     .from("orbit_whatsapp_outbox")
-    .select("id, status")
+    .select("id, status, metadata")
     .eq("empresa_id", item.empresa_id)
     .eq("source_type", "ai_reply")
     .in("status", ["sent", "simulated"])
     .ilike("metadata->>inbound_message_id", `${inboundId}%`)
-    .limit(5);
-  return ((data ?? []) as any[]).some((r) => String(r.id) !== String(item.id ?? ""));
+    .limit(10);
+  return ((data ?? []) as any[]).some(
+    (r) =>
+      String(r.id) !== String(item.id ?? "") &&
+      !(r.metadata ?? {})?.recovery_superseded_by,
+  );
 }
+
 
 /** Avaliação completa (lê a inbound real, a conversa e o cutoff do tenant). */
 export async function evaluateEngagedReserve(

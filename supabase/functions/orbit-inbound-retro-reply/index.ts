@@ -48,6 +48,17 @@ serve(async (req) => {
       authorized = diff === 0;
     }
 
+    // Operação server-side: Bearer igual à service role key (nunca exposta ao
+    // cliente; equivale a acesso administrativo já total ao banco).
+    if (!authorized) {
+      const bearer = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+      if (bearer && bearer.length === SERVICE_KEY.length) {
+        let diff = 0;
+        for (let i = 0; i < SERVICE_KEY.length; i++) diff |= SERVICE_KEY.charCodeAt(i) ^ bearer.charCodeAt(i);
+        authorized = diff === 0;
+      }
+    }
+
     if (!authorized) {
       const authHeader = req.headers.get("Authorization") ?? "";
       if (!authHeader.startsWith("Bearer ")) {
@@ -74,6 +85,19 @@ serve(async (req) => {
     const hours = Math.max(1, Math.min(48, Number(body?.hours ?? 6)));
     const maxItems = Math.max(1, Math.min(50, Number(body?.max ?? 10)));
     const dryRun = body?.dry_run === true;
+    // Modo alvo (recuperação cirúrgica): lista explícita de pares conversa/inbound.
+    const targets: Array<{ conversa_id: string; inbound_id: string }> = Array.isArray(body?.targets)
+      ? body.targets.filter((t: any) => typeof t?.conversa_id === "string" && typeof t?.inbound_id === "string")
+      : [];
+    // Textos OUT que NÃO contam como resposta real (ex.: fallback de fora do horário).
+    const ignoreOutTexts: string[] = Array.isArray(body?.ignore_out_texts)
+      ? body.ignore_out_texts.filter((t: any) => typeof t === "string" && t.trim().length > 10).slice(0, 5)
+      : [];
+    const recoveryTagRaw = typeof body?.recovery_tag === "string" ? body.recovery_tag.trim() : "";
+    const recoveryTag = /^[a-z0-9][a-z0-9_-]{2,39}$/i.test(recoveryTagRaw) ? recoveryTagRaw : null;
+    if (targets.length > 0 && !recoveryTag) {
+      return fail(ErrorCodes.VALIDATION_ERROR, "recovery_tag é obrigatório no modo targets", 400, undefined, req);
+    }
     if (!empresa_id) {
       return fail(ErrorCodes.VALIDATION_ERROR, "empresa_id é obrigatório", 400, undefined, req);
     }
@@ -96,65 +120,112 @@ serve(async (req) => {
       ? maxItems
       : Math.max(0, effective.limit - consumed);
 
-    // ── Candidatos: conversas ativas com última IN recente sem OUT posterior ──
-    const sinceIso = new Date(Date.now() - hours * 3600_000).toISOString();
-    const { data: convs, error: convErr } = await supabase
-      .from("orbit_conversas")
-      .select("id, prospect_id, human_talk, archived_at, quarantine_reason, status, ultima_mensagem_at")
+    // Corte de automação do tenant (nunca responder lead pré-corte).
+    const { data: aiCfg } = await supabase
+      .from("orbit_ai_config")
+      .select("auto_reply_new_leads_from")
       .eq("empresa_id", empresa_id)
-      .is("archived_at", null)
-      .is("quarantine_reason", null)
-      .neq("status", "fechada")
-      .gte("ultima_mensagem_at", sinceIso)
-      .order("ultima_mensagem_at", { ascending: true });
-    if (convErr) throw new Error(convErr.message);
+      .maybeSingle();
+    const cutoffMs = aiCfg?.auto_reply_new_leads_from ? Date.parse(aiCfg.auto_reply_new_leads_from) : null;
+
+    // ── Candidatos ──
+    const sinceIso = new Date(Date.now() - hours * 3600_000).toISOString();
+    let convs: any[] = [];
+    if (targets.length > 0) {
+      const { data, error } = await supabase
+        .from("orbit_conversas")
+        .select("id, prospect_id, human_talk, archived_at, quarantine_reason, status, created_at, ultima_mensagem_at")
+        .eq("empresa_id", empresa_id)
+        .in("id", targets.map((t) => t.conversa_id));
+      if (error) throw new Error(error.message);
+      convs = data ?? [];
+    } else {
+      const { data, error: convErr } = await supabase
+        .from("orbit_conversas")
+        .select("id, prospect_id, human_talk, archived_at, quarantine_reason, status, created_at, ultima_mensagem_at")
+        .eq("empresa_id", empresa_id)
+        .is("archived_at", null)
+        .is("quarantine_reason", null)
+        .neq("status", "fechada")
+        .gte("ultima_mensagem_at", sinceIso)
+        .order("ultima_mensagem_at", { ascending: true });
+      if (convErr) throw new Error(convErr.message);
+      convs = data ?? [];
+    }
 
     const candidates: Candidate[] = [];
     const skipped: Array<{ conversa_id: string; reason: string }> = [];
+    for (const t of targets) {
+      if (!convs.some((c) => c.id === t.conversa_id)) {
+        skipped.push({ conversa_id: t.conversa_id, reason: "conversa_missing_or_cross_tenant" });
+      }
+    }
 
-    for (const c of (convs ?? []) as any[]) {
+    for (const c of convs as any[]) {
+      const target = targets.find((t) => t.conversa_id === c.id) ?? null;
+      if (targets.length > 0 && !target) continue;
+      if (c.archived_at) { skipped.push({ conversa_id: c.id, reason: "archived" }); continue; }
+      if (c.quarantine_reason) { skipped.push({ conversa_id: c.id, reason: "quarantined" }); continue; }
+      if (c.status === "fechada") { skipped.push({ conversa_id: c.id, reason: "conversa_fechada" }); continue; }
       if (c.human_talk === true) { skipped.push({ conversa_id: c.id, reason: "human_talk" }); continue; }
       if (!c.prospect_id) { skipped.push({ conversa_id: c.id, reason: "no_prospect" }); continue; }
 
       const { data: p } = await supabase
         .from("orbit_prospects")
-        .select("id, empresa_id, deleted_at, origem_lead, telefone")
+        .select("id, empresa_id, deleted_at, origem_lead, telefone, optout_whatsapp, created_at")
         .eq("id", c.prospect_id)
         .maybeSingle();
       if (!p || p.empresa_id !== empresa_id) { skipped.push({ conversa_id: c.id, reason: "prospect_missing_or_cross_tenant" }); continue; }
       if (p.deleted_at) { skipped.push({ conversa_id: c.id, reason: "prospect_deleted" }); continue; }
+      if (p.optout_whatsapp === true) { skipped.push({ conversa_id: c.id, reason: "optout_whatsapp" }); continue; }
       if (p.origem_lead === "backfill_webhook") { skipped.push({ conversa_id: c.id, reason: "backfill_data" }); continue; }
+      if (cutoffMs != null) {
+        const bornMs = Date.parse(p.created_at ?? c.created_at);
+        if (!Number.isFinite(bornMs) || bornMs < cutoffMs) {
+          skipped.push({ conversa_id: c.id, reason: "pre_automation_cutoff" });
+          continue;
+        }
+      }
 
       const { data: lastIn } = await supabase
         .from("orbit_mensagens")
-        .select("id, timestamp, mensagem")
+        .select("id, timestamp, mensagem, empresa_id, direcao")
         .eq("conversa_id", c.id)
         .eq("direcao", "IN")
         .order("timestamp", { ascending: false })
         .limit(1)
         .maybeSingle();
       if (!lastIn) { skipped.push({ conversa_id: c.id, reason: "no_inbound" }); continue; }
-      if (new Date(lastIn.timestamp).getTime() < Date.parse(sinceIso)) {
+      if (lastIn.empresa_id !== empresa_id) { skipped.push({ conversa_id: c.id, reason: "inbound_cross_tenant" }); continue; }
+      if (target && lastIn.id !== target.inbound_id) {
+        skipped.push({ conversa_id: c.id, reason: "inbound_not_last_in" });
+        continue;
+      }
+      if (!target && new Date(lastIn.timestamp).getTime() < Date.parse(sinceIso)) {
         skipped.push({ conversa_id: c.id, reason: "inbound_too_old" });
         continue;
       }
 
-      const { count: outAfter } = await supabase
+      const { data: outsAfter } = await supabase
         .from("orbit_mensagens")
-        .select("id", { count: "exact", head: true })
+        .select("id, mensagem")
         .eq("conversa_id", c.id)
         .eq("direcao", "OUT")
         .gt("timestamp", lastIn.timestamp);
-      if ((outAfter ?? 0) > 0) { skipped.push({ conversa_id: c.id, reason: "already_answered" }); continue; }
+      const realOuts = (outsAfter ?? []).filter(
+        (o: any) => !ignoreOutTexts.some((t) => String(o.mensagem ?? "").trim() === t.trim()),
+      );
+      if (realOuts.length > 0) { skipped.push({ conversa_id: c.id, reason: "already_answered" }); continue; }
 
-      // Idempotência: já existe outbox ai_reply para esta última IN?
+      // Idempotência: já existe outbox ai_reply para esta IN (no mesmo escopo)?
+      const scopePrefix = recoveryTag ? `${recoveryTag}:` : "";
       const { count: already } = await supabase
         .from("orbit_whatsapp_outbox")
         .select("id", { count: "exact", head: true })
         .eq("empresa_id", empresa_id)
         .eq("conversa_id", c.id)
         .eq("source_type", "ai_reply")
-        .eq("idempotency_key", `|ai_reply|${empresa_id}|${c.prospect_id}|${lastIn.id}:text`);
+        .eq("idempotency_key", `${scopePrefix}|ai_reply|${empresa_id}|${c.prospect_id}|${lastIn.id}:text`);
       if ((already ?? 0) > 0) { skipped.push({ conversa_id: c.id, reason: "already_enqueued" }); continue; }
 
       candidates.push({
@@ -167,7 +238,12 @@ serve(async (req) => {
       });
     }
 
-    const cap = Math.min(candidates.length, maxItems, remaining);
+    // No modo targets (recuperação cirúrgica de respostas engajadas), o teto de
+    // prospecção diário NÃO se aplica: cada item está vinculado a um inbound real
+    // e o worker é a autoridade final (reserva engajada, teto por conversa, 2/min).
+    const cap = targets.length > 0
+      ? Math.min(candidates.length, maxItems)
+      : Math.min(candidates.length, maxItems, remaining);
     const selected = candidates.slice(0, cap);
 
     const results: Array<Record<string, unknown>> = [];
@@ -191,6 +267,7 @@ serve(async (req) => {
               prospect_id: cand.prospect_id,
               mensagem: cand.last_in_text,
               telefone: cand.telefone,
+              ...(recoveryTag ? { recovery_tag: recoveryTag } : {}),
             }),
           });
           const json = await resp.json().catch(() => ({}));

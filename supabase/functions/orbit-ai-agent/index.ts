@@ -788,9 +788,11 @@ serve(async (req) => {
   let conversaIdForCleanup: string | null = null;
   let supabaseForCleanup: any = null;
   try {
-    const { conversa_id, prospect_id, mensagem, telefone } = await req.json();
+    const { conversa_id, prospect_id, mensagem, telefone, recovery_tag } = await req.json();
     conversaIdForCleanup = conversa_id ?? null;
-    console.log("[orbit-ai-agent] Processando:", { conversa_id, prospect_id, mensagem: mensagem?.substring(0, 50) });
+    const recoveryTag = sanitizeRecoveryTag(recovery_tag);
+    if (conversa_id && recoveryTag) RECOVERY_TAGS.set(conversa_id, recoveryTag);
+    console.log("[orbit-ai-agent] Processando:", { conversa_id, prospect_id, recovery_tag: recoveryTag, mensagem: mensagem?.substring(0, 50) });
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -1744,6 +1746,8 @@ ${regrasBlock}`;
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  } finally {
+    if (conversaIdForCleanup) RECOVERY_TAGS.delete(conversaIdForCleanup);
   }
 });
 
@@ -1892,6 +1896,23 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
   }
 }
 
+/**
+ * Recovery tag (opt-in, apenas chamadas internas autenticadas).
+ *
+ * Quando uma resposta legítima foi substituída por um fallback (ex.: fallback de
+ * fora do horário) e precisa ser recuperada, o job oficial passa um
+ * `recovery_tag`. Ele entra como `idempotency_scope` do enqueue de ai_reply,
+ * garantindo que a nova resposta NÃO colida com a chave determinística já usada
+ * pelo fallback, e que reexecuções do mesmo recovery permaneçam idempotentes.
+ * Escopo por conversa; sempre limpo no finally do request.
+ */
+const RECOVERY_TAGS = new Map<string, string>();
+export function sanitizeRecoveryTag(tag: unknown): string | null {
+  if (typeof tag !== "string") return null;
+  const t = tag.trim();
+  return /^[a-z0-9][a-z0-9_-]{2,39}$/i.test(t) ? t : null;
+}
+
 async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw: string, conversa_id: string, isDemo: boolean, empresaId?: string | null, allowIntro = true) {
   const mensagem = finalizeAgentMessage(mensagemRaw, allowIntro);
   try {
@@ -1947,6 +1968,7 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw:
         })
         .select("id")
         .single();
+      const recoveryTag = RECOVERY_TAGS.get(conversa_id) ?? null;
       const routed = await enqueueOutbox(supabase, {
         empresa_id: empresaId,
         conversa_id,
@@ -1956,7 +1978,8 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw:
         source_id: inboundId,
         payload_type: "text",
         payload: { mensagem },
-        metadata: { orbit_message_id: novaTxt?.id ?? null },
+        idempotency_scope: recoveryTag,
+        metadata: { orbit_message_id: novaTxt?.id ?? null, ...(recoveryTag ? { recovery_tag: recoveryTag } : {}) },
       });
       if (!routed.enqueued && routed.reason === "duplicate" && novaTxt?.id) {
         await supabase.from("orbit_mensagens").delete().eq("id", novaTxt.id);
