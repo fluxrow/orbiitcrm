@@ -26,12 +26,12 @@ const KEYWORDS = [
 Deno.test("PM1: pedido explícito de prova é detectado", () => {
   assert(isProofRequest("tem alguma prova disso?"));
   assert(isProofRequest("me manda um depoimento de aluno"));
-  assert(isProofRequest("quais resultados vocês já tiveram"));
   assert(isProofRequest("tem print de faturamento?"));
 });
 
 Deno.test("PM2: conversa comum não dispara mídia", () => {
   assertFalse(isProofRequest("qual o valor da mentoria?"));
+  assertFalse(isProofRequest("funciona mesmo isso?"));
   assertFalse(isProofRequest("boa tarde, tudo bem?"));
   assertFalse(isProofRequest(""));
   assertFalse(isProofRequest(null));
@@ -90,10 +90,10 @@ Deno.test("PM7: pedido explícito dispara prova", () => {
   assertEquals(r.reason, "explicit_request");
 });
 
-Deno.test("PM8: 'sim' após oferta do agente dispara prova", () => {
+Deno.test("PM8: 'sim' após oferta ENTREGUE do agente dispara prova", () => {
   const r = detectProofIntent({
     mensagem_lead: "sim",
-    last_agent_out: "Você quer ver resultado de aluno aplicando isso?",
+    previous_out: { mensagem: "Quer que eu te mostre um depoimento de aluno?", status: "enviada" },
   });
   assert(r.intent);
   assertEquals(r.reason, "affirmative_after_offer");
@@ -102,15 +102,15 @@ Deno.test("PM8: 'sim' após oferta do agente dispara prova", () => {
 Deno.test("PM9: 'sim' sem contexto de oferta NÃO dispara", () => {
   assertFalse(detectProofIntent({ mensagem_lead: "sim" }).intent);
   assertFalse(
-    detectProofIntent({ mensagem_lead: "sim", last_agent_out: "Qual seu nome?" }).intent,
+    detectProofIntent({ mensagem_lead: "sim", previous_out: { mensagem: "Qual seu nome?", status: "enviada" } }).intent,
   );
 });
 
-Deno.test("PM10: decisão estruturada do agente dispara prova", () => {
+Deno.test("PM10: decisão estruturada do agente NÃO dispara sozinha", () => {
   assert(readAgentProofDecision({ enviar_prova_social: true }));
   assert(readAgentProofDecision({ media_intent: "prova_social" }));
   assertFalse(readAgentProofDecision({ intencao: "preco" }));
-  assert(detectProofIntent({ mensagem_lead: "beleza", agent_decision: true }).intent);
+  assertFalse(detectProofIntent({ mensagem_lead: "beleza", agent_decision: true }).intent);
 });
 
 Deno.test("PM11: seleção prefere vídeo de ~25s; fallback imagem", () => {
@@ -141,4 +141,92 @@ Deno.test("PM13: sem mídia no tenant, a promessa é removida do texto", () => {
     NO_MEDIA_FALLBACK,
   );
   assert(stripUnfulfilledMediaPromise("Qual seu maior desafio hoje?").includes("desafio"));
+});
+
+// ── Hotfix falso positivo (2026-08-12): gates determinísticos ──
+import { isDeliveredOutStatus, agentOfferedProof, isShortAffirmative } from "./proof-media.ts";
+
+const OPENING = "Olá! Sou o Fernando. Qual resultado você quer alcançar nos próximos meses?";
+const OFERTA = "Quer que eu te mande um vídeo de resultado de aluno?";
+const DELIVERED = { mensagem: OFERTA, status: "enviada" };
+
+Deno.test("HF1: opening + 'Opa' => zero mídia", () => {
+  const r = detectProofIntent({ mensagem_lead: "Opa", previous_out: { mensagem: OPENING, status: "enviada" } });
+  assertFalse(r.intent);
+});
+
+Deno.test("HF2: interjeições ambíguas nunca são aceite", () => {
+  for (const t of ["ok", "okay", "blz", "beleza", "top", "legal", "show", "s", "ss", "aham", "uhum", "opa"]) {
+    assertFalse(isShortAffirmative(t), `${t} não deve ser afirmativa`);
+    assertFalse(
+      detectProofIntent({ mensagem_lead: t, previous_out: DELIVERED }).intent,
+      `${t} não deve disparar mídia`,
+    );
+  }
+});
+
+Deno.test("HF3: pergunta de descoberta com 'resultado' não é oferta", () => {
+  assertFalse(agentOfferedProof({ mensagem: OPENING, status: "enviada" }));
+  assertFalse(agentOfferedProof({ mensagem: "Qual resultado você busca?", status: "enviada" }));
+  assertFalse(detectProofIntent({ mensagem_lead: "sim", previous_out: { mensagem: OPENING, status: "enviada" } }).intent);
+});
+
+Deno.test("HF4: OUT simulated/queued + 'sim' => zero mídia", () => {
+  for (const status of ["simulated", "queued", "pending", "processing", "cancelada", "canceled", "falhou", "failed"]) {
+    assertFalse(isDeliveredOutStatus(status));
+    const r = detectProofIntent({ mensagem_lead: "sim", previous_out: { mensagem: OFERTA, status } });
+    assertFalse(r.intent, `status ${status} não pode liberar mídia`);
+    assertEquals(r.reason, "previous_out_not_delivered");
+  }
+});
+
+Deno.test("HF5: nenhuma OUT anterior + 'sim' => zero mídia", () => {
+  const r = detectProofIntent({ mensagem_lead: "sim", previous_out: null });
+  assertFalse(r.intent);
+  assertEquals(r.reason, "affirmative_without_offer");
+});
+
+Deno.test("HF6: oferta entregue + 'sim' => uma mídia", () => {
+  for (const status of ["enviada", "sent", "entregue", "delivered", "lida", "read"]) {
+    assert(isDeliveredOutStatus(status));
+  }
+  const r = detectProofIntent({ mensagem_lead: "sim", previous_out: DELIVERED });
+  assert(r.intent);
+  assertEquals(r.reason, "affirmative_after_offer");
+});
+
+Deno.test("HF7: primeira inbound 'tem prova?' dispara mídia sem oferta anterior", () => {
+  for (const t of ["tem prova?", "manda um vídeo", "quero ver resultado de aluno", "tem print de resultado?"]) {
+    const r = detectProofIntent({ mensagem_lead: t, previous_out: null });
+    assert(r.intent, t);
+    assertEquals(r.reason, "explicit_request");
+  }
+});
+
+Deno.test("HF8: agent_decision nunca dispara sozinho", () => {
+  assertFalse(detectProofIntent({ mensagem_lead: "Opa", agent_decision: true, previous_out: { mensagem: OPENING, status: "enviada" } }).intent);
+  const r = detectProofIntent({ mensagem_lead: "bom dia", agent_decision: true, previous_out: null });
+  assertFalse(r.intent);
+  assertEquals(r.reason, "agent_decision_without_evidence");
+  assert(detectProofIntent({ mensagem_lead: "sim", agent_decision: true, previous_out: DELIVERED }).intent);
+});
+
+Deno.test("HF9: parse estreito de decisão do agente", () => {
+  assert(readAgentProofDecision({ enviar_prova_social: true }));
+  assert(readAgentProofDecision({ media_intent: "prova_social" }));
+  assertFalse(readAgentProofDecision({ media_intent: "talvez prova_social depois" }));
+  assertFalse(readAgentProofDecision({ acao: "prova_social" }));
+  assertFalse(readAgentProofDecision({ enviar_prova_social: "true" }));
+});
+
+Deno.test("HF10: metadata estruturada offered_proof_social vale como oferta", () => {
+  assert(agentOfferedProof({ mensagem: "texto neutro", status: "enviada", offered_proof_social: true }));
+  const r = detectProofIntent({ mensagem_lead: "sim", previous_out: { mensagem: "texto neutro", status: "enviada", offered_proof_social: true } });
+  assert(r.intent);
+});
+
+Deno.test("HF11: idempotência por inbound+media preservada (retry não duplica)", () => {
+  const scope = proofIdempotencyScope("inb-1", "media-1");
+  assertEquals(scope, proofIdempotencyScope("inb-1", "media-1"));
+  assert(scope !== proofIdempotencyScope("inb-2", "media-1"));
 });
