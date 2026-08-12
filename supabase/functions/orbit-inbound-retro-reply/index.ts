@@ -93,6 +93,12 @@ serve(async (req) => {
     const ignoreOutTexts: string[] = Array.isArray(body?.ignore_out_texts)
       ? body.ignore_out_texts.filter((t: any) => typeof t === "string" && t.trim().length > 10).slice(0, 5)
       : [];
+    // Hold de envio + cadência: cada item enfileirado recebe scheduled_for no
+    // futuro (hold_seconds) e, opcionalmente, espaçamento fixo entre itens
+    // (stagger_seconds). Isso permite validar antes de qualquer envio real e
+    // garantir cadência máxima de 1 mensagem por janela. Nunca relaxa gates.
+    const holdSeconds = Math.max(0, Math.min(86400, Number(body?.hold_seconds ?? 0)));
+    const staggerSeconds = Math.max(0, Math.min(3600, Number(body?.stagger_seconds ?? 0)));
     const recoveryTagRaw = typeof body?.recovery_tag === "string" ? body.recovery_tag.trim() : "";
     const recoveryTag = /^[a-z0-9][a-z0-9_-]{2,39}$/i.test(recoveryTagRaw) ? recoveryTagRaw : null;
     if (targets.length > 0 && !recoveryTag) {
@@ -208,12 +214,17 @@ serve(async (req) => {
 
       const { data: outsAfter } = await supabase
         .from("orbit_mensagens")
-        .select("id, mensagem")
+        .select("id, mensagem, status")
         .eq("conversa_id", c.id)
         .eq("direcao", "OUT")
         .gt("timestamp", lastIn.timestamp);
+      // Somente OUT REALMENTE entregues contam como resposta. Linhas visuais que
+      // nunca saíram (queued/cancelada/falhou) não bloqueiam a recuperação.
+      const NON_DELIVERED_OUT = new Set(["queued", "cancelada", "canceled", "falhou", "failed", "pendente"]);
       const realOuts = (outsAfter ?? []).filter(
-        (o: any) => !ignoreOutTexts.some((t) => String(o.mensagem ?? "").trim() === t.trim()),
+        (o: any) =>
+          !NON_DELIVERED_OUT.has(String(o.status ?? "").toLowerCase()) &&
+          !ignoreOutTexts.some((t) => String(o.mensagem ?? "").trim() === t.trim()),
       );
       if (realOuts.length > 0) { skipped.push({ conversa_id: c.id, reason: "already_answered" }); continue; }
 
@@ -252,8 +263,13 @@ serve(async (req) => {
       if (!secret) {
         return fail(ErrorCodes.INTERNAL_ERROR, "ORBIT_AI_AGENT_SECRET ausente", 503, undefined, req);
       }
-      for (const cand of selected) {
+      const holdBaseMs = Date.now() + holdSeconds * 1000;
+      for (let idx = 0; idx < selected.length; idx++) {
+        const cand = selected[idx];
         const t0 = Date.now();
+        const holdUntil = holdSeconds > 0 || staggerSeconds > 0
+          ? new Date(holdBaseMs + idx * staggerSeconds * 1000).toISOString()
+          : null;
         try {
           const resp = await fetch(`${SUPABASE_URL}/functions/v1/orbit-ai-agent`, {
             method: "POST",
@@ -268,6 +284,7 @@ serve(async (req) => {
               mensagem: cand.last_in_text,
               telefone: cand.telefone,
               ...(recoveryTag ? { recovery_tag: recoveryTag } : {}),
+              ...(holdUntil ? { outbox_hold_until: holdUntil } : {}),
             }),
           });
           const json = await resp.json().catch(() => ({}));
@@ -276,6 +293,7 @@ serve(async (req) => {
             last_in_id: cand.last_in_id,
             http_status: resp.status,
             agent_ok: json?.ok !== false,
+            hold_until: holdUntil,
             duration_ms: Date.now() - t0,
           });
         } catch (e) {
@@ -299,6 +317,8 @@ serve(async (req) => {
     return ok({
       empresa_id,
       dry_run: dryRun,
+      hold_seconds: holdSeconds,
+      stagger_seconds: staggerSeconds,
       warmup: { ...effective, consumed_today: consumed, remaining_slots: remaining },
       adapter_enabled: cfg?.outbox_adapter_enabled === true,
       eligible: candidates.length,
