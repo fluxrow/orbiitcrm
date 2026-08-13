@@ -1,79 +1,85 @@
-# Diagnóstico read-only — Fernando perguntando cidade (Bullink)
+# Diagnóstico: Fernando ofereceu "colocar em contato com um especialista" (Bullink)
 
-Tenant: Bullink `4f6b4a18-f3aa-4bfb-a13f-926e4a07ad18`. Corte de automação: `2026-08-11 19:34:16Z`.
+Somente leitura. Nenhuma mutação de dados, nenhum deploy, nenhuma chamada Z-API, nenhuma mensagem enviada.
 
-Confirmação: **zero mutações** (somente SELECT e leitura de arquivos), **zero chamadas externas** (nenhuma invocação do agente, nenhuma chamada Z-API, nenhum e-mail, nenhum deploy).
+## Causa raiz (confirmada)
 
-## 1) Ocorrências pós-cutoff
+A frase não veio de criatividade do modelo nem de handoff real. Ela é uma **regra hardcoded global** dentro do system prompt do agente, em `supabase/functions/orbit-ai-agent/index.ts` linha 1203:
 
-| Métrica | Valor |
-| --- | --- |
-| OUT com termos de cidade/localização (pós-cutoff) | 14 |
-| Idem, excluindo notificação interna "Novo Lead Qualificado" | **11** (perguntas reais ao lead) |
-| Mesmas OUT **antes** do cutoff | **0** |
-| Primeira ocorrência | 2026-08-11 21:24:08Z |
-| Pedido de e-mail ao lead (pós-cutoff) | 2 |
+```text
+REGRAS CRÍTICAS:
+5. Quando TODAS as informações relevantes (cadastro + qualificação obrigatória) estiverem preenchidas,
+   agradeça e informe: "Perfeito. Vou colocar um especialista para avançarmos de forma mais objetiva."
+```
 
-Timestamps das perguntas ao lead (UTC): 21:24:08, 22:29:03, 23:32:57 (11/08); 00:02:36, 00:18:21, 12:59:31, 16:46:29, 16:48:01 (12/08) e demais do mesmo padrão. As 3 restantes são a notificação interna ao responsável (contém "Cidade: ..." como campo de ficha, não é pergunta ao lead).
+Essa regra é montada para todos os tenants, depois do bloco de identidade, e entra em conflito direto com o `prompt_identidade` da Bullink, que diz literalmente "Nunca se apresente como assistente virtual... equipe, atendente ou intermediário. Nunca diga que vai encaminhar a conversa para o Fernando, pois você fala como Fernando."
 
-Paráfrases anonimizadas (sem PII):
-- "…nichos validados, idiomas de atuação, 3 meses de acompanhamento. **Qual cidade você mora?**"
-- "…você aplica usando a sua ferramenta. **Qual é a sua cidade?**"
-- "Perfeito. Agora só falta me dizer a sua **cidade e estado para finalizar o cadastro**."
-- "Anotado. Agora me diz, **você mora em qual cidade?**"
-- "Perfeito, então o caminho está mais claro. Pra finalizar: **qual é a sua cidade?**"
+Por que disparou exatamente naquele turno:
 
-## 2) Vínculo por ocorrência
+- `campos_qualificacao` da Bullink está vazio (`[]`), então não existe nenhum campo obrigatório pendente.
+- `ai_contexto` da conversa do Ronaldo tem `cadastro_completo: true` e `estado: qualificado`.
+- O lead disse "Ficou mais claro." — encerrando as dúvidas. Com zero campos faltantes e cadastro completo, a condição da regra 5 fica satisfeita e o modelo executou a instrução, apenas parafraseada ("quer que eu te coloque em contato com um especialista para seguir de forma mais objetiva?").
 
-Padrão idêntico em todas: o inbound imediatamente anterior é uma resposta de conteúdo/objetivo do lead ("Não tenho nada em mente", "Queria usar minha ferramenta", "Nenhum", objetivo do canal, e em dois casos o **e-mail recém-informado**). A pergunta de cidade vem grudada no fim da resposta, como fechamento de cadastro.
+Não foi handoff real: `handoff_sent_at` é `NULL`, `human_talk` é `false`, `commercial_notified` é `false` e nenhum registro em `orbit_handoffs` foi criado para esse turno. A separação de identidade existiu **só no texto**, o que é pior para a persona: prometeu um terceiro que nunca vai aparecer.
 
-- source/outbox: `ai_reply` com `status=sent` em 10 casos; 1 caso com último registro `manual/pending` na conversa.
-- versão do agente: `orbit-ai-agent` com Claude `claude-sonnet-4-5`, `modo_automatico=true`.
-- `commercial_v2` presente no `ai_contexto` dessas conversas: **não** (`false` em todos os casos listados; 29 conversas do tenant já têm o namespace, todas posteriores).
+Não há template, tool schema ou notify-seller envolvido. `notifyCommercialHumanDetected` só roda em sinal comercial real (`falar_humano`, `venda_fechada`, `agendar_call`), e nenhum foi detectado nesse turno.
 
-## 3) Onde a cidade aparece (e onde não aparece)
+## Por que `commercial_v2.product_explained` continuava `false`
 
-Não existe instrução de cidade no escopo oficial:
-- `prompt_regras`: 0 menções a cidade/localização/estado/UF.
-- `prompt_roteiro`: 0 menções.
-- `prompt_identidade`: 0 menções reais (o único match é a expressão "de onde" fora desse contexto).
-- Base de conhecimento ativa: 0 chunks mencionando cidade/localização.
-- Onboarding/materiais do tenant: 0 menções.
-- Templates de mensagem do tenant: nenhum com cidade.
-- `campos_qualificacao` do tenant: **`[]`** (vazio).
+`updateCommercialState` (em `_shared/commercial-signals.ts`, linha 538) marca `product_explained` como verdadeiro apenas se:
 
-A cidade aparece só em código genérico do CRM:
-- `orbit-ai-agent/index.ts:1001` — fallback **hardcoded**: quando `campos_qualificacao` está vazio, os campos de cadastro passam a ser `["nome_razao", "email_principal", "cidade"]`.
-- `:1005-1008` — `camposFaltantes` = esses campos ainda vazios no prospect; `cadastro_completo=false` enquanto faltarem.
-- `:423-433` — mapeamento `cidade → city` em `missingFields`, injetado no prompt como `"city": true`.
-- `:1146` — regra crítica nº 2: "Solicite APENAS os campos marcados como 'true' em missingFields".
-- `:1149` — regra nº 5: só encerra a coleta "quando todas as informações (cadastro + qualificação) estiverem preenchidas".
-- `:1195` — turno do usuário injeta literalmente "Campos faltantes: email_principal, cidade".
-- `:232-239` — validador de cidade; `:1166` — `dados_extraidos.cidade` no schema JSON; `:1933` e `send-vendedor-notification` — cidade na notificação interna.
+1. a resposta do agente citou preço, ou
+2. o sinal `informational_question` foi detectado **na mensagem do lead**.
 
-## 4) Campo canônico genérico + regra de "cadastro completo"
+As perguntas do Ronaldo foram "Gostaria de entender melhor", "O que preciso pra começar a trabalhar a colocar em prática?", "Qual o mínimo de especificações do computador?". Nenhuma casa com os padrões de `RE_INFORMATIONAL` (que esperam "como funciona", "o que inclui", "quantas aulas", "tem suporte" etc.), e o Fernando nunca citou valor. Resultado: `product_explained: false`, `product_focus: null`, apesar de cinco turnos consecutivos explicando a Mentoria.
 
-Sim, é exatamente isso. `orbit_prospects.cidade`/`estado` são colunas canônicas do CRM (363 prospects Bullink, apenas 9 com cidade). Como o Bullink não definiu `campos_qualificacao`, o agente cai no fallback genérico e passa a tratar `cidade` (e `email_principal`) como pendência obrigatória de cadastro, com instrução explícita para pedir os campos faltantes e só "finalizar" quando completos. Daí a frase literal "para finalizar o cadastro".
+Consequência prática: o estado comercial não reconhece que a oferta já foi explicada, então nenhuma permissão de avanço se abre — e o modelo, sem caminho comercial liberado e com a regra 5 satisfeita, cai justamente no "especialista".
 
-## 5) Impacto comercial da cidade no Bullink: nenhum
+## Outras ocorrências Bullink pós-cutoff
 
-Produto (Mentoria F.A. / Curso Gravado), preço (R$ 6.500 PIX ou 12x R$ 642,44; R$ 997), forma de pagamento, link oficial InfinitePay, qualificação, entrega (100% online), agendamento (timezone fixo `America/Sao_Paulo`) e roteamento/handoff (Fernando/Patrícia) não dependem de cidade ou estado em nenhuma regra, prompt ou fluxo do tenant. **Classificação: fora de escopo** — pergunta puramente cadastral herdada do CRM, que consome turnos e desvia da condução consultiva.
+Busca em `orbit_mensagens` OUT do tenant desde 2026-08-01, excluindo menções legítimas à "IA especialista em algoritmo do YouTube" (que é entregável da Mentoria e está correta):
 
-## 6) commercial_v2 não causou nem expôs isso
+| Quando (UTC) | Conversa | Texto |
+| --- | --- | --- |
+| 2026-08-13 14:47:59 | b4996220 (Ronaldo) | "quer que eu te coloque em contato com um especialista para seguir de forma mais objetiva?" |
+| 2026-08-12 17:12:37 | 560a2896 (Sandro) | "Então vou colocar um especialista para seguir de forma mais objetiva. Ele entra em contato com você em breve." |
+| 2026-08-12 16:28:02 | 2ef9cf68 | "Perfeito. Vou colocar um especialista para seguir de forma mais objetiva." |
+| 2026-08-12 01:52:36 | dd9f0fa2 | "Perfeito. Vou colocar um especialista para seguir de forma mais objetiva." |
 
-Primeira ocorrência 11/08 21:24Z, todas as ocorrências listadas em conversas **sem** `commercial_v2` no contexto. O módulo de sinais comerciais não trata cidade em nenhum ponto. O comportamento é anterior e independente; o que o antecedeu foi a entrada do tenant em automação (cutoff 11/08 19:34Z), quando o agente começou a responder leads novos com o fallback genérico ativo.
+Quatro ocorrências, todas parafraseando a mesma regra hardcoded. Nenhuma menção indevida a "consultor", "nossa equipe" ou "vou encaminhar" fora desse padrão.
 
-## 7) Causa raiz, alcance, risco
+## Guard mínimo proposto (a implementar depois, se aprovado)
 
-- **Causa raiz**: `campos_qualificacao = []` no Bullink faz `orbit-ai-agent` aplicar o fallback hardcoded `["nome_razao","email_principal","cidade"]`, que entra no prompt como `missingFields.city = true` + "Campos faltantes: … cidade" + regra "solicite apenas os campos faltantes" e "só encerre quando o cadastro estiver completo". O LLM cumpre a instrução e pergunta cidade (e e-mail).
-- **Alcance**: qualquer tenant sem `campos_qualificacao` definido — no Bullink, todo lead pós-cutoff atendido pelo agente. 11 perguntas de cidade e 2 de e-mail já enviadas.
-- **Risco**: conflito direto com a diretriz de não coletar e-mail, perda de turnos em pergunta irrelevante, atrito na condução comercial e risco de o lead perceber script de cadastro em vez de conversa com o Fernando. Nenhum risco de dado sensível.
+Novo módulo `_shared/no-identity-split.ts`, ativado por flag tenant-scoped em `orbit_ai_config` (nada muda para outros tenants sem a flag):
 
-## Correção mínima recomendada (tenant-scoped, não implementada)
+1. **Neutralizar a regra 5 quando a flag estiver ligada.** Em vez da frase do "especialista", a instrução passa a ser: com tudo preenchido, avançar você mesmo (aprofundar, apresentar condições ou propor o próximo passo direto), porque você é o dono da oferta.
+2. **Bloco de prompt de identidade única.** Proibição explícita de prometer terceiro: especialista, consultor, equipe, atendente, responsável, colega, "alguém entra em contato", "vou te encaminhar", "vou passar para".
+3. **Detector determinístico por cláusula** na saída: promessa de terceiro + verbo de transferência. Deve ignorar deliberadamente:
+   - "IA especialista em algoritmo do YouTube" e variantes (entregável real da Mentoria);
+   - "especialista" como adjetivo do próprio Fernando ("sou especialista em...").
+4. **Exceção de handoff humano genuíno.** O guard não bloqueia quando o lead pede pessoa/humano/atendente/ligação com alguém (`intencao = falar_humano`), quando o handoff configurado da Patrícia é acionado por venda ou agendamento de call, ou quando `human_talk` já está ativo. Nesses casos a transferência é real e a frase é honesta.
+5. **Sanitização + retry corretivo**, no mesmo padrão dos guards já existentes (`no-location-collection`, `primary-offer-guard`): remove só a cláusula ofensora, tenta um retry com instrução corretiva e, se necessário, usa fallback que mantém a condução com o Fernando — nunca deixa a mensagem vazia e nunca inventa preço ou link.
+6. **Correção do `product_explained`**, para o estado comercial refletir a realidade: marcar como explicado quando o próprio agente descreveu a oferta (entregáveis, duração, formato), não apenas quando o lead usa uma das frases catalogadas.
 
-1. Definir explicitamente o conjunto de campos de cadastro do Bullink como vazio/irrelevante — de preferência via configuração do tenant (`campos_qualificacao` com as perguntas realmente oficiais, ou campos de cadastro explicitamente vazios), para que `camposFaltantes` não inclua `cidade` nem `email_principal`.
-2. Tornar o fallback hardcoded opt-in em vez de padrão: quando o tenant não define campos, não injetar `missingFields` de cadastro nem a instrução de "finalizar cadastro" (mudança global de comportamento padrão, sem efeito em tenants que já configuram campos).
-3. Reforço barato e imediato no `prompt_regras` do Bullink: proibir perguntar cidade, estado, localização e e-mail, já que não influenciam produto, preço, pagamento, entrega, agendamento ou roteamento.
-4. Sem reprocessamento, sem reenvio e sem mexer nas 11 mensagens já enviadas.
+## Resposta correta para aquele turno
 
-Recomendo aplicar (1) + (3) como correção mínima no Bullink e tratar (2) como hardening global em entrega separada.
+Depois de "Ficou mais claro.", com a Mentoria já explicada e nenhuma objeção de preço, a resposta coerente com a persona seria o Fernando conduzindo ele mesmo, por exemplo:
+
+> "Boa, Ronaldo. Então o próximo passo é você entrar na Mentoria e começar com a estrutura pronta. Quer que eu te passe o valor e as condições?"
+
+Isso respeita o formato WhatsApp (3 frases, 350 caracteres, uma pergunta), mantém identidade única, não cita preço sem permissão e não envia PIX nem link.
+
+## Smokes previstos (dry_run, stub, sem Z-API)
+
+- Caso Ronaldo exato, cadastro completo + `campos_qualificacao` vazio, sem objeção: saída não pode conter promessa de terceiro.
+- "Perfeito. Vou colocar um especialista..." como candidata do modelo: sanitizada e substituída por condução do Fernando.
+- Lead diz "quero falar com uma pessoa": handoff permitido, guard não interfere.
+- Venda fechada / agendamento de call com handoff da Patrícia: frase de transferência permitida.
+- Resposta citando "IA especialista em algoritmo do YouTube": preservada byte-for-byte.
+- "sou especialista em Canal Dark" dito pelo próprio Fernando: preservado.
+- Regressão: tenant sem a flag mantém a regra 5 e a saída legada inalteradas.
+- Estado: agente explica a oferta e `product_explained` passa a `true` sem depender de frase catalogada do lead.
+
+## Confirmação
+
+Zero mutações: apenas `SELECT` no banco e leitura de arquivos. Zero chamadas Z-API, zero mensagens enviadas, zero deploy, zero reprocessamento.
