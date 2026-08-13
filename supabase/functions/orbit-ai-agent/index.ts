@@ -1152,6 +1152,22 @@ serve(async (req) => {
       ? buildCommercialV2PromptBlock(commercialState, commercialPerms, commercialExtracted)
       : "";
 
+    // ── TRAVA DE OFERTA PRINCIPAL (tenant-scoped por orbit_ai_config.primary_offer_lock) ──
+    // Pergunta genérica de preço não pode virar cardápio com a oferta secundária.
+    const primaryOfferCfg = readPrimaryOfferLockConfig(aiConfig as Record<string, unknown>);
+    const primaryOfferPerm = primaryOfferCfg
+      ? computePrimaryOfferPermission({
+          cfg: primaryOfferCfg,
+          inbound: mensagemAgregada,
+          tags: Array.isArray((prospect as any)?.tags) ? ((prospect as any).tags as string[]) : [],
+          stateFocus: commercialState.product_focus,
+          stateBudgetObjection: commercialState.budget_objection || commercialExtracted.signals?.has?.("budget_objection") === true,
+        })
+      : null;
+    const primaryOfferBlock = primaryOfferCfg && primaryOfferPerm
+      ? buildPrimaryOfferPromptBlock(primaryOfferCfg, primaryOfferPerm)
+      : "";
+
     // Bloco tenant-scoped: reforça no prompt a proibição de coleta de localização/e-mail.
     const noCollectRules: string[] = [];
     if ((aiConfig as any).block_location_collection === true) {
