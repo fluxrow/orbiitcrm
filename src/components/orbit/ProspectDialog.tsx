@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useEmpresaVendedores } from "@/hooks/useEmpresaVendedores";
 import { useTenant } from "@/contexts/TenantContext";
 import { MeetingSchedulerDialog } from "./MeetingSchedulerDialog";
+import { ProspectTagsManager } from "./ProspectTagsManager";
 import { CalendarClock, Trash2 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -466,6 +467,8 @@ export function ProspectDialog({ open, onOpenChange, prospect }: ProspectDialogP
                 </FormItem>
               )}
             />
+
+            <ProspectTagsManager prospectId={prospect?.id} />
 
             <div className="flex justify-between gap-2 pt-4">
               {isEditing && prospect ? (

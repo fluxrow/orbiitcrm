@@ -2,7 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, fromPlanCheck, ErrorCodes } from "../_shared/responses.ts";
 import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
-import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
+import { sendViaZapiUnified } from "../_shared/zapi-send.ts";
+import { zapiInstanceBlockReason, fetchZapiConnectionState } from "../_shared/zapi-connection.ts";
 import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 
@@ -241,59 +242,43 @@ serve(async (req) => {
           payload_summary: { canal: canal || "whatsapp", tipo_midia: tipo_midia || "text", telefone },
         });
       } else if (zapiConfig?.instance_id && zapiConfig?.token && telefone) {
-        try {
-          const zapiBase = `https://api.z-api.io/instances/${zapiConfig.instance_id}/token/${zapiConfig.token}`;
-          const zapiHeaders = {
-            "Content-Type": "application/json",
-            "Client-Token": zapiConfig.client_token || "",
-          };
-
-          let zapiUrl: string;
-          let zapiBody: any;
-
-          // Gerar signed URL para mídia do bucket privado orbit-media (TTL 1h)
-          const mediaUrl = mediaSource
-            ? await signOrbitMediaUrl(supabase, mediaSource, 3600)
-            : null;
-
-          // Choose endpoint based on media type
-          if (tipo_midia === "image" && mediaUrl) {
-            zapiUrl = `${zapiBase}/send-image`;
-            zapiBody = { phone: telefone, image: mediaUrl, caption: mensagem || "" };
-          } else if (tipo_midia === "audio" && mediaUrl) {
-            zapiUrl = `${zapiBase}/send-audio`;
-            zapiBody = { phone: telefone, audio: mediaUrl };
-          } else if (tipo_midia === "document" && mediaUrl) {
-            zapiUrl = `${zapiBase}/send-document`;
-            const fileName = (mediaUrl as string).split("?")[0].split("/").pop() || "documento";
-            zapiBody = { phone: telefone, document: mediaUrl, fileName };
-          } else if (tipo_midia === "video" && mediaUrl) {
-            zapiUrl = `${zapiBase}/send-video`;
-            zapiBody = { phone: telefone, video: mediaUrl, caption: mensagem || "" };
-          } else {
-            // Default: text
-            zapiUrl = `${zapiBase}/send-text`;
-            zapiBody = { phone: telefone, message: mensagem };
-          }
-
-          console.log("[orbit-send-message] Enviando via Z-API para:", telefone, "tipo:", tipo_midia || "text");
-
-          const response = await fetch(zapiUrl, {
-            method: "POST",
-            headers: zapiHeaders,
-            body: JSON.stringify(zapiBody),
-          });
-
-          const result = await response.json();
-          console.log("[orbit-send-message] Z-API response:", JSON.stringify({ ok: response.ok, status: response.status, messageId: result.messageId }));
-
-          messageStatus = response.ok ? "enviada" : "falhou";
-          providerId = result.messageId;
-          if (!response.ok) failReason = `Z-API ${response.status}: ${JSON.stringify(result)}`;
-        } catch (error) {
-          console.error("[orbit-send-message] Erro Z-API:", error);
+        // GATE de conexão (fail-closed): instância offline/bloqueada não envia.
+        const connState = await fetchZapiConnectionState(supabase, profile?.empresa_id ?? "");
+        const connBlock = zapiInstanceBlockReason(connState ?? zapiConfig as any);
+        if (connBlock) {
           messageStatus = "falhou";
-          failReason = `Z-API exception: ${error instanceof Error ? error.message : String(error)}`;
+          failReason = connBlock;
+          console.warn("[orbit-send-message] Instância indisponível:", connBlock);
+          await auditZapiSendAttempt(supabase, {
+            empresa_id: conversaEmpresaId || profile?.empresa_id || null,
+            function_name: "orbit-send-message",
+            action: "conversa_send",
+            blocked: true,
+            block_reason: connBlock,
+            zapi_config_id: zapiConfig?.id ?? null,
+            conversa_id,
+            created_by: userId,
+            payload_summary: { canal: canal || "whatsapp", tipo_midia: tipo_midia || "text", telefone },
+          });
+        } else {
+          // Handler ÚNICO de envio: mídia isolada do texto (nunca degrada para
+          // send-text quando a mídia não resolve).
+          const sendResult = await sendViaZapiUnified(supabase, zapiConfig as any, {
+            phone: telefone,
+            kind: (tipo_midia || "text") as any,
+            message: mensagem ?? "",
+            mediaSource,
+            payload: { file_name: (body as any)?.file_name ?? null },
+            functionName: "orbit-send-message",
+          });
+          messageStatus = sendResult.ok ? "enviada" : "falhou";
+          providerId = sendResult.providerId ?? null;
+          if (!sendResult.ok) failReason = sendResult.error ?? "zapi_send_failed";
+          console.log("[orbit-send-message] Resultado Z-API:", JSON.stringify({
+            ok: sendResult.ok,
+            kind: sendResult.effectiveKind,
+            status: sendResult.status ?? null,
+          }));
         }
       } else {
         messageStatus = "falhou";

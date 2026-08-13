@@ -3,6 +3,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
 import {
+  classifyZapiFailure,
+  markZapiInstanceOffline,
+  markZapiInstanceOnline,
+  markOfflineAlertSent,
+  sanitizeZapiReason,
+} from "../_shared/zapi-connection.ts";
+import { sendOpsOfflineAlert } from "../_shared/zapi-ops-alert.ts";
+import {
   extractInboundContent,
   extractInboundPhone,
   inboundEligibility,
@@ -153,7 +161,7 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       "NotificationCallback",
     ]);
 
-    if (payloadType && STATUS_ONLY_CALLBACKS.has(payloadType) && eventType !== "message-status" && eventType !== "presence" && eventType !== "on-connect" && eventType !== "on-disconnect") {
+    if (payloadType && STATUS_ONLY_CALLBACKS.has(payloadType) && eventType !== "message-status" && eventType !== "presence" && eventType !== "on-connect" && eventType !== "on-disconnect" && eventType !== "phone-disconnected") {
       console.log(`[orbit-webhook] Ignorando callback de status: ${payloadType}`);
       const { data: logRow } = await supabase
         .from("orbit_webhook_logs")
@@ -186,19 +194,60 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
     logId = logRow?.id || null;
 
     switch (eventType) {
-      case "on-connect":
-        console.log("[orbit-webhook] Instância conectada");
+      case "on-connect": {
+        // Reconexão confirmada: libera o estado offline (a fila retoma sozinha).
+        const online = await markZapiInstanceOnline(supabase, {
+          instance_id: payloadInstanceId,
+          source: "webhook",
+        });
+        console.log("[orbit-webhook] Instância conectada", JSON.stringify({ recovered: online.recovered }));
         if (logId) await supabase.from("orbit_webhook_logs").update({ status: "processed" }).eq("id", logId);
-        return new Response(JSON.stringify({ ok: true, event: "on-connect" }), {
+        return new Response(JSON.stringify({ ok: true, event: "on-connect", recovered: online.recovered }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
+      }
 
       case "on-disconnect":
-        console.log("[orbit-webhook] Instância desconectada");
+      case "phone-disconnected": {
+        // FAIL-CLOSED: marca offline, pausa a fila do tenant e alerta a operação
+        // imediatamente (com cooldown para evitar tempestade).
+        const rawReason =
+          payload?.error || payload?.reason || payload?.message || payload?.disconnected || eventType;
+        const cls = classifyZapiFailure(null, rawReason);
+        const marked = await markZapiInstanceOffline(supabase, {
+          instance_id: payloadInstanceId,
+          reason: `webhook ${eventType}: ${sanitizeZapiReason(rawReason, 200)}`,
+          source: "webhook",
+          event_type: eventType === "phone-disconnected" ? "phone-disconnected" : cls.event_type,
+          blockSeconds: cls.blockSeconds,
+        });
+
+        let alerted = false;
+        if (marked.shouldAlert) {
+          const alert = await sendOpsOfflineAlert(supabase, {
+            empresa_id: marked.empresa_id,
+            instance_id: marked.instance_id ?? payloadInstanceId,
+            reason: sanitizeZapiReason(rawReason, 200),
+            event_type: eventType,
+          });
+          alerted = alert.sent;
+          await markOfflineAlertSent(supabase, {
+            config_id: marked.config_id,
+            event_id: marked.event_id,
+            error: alert.sent ? null : alert.error ?? "alert_failed",
+          });
+        }
+
+        console.warn("[orbit-webhook] Instância desconectada", JSON.stringify({
+          instance_id: payloadInstanceId,
+          paused_outbox: marked.paused_outbox,
+          alerted,
+        }));
         if (logId) await supabase.from("orbit_webhook_logs").update({ status: "processed" }).eq("id", logId);
-        return new Response(JSON.stringify({ ok: true, event: "on-disconnect" }), {
+        return new Response(JSON.stringify({ ok: true, event: eventType, paused_outbox: marked.paused_outbox, alerted }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
+      }
 
       case "presence":
         console.log("[orbit-webhook] Atualização de presença:", payload.status);

@@ -8,6 +8,9 @@ export type ZapiConnectionStatus = {
   last_disconnect_at: string | null;
   last_receive_at: string | null;
   disconnect_reason: string | null;
+  instance_offline?: boolean | null;
+  send_block_until?: string | null;
+  last_status_check_at?: string | null;
 };
 
 export function useZapiConnectionStatus() {

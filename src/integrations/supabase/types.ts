@@ -3523,6 +3523,55 @@ export type Database = {
           },
         ]
       }
+      orbit_prospect_tags: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          empresa_id: string
+          id: string
+          prospect_id: string
+          tag_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          empresa_id: string
+          id?: string
+          prospect_id: string
+          tag_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          empresa_id?: string
+          id?: string
+          prospect_id?: string
+          tag_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_prospect_tags_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_prospect_tags_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_prospects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_prospect_tags_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tags"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_prospects: {
         Row: {
           cidade: string | null
@@ -3770,6 +3819,44 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      orbit_tags: {
+        Row: {
+          cor: string
+          created_at: string
+          created_by: string | null
+          empresa_id: string
+          id: string
+          nome: string
+          updated_at: string
+        }
+        Insert: {
+          cor?: string
+          created_at?: string
+          created_by?: string | null
+          empresa_id: string
+          id?: string
+          nome: string
+          updated_at?: string
+        }
+        Update: {
+          cor?: string
+          created_at?: string
+          created_by?: string | null
+          empresa_id?: string
+          id?: string
+          nome?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_tags_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       orbit_tasks: {
         Row: {
@@ -4181,9 +4268,16 @@ export type Database = {
           envio_real_liberado: boolean
           id: string
           instance_id: string | null
+          instance_offline: boolean
+          last_online_at: string | null
+          last_status_check_at: string | null
           nome_instancia: string | null
           notificar_enviadas_por_mim: boolean | null
           numero_origem: string | null
+          offline_alert_sent_at: string | null
+          offline_reason: string | null
+          offline_since: string | null
+          send_block_until: string | null
           token: string | null
           token_secret_id: string | null
           updated_at: string | null
@@ -4199,9 +4293,16 @@ export type Database = {
           envio_real_liberado?: boolean
           id?: string
           instance_id?: string | null
+          instance_offline?: boolean
+          last_online_at?: string | null
+          last_status_check_at?: string | null
           nome_instancia?: string | null
           notificar_enviadas_por_mim?: boolean | null
           numero_origem?: string | null
+          offline_alert_sent_at?: string | null
+          offline_reason?: string | null
+          offline_since?: string | null
+          send_block_until?: string | null
           token?: string | null
           token_secret_id?: string | null
           updated_at?: string | null
@@ -4217,9 +4318,16 @@ export type Database = {
           envio_real_liberado?: boolean
           id?: string
           instance_id?: string | null
+          instance_offline?: boolean
+          last_online_at?: string | null
+          last_status_check_at?: string | null
           nome_instancia?: string | null
           notificar_enviadas_por_mim?: boolean | null
           numero_origem?: string | null
+          offline_alert_sent_at?: string | null
+          offline_reason?: string | null
+          offline_since?: string | null
+          send_block_until?: string | null
           token?: string | null
           token_secret_id?: string | null
           updated_at?: string | null
@@ -4290,6 +4398,66 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_zapi_status_events: {
+        Row: {
+          alert_attempts: number
+          alert_last_error: string | null
+          alert_sent: boolean
+          created_at: string
+          empresa_id: string | null
+          event_type: string
+          id: string
+          instance_id: string | null
+          reason: string | null
+          source: string
+          status_code: number | null
+          zapi_config_id: string | null
+        }
+        Insert: {
+          alert_attempts?: number
+          alert_last_error?: string | null
+          alert_sent?: boolean
+          created_at?: string
+          empresa_id?: string | null
+          event_type: string
+          id?: string
+          instance_id?: string | null
+          reason?: string | null
+          source?: string
+          status_code?: number | null
+          zapi_config_id?: string | null
+        }
+        Update: {
+          alert_attempts?: number
+          alert_last_error?: string | null
+          alert_sent?: boolean
+          created_at?: string
+          empresa_id?: string | null
+          event_type?: string
+          id?: string
+          instance_id?: string | null
+          reason?: string | null
+          source?: string
+          status_code?: number | null
+          zapi_config_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_zapi_status_events_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_zapi_status_events_zapi_config_id_fkey"
+            columns: ["zapi_config_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_zapi_config"
             referencedColumns: ["id"]
           },
         ]
@@ -5479,8 +5647,11 @@ export type Database = {
         Returns: {
           disconnect_reason: string
           instance_id: string
+          instance_offline: boolean
           last_disconnect_at: string
           last_receive_at: string
+          last_status_check_at: string
+          send_block_until: string
           status: string
         }[]
       }

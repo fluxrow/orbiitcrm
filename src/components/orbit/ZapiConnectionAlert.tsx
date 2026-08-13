@@ -27,6 +27,11 @@ export function ZapiConnectionAlert({ compact = false }: Props) {
         <span className="text-sm">
           A instância Z-API perdeu a sessão{since ? ` ${since}` : ""}. Nenhuma mensagem nova está sendo recebida nem respondida pelo agente até a reconexão.
           {data.disconnect_reason ? <span className="block opacity-80 mt-1">Motivo: {data.disconnect_reason}</span> : null}
+          {data.send_block_until && new Date(data.send_block_until) > new Date() ? (
+            <span className="block opacity-80 mt-1">
+              Envios bloqueados até {formatDistanceToNow(new Date(data.send_block_until), { addSuffix: true, locale: ptBR })}.
+            </span>
+          ) : null}
         </span>
         {!compact && (
           <Button
