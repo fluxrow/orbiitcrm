@@ -908,6 +908,7 @@ export type Database = {
           modelo_ia: string | null
           modo_automatico: boolean | null
           notification_recipient_whatsapp: string | null
+          primary_offer_lock: Json | null
           prompt_identidade: string | null
           prompt_regras: string | null
           prompt_roteiro: string | null
@@ -951,6 +952,7 @@ export type Database = {
           modelo_ia?: string | null
           modo_automatico?: boolean | null
           notification_recipient_whatsapp?: string | null
+          primary_offer_lock?: Json | null
           prompt_identidade?: string | null
           prompt_regras?: string | null
           prompt_roteiro?: string | null
@@ -994,6 +996,7 @@ export type Database = {
           modelo_ia?: string | null
           modo_automatico?: boolean | null
           notification_recipient_whatsapp?: string | null
+          primary_offer_lock?: Json | null
           prompt_identidade?: string | null
           prompt_regras?: string | null
           prompt_roteiro?: string | null
