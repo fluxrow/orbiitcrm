@@ -1689,6 +1689,9 @@ ${regrasBlock}`;
               String(parsed.mensagem || resposta || ""),
               commercialPerms,
               new Date().toISOString(),
+              // Tenant com identidade única: a explicação da oferta na própria
+              // resposta do agente já marca product_explained (idempotente).
+              { detectExplanationInReply: blockIdentitySplit },
             ),
           }
         : {}),
