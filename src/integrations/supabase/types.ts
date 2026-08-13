@@ -889,6 +889,7 @@ export type Database = {
           advisor_thresholds: Json
           auto_reply_new_leads_from: string | null
           block_email_collection: boolean
+          block_identity_split: boolean
           block_location_collection: boolean
           campos_cadastro_obrigatorios: Json | null
           campos_qualificacao: Json
@@ -933,6 +934,7 @@ export type Database = {
           advisor_thresholds?: Json
           auto_reply_new_leads_from?: string | null
           block_email_collection?: boolean
+          block_identity_split?: boolean
           block_location_collection?: boolean
           campos_cadastro_obrigatorios?: Json | null
           campos_qualificacao?: Json
@@ -977,6 +979,7 @@ export type Database = {
           advisor_thresholds?: Json
           auto_reply_new_leads_from?: string | null
           block_email_collection?: boolean
+          block_identity_split?: boolean
           block_location_collection?: boolean
           campos_cadastro_obrigatorios?: Json | null
           campos_qualificacao?: Json
