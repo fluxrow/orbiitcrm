@@ -1555,6 +1555,19 @@ ${regrasBlock}`;
       // O contexto pendente torna a intenção de agendamento determinística.
       intencaoNormalizada = "agendar_call";
     }
+    // Tenant com identidade única: "falar_humano" só vale com pedido explícito do
+    // lead ou conversa já assumida por pessoa. Sem isso, o modelo não pode criar
+    // handoff fantasma a partir de uma dúvida comum.
+    if (
+      blockIdentitySplit &&
+      intencaoNormalizada === "falar_humano" &&
+      !identityCtx.leadAskedHuman &&
+      identityCtx.humanTalk !== true
+    ) {
+      console.warn("[orbit-ai-agent] falar_humano descartado: lead não pediu atendimento humano.");
+      intencaoNormalizada = "duvida";
+    }
+
     const isCommercialSignal =
       intencaoNormalizada === "agendar_call" ||
       intencaoNormalizada === "venda_fechada" ||
