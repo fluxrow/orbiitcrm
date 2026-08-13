@@ -14,7 +14,7 @@
 //     alert_idempotency_key na tabela de eventos).
 
 import { sanitizeZapiReason } from "./zapi-connection.ts";
-import { getSystemEmailConfig } from "./system-email.ts";
+import { getSystemEmailCandidates } from "./system-email.ts";
 
 /**
  * Destinatário operacional da plataforma.
