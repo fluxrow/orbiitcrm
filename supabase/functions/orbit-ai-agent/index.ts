@@ -31,6 +31,11 @@ import {
   enforceNoEmailCollection,
   EMAIL_GUARD_CORRECTIVE,
 } from "../_shared/no-email-collection.ts";
+import {
+  detectLocationCollection,
+  enforceNoLocationCollection,
+  LOCATION_GUARD_CORRECTIVE,
+} from "../_shared/no-location-collection.ts";
 import { currentSaoPauloTime, evaluateBusinessHours } from "../_shared/business-hours.ts";
 import {
   evaluateCommercialStage,
