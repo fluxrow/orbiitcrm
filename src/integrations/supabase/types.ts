@@ -4405,8 +4405,12 @@ export type Database = {
       orbit_zapi_status_events: {
         Row: {
           alert_attempts: number
+          alert_channel: string | null
+          alert_idempotency_key: string | null
           alert_last_error: string | null
+          alert_provider_message_id: string | null
           alert_sent: boolean
+          alert_sent_at: string | null
           created_at: string
           empresa_id: string | null
           event_type: string
@@ -4419,8 +4423,12 @@ export type Database = {
         }
         Insert: {
           alert_attempts?: number
+          alert_channel?: string | null
+          alert_idempotency_key?: string | null
           alert_last_error?: string | null
+          alert_provider_message_id?: string | null
           alert_sent?: boolean
+          alert_sent_at?: string | null
           created_at?: string
           empresa_id?: string | null
           event_type: string
@@ -4433,8 +4441,12 @@ export type Database = {
         }
         Update: {
           alert_attempts?: number
+          alert_channel?: string | null
+          alert_idempotency_key?: string | null
           alert_last_error?: string | null
+          alert_provider_message_id?: string | null
           alert_sent?: boolean
+          alert_sent_at?: string | null
           created_at?: string
           empresa_id?: string | null
           event_type?: string
