@@ -194,3 +194,22 @@ export function buildIdentityPromptBlock(handoffAllowed: boolean): string {
     "=== FIM DA IDENTIDADE ÚNICA ===\n",
   ].join("\n");
 }
+
+/**
+ * Pedido explícito de atendimento humano na fala do LEAD.
+ * Determinístico: só libera handoff quando o lead realmente pede pessoa.
+ */
+const RE_LEAD_ASKS_HUMAN: RegExp[] = [
+  /\bfalar\s+com\s+(?:uma?\s+)?(?:pessoa|humano|gente\s+de\s+verdade|atendente|respons[áa]vel)\b/i,
+  /\b(?:quero|queria|posso|d[áa]\s+pra|prefiro|preciso)\b[^.?!]{0,25}\bfalar\s+com\s+(?:algu[ée]m|uma?\s+pessoa|humano)\b/i,
+  /\b(?:atendimento|suporte)\s+(?:humano|pessoal|com\s+pessoa)\b/i,
+  /\b(?:isso\s+)?[ée]\s+(?:um\s+)?(?:rob[ôo]|bot|ia|intelig[êe]ncia\s+artificial)\b/i,
+  /\bn[ãa]o\s+quero\s+(?:falar\s+com\s+)?(?:rob[ôo]|bot|ia)\b/i,
+  /\bme\s+(?:liga|chama\s+no\s+telefone)\b/i,
+];
+
+export function leadRequestsHuman(inbound: string | null | undefined): boolean {
+  const raw = String(inbound ?? "");
+  if (!raw.trim()) return false;
+  return RE_LEAD_ASKS_HUMAN.some((re) => re.test(raw));
+}
