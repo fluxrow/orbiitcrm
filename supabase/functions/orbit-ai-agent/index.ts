@@ -1973,6 +1973,11 @@ ${regrasBlock}`;
         console.warn("[orbit-ai-agent] Coleta de localização removida na saída final.", { fallback: finalLoc.fallbackUsed });
         resposta = finalLoc.text;
       }
+      const finalIdentity = enforceNoIdentitySplit(resposta, blockIdentitySplit, identityCtx);
+      if (finalIdentity.changed) {
+        console.warn("[orbit-ai-agent] Falsa transferência removida na saída final.", { fallback: finalIdentity.fallbackUsed });
+        resposta = finalIdentity.text;
+      }
       if (commercialV2Enabled && commercialPerms) {
         const finalV2 = sanitizeCommercialV2(resposta, commercialPerms);
         if (finalV2.changed) {
