@@ -49,3 +49,42 @@ export async function getSystemEmailConfig(
     fromEmail: `${SYSTEM_FROM_NAME} <${SYSTEM_FROM_EMAIL}>`,
   };
 }
+
+/**
+ * Todas as credenciais de sistema disponíveis, em ordem de preferência.
+ * Usado por alertas operacionais para tolerar uma chave revogada sem perder o
+ * alerta: se a primeira responder 401/403, a próxima é tentada.
+ * Cada candidato carrega o remetente compatível com sua própria conta.
+ */
+export async function getSystemEmailCandidates(
+  supabase: any,
+): Promise<SystemEmailConfig[]> {
+  const out: SystemEmailConfig[] = [];
+  const push = (apiKey: string | null | undefined, fromEmail: string) => {
+    if (!apiKey) return;
+    if (out.some((c) => c.apiKey === apiKey)) return;
+    out.push({ apiKey, fromEmail });
+  };
+  const systemFrom = `${SYSTEM_FROM_NAME} <${SYSTEM_FROM_EMAIL}>`;
+
+  push(Deno.env.get("PE_RESEND_API_KEY"), systemFrom);
+  push(Deno.env.get("RESEND_API_KEY"), systemFrom);
+
+  try {
+    const { data: cfg } = await supabase
+      .from("orbit_resend_config")
+      .select("api_key, from_email, from_name")
+      .is("empresa_id", null)
+      .maybeSingle();
+    if (cfg?.api_key) {
+      const from = cfg.from_email
+        ? `${SYSTEM_FROM_NAME} <${cfg.from_email}>`
+        : systemFrom;
+      push(cfg.api_key, from);
+      push(cfg.api_key, systemFrom);
+    }
+  } catch (_e) { /* ignore */ }
+
+  return out;
+}
+
