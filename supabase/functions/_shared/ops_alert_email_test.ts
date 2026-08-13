@@ -127,6 +127,8 @@ Deno.test("F: falha do provedor não marca enviado", async () => {
 
 Deno.test("F2: provedor não configurado mantém pendente auditável", async () => {
   const f = stubFetch(200, { id: "nao-deveria-enviar" });
+  const saved = ["PE_RESEND_API_KEY", "RESEND_API_KEY"].map((k) => [k, Deno.env.get(k)] as const);
+  for (const [k] of saved) Deno.env.delete(k);
   try {
     const res = await sendOpsOfflineAlert(stubSupabase({ apiKey: null }), EVENT);
     assertEquals(res.sent, false);
@@ -134,6 +136,7 @@ Deno.test("F2: provedor não configurado mantém pendente auditável", async () 
     assertEquals(res.error, OPS_ALERT_PENDING_ERROR);
     assertEquals(f.calls.length, 0);
   } finally {
+    for (const [k, v] of saved) if (v !== undefined) Deno.env.set(k, v);
     f.restore();
   }
 });
