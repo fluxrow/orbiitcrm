@@ -24,14 +24,19 @@ import {
   countEngagedReserveUsedToday,
   countEngagedReserveUsedTodayForConversa,
   engagedReserveLimit,
+  engagedReplyUncapped,
   evaluateEngagedReserve,
   isEngagedReserveCandidate,
   markEngagedReserveUse,
   auditEngagedReserveUsage,
+  conversaSpacingWaitMs,
+  lastEngagedReplySentAt,
   ENGAGED_RESERVE_CONVERSA_LIMIT,
+  RETAIN_REASON_CONVERSA_SPACING,
   RETAIN_REASON_RESERVE_CONVERSA,
   RETAIN_REASON_RESERVE_DAILY,
 } from "../_shared/engaged-reply-reserve.ts";
+import { auditEngagedReplySla } from "../_shared/engaged-reply-sla.ts";
 import {
   fetchZapiConnectionState,
   zapiInstanceBlockReason,
@@ -334,6 +339,8 @@ async function retainItem(item: any, reason: string, limitInfo: EffectiveLimit):
 }
 
 // Retém em lote os pendentes do tenant sem nenhum claim/fetch externo.
+// Em tenants `engagedReplyUncapped`, respostas engajadas (ai_reply com inbound real)
+// NÃO são retidas por cota/ritmo de prospecção: elas seguem para avaliação individual.
 async function retainPendingForTenant(empresa_id: string, reason: string, limitInfo: EffectiveLimit, max = 100): Promise<number> {
   const nowIso = new Date().toISOString();
   const { data: pend } = await supabase
@@ -344,15 +351,35 @@ async function retainPendingForTenant(empresa_id: string, reason: string, limitI
     .lte("scheduled_for", nowIso)
     .or(`next_attempt_at.is.null,next_attempt_at.lte.${nowIso}`)
     .limit(max);
+  let retained = 0;
   for (const row of (pend ?? []) as any[]) {
+    if (engagedReplyUncapped(empresa_id) && isEngagedReserveCandidate(row)) continue;
     // Reserva esgotada: respostas engajadas recebem reason específico.
     const r = reason === RETAIN_REASON_DAILY && isEngagedReserveCandidate(row)
       ? RETAIN_REASON_RESERVE_DAILY
       : reason;
     await retainItem(row, r, limitInfo);
+    retained++;
   }
 
-  return (pend ?? []).length;
+  return retained;
+}
+
+// Existe resposta engajada pendente e elegível agora neste tenant isento?
+// Usado para não abortar o tick por cota/ritmo de PROSPECÇÃO.
+async function hasPendingEngagedReply(empresa_id: string): Promise<boolean> {
+  if (!engagedReplyUncapped(empresa_id)) return false;
+  const nowIso = new Date().toISOString();
+  const { data } = await supabase
+    .from("orbit_whatsapp_outbox")
+    .select("id, empresa_id, source_type, metadata")
+    .eq("empresa_id", empresa_id)
+    .eq("status", "pending")
+    .eq("source_type", "ai_reply")
+    .lte("scheduled_for", nowIso)
+    .or(`next_attempt_at.is.null,next_attempt_at.lte.${nowIso}`)
+    .limit(50);
+  return ((data ?? []) as any[]).some((row) => isEngagedReserveCandidate(row));
 }
 
 // Devolve o item a pending SEM incrementar attempts (compensa o incremento do
@@ -544,14 +571,56 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
   }
 
   // ── Reserva de resposta engajada ──
-  // Só quando a cota base já esgotou. Exige ai_reply + inbound REAL da MESMA
-  // conversa/tenant, dentro de 24h, posterior ao cutoff e anterior à geração da
-  // resposta, conversa ativa e uma única resposta por inbound.
-  // Prospecção (campaign/flow_*) e notificações nunca entram aqui.
-  // A avaliação acontece na MESMA passagem, antes de qualquer retenção diária.
+  // Exige ai_reply + inbound REAL da MESMA conversa/tenant, dentro de 24h,
+  // posterior ao cutoff e anterior à geração da resposta, conversa ativa e uma
+  // única resposta por inbound. Prospecção (campaign/flow_*) e notificações nunca
+  // entram aqui.
+  //
+  // Em tenants `engagedReplyUncapped`, a resposta engajada NÃO é submetida ao teto
+  // diário global de prospecção/warm-up: responder quem escreveu não pode esperar a
+  // virada do dia. Continuam valendo o teto por conversa/dia e o espaçamento mínimo
+  // por conversa (anti-lote por número).
+  const uncappedTenant = engagedReplyUncapped(item.empresa_id);
+  const reserveLimit = engagedReserveLimit(item.empresa_id);
   let usedReserve = false;
-  if (q.remainingDaily <= 0) {
-    const reserveLimit = engagedReserveLimit(item.empresa_id);
+  let engagedExempt = false;
+
+  if (uncappedTenant && isEngagedReserveCandidate(item)) {
+    const decision = await evaluateEngagedReserve(supabase, item);
+    if (decision.eligible) {
+      const conversaUsed = await countEngagedReserveUsedTodayForConversa(
+        supabase,
+        item.empresa_id,
+        item.conversa_id,
+      );
+      if (conversaUsed >= ENGAGED_RESERVE_CONVERSA_LIMIT) {
+        await retainItem(item, RETAIN_REASON_RESERVE_CONVERSA, q.limitInfo);
+        return { outcome: "retained", reason: RETAIN_REASON_RESERVE_CONVERSA };
+      }
+      const waitMs = conversaSpacingWaitMs(
+        await lastEngagedReplySentAt(supabase, item.empresa_id, item.conversa_id),
+      );
+      if (waitMs > 0) {
+        await releaseHeldItem(
+          item,
+          RETAIN_REASON_CONVERSA_SPACING,
+          new Date(Date.now() + waitMs).toISOString(),
+        );
+        return { outcome: "deferred", reason: RETAIN_REASON_CONVERSA_SPACING };
+      }
+      engagedExempt = true;
+      usedReserve = true;
+      const dailyUsed = await countEngagedReserveUsedToday(supabase, item.empresa_id);
+      await markEngagedReserveUse(supabase, item, decision, {
+        daily_used: dailyUsed + 1,
+        daily_limit: reserveLimit,
+        conversa_used: conversaUsed + 1,
+        conversa_limit: ENGAGED_RESERVE_CONVERSA_LIMIT,
+      });
+    }
+  }
+
+  if (!engagedExempt && q.remainingDaily <= 0) {
     const reserveLeft = q.remainingReserve ?? 0;
     let retainReason = RETAIN_REASON_DAILY;
     if (reserveLimit > 0 && isEngagedReserveCandidate(item)) {
@@ -593,10 +662,13 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
     }
   }
 
-  if (q.remainingMinute <= 0) {
+  // Ritmo por minuto: é gate anti-banimento de PROSPECÇÃO. Resposta engajada isenta
+  // usa o espaçamento por conversa (já aplicado acima) em vez da janela global.
+  if (!engagedExempt && q.remainingMinute <= 0) {
     await retainItem(item, RETAIN_REASON_RATE, q.limitInfo);
     return { outcome: "retained", reason: RETAIN_REASON_RATE };
   }
+
 
 
   // Resolver telefone
@@ -807,7 +879,12 @@ async function processTenant(empresa_id: string, batch: number): Promise<Record<
       engagedReserveLimit(empresa_id) - (await countEngagedReserveUsedToday(supabase, empresa_id)),
     );
   }
-  if (remainingDaily <= 0 && remainingReserve <= 0) {
+
+  // Tenant isento: se há resposta engajada elegível pendente, o tick NÃO aborta por
+  // cota/ritmo de prospecção. Prospecção continua retida no mesmo passo.
+  const engagedPending = await hasPendingEngagedReply(empresa_id);
+
+  if (remainingDaily <= 0 && remainingReserve <= 0 && !engagedPending) {
     stats.retained = await retainPendingForTenant(empresa_id, RETAIN_REASON_DAILY, limitInfo);
     return stats;
   }
@@ -815,21 +892,29 @@ async function processTenant(empresa_id: string, batch: number): Promise<Record<
   let remainingMinute = Number.POSITIVE_INFINITY;
   if (cfg?.max_per_minute && cfg.max_per_minute > 0) {
     remainingMinute = cfg.max_per_minute - (await countRecentSends(empresa_id, 60));
-    if (remainingMinute <= 0) {
+    if (remainingMinute <= 0 && !engagedPending) {
       stats.retained = await retainPendingForTenant(empresa_id, RETAIN_REASON_RATE, limitInfo);
       return stats;
     }
   }
 
+
   const quota: QuotaState = { limitInfo, remainingDaily, remainingMinute, remainingReserve };
   const budget = remainingDaily > 0 ? remainingDaily : remainingReserve;
+  // Com resposta engajada isenta pendente, o claim não pode ser zerado pela cota de
+  // prospecção: cada item ainda passa por todos os gates individualmente.
+  const quotaCap = engagedPending
+    ? batch
+    : Math.min(
+      Number.isFinite(budget) ? budget : batch,
+      Number.isFinite(remainingMinute) ? remainingMinute : batch,
+    );
   const cap = Math.max(
     1,
     Math.min(
       batch,
       cfg?.batch_size && cfg.batch_size > 0 ? cfg.batch_size : batch,
-      Number.isFinite(budget) ? budget : batch,
-      Number.isFinite(remainingMinute) ? remainingMinute : batch,
+      quotaCap,
     ),
   );
 
@@ -846,11 +931,17 @@ async function processTenant(empresa_id: string, batch: number): Promise<Record<
     stats[r.outcome as keyof typeof stats]++;
   }
 
-  // Sobrou fila e a cota estourou durante o lote: retém o restante como queued.
+  // Sobrou fila e a cota estourou durante o lote: retém o restante como queued
+  // (respostas engajadas isentas são preservadas dentro de retainPendingForTenant).
   if (quota.remainingDaily <= 0 && (quota.remainingReserve ?? 0) <= 0) {
     stats.retained += await retainPendingForTenant(empresa_id, RETAIN_REASON_DAILY, limitInfo);
   } else if (quota.remainingMinute <= 0) {
     stats.retained += await retainPendingForTenant(empresa_id, RETAIN_REASON_RATE, limitInfo);
+  }
+
+  // Telemetria de SLO (somente leitura + auditoria): IN elegível sem OUT após 2 min.
+  if (engagedReplyUncapped(empresa_id)) {
+    await auditEngagedReplySla(supabase, empresa_id);
   }
   return stats;
 }
