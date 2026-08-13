@@ -889,6 +889,8 @@ export type Database = {
           advisor_thresholds: Json
           auto_reply_new_leads_from: string | null
           block_email_collection: boolean
+          block_location_collection: boolean
+          campos_cadastro_obrigatorios: Json | null
           campos_qualificacao: Json
           commercial_stage_v2_enabled: boolean
           created_at: string | null
@@ -930,6 +932,8 @@ export type Database = {
           advisor_thresholds?: Json
           auto_reply_new_leads_from?: string | null
           block_email_collection?: boolean
+          block_location_collection?: boolean
+          campos_cadastro_obrigatorios?: Json | null
           campos_qualificacao?: Json
           commercial_stage_v2_enabled?: boolean
           created_at?: string | null
@@ -971,6 +975,8 @@ export type Database = {
           advisor_thresholds?: Json
           auto_reply_new_leads_from?: string | null
           block_email_collection?: boolean
+          block_location_collection?: boolean
+          campos_cadastro_obrigatorios?: Json | null
           campos_qualificacao?: Json
           commercial_stage_v2_enabled?: boolean
           created_at?: string | null

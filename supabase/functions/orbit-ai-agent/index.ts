@@ -31,6 +31,11 @@ import {
   enforceNoEmailCollection,
   EMAIL_GUARD_CORRECTIVE,
 } from "../_shared/no-email-collection.ts";
+import {
+  detectLocationCollection,
+  enforceNoLocationCollection,
+  LOCATION_GUARD_CORRECTIVE,
+} from "../_shared/no-location-collection.ts";
 import { currentSaoPauloTime, evaluateBusinessHours } from "../_shared/business-hours.ts";
 import {
   evaluateCommercialStage,
@@ -998,7 +1003,18 @@ serve(async (req) => {
     const camposCadastro: string[] = Array.isArray(aiConfig.campos_qualificacao)
       ? (aiConfig.campos_qualificacao as Array<{ key?: string }>).map((c) => c?.key).filter((k): k is string => !!k)
       : [];
-    const camposCadastroEffective = camposCadastro.length > 0 ? camposCadastro : ["nome_razao", "email_principal", "cidade"];
+    // Campos de CADASTRO obrigatórios: agora tenant-scoped.
+    // `orbit_ai_config.campos_cadastro_obrigatorios` (jsonb array) é a fonte explícita:
+    //   - array (inclusive vazio) -> vale exatamente o que o tenant declarou;
+    //   - null/ausente            -> fallback legado, preservado para os demais tenants.
+    const camposCadastroConfig = Array.isArray((aiConfig as any).campos_cadastro_obrigatorios)
+      ? ((aiConfig as any).campos_cadastro_obrigatorios as unknown[])
+        .map((c) => (typeof c === "string" ? c : (c as any)?.key))
+        .filter((k): k is string => typeof k === "string" && k.trim().length > 0)
+      : null;
+    const camposCadastroEffective = camposCadastroConfig !== null
+      ? camposCadastroConfig
+      : (camposCadastro.length > 0 ? camposCadastro : ["nome_razao", "email_principal", "cidade"]);
     const maxTokens = aiConfig.max_tokens || 500;
     const idioma = aiConfig.idioma || "pt-BR";
 
@@ -1298,6 +1314,35 @@ ${regrasBlock}`;
       }
       parsed.mensagem = resposta;
     }
+
+    // ── GUARD TENANT-SCOPED: proibido pedir localização / "finalizar cadastro" ──
+    // Ativado apenas quando orbit_ai_config.block_location_collection = true.
+    const blockLocationCollection = (aiConfig as any).block_location_collection === true;
+    if (blockLocationCollection && detectLocationCollection(resposta).violates) {
+      console.warn("[orbit-ai-agent] Guard de coleta de localização acionado.");
+      const retryLoc = await callAnthropic({
+        model: normalizeAgentModel((aiConfig as any).modelo_ia),
+        system: systemPrompt,
+        messages: toAnthropicMessages([
+          { role: "user", content: userTurn },
+          { role: "assistant", content: resposta },
+          { role: "user", content: LOCATION_GUARD_CORRECTIVE + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+        ]),
+        temperature: 0.5,
+        max_tokens: maxTokens,
+      });
+      const retryLocText = retryLoc.ok ? String(retryLoc.text || "").trim() : "";
+      if (retryLocText && !detectLocationCollection(retryLocText).violates) {
+        resposta = retryLocText;
+      } else {
+        const enforcedLoc = enforceNoLocationCollection(retryLocText || resposta, true);
+        resposta = enforcedLoc.text;
+        console.warn("[orbit-ai-agent] Coleta de localização sanitizada.", { fallback: enforcedLoc.fallbackUsed });
+      }
+      parsed.mensagem = resposta;
+    }
+
+
 
     // ── GUARD TENANT-SCOPED: estágio comercial (preço/pagamento/fechamento) ──
     // Ativado apenas quando orbit_ai_config.strict_commercial_stage_guard = true.
@@ -1778,6 +1823,11 @@ ${regrasBlock}`;
       if (finalEnforced.changed) {
         console.warn("[orbit-ai-agent] Coleta de e-mail removida na saída final.", { fallback: finalEnforced.fallbackUsed });
         resposta = finalEnforced.text;
+      }
+      const finalLoc = enforceNoLocationCollection(resposta, blockLocationCollection);
+      if (finalLoc.changed) {
+        console.warn("[orbit-ai-agent] Coleta de localização removida na saída final.", { fallback: finalLoc.fallbackUsed });
+        resposta = finalLoc.text;
       }
       if (commercialV2Enabled && commercialPerms) {
         const finalV2 = sanitizeCommercialV2(resposta, commercialPerms);

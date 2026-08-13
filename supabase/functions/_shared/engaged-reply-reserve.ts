@@ -28,8 +28,50 @@ export const ENGAGED_REPLY_RESERVE_TENANTS: Readonly<Record<string, number>> = {
   "4f6b4a18-f3aa-4bfb-a13f-926e4a07ad18": 100,
 };
 
+/**
+ * Tenants em que a resposta engajada NÃO tem teto diário global.
+ *
+ * Motivo: responder um lead que escreveu não é prospecção. Reter esse OUT até a
+ * virada do dia gerava lead sem resposta por horas (P95 > 7h). Aqui o teto diário
+ * global deixa de valer para `ai_reply` com inbound REAL validado; continuam
+ * valendo, sem exceção: teto por conversa por dia, espaçamento mínimo por
+ * conversa, cutoff, human_talk, quarentena, kill switch, idempotência por inbound
+ * e todos os gates de prospecção (campaign/flow_* nunca entram aqui).
+ */
+export const ENGAGED_REPLY_UNCAPPED_TENANTS: ReadonlySet<string> = new Set([
+  // Bullink
+  "4f6b4a18-f3aa-4bfb-a13f-926e4a07ad18",
+]);
+
+export function engagedReplyUncapped(empresaId: string | null | undefined): boolean {
+  return !!empresaId && ENGAGED_REPLY_UNCAPPED_TENANTS.has(String(empresaId));
+}
+
 /** Teto adicional por conversa por dia (America/Sao_Paulo). */
 export const ENGAGED_RESERVE_CONVERSA_LIMIT = 30;
+
+/** Espaçamento mínimo entre duas respostas do agente na MESMA conversa. */
+export const ENGAGED_CONVERSA_MIN_SPACING_MS = 8_000;
+
+/** Retain reason do espaçamento por conversa (anti-lote por número). */
+export const RETAIN_REASON_CONVERSA_SPACING = "ENGAGED_CONVERSA_SPACING";
+
+/**
+ * Quantos ms ainda faltam para respeitar o espaçamento mínimo por conversa.
+ * `0` = pode enviar agora. Nunca depende de quota global.
+ */
+export function conversaSpacingWaitMs(
+  lastSentAtIso: string | null | undefined,
+  now: Date = new Date(),
+  spacingMs: number = ENGAGED_CONVERSA_MIN_SPACING_MS,
+): number {
+  if (!lastSentAtIso) return 0;
+  const last = Date.parse(String(lastSentAtIso));
+  if (Number.isNaN(last)) return 0;
+  const elapsed = now.getTime() - last;
+  if (elapsed >= spacingMs) return 0;
+  return spacingMs - elapsed;
+}
 
 /** Janela máxima entre a inbound do lead e a resposta do agente. */
 export const ENGAGED_RESERVE_INBOUND_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -323,4 +365,23 @@ export async function auditEngagedReserveUsage(
   } catch (_e) {
     // auditoria é best-effort; nunca bloqueia o envio.
   }
+}
+
+/** Último OUT ai_reply realmente enviado nessa conversa (para o espaçamento). */
+export async function lastEngagedReplySentAt(
+  supabase: any,
+  empresaId: string,
+  conversaId: string,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("orbit_whatsapp_outbox")
+    .select("sent_at")
+    .eq("empresa_id", empresaId)
+    .eq("conversa_id", conversaId)
+    .eq("source_type", "ai_reply")
+    .in("status", ["sent", "simulated"])
+    .not("sent_at", "is", null)
+    .order("sent_at", { ascending: false })
+    .limit(1);
+  return ((data ?? [])[0] as any)?.sent_at ?? null;
 }
