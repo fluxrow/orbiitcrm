@@ -47,6 +47,14 @@ Deno.serve(async (req: Request) => {
     const corsHeaders = getCorsHeaders(req);
     if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+    // Probe de versão (sem segredo, sem tocar em Z-API/banco).
+    const url = new URL(req.url);
+    if (req.method === "GET" && url.searchParams.get("version") === "1") {
+      return new Response(JSON.stringify({ ok: true, function: "orbit-zapi-heartbeat", version: ZAPI_STACK_VERSION }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const auth = req.headers.get("Authorization") || "";
     if (!CRON_TOKEN || auth !== `Bearer ${CRON_TOKEN}`) {
       return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
@@ -54,6 +62,14 @@ Deno.serve(async (req: Request) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // dry_run: consulta /status somente leitura. Nada é gravado e NENHUM
+    // alerta é enviado.
+    let dryRun = url.searchParams.get("dry_run") === "true";
+    try {
+      const body = req.method === "POST" ? await req.json() : null;
+      if (body && body.dry_run === true) dryRun = true;
+    } catch (_e) { /* corpo vazio/não-JSON */ }
 
     const { data: configs } = await supabase
       .from("orbit_zapi_config")
