@@ -6,7 +6,6 @@
  * orbit_resend_config per empresa_id.
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SYSTEM_FROM_NAME = "Orbit CRM";
 const SYSTEM_FROM_EMAIL = "orbit@fluxrow.pro";
@@ -22,7 +21,7 @@ export interface SystemEmailConfig {
  * from_name/from_email in orbit_resend_config to prevent tenant branding leaks.
  */
 export async function getSystemEmailConfig(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
 ): Promise<SystemEmailConfig> {
   // 1) Dedicated PE Admin key
   let apiKey: string | null = Deno.env.get("PE_RESEND_API_KEY") || null;
