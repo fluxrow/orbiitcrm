@@ -6,10 +6,12 @@
 //   • aqui o destinatário é a operação da plataforma (Orbit/Fluxrow), fixo e
 //     único, porque o evento é de infraestrutura: instância WhatsApp caiu.
 //
-// REGRAS
+// REGRAS INVIOLÁVEIS
 //  1. Nunca envia token/segredo no texto.
-//  2. Usa uma instância SAUDÁVEL como remetente (a do tenant afetado está caída).
-//     Preferência: instância do tenant master (slug fluxrow) → qualquer saudável.
+//  2. O REMETENTE precisa ser uma instância INTERNA/MASTER explicitamente
+//     configurada. NUNCA usa a instância de um tenant cliente como remetente
+//     de alerta de plataforma — se não houver remetente interno saudável, o
+//     alerta fica PENDENTE e auditável (retry no próximo ciclo).
 //  3. Cooldown/dedupe é responsabilidade de zapi-connection.ts.
 
 import { zapiBaseUrl } from "./zapi-media.ts";
@@ -18,7 +20,50 @@ import { sanitizeZapiReason } from "./zapi-connection.ts";
 /** Destinatário operacional da plataforma (WhatsApp, dígitos E.164). */
 export const ORBIT_OPS_ALERT_WHATSAPP = "5541992361868";
 
-const MASTER_SLUG = "fluxrow";
+/** Erro persistido quando não existe remetente interno configurado/saudável. */
+export const OPS_ALERT_PENDING_ERROR = "ops_alert_pending_no_internal_sender";
+
+/** Slug do tenant interno/master usado por padrão (dedicado, não é cliente). */
+export const DEFAULT_INTERNAL_SLUG = "fluxrow";
+
+export interface InternalSenderSelector {
+  configId: string | null;
+  empresaId: string | null;
+  slug: string;
+}
+
+/** Seleção EXPLÍCITA do remetente interno (secret/config), nunca heurística. */
+export function resolveInternalSenderSelector(
+  env: (key: string) => string | undefined,
+): InternalSenderSelector {
+  const configId = (env("ORBIT_OPS_ALERT_ZAPI_CONFIG_ID") || "").trim() || null;
+  const empresaId = (env("ORBIT_OPS_ALERT_EMPRESA_ID") || "").trim() || null;
+  const slug = ((env("ORBIT_OPS_ALERT_EMPRESA_SLUG") || "").trim() || DEFAULT_INTERNAL_SLUG)
+    .toLowerCase();
+  return { configId, empresaId, slug };
+}
+
+export interface SenderCandidateRow {
+  id?: string | null;
+  empresa_id?: string | null;
+  instance_id?: string | null;
+  ativo?: boolean | null;
+  instance_offline?: boolean | null;
+  send_block_until?: string | null;
+}
+
+/** Candidato só é elegível se ativo, online e sem bloqueio temporal vigente. */
+export function isSenderEligible(
+  row: SenderCandidateRow | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!row || !row.id || !row.instance_id) return false;
+  if (row.ativo === false) return false;
+  if (row.instance_offline === true) return false;
+  const until = row.send_block_until ? Date.parse(row.send_block_until) : NaN;
+  if (Number.isFinite(until) && until > now.getTime()) return false;
+  return true;
+}
 
 interface SenderConfig {
   id: string;
@@ -28,57 +73,71 @@ interface SenderConfig {
   client_token: string | null;
 }
 
-async function resolveHealthySender(
-  supabase: any,
-  excludeEmpresaId: string | null,
-): Promise<SenderConfig | null> {
-  const nowIso = new Date().toISOString();
-  const { data: candidates } = await supabase
-    .from("orbit_zapi_config")
-    .select("id, empresa_id, instance_id")
-    .eq("ativo", true)
-    .eq("envio_real_liberado", true)
-    .eq("instance_offline", false)
-    .or(`send_block_until.is.null,send_block_until.lte.${nowIso}`);
+/**
+ * Resolve APENAS o remetente interno configurado. Retorna null (nunca um
+ * tenant cliente) quando não houver configuração interna saudável.
+ */
+async function resolveInternalSender(supabase: any): Promise<SenderConfig | null> {
+  const sel = resolveInternalSenderSelector((k) => Deno.env.get(k) ?? undefined);
 
-  const rows = ((candidates as any[]) ?? []).filter((c) => c.instance_id);
-  if (!rows.length) return null;
+  const baseSelect = "id, empresa_id, instance_id, ativo, instance_offline, send_block_until";
+  let row: SenderCandidateRow | null = null;
 
-  // Preferir tenant master, depois qualquer tenant diferente do afetado.
-  const empresaIds = rows.map((r) => r.empresa_id).filter(Boolean);
-  let masterId: string | null = null;
-  if (empresaIds.length) {
-    const { data: empresas } = await supabase
-      .from("orbit_empresas")
-      .select("id, slug")
-      .in("id", empresaIds);
-    masterId = ((empresas as any[]) ?? []).find((e) => e.slug === MASTER_SLUG)?.id ?? null;
+  if (sel.configId) {
+    const { data } = await supabase
+      .from("orbit_zapi_config")
+      .select(baseSelect)
+      .eq("id", sel.configId)
+      .maybeSingle();
+    row = (data as SenderCandidateRow | null) ?? null;
   }
 
-  const ordered = [
-    ...rows.filter((r) => masterId && r.empresa_id === masterId),
-    ...rows.filter((r) => r.empresa_id !== excludeEmpresaId && r.empresa_id !== masterId),
-    ...rows.filter((r) => r.empresa_id === excludeEmpresaId),
-  ];
+  if (!row && sel.empresaId) {
+    const { data } = await supabase
+      .from("orbit_zapi_config")
+      .select(baseSelect)
+      .eq("empresa_id", sel.empresaId)
+      .eq("ativo", true)
+      .maybeSingle();
+    row = (data as SenderCandidateRow | null) ?? null;
+  }
 
-  for (const row of ordered) {
-    try {
-      const { data } = await supabase.rpc("get_orbit_zapi_runtime_config_by_id", { p_config_id: row.id });
-      const cfg = (data as any) ?? null;
-      if (cfg?.instance_id && cfg?.token) {
-        return {
-          id: row.id,
-          empresa_id: row.empresa_id,
-          instance_id: cfg.instance_id,
-          token: cfg.token,
-          client_token: cfg.client_token ?? null,
-        };
-      }
-    } catch (_e) {
-      // Ignora e tenta o próximo candidato.
+  if (!row && sel.slug) {
+    const { data: empresa } = await supabase
+      .from("orbit_empresas")
+      .select("id")
+      .eq("slug", sel.slug)
+      .maybeSingle();
+    const internalEmpresaId = (empresa as any)?.id ?? null;
+    if (internalEmpresaId) {
+      const { data } = await supabase
+        .from("orbit_zapi_config")
+        .select(baseSelect)
+        .eq("empresa_id", internalEmpresaId)
+        .eq("ativo", true)
+        .maybeSingle();
+      row = (data as SenderCandidateRow | null) ?? null;
     }
   }
-  return null;
+
+  if (!isSenderEligible(row)) return null;
+
+  try {
+    const { data } = await supabase.rpc("get_orbit_zapi_runtime_config_by_id", {
+      p_config_id: row!.id,
+    });
+    const cfg = (data as any) ?? null;
+    if (!cfg?.instance_id || !cfg?.token) return null;
+    return {
+      id: row!.id as string,
+      empresa_id: row!.empresa_id ?? null,
+      instance_id: cfg.instance_id,
+      token: cfg.token,
+      client_token: cfg.client_token ?? null,
+    };
+  } catch (_e) {
+    return null;
+  }
 }
 
 export interface OpsAlertInput {
@@ -108,7 +167,7 @@ export function buildOfflineAlertMessage(input: OpsAlertInput): string {
 export async function sendOpsOfflineAlert(
   supabase: any,
   input: OpsAlertInput,
-): Promise<{ sent: boolean; error?: string }> {
+): Promise<{ sent: boolean; pending?: boolean; error?: string }> {
   try {
     let empresaNome = input.empresa_nome ?? null;
     if (!empresaNome && input.empresa_id) {
@@ -120,8 +179,12 @@ export async function sendOpsOfflineAlert(
       empresaNome = (data as any)?.nome ?? null;
     }
 
-    const sender = await resolveHealthySender(supabase, input.empresa_id);
-    if (!sender) return { sent: false, error: "nenhuma instancia saudavel para enviar alerta" };
+    const sender = await resolveInternalSender(supabase);
+    if (!sender) {
+      // Fail-safe: NÃO cai para instância de cliente. Alerta fica pendente.
+      console.warn("[zapi-ops-alert] sem remetente interno configurado — alerta PENDENTE");
+      return { sent: false, pending: true, error: OPS_ALERT_PENDING_ERROR };
+    }
 
     const resp = await fetch(`${zapiBaseUrl(sender)}/send-text`, {
       method: "POST",

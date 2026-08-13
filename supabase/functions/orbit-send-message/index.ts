@@ -3,9 +3,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, fromPlanCheck, ErrorCodes } from "../_shared/responses.ts";
 import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
 import { sendViaZapiUnified } from "../_shared/zapi-send.ts";
-import { zapiInstanceBlockReason, fetchZapiConnectionState } from "../_shared/zapi-connection.ts";
+import { zapiInstanceBlockReason, fetchZapiConnectionState, ZAPI_STACK_VERSION } from "../_shared/zapi-connection.ts";
 import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
+
+console.log("[orbit-send-message] boot version:", ZAPI_STACK_VERSION);
+
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse(req);

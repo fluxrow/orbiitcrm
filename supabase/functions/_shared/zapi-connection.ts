@@ -11,6 +11,9 @@
 export const ZAPI_OFFLINE_REASON = "ZAPI_INSTANCE_OFFLINE";
 export const ZAPI_SEND_BLOCK_REASON = "ZAPI_SEND_TEMPORARILY_BLOCKED";
 
+/** Marcador de versão do stack Z-API (conexão/mídia/alerta). */
+export const ZAPI_STACK_VERSION = "zapi-stack-2026-08-13-ops-sender-guard";
+
 /** Cooldown do alerta operacional por instância (minutos). */
 export const OFFLINE_ALERT_COOLDOWN_MINUTES = 60;
 
@@ -334,7 +337,11 @@ export async function markZapiInstanceOnline(
   return { config_id: cfg.id, recovered };
 }
 
-/** Registra que o alerta foi enviado (cooldown + auditoria). */
+/**
+ * Registra o resultado do alerta (cooldown + auditoria).
+ * Quando falha/pendente, o cooldown NÃO é gravado — o próximo ciclo tenta de
+ * novo e `alert_attempts` acumula para auditoria do retry.
+ */
 export async function markOfflineAlertSent(
   supabase: any,
   input: { config_id: string | null; event_id: string | null; error?: string | null },
@@ -344,11 +351,22 @@ export async function markOfflineAlertSent(
     await supabase.from("orbit_zapi_config").update({ offline_alert_sent_at: nowIso }).eq("id", input.config_id);
   }
   if (input.event_id) {
+    let attempts = 1;
+    try {
+      const { data } = await supabase
+        .from("orbit_zapi_status_events")
+        .select("alert_attempts")
+        .eq("id", input.event_id)
+        .maybeSingle();
+      attempts = Number((data as any)?.alert_attempts ?? 0) + 1;
+    } catch (_e) {
+      attempts = 1;
+    }
     await supabase
       .from("orbit_zapi_status_events")
       .update({
         alert_sent: !input.error,
-        alert_attempts: 1,
+        alert_attempts: attempts,
         alert_last_error: input.error ? sanitizeZapiReason(input.error) : null,
       })
       .eq("id", input.event_id);

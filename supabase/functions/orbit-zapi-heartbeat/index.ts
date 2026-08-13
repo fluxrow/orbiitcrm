@@ -18,6 +18,7 @@ import {
   markZapiInstanceOnline,
   markOfflineAlertSent,
   sanitizeZapiReason,
+  ZAPI_STACK_VERSION,
 } from "../_shared/zapi-connection.ts";
 import { sendOpsOfflineAlert } from "../_shared/zapi-ops-alert.ts";
 
@@ -46,6 +47,14 @@ Deno.serve(async (req: Request) => {
     const corsHeaders = getCorsHeaders(req);
     if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+    // Probe de versão (sem segredo, sem tocar em Z-API/banco).
+    const url = new URL(req.url);
+    if (req.method === "GET" && url.searchParams.get("version") === "1") {
+      return new Response(JSON.stringify({ ok: true, function: "orbit-zapi-heartbeat", version: ZAPI_STACK_VERSION }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const auth = req.headers.get("Authorization") || "";
     if (!CRON_TOKEN || auth !== `Bearer ${CRON_TOKEN}`) {
       return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
@@ -53,6 +62,14 @@ Deno.serve(async (req: Request) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // dry_run: consulta /status somente leitura. Nada é gravado e NENHUM
+    // alerta é enviado.
+    let dryRun = url.searchParams.get("dry_run") === "true";
+    try {
+      const body = req.method === "POST" ? await req.json() : null;
+      if (body && body.dry_run === true) dryRun = true;
+    } catch (_e) { /* corpo vazio/não-JSON */ }
 
     const { data: configs } = await supabase
       .from("orbit_zapi_config")
@@ -95,6 +112,18 @@ Deno.serve(async (req: Request) => {
           eventType = online ? "online" : "session-disconnected";
         }
 
+        if (dryRun) {
+          results.push({
+            empresa_id: row.empresa_id,
+            dry_run: true,
+            online,
+            reason,
+            status_code: statusCode,
+            event_type: eventType,
+          });
+          continue;
+        }
+
         if (online) {
           const res = await markZapiInstanceOnline(supabase, {
             empresa_id: row.empresa_id,
@@ -116,6 +145,7 @@ Deno.serve(async (req: Request) => {
         });
 
         let alerted = false;
+        let alertPending = false;
         if (marked.shouldAlert) {
           const alert = await sendOpsOfflineAlert(supabase, {
             empresa_id: marked.empresa_id,
@@ -125,6 +155,7 @@ Deno.serve(async (req: Request) => {
             status_code: statusCode,
           });
           alerted = alert.sent;
+          alertPending = alert.pending === true;
           await markOfflineAlertSent(supabase, {
             config_id: marked.config_id,
             event_id: marked.event_id,
@@ -138,6 +169,7 @@ Deno.serve(async (req: Request) => {
           reason,
           paused_outbox: marked.paused_outbox,
           alerted,
+          alert_pending: alertPending,
         });
       } catch (e) {
         results.push({
@@ -147,8 +179,8 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    console.log("[orbit-zapi-heartbeat] processados:", results.length);
-    return new Response(JSON.stringify({ ok: true, checked: results.length, results }), {
+    console.log("[orbit-zapi-heartbeat] version:", ZAPI_STACK_VERSION, "processados:", results.length, "dry_run:", dryRun);
+    return new Response(JSON.stringify({ ok: true, version: ZAPI_STACK_VERSION, dry_run: dryRun, checked: results.length, results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   });
