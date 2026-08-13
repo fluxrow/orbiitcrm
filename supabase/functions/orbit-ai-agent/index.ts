@@ -1144,6 +1144,20 @@ serve(async (req) => {
       ? buildCommercialV2PromptBlock(commercialState, commercialPerms, commercialExtracted)
       : "";
 
+    // Bloco tenant-scoped: reforça no prompt a proibição de coleta de localização/e-mail.
+    const noCollectRules: string[] = [];
+    if ((aiConfig as any).block_location_collection === true) {
+      noCollectRules.push('- NUNCA pergunte cidade, estado, região, endereço ou qualquer localização do lead.');
+      noCollectRules.push('- NUNCA use expressões como "finalizar cadastro", "completar cadastro" ou "preciso dos seus dados".');
+    }
+    if ((aiConfig as any).block_email_collection === true) {
+      noCollectRules.push('- NUNCA pergunte e-mail do lead.');
+    }
+    const noCollectBlock = noCollectRules.length
+      ? `\nCOLETA DE DADOS (INVIOLÁVEL PARA ESTE TENANT):\n${noCollectRules.join("\n")}\n- Só pergunte um dado se ele for estritamente necessário ao fechamento e explicitamente autorizado pelas regras comerciais.\n`
+      : "";
+
+
     const systemPrompt = `${promptIdentidade}
 
 ESTILO DE ESCRITA (PT-BR, INVIOLÁVEL):
