@@ -1560,6 +1560,12 @@ ${regrasBlock}`;
       intencaoNormalizada === "venda_fechada" ||
       intencaoNormalizada === "falar_humano";
 
+    // Handoff humano real: só com pedido explícito do lead, conversa assumida por
+    // humano, ou intenção que exige ação humana externa (venda/agendamento).
+    identityCtx.handoffAuthorized = isCommercialSignal;
+
+
+
     // ── Auto-agendamento: se lead pediu agendar_call, tentar via Google Calendar antes do handoff ──
     let scheduleOutcome: {
       handled: boolean;
