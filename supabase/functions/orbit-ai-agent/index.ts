@@ -1215,7 +1215,9 @@ REGRAS CRÍTICAS:
 2. CAMPOS FALTANTES: Solicite APENAS os campos marcados como "true" em missingFields, e as perguntas dinâmicas ainda não respondidas.
 3. Se for PRIMEIRA INTERAÇÃO (isFirstInteraction=true) E NÃO for campanha, envie a mensagem de boas-vindas: "${aiConfig.mensagem_boas_vindas || 'Olá! Como posso ajudá-lo?'}"
 4. Se o cliente pedir ORÇAMENTO, COTAÇÃO ou demonstrar interesse em comprar, inicie a coleta dos campos faltantes.
-5. Quando TODAS as informações relevantes (cadastro + qualificação obrigatória) estiverem preenchidas, agradeça e informe: "Perfeito. Vou colocar um especialista para avançarmos de forma mais objetiva."
+5. ${blockIdentitySplit
+  ? `Quando TODAS as informações relevantes estiverem preenchidas, NÃO prometa nenhum especialista, consultor, equipe ou terceiro: avance você mesmo, em primeira pessoa (aprofunde a explicação, ofereça o investimento ou proponha o próximo passo direto com você).`
+  : `Quando TODAS as informações relevantes (cadastro + qualificação obrigatória) estiverem preenchidas, agradeça e informe: "Perfeito. Vou colocar um especialista para avançarmos de forma mais objetiva."`}
 6. NUNCA invente dados sobre produtos ou preços — se a Base de Conhecimento não trouxer a resposta, diga que vai confirmar e seguir.
 7. Seja cordial e responda de forma concisa — máximo 2-3 frases.
 8. SEMPRE responda no idioma configurado.
