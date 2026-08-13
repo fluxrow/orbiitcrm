@@ -1315,6 +1315,35 @@ ${regrasBlock}`;
       parsed.mensagem = resposta;
     }
 
+    // ── GUARD TENANT-SCOPED: proibido pedir localização / "finalizar cadastro" ──
+    // Ativado apenas quando orbit_ai_config.block_location_collection = true.
+    const blockLocationCollection = (aiConfig as any).block_location_collection === true;
+    if (blockLocationCollection && detectLocationCollection(resposta).violates) {
+      console.warn("[orbit-ai-agent] Guard de coleta de localização acionado.");
+      const retryLoc = await callAnthropic({
+        model: normalizeAgentModel((aiConfig as any).modelo_ia),
+        system: systemPrompt,
+        messages: toAnthropicMessages([
+          { role: "user", content: userTurn },
+          { role: "assistant", content: resposta },
+          { role: "user", content: LOCATION_GUARD_CORRECTIVE + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+        ]),
+        temperature: 0.5,
+        max_tokens: maxTokens,
+      });
+      const retryLocText = retryLoc.ok ? String(retryLoc.text || "").trim() : "";
+      if (retryLocText && !detectLocationCollection(retryLocText).violates) {
+        resposta = retryLocText;
+      } else {
+        const enforcedLoc = enforceNoLocationCollection(retryLocText || resposta, true);
+        resposta = enforcedLoc.text;
+        console.warn("[orbit-ai-agent] Coleta de localização sanitizada.", { fallback: enforcedLoc.fallbackUsed });
+      }
+      parsed.mensagem = resposta;
+    }
+
+
+
     // ── GUARD TENANT-SCOPED: estágio comercial (preço/pagamento/fechamento) ──
     // Ativado apenas quando orbit_ai_config.strict_commercial_stage_guard = true.
     // A mensagem ATUAL do lead precisa autorizar o avanço: dado cadastral
