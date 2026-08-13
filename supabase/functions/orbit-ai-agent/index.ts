@@ -998,7 +998,18 @@ serve(async (req) => {
     const camposCadastro: string[] = Array.isArray(aiConfig.campos_qualificacao)
       ? (aiConfig.campos_qualificacao as Array<{ key?: string }>).map((c) => c?.key).filter((k): k is string => !!k)
       : [];
-    const camposCadastroEffective = camposCadastro.length > 0 ? camposCadastro : ["nome_razao", "email_principal", "cidade"];
+    // Campos de CADASTRO obrigatórios: agora tenant-scoped.
+    // `orbit_ai_config.campos_cadastro_obrigatorios` (jsonb array) é a fonte explícita:
+    //   - array (inclusive vazio) -> vale exatamente o que o tenant declarou;
+    //   - null/ausente            -> fallback legado, preservado para os demais tenants.
+    const camposCadastroConfig = Array.isArray((aiConfig as any).campos_cadastro_obrigatorios)
+      ? ((aiConfig as any).campos_cadastro_obrigatorios as unknown[])
+        .map((c) => (typeof c === "string" ? c : (c as any)?.key))
+        .filter((k): k is string => typeof k === "string" && k.trim().length > 0)
+      : null;
+    const camposCadastroEffective = camposCadastroConfig !== null
+      ? camposCadastroConfig
+      : (camposCadastro.length > 0 ? camposCadastro : ["nome_razao", "email_principal", "cidade"]);
     const maxTokens = aiConfig.max_tokens || 500;
     const idioma = aiConfig.idioma || "pt-BR";
 
