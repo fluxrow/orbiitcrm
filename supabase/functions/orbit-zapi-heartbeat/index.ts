@@ -66,10 +66,33 @@ Deno.serve(async (req: Request) => {
     // dry_run: consulta /status somente leitura. Nada é gravado e NENHUM
     // alerta é enviado.
     let dryRun = url.searchParams.get("dry_run") === "true";
+    // drain: reprocessa pendências de alerta (alert_sent=false) por e-mail.
+    let drainOnly = url.searchParams.get("drain_only") === "true";
+    let drainEmpresaId: string | null = url.searchParams.get("drain_empresa_id");
+    let drainLimit = Number(url.searchParams.get("drain_limit") || "") || 20;
     try {
       const body = req.method === "POST" ? await req.json() : null;
       if (body && body.dry_run === true) dryRun = true;
+      if (body && body.drain_only === true) drainOnly = true;
+      if (body && typeof body.drain_empresa_id === "string") drainEmpresaId = body.drain_empresa_id;
+      if (body && Number(body.drain_limit)) drainLimit = Number(body.drain_limit);
     } catch (_e) { /* corpo vazio/não-JSON */ }
+
+    // Dreno de pendências (idempotente): sempre roda, exceto em dry_run.
+    const drained = await drainPendingOpsAlerts(supabase, {
+      empresaId: drainEmpresaId,
+      limit: drainLimit,
+      dryRun,
+    });
+
+    if (drainOnly) {
+      console.log("[orbit-zapi-heartbeat] drain_only:", drained.length, "dry_run:", dryRun);
+      return new Response(
+        JSON.stringify({ ok: true, version: ZAPI_STACK_VERSION, drain_only: true, dry_run: dryRun, drained }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
 
     const { data: configs } = await supabase
       .from("orbit_zapi_config")
