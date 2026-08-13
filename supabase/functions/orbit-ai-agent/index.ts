@@ -68,6 +68,9 @@ import {
   detectSecondaryOffer,
   sanitizeSecondaryOffer,
   buildSecondaryOfferCorrective,
+  evaluateSecondaryOfferV2,
+  sanitizeSecondaryOfferV2,
+  buildSecondaryOfferCorrectiveV2,
   buildPrimaryOfferPromptBlock,
 } from "../_shared/primary-offer-guard.ts";
 
@@ -1503,10 +1506,11 @@ ${regrasBlock}`;
 
     // ── GUARD TENANT-SCOPED: trava de oferta principal (anti-cardápio/downsell) ──
     if (primaryOfferCfg && primaryOfferPerm) {
-      const offerVerdict = detectSecondaryOffer(resposta, primaryOfferCfg, primaryOfferPerm);
+      const offerVerdict = evaluateSecondaryOfferV2(resposta, primaryOfferCfg, primaryOfferPerm);
       if (offerVerdict.violates) {
         console.warn("[orbit-ai-agent] Trava de oferta principal acionada.", {
           reason: primaryOfferPerm.reason,
+          reasons: offerVerdict.reasons.join(","),
           clauses: offerVerdict.offending.length,
         });
         const retryOffer = await callAnthropic({
@@ -1515,16 +1519,16 @@ ${regrasBlock}`;
           messages: toAnthropicMessages([
             { role: "user", content: userTurn },
             { role: "assistant", content: resposta },
-            { role: "user", content: buildSecondaryOfferCorrective(primaryOfferCfg) + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+            { role: "user", content: buildSecondaryOfferCorrectiveV2(primaryOfferCfg, primaryOfferPerm, offerVerdict) + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
           ]),
           temperature: 0.5,
           max_tokens: maxTokens,
         });
         const retryOfferText = retryOffer.ok ? String(retryOffer.text || "").trim() : "";
-        if (retryOfferText && !detectSecondaryOffer(retryOfferText, primaryOfferCfg, primaryOfferPerm).violates) {
+        if (retryOfferText && !evaluateSecondaryOfferV2(retryOfferText, primaryOfferCfg, primaryOfferPerm).violates) {
           resposta = retryOfferText;
         } else {
-          const enforcedOffer = sanitizeSecondaryOffer(retryOfferText || resposta, primaryOfferCfg, primaryOfferPerm);
+          const enforcedOffer = sanitizeSecondaryOfferV2(retryOfferText || resposta, primaryOfferCfg, primaryOfferPerm);
           resposta = enforcedOffer.text;
           console.warn("[orbit-ai-agent] Oferta secundária sanitizada.", { fallback: enforcedOffer.fallbackUsed });
         }
@@ -1997,7 +2001,7 @@ ${regrasBlock}`;
         }
       }
       if (primaryOfferCfg && primaryOfferPerm) {
-        const finalOffer = sanitizeSecondaryOffer(resposta, primaryOfferCfg, primaryOfferPerm);
+        const finalOffer = sanitizeSecondaryOfferV2(resposta, primaryOfferCfg, primaryOfferPerm);
         if (finalOffer.changed) {
           console.warn("[orbit-ai-agent] Trava de oferta principal: saída final sanitizada.", {
             fallback: finalOffer.fallbackUsed,

@@ -887,6 +887,7 @@ export type Database = {
           advisor_locked_paths: Json
           advisor_playbook_flow_prefixes: string[] | null
           advisor_thresholds: Json
+          ai_reply_debounce: Json | null
           auto_reply_new_leads_from: string | null
           block_email_collection: boolean
           block_identity_split: boolean
@@ -932,6 +933,7 @@ export type Database = {
           advisor_locked_paths?: Json
           advisor_playbook_flow_prefixes?: string[] | null
           advisor_thresholds?: Json
+          ai_reply_debounce?: Json | null
           auto_reply_new_leads_from?: string | null
           block_email_collection?: boolean
           block_identity_split?: boolean
@@ -977,6 +979,7 @@ export type Database = {
           advisor_locked_paths?: Json
           advisor_playbook_flow_prefixes?: string[] | null
           advisor_thresholds?: Json
+          ai_reply_debounce?: Json | null
           auto_reply_new_leads_from?: string | null
           block_email_collection?: boolean
           block_identity_split?: boolean
@@ -1092,6 +1095,107 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      orbit_ai_reply_debounce: {
+        Row: {
+          attempts: number
+          batch_size: number
+          claim_token: string
+          conversa_id: string
+          created_at: string
+          empresa_id: string
+          fire_after: string
+          last_error: string | null
+          last_inbound_at: string
+          last_inbound_message_id: string | null
+          prospect_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          batch_size?: number
+          claim_token?: string
+          conversa_id: string
+          created_at?: string
+          empresa_id: string
+          fire_after: string
+          last_error?: string | null
+          last_inbound_at?: string
+          last_inbound_message_id?: string | null
+          prospect_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          batch_size?: number
+          claim_token?: string
+          conversa_id?: string
+          created_at?: string
+          empresa_id?: string
+          fire_after?: string
+          last_error?: string | null
+          last_inbound_at?: string
+          last_inbound_message_id?: string | null
+          prospect_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_ai_reply_debounce_conversa_id_fkey"
+            columns: ["conversa_id"]
+            isOneToOne: true
+            referencedRelation: "orbit_conversas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_ai_reply_sla: {
+        Row: {
+          ai_generated_at: string | null
+          batch_size: number
+          conversa_id: string | null
+          created_at: string
+          empresa_id: string
+          id: string
+          inbound_message_id: string
+          outbox_id: string | null
+          queued_at: string | null
+          received_at: string | null
+          sla_ms: number
+          wait_ms: number
+        }
+        Insert: {
+          ai_generated_at?: string | null
+          batch_size?: number
+          conversa_id?: string | null
+          created_at?: string
+          empresa_id: string
+          id?: string
+          inbound_message_id: string
+          outbox_id?: string | null
+          queued_at?: string | null
+          received_at?: string | null
+          sla_ms?: number
+          wait_ms?: number
+        }
+        Update: {
+          ai_generated_at?: string | null
+          batch_size?: number
+          conversa_id?: string | null
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          inbound_message_id?: string
+          outbox_id?: string | null
+          queued_at?: string | null
+          received_at?: string | null
+          sla_ms?: number
+          wait_ms?: number
+        }
+        Relationships: []
       }
       orbit_audio_library: {
         Row: {
@@ -5373,7 +5477,27 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      orbit_ai_reply_sla_view: {
+        Row: {
+          ai_generated_at: string | null
+          batch_size: number | null
+          breach_reason: string | null
+          conversa_id: string | null
+          debounce_ms: number | null
+          empresa_id: string | null
+          id: string | null
+          inbound_message_id: string | null
+          queue_ms: number | null
+          queued_at: string | null
+          received_at: string | null
+          send_ms: number | null
+          sent_at: string | null
+          sla_ms: number | null
+          total_ms: number | null
+          wait_ms: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       _build_orbit_zapi_public_response: {
