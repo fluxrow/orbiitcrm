@@ -30,8 +30,9 @@ const REQUEST_PATTERNS: RegExp[] = [
   // "sua cidade?" / "cidade e estado, por favor"
   new RegExp(`\\b${LOCATION_WORD}\\b[^.?!]{0,25}(?:\\?|,?\\s*por\\s+favor)`, "i"),
   // "de onde você é/fala/mora", "onde você mora/está/fica/vive"
-  /\bde\s+onde\s+(?:voc[êe]|tu|vc)\b[^.?!]{0,25}(?:[ée]|fala|mora|vem|atua)/i,
-  /\bonde\s+(?:voc[êe]|tu|vc)\b[^.?!]{0,20}\b(?:mora|vive|est[áa]|fica|reside|atua)\b/i,
+  // Obs.: `\b` não funciona após letra acentuada (ê não é \w em JS), por isso `(?![a-zA-Z])`.
+  /\bde\s+onde\s+(?:voc[êe]|tu|vc)(?![a-zA-Z])[^.?!]{0,25}(?:[ée]|fala|mora|vem|atua)/i,
+  /\bonde\s+(?:voc[êe]|tu|vc)(?![a-zA-Z])[^.?!]{0,20}\b(?:mora|vive|est[áa]|fica|reside|atua)\b/i,
   // "em que cidade você mora"
   new RegExp(`\\bem\\s+(?:que|qual)\\b[^.?!]{0,15}\\b${LOCATION_WORD}\\b`, "i"),
   // "você mora em qual cidade"
