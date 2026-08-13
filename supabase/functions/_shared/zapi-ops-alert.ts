@@ -161,8 +161,8 @@ export async function sendOpsOfflineAlert(
       empresaNome = (data as any)?.nome ?? null;
     }
 
-    const cfg = await getSystemEmailConfig(supabase);
-    if (!cfg.apiKey) {
+    const candidates = await getSystemEmailCandidates(supabase);
+    if (candidates.length === 0) {
       console.warn("[zapi-ops-alert] provedor de e-mail não configurado — alerta PENDENTE");
       return { ...base, sent: false, pending: true, error: OPS_ALERT_PENDING_ERROR };
     }
@@ -170,24 +170,33 @@ export async function sendOpsOfflineAlert(
     const recipient = resolveOpsAlertRecipient();
     const mail = buildOpsAlertEmail({ ...input, empresa_nome: empresaNome });
 
-    const resp = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${cfg.apiKey}`,
-        "Content-Type": "application/json",
-        "Idempotency-Key": idempotency_key,
-      },
-      body: JSON.stringify({
-        from: cfg.fromEmail,
-        to: [recipient],
-        subject: mail.subject,
-        html: mail.html,
-        text: mail.text,
-      }),
-    });
+    let resp!: Response;
+    let json: any = {};
+    for (let i = 0; i < candidates.length; i++) {
+      const cfg = candidates[i];
+      resp = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${cfg.apiKey}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotency_key,
+        },
+        body: JSON.stringify({
+          from: cfg.fromEmail,
+          to: [recipient],
+          subject: mail.subject,
+          html: mail.html,
+          text: mail.text,
+        }),
+      });
+      json = await resp.json().catch(() => ({}));
+      // Credencial revogada/sem permissão para este remetente: tenta a próxima.
+      if ((resp.status === 401 || resp.status === 403) && i < candidates.length - 1) continue;
+      break;
+    }
 
-    const json = await resp.json().catch(() => ({}));
     if (!resp.ok) {
+
       const detail = sanitizeZapiReason(
         typeof (json as any)?.message === "string" ? (json as any).message : JSON.stringify(json ?? {}),
         160,
