@@ -1380,6 +1380,33 @@ ${regrasBlock}`;
       parsed.mensagem = resposta;
     }
 
+    // ── GUARD TENANT-SCOPED: identidade única (proibida falsa transferência) ──
+    // Ativado apenas quando orbit_ai_config.block_identity_split = true.
+    if (blockIdentitySplit && detectIdentitySplit(resposta, identityCtx).violates) {
+      console.warn("[orbit-ai-agent] Guard de identidade acionado.", {
+        handoffAllowed: identityCtx.leadAskedHuman || identityCtx.humanTalk || identityCtx.handoffAuthorized,
+      });
+      const retryId = await callAnthropic({
+        model: normalizeAgentModel((aiConfig as any).modelo_ia),
+        system: systemPrompt,
+        messages: toAnthropicMessages([
+          { role: "user", content: userTurn },
+          { role: "assistant", content: resposta },
+          { role: "user", content: IDENTITY_GUARD_CORRECTIVE + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+        ]),
+        temperature: 0.5,
+        max_tokens: maxTokens,
+      });
+      const retryIdText = retryId.ok ? String(retryId.text || "").trim() : "";
+      if (retryIdText && !detectIdentitySplit(retryIdText, identityCtx).violates) {
+        resposta = retryIdText;
+      } else {
+        const enforcedId = enforceNoIdentitySplit(retryIdText || resposta, true, identityCtx);
+        resposta = enforcedId.text;
+        console.warn("[orbit-ai-agent] Falsa transferência sanitizada.", { fallback: enforcedId.fallbackUsed });
+      }
+      parsed.mensagem = resposta;
+    }
 
 
     // ── GUARD TENANT-SCOPED: estágio comercial (preço/pagamento/fechamento) ──
