@@ -11,6 +11,211 @@ import {
   ZAPI_STACK_VERSION,
 } from "../_shared/zapi-connection.ts";
 import { sendOpsOfflineAlert } from "../_shared/zapi-ops-alert.ts";
+import {
+  readDebounceConfig,
+  computeFireAfter,
+  msUntil,
+  decideDebounce,
+  type DebounceConfig,
+} from "../_shared/ai-reply-debounce.ts";
+
+/**
+ * Caminho legado (tenant sem debounce): reclama lock stale, adquire lock atômico
+ * e chama o agente imediatamente. Comportamento inalterado.
+ */
+async function runImmediateAgentPath(
+  supabase: any,
+  conversa: any,
+  prospectId: string,
+  messageText: string,
+  invokeAgent: (mensagem: string, extra?: Record<string, unknown>) => Promise<boolean>,
+): Promise<void> {
+  // Safety-net: reclamar lock stale (>3min) — evita conversa travada por falha anterior
+  const staleThreshold = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+  await supabase
+    .from("orbit_conversas")
+    .update({ ai_processing: false })
+    .eq("id", conversa.id)
+    .eq("ai_processing", true)
+    .lt("updated_at", staleThreshold);
+
+  const { data: lockResult } = await supabase
+    .from("orbit_conversas")
+    .update({ ai_processing: true })
+    .eq("id", conversa.id)
+    .eq("ai_processing", false)
+    .select("id");
+
+  if (!lockResult || lockResult.length === 0) {
+    console.log("[orbit-webhook] AI já processando conversa, msg será agregada:", conversa.id);
+    return;
+  }
+  await invokeAgent(messageText);
+}
+
+/**
+ * Consolida as inbound acumuladas desde o último OUT visual da conversa.
+ * Sem PII em log: apenas contagem.
+ */
+async function consolidateInbound(
+  supabase: any,
+  empresaId: string,
+  conversaId: string,
+  fallbackText: string,
+): Promise<{ text: string; batchSize: number }> {
+  try {
+    const { data: lastOut } = await supabase
+      .from("orbit_mensagens")
+      .select("timestamp")
+      .eq("empresa_id", empresaId)
+      .eq("conversa_id", conversaId)
+      .eq("direcao", "OUT")
+      .order("timestamp", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let q = supabase
+      .from("orbit_mensagens")
+      .select("conteudo, timestamp")
+      .eq("empresa_id", empresaId)
+      .eq("conversa_id", conversaId)
+      .eq("direcao", "IN")
+      .order("timestamp", { ascending: true })
+      .limit(10);
+    if (lastOut?.timestamp) q = q.gt("timestamp", lastOut.timestamp);
+
+    const { data: ins } = await q;
+    const texts = (ins ?? [])
+      .map((m: any) => String(m.conteudo ?? "").trim())
+      .filter((t: string) => t.length > 0);
+    if (texts.length === 0) return { text: fallbackText, batchSize: 1 };
+    return { text: texts.join("\n"), batchSize: texts.length };
+  } catch (_e) {
+    return { text: fallbackText, batchSize: 1 };
+  }
+}
+
+/**
+ * Dispara a resposta do lote se — e somente se — este job continua sendo o dono
+ * da conversa (claim_token corrente). Qualquer job stale é descartado, o que
+ * garante no máximo uma resposta por lote mesmo em corrida no limite da janela.
+ */
+async function fireDebouncedReply(args: {
+  supabase: any;
+  empresaId: string;
+  conversa: any;
+  prospectId: string;
+  claimToken: string;
+  cfg: DebounceConfig;
+  receivedAt: string;
+  inboundMessageId: string;
+  fallbackText: string;
+  invokeAgent: (mensagem: string, extra?: Record<string, unknown>) => Promise<boolean>;
+}): Promise<void> {
+  const { supabase, empresaId, conversa, claimToken, cfg } = args;
+  try {
+    const { data: row } = await supabase
+      .from("orbit_ai_reply_debounce")
+      .select("claim_token, fire_after, status")
+      .eq("conversa_id", conversa.id)
+      .maybeSingle();
+
+    const decision = decideDebounce(row as any, claimToken);
+    if (decision.action === "wait") {
+      // Inbound nova reiniciou a janela: o job dela responde.
+      console.log(JSON.stringify({ event: "ai_reply_debounce_rescheduled", conversa_id: conversa.id }));
+      return;
+    }
+    if (decision.action === "abort") {
+      console.log(JSON.stringify({ event: "ai_reply_debounce_skipped", reason: decision.reason, conversa_id: conversa.id }));
+      return;
+    }
+
+    // Gate de human_talk / cutoff reavaliado no momento do disparo.
+    const { data: fresh } = await supabase
+      .from("orbit_conversas")
+      .select("human_talk, ai_processing")
+      .eq("id", conversa.id)
+      .maybeSingle();
+    if (fresh?.human_talk === true) {
+      await supabase.from("orbit_ai_reply_debounce")
+        .update({ status: "canceled", last_error: "human_talk", updated_at: new Date().toISOString() })
+        .eq("conversa_id", conversa.id).eq("claim_token", claimToken);
+      return;
+    }
+
+    // Claim atômico da geração (status pending -> generating no mesmo token).
+    const { data: claimed } = await supabase
+      .from("orbit_ai_reply_debounce")
+      .update({ status: "generating", attempts: (row as any)?.attempts ?? 0, updated_at: new Date().toISOString() })
+      .eq("conversa_id", conversa.id)
+      .eq("claim_token", claimToken)
+      .eq("status", "pending")
+      .select("conversa_id");
+    if (!claimed || claimed.length === 0) return;
+
+    const staleThreshold = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+    await supabase.from("orbit_conversas").update({ ai_processing: false })
+      .eq("id", conversa.id).eq("ai_processing", true).lt("updated_at", staleThreshold);
+    const { data: lockResult } = await supabase
+      .from("orbit_conversas")
+      .update({ ai_processing: true })
+      .eq("id", conversa.id)
+      .eq("ai_processing", false)
+      .select("id");
+    if (!lockResult || lockResult.length === 0) {
+      await supabase.from("orbit_ai_reply_debounce")
+        .update({ status: "pending", last_error: "lock_busy", updated_at: new Date().toISOString() })
+        .eq("conversa_id", conversa.id).eq("claim_token", claimToken);
+      return;
+    }
+
+    const batch = await consolidateInbound(supabase, empresaId, conversa.id, args.fallbackText);
+    const ok = await args.invokeAgent(batch.text, {
+      debounced: true,
+      batch_size: batch.batchSize,
+      received_at: args.receivedAt,
+    });
+
+    await supabase.from("orbit_ai_reply_debounce")
+      .update({
+        status: ok ? "done" : "pending",
+        batch_size: batch.batchSize,
+        last_error: ok ? null : "agent_error",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("conversa_id", conversa.id).eq("claim_token", claimToken);
+
+    // Observabilidade de SLA (idempotente por inbound).
+    if (ok) {
+      const nowIso = new Date().toISOString();
+      const { data: out } = await supabase
+        .from("orbit_whatsapp_outbox")
+        .select("id, created_at")
+        .eq("empresa_id", empresaId)
+        .eq("conversa_id", conversa.id)
+        .eq("source_type", "ai_reply")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      await supabase.from("orbit_ai_reply_sla").upsert({
+        empresa_id: empresaId,
+        conversa_id: conversa.id,
+        inbound_message_id: String(args.inboundMessageId),
+        outbox_id: out?.id ?? null,
+        batch_size: batch.batchSize,
+        received_at: args.receivedAt,
+        ai_generated_at: nowIso,
+        queued_at: out?.created_at ?? nowIso,
+        wait_ms: cfg.waitMs,
+        sla_ms: cfg.slaMs,
+      }, { onConflict: "empresa_id,inbound_message_id" });
+    }
+  } catch (e) {
+    console.error("[orbit-webhook] debounce fire falhou:", e instanceof Error ? e.message : e);
+    await supabase.from("orbit_conversas").update({ ai_processing: false }).eq("id", conversa.id);
+  }
+}
 
 console.log("[orbit-webhook] boot version:", ZAPI_STACK_VERSION);
 import {
@@ -731,65 +936,104 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
         console.error("[orbit-webhook] media processor indisponível:", mediaErr instanceof Error ? mediaErr.message : mediaErr);
       }
     } else if (!fromMe && automationAllowed && !conversaQuarantined && !conversa.human_talk && prospect?.id && !((tipoMidia === "image" || tipoMidia === "audio") && !shouldProcessMedia)) {
-      // Safety-net: reclamar lock stale (>3min) — evita conversa travada por falha anterior
-      const staleThreshold = new Date(Date.now() - 3 * 60 * 1000).toISOString();
-      await supabase
-        .from("orbit_conversas")
-        .update({ ai_processing: false })
-        .eq("id", conversa.id)
-        .eq("ai_processing", true)
-        .lt("updated_at", staleThreshold);
+      const { data: aiConfig } = await supabase
+        .from("orbit_ai_config")
+        .select("modo_automatico, ai_reply_debounce")
+        .eq("empresa_id", empresaId)
+        .maybeSingle();
 
-      // Atomic lock: só dispara AI se conseguir adquirir o lock
-      const { data: lockResult } = await supabase
-        .from("orbit_conversas")
-        .update({ ai_processing: true })
-        .eq("id", conversa.id)
-        .eq("ai_processing", false)
-        .select("id");
-
-      if (lockResult && lockResult.length > 0) {
-        const { data: aiConfig } = await supabase
-          .from("orbit_ai_config")
-          .select("modo_automatico")
-          .eq("empresa_id", empresaId)
-          .maybeSingle();
-
-        if (aiConfig?.modo_automatico) {
-          // A resposta gerada SEMPRE entra no orbit_whatsapp_outbox (o agente é
-          // o produtor; orbit-whatsapp-outbox-tick é o único emissor).
-          try {
-            const agentResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-ai-agent`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-                "x-orbit-internal-secret": Deno.env.get("ORBIT_AI_AGENT_SECRET") ?? "",
-                "Idempotency-Key": correlationId,
-              },
-              body: JSON.stringify({
-                conversa_id: conversa.id,
-                prospect_id: prospect.id,
-                mensagem: messageText,
-                telefone: normalizedPhone,
-                correlation_id: correlationId,
-              }),
-            });
-            if (!agentResponse.ok) {
-              const detail = (await agentResponse.text()).slice(0, 300);
-              console.error("[orbit-webhook] agente respondeu erro:", agentResponse.status, detail);
-              await supabase.from("orbit_conversas").update({ ai_processing: false }).eq("id", conversa.id);
-            }
-          } catch (agentErr) {
-            console.error("[orbit-webhook] Erro ao chamar AI agent:", agentErr instanceof Error ? agentErr.message : agentErr);
+      // Chamada do agente compartilhada pelos dois caminhos (legado e debounce).
+      // A resposta gerada SEMPRE entra no orbit_whatsapp_outbox (o agente é o
+      // produtor; orbit-whatsapp-outbox-tick é o único emissor).
+      const invokeAgent = async (mensagem: string, extra: Record<string, unknown> = {}) => {
+        try {
+          const agentResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-ai-agent`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              "x-orbit-internal-secret": Deno.env.get("ORBIT_AI_AGENT_SECRET") ?? "",
+              "Idempotency-Key": correlationId,
+            },
+            body: JSON.stringify({
+              conversa_id: conversa.id,
+              prospect_id: prospect.id,
+              mensagem,
+              telefone: normalizedPhone,
+              correlation_id: correlationId,
+              ...extra,
+            }),
+          });
+          if (!agentResponse.ok) {
+            const detail = (await agentResponse.text()).slice(0, 300);
+            console.error("[orbit-webhook] agente respondeu erro:", agentResponse.status, detail);
             await supabase.from("orbit_conversas").update({ ai_processing: false }).eq("id", conversa.id);
+            return false;
           }
-        } else {
-          // Liberar lock se não vai chamar IA
+          return true;
+        } catch (agentErr) {
+          console.error("[orbit-webhook] Erro ao chamar AI agent:", agentErr instanceof Error ? agentErr.message : agentErr);
           await supabase.from("orbit_conversas").update({ ai_processing: false }).eq("id", conversa.id);
+          return false;
         }
+      };
+
+      const debounceCfg = readDebounceConfig(aiConfig);
+
+      if (aiConfig?.modo_automatico && debounceCfg) {
+        // ── Debounce tenant-scoped: espera a janela após a ÚLTIMA inbound e
+        //    responde uma única vez com o lote consolidado. Jobs anteriores são
+        //    invalidados pelo claim_token (idempotente por construção).
+        const claimToken = crypto.randomUUID();
+        const fireAfter = computeFireAfter(inboundAt ?? new Date().toISOString(), debounceCfg.waitMs);
+        const { error: claimErr } = await supabase
+          .from("orbit_ai_reply_debounce")
+          .upsert({
+            conversa_id: conversa.id,
+            empresa_id: empresaId,
+            prospect_id: prospect.id,
+            claim_token: claimToken,
+            last_inbound_at: inboundAt ?? new Date().toISOString(),
+            last_inbound_message_id: savedMessage?.id ?? null,
+            fire_after: fireAfter,
+            status: "pending",
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "conversa_id" })
+          .select("conversa_id");
+
+        if (claimErr) {
+          console.error("[orbit-webhook] debounce claim falhou, caindo no caminho imediato:", claimErr.message);
+          await runImmediateAgentPath(supabase, conversa, prospect.id, messageText, invokeAgent);
+        } else {
+          console.log(JSON.stringify({
+            event: "ai_reply_debounce_scheduled",
+            empresa_id: empresaId,
+            conversa_id: conversa.id,
+            wait_ms: debounceCfg.waitMs,
+          }));
+          const job = (async () => {
+            await new Promise((r) => setTimeout(r, msUntil(fireAfter)));
+            await fireDebouncedReply({
+              supabase,
+              empresaId,
+              conversa,
+              prospectId: prospect.id,
+              claimToken,
+              cfg: debounceCfg,
+              receivedAt: inboundAt ?? new Date().toISOString(),
+              inboundMessageId: savedMessage?.id ?? messageId ?? conversa.id,
+              fallbackText: messageText,
+              invokeAgent,
+            });
+          })();
+          // @ts-ignore EdgeRuntime é global no runtime Supabase
+          if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(job);
+          else await job;
+        }
+      } else if (aiConfig?.modo_automatico) {
+        await runImmediateAgentPath(supabase, conversa, prospect.id, messageText, invokeAgent);
       } else {
-        console.log("[orbit-webhook] AI já processando conversa, msg será agregada:", conversa.id);
+        console.log("[orbit-webhook] modo automático desligado — sem resposta da IA");
       }
     } else if (!fromMe && !prospect?.id) {
       console.log("[orbit-webhook] contato sem prospect vinculado — visível para atendimento humano, sem resposta automática");

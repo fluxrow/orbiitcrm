@@ -40,6 +40,7 @@ export const COMMERCIAL_SIGNALS = [
   "closing_affirmative_contextual",
   "payment_method_choice",
   "payment_details_request",
+  "discount_request",
   "contact_data_only",
 ] as const;
 
@@ -115,6 +116,13 @@ const RE_EXPLICIT_CLOSING: RegExp[] = [
   /\bquero\s+garantir\s+(?:minha\s+)?vaga\b/,
   /\bvou\s+(?:querer|fechar|entrar)\b/,
   /\bbora\s+(?:fechar|come[cç]ar|nessa)\b/,
+  // Intenção comercial explícita em linguagem livre (não é apenas curiosidade).
+  /\bcomo\s+(?:eu\s+)?(?:fa[cç]o|posso\s+fazer)\s+(?:para|pra)\s+(?:come[cç]ar|entrar|participar|fazer\s+parte|avancar)\b/,
+  /\bcomo\s+(?:eu\s+)?(?:come[cç]o|participo|entro)\s+(?:na|no)\s+(?:mentoria|curso)\b/,
+  /^como\s+(?:eu\s+)?(?:come[cç]o|participo)\b[\s?!.]*$/,
+  /\bquero\s+avancar\b/,
+  /\bquero\s+dar\s+(?:o\s+)?proximo\s+passo\b/,
+  /\bquero\s+(?:muito\s+)?(?:fazer|entrar\s+n)(?:a|o)\s+(?:mentoria|curso)\b/,
 ];
 
 /**
@@ -134,6 +142,19 @@ const RE_PAYMENT_DETAILS_REQUEST: RegExp[] = [
   /\bmanda\s+(?:a\s+)?(?:chave|link)\b/,
   /\bqual\s+(?:e\s+)?(?:a\s+)?chave\s+pix\b/,
   /\bcomo\s+(?:eu\s+)?entro\b/,
+];
+
+/**
+ * Pedido de desconto/negociação. Preço é FIXO: o pedido obriga resposta de
+ * preço no mesmo turno (valores fixos) e habilita a alternativa secundária.
+ */
+const RE_DISCOUNT_REQUEST: RegExp[] = [
+  /\bdesconto\b/,
+  /\bcupom\b/,
+  /\bpromoc\w+\b/,
+  /\b(?:consegue|da|tem|faz)\s+(?:um\s+)?(?:melhor|abatimento)\b/,
+  /\bmelhora\w*\s+(?:o\s+)?(?:preco|valor)\b/,
+  /\bfaz\s+(?:por|pra\s+mim\s+por)\s+r?\$?\s*\d/,
 ];
 
 const RE_PIX_CHOICE: RegExp[] = [
@@ -207,6 +228,7 @@ export function extractCommercialSignals(
   if (anyMatch(RE_EXPLICIT_CLOSING, n)) signals.add("explicit_closing_intent");
   if (anyMatch(RE_CLOSING_AFFIRMATIVE_CONTEXTUAL, n)) signals.add("closing_affirmative_contextual");
   if (anyMatch(RE_PAYMENT_DETAILS_REQUEST, n)) signals.add("payment_details_request");
+  if (anyMatch(RE_DISCOUNT_REQUEST, n)) signals.add("discount_request");
 
   if (anyMatch(RE_PIX_CHOICE, n)) {
     signals.add("payment_method_choice");
@@ -307,7 +329,8 @@ export function computeCommercialPermissions(
     s.has("budget_objection") ||
     s.has("explicit_closing_intent");
 
-  const priceAsked = s.has("direct_price_question") || s.has("payment_terms_question");
+  const priceAsked =
+    s.has("direct_price_question") || s.has("payment_terms_question") || s.has("discount_request");
 
   // Fechamento reconhecido: explícito sempre; aceite curto só com contexto real
   // (produto em foco + preço já informado).
@@ -317,7 +340,13 @@ export function computeCommercialPermissions(
       (s.has("closing_affirmative_contextual") && hasPriceContext && !!state.product_focus));
 
   const mayMentionPrice = !contactOnly && (priceAsked || hasCommercialContext);
-  const mustAnswerPriceNow = !contactOnly && (priceAsked || state.unanswered_price_question);
+  // Intenção comercial explícita ("quero entrar", "como faço pra começar") com a
+  // oferta ainda sem preço informado exige o investimento no mesmo turno —
+  // sem abrir pagamento (isso continua dependendo de hasPriceContext).
+  const commercialIntentNeedsPrice =
+    !hasPriceContext && (closingRecognized || s.has("payment_details_request"));
+  const mustAnswerPriceNow =
+    !contactOnly && (priceAsked || state.unanswered_price_question || commercialIntentNeedsPrice);
 
   const mayAskPaymentMethod =
     !contactOnly &&
