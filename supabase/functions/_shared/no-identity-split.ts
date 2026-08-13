@@ -203,8 +203,8 @@ const RE_LEAD_ASKS_HUMAN: RegExp[] = [
   /\bfalar\s+com\s+(?:uma?\s+)?(?:pessoa|humano|gente\s+de\s+verdade|atendente|respons[áa]vel)\b/i,
   /\b(?:quero|queria|posso|d[áa]\s+pra|prefiro|preciso)\b[^.?!]{0,25}\bfalar\s+com\s+(?:algu[ée]m|uma?\s+pessoa|humano)\b/i,
   /\b(?:atendimento|suporte)\s+(?:humano|pessoal|com\s+pessoa)\b/i,
-  /(?:^|\s)(?:isso\s+)?[ée]\s+(?:um\s+)?(?:rob[ôo]|bot|ia|intelig[êe]ncia\s+artificial)\b/i,
-  /\bn[ãa]o\s+quero\s+(?:falar\s+com\s+)?(?:rob[ôo]|bot|ia)\b/i,
+  /(?:^|\s)(?:isso\s+)?[ée]\s+(?:um\s+)?(?:rob[ôo]|bot|ia|intelig[êe]ncia\s+artificial)(?![a-zà-ú])/i,
+  /n[ãa]o\s+quero\s+(?:falar\s+com\s+)?(?:rob[ôo]|bot|ia)(?![a-zà-ú])/i,
   /\bme\s+(?:liga|chama\s+no\s+telefone)\b/i,
 ];
 
