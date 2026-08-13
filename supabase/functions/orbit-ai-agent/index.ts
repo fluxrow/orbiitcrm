@@ -1916,6 +1916,18 @@ ${regrasBlock}`;
           resposta = finalStage.text;
         }
       }
+      if (primaryOfferCfg && primaryOfferPerm) {
+        const finalOffer = sanitizeSecondaryOffer(resposta, primaryOfferCfg, primaryOfferPerm);
+        if (finalOffer.changed) {
+          console.warn("[orbit-ai-agent] Trava de oferta principal: saída final sanitizada.", {
+            fallback: finalOffer.fallbackUsed,
+            reason: primaryOfferPerm.reason,
+          });
+          resposta = finalOffer.text;
+        }
+      }
+
+
 
     }
 
