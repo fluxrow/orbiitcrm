@@ -18,6 +18,7 @@ import {
   markZapiInstanceOnline,
   markOfflineAlertSent,
   sanitizeZapiReason,
+  ZAPI_STACK_VERSION,
 } from "../_shared/zapi-connection.ts";
 import { sendOpsOfflineAlert } from "../_shared/zapi-ops-alert.ts";
 
