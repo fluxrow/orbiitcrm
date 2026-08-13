@@ -21,6 +21,7 @@ import {
   ZAPI_STACK_VERSION,
 } from "../_shared/zapi-connection.ts";
 import { sendOpsOfflineAlert } from "../_shared/zapi-ops-alert.ts";
+import { drainPendingOpsAlerts } from "../_shared/ops-alert-drain.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -66,10 +67,33 @@ Deno.serve(async (req: Request) => {
     // dry_run: consulta /status somente leitura. Nada é gravado e NENHUM
     // alerta é enviado.
     let dryRun = url.searchParams.get("dry_run") === "true";
+    // drain: reprocessa pendências de alerta (alert_sent=false) por e-mail.
+    let drainOnly = url.searchParams.get("drain_only") === "true";
+    let drainEmpresaId: string | null = url.searchParams.get("drain_empresa_id");
+    let drainLimit = Number(url.searchParams.get("drain_limit") || "") || 20;
     try {
       const body = req.method === "POST" ? await req.json() : null;
       if (body && body.dry_run === true) dryRun = true;
+      if (body && body.drain_only === true) drainOnly = true;
+      if (body && typeof body.drain_empresa_id === "string") drainEmpresaId = body.drain_empresa_id;
+      if (body && Number(body.drain_limit)) drainLimit = Number(body.drain_limit);
     } catch (_e) { /* corpo vazio/não-JSON */ }
+
+    // Dreno de pendências (idempotente): sempre roda, exceto em dry_run.
+    const drained = await drainPendingOpsAlerts(supabase, {
+      empresaId: drainEmpresaId,
+      limit: drainLimit,
+      dryRun,
+    });
+
+    if (drainOnly) {
+      console.log("[orbit-zapi-heartbeat] drain_only:", drained.length, "dry_run:", dryRun);
+      return new Response(
+        JSON.stringify({ ok: true, version: ZAPI_STACK_VERSION, drain_only: true, dry_run: dryRun, drained }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
 
     const { data: configs } = await supabase
       .from("orbit_zapi_config")
@@ -153,6 +177,7 @@ Deno.serve(async (req: Request) => {
             reason,
             event_type: eventType,
             status_code: statusCode,
+            event_id: marked.event_id,
           });
           alerted = alert.sent;
           alertPending = alert.pending === true;
@@ -160,6 +185,9 @@ Deno.serve(async (req: Request) => {
             config_id: marked.config_id,
             event_id: marked.event_id,
             error: alert.sent ? null : alert.error ?? "alert_failed",
+            channel: alert.channel,
+            provider_message_id: alert.provider_message_id ?? null,
+            idempotency_key: alert.idempotency_key,
           });
         }
 
@@ -180,7 +208,7 @@ Deno.serve(async (req: Request) => {
     }
 
     console.log("[orbit-zapi-heartbeat] version:", ZAPI_STACK_VERSION, "processados:", results.length, "dry_run:", dryRun);
-    return new Response(JSON.stringify({ ok: true, version: ZAPI_STACK_VERSION, dry_run: dryRun, checked: results.length, results }), {
+    return new Response(JSON.stringify({ ok: true, version: ZAPI_STACK_VERSION, dry_run: dryRun, checked: results.length, drained, results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   });

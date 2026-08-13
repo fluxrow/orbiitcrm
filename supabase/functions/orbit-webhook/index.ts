@@ -232,12 +232,16 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
             instance_id: marked.instance_id ?? payloadInstanceId,
             reason: sanitizeZapiReason(rawReason, 200),
             event_type: eventType,
+            event_id: marked.event_id,
           });
           alerted = alert.sent;
           await markOfflineAlertSent(supabase, {
             config_id: marked.config_id,
             event_id: marked.event_id,
             error: alert.sent ? null : alert.error ?? "alert_failed",
+            channel: alert.channel,
+            provider_message_id: alert.provider_message_id ?? null,
+            idempotency_key: alert.idempotency_key,
           });
         }
 

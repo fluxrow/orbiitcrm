@@ -12,7 +12,7 @@ export const ZAPI_OFFLINE_REASON = "ZAPI_INSTANCE_OFFLINE";
 export const ZAPI_SEND_BLOCK_REASON = "ZAPI_SEND_TEMPORARILY_BLOCKED";
 
 /** Marcador de versão do stack Z-API (conexão/mídia/alerta). */
-export const ZAPI_STACK_VERSION = "zapi-stack-2026-08-13-ops-sender-guard";
+export const ZAPI_STACK_VERSION = "zapi-stack-2026-08-13-ops-email-alert";
 
 /** Cooldown do alerta operacional por instância (minutos). */
 export const OFFLINE_ALERT_COOLDOWN_MINUTES = 60;
@@ -344,7 +344,14 @@ export async function markZapiInstanceOnline(
  */
 export async function markOfflineAlertSent(
   supabase: any,
-  input: { config_id: string | null; event_id: string | null; error?: string | null },
+  input: {
+    config_id: string | null;
+    event_id: string | null;
+    error?: string | null;
+    channel?: string | null;
+    provider_message_id?: string | null;
+    idempotency_key?: string | null;
+  },
 ): Promise<void> {
   const nowIso = new Date().toISOString();
   if (input.config_id && !input.error) {
@@ -362,13 +369,19 @@ export async function markOfflineAlertSent(
     } catch (_e) {
       attempts = 1;
     }
+    const sent = !input.error;
     await supabase
       .from("orbit_zapi_status_events")
       .update({
-        alert_sent: !input.error,
+        alert_sent: sent,
         alert_attempts: attempts,
         alert_last_error: input.error ? sanitizeZapiReason(input.error) : null,
+        alert_channel: input.channel ?? null,
+        alert_sent_at: sent ? nowIso : null,
+        alert_provider_message_id: sent ? (input.provider_message_id ?? null) : null,
+        alert_idempotency_key: input.idempotency_key ?? null,
       })
       .eq("id", input.event_id);
   }
 }
+

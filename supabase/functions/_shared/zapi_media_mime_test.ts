@@ -10,10 +10,10 @@ import {
   isNativeAudioExtension,
 } from "./zapi-media.ts";
 import {
-  isSenderEligible,
-  resolveInternalSenderSelector,
+  OPS_ALERT_CHANNEL,
   OPS_ALERT_PENDING_ERROR,
-  DEFAULT_INTERNAL_SLUG,
+  OPS_ALERT_TELEGRAM_ENABLED,
+  ORBIT_OPS_ALERT_EMAIL_DEFAULT,
 } from "./zapi-ops-alert.ts";
 
 const BASE = "https://api.z-api.io/instances/INST/token/TOK";
@@ -133,35 +133,14 @@ Deno.test("REGRESSÃO: texto não recebe campos de mídia mesmo com mediaUrl", (
   assertEquals(Object.keys(spec.body).sort(), ["message", "phone"]);
 });
 
-// ---- Segurança do remetente de alerta operacional ----
+// ---- Segurança do canal de alerta operacional ----
 
-Deno.test("seletor de remetente interno exige configuração explícita", () => {
-  const env: Record<string, string> = {};
-  const sel = resolveInternalSenderSelector((k) => env[k]);
-  assertEquals(sel.configId, null);
-  assertEquals(sel.empresaId, null);
-  assertEquals(sel.slug, DEFAULT_INTERNAL_SLUG);
-
-  const env2: Record<string, string> = {
-    ORBIT_OPS_ALERT_ZAPI_CONFIG_ID: "cfg-1",
-    ORBIT_OPS_ALERT_EMPRESA_SLUG: "Orbit-Interno",
-  };
-  const sel2 = resolveInternalSenderSelector((k) => env2[k]);
-  assertEquals(sel2.configId, "cfg-1");
-  assertEquals(sel2.slug, "orbit-interno");
-});
-
-Deno.test("candidato inativo/offline/bloqueado não é elegível como remetente", () => {
-  const now = new Date("2026-08-13T12:00:00Z");
-  assert(isSenderEligible({ id: "a", instance_id: "i", ativo: true, instance_offline: false }, now));
-  assert(!isSenderEligible({ id: "a", instance_id: "i", ativo: false }, now));
-  assert(!isSenderEligible({ id: "a", instance_id: "i", instance_offline: true }, now));
-  assert(!isSenderEligible({ id: "a", instance_id: null }, now));
-  assert(!isSenderEligible({ id: "a", instance_id: "i", send_block_until: "2026-08-13T13:00:00Z" }, now));
-  assert(isSenderEligible({ id: "a", instance_id: "i", send_block_until: "2026-08-13T11:00:00Z" }, now));
-  assert(!isSenderEligible(null, now));
+Deno.test("canal operacional é e-mail master, sem Telegram e sem Z-API de tenant", () => {
+  assertEquals(OPS_ALERT_CHANNEL, "email");
+  assertEquals(OPS_ALERT_TELEGRAM_ENABLED, false);
+  assertEquals(ORBIT_OPS_ALERT_EMAIL_DEFAULT, "fbcfarias@icloud.com");
 });
 
 Deno.test("erro pendente de alerta é auditável e estável", () => {
-  assertEquals(OPS_ALERT_PENDING_ERROR, "ops_alert_pending_no_internal_sender");
+  assertEquals(OPS_ALERT_PENDING_ERROR, "ops_alert_pending_email_provider_not_configured");
 });

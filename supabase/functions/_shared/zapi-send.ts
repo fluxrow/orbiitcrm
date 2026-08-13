@@ -83,11 +83,15 @@ async function handleConnectionFailure(
       reason: cls.reason,
       event_type: cls.event_type,
       status_code: status,
+      event_id: marked.event_id,
     });
     await markOfflineAlertSent(supabase, {
       config_id: marked.config_id,
       event_id: marked.event_id,
       error: alert.sent ? null : alert.error ?? "alert_failed",
+      channel: alert.channel,
+      provider_message_id: alert.provider_message_id ?? null,
+      idempotency_key: alert.idempotency_key,
     });
   }
 
