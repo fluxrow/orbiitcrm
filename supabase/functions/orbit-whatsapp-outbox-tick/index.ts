@@ -10,7 +10,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
 import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
-import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 import { checkEligibility } from "../_shared/orbit-whatsapp-outbox.ts";
 import { checkCampaignRecipientEligibility } from "../_shared/campaign-safety.ts";
 import {
@@ -33,6 +32,12 @@ import {
   RETAIN_REASON_RESERVE_CONVERSA,
   RETAIN_REASON_RESERVE_DAILY,
 } from "../_shared/engaged-reply-reserve.ts";
+import {
+  fetchZapiConnectionState,
+  zapiInstanceBlockReason,
+  pauseTenantOutbox,
+} from "../_shared/zapi-connection.ts";
+import { sendViaZapiUnified } from "../_shared/zapi-send.ts";
 import {
   evaluateHoldGate,
   lastRecoverySentAtMs,
@@ -161,42 +166,18 @@ interface ProcessResult {
 }
 
 async function sendViaZapi(item: any, telefone: string, config: any): Promise<{ ok: boolean; providerId?: string | null; error?: string }> {
-  const base = `https://api.z-api.io/instances/${config.instance_id}/token/${config.token}`;
-  const headers = { "Content-Type": "application/json", "Client-Token": config.client_token || "" };
+  // Handler ÚNICO (texto + mídia isolada) em _shared/zapi-send.ts.
+  // Mídia sem URL resolvida NUNCA degrada para texto: retorna erro explícito.
   const payload = item.payload || {};
-  let url = `${base}/send-text`;
-  let body: any = { phone: telefone, message: payload.mensagem ?? "" };
-
-  // Padroniza em url_midia; aceita legado payload.url e storage_path.
-  // A signed URL é gerada AQUI (momento do processamento) com TTL de 6h para
-  // tolerar retries do item sem expirar no meio da entrega.
-  const mediaSource = payload.storage_path || payload.url_midia || payload.url || null;
-  const mediaUrl = mediaSource ? await signOrbitMediaUrl(supabase, mediaSource, 21600) : null;
-
-
-  if (item.payload_type === "image" && mediaUrl) {
-    url = `${base}/send-image`;
-    body = { phone: telefone, image: mediaUrl, caption: payload.mensagem || "" };
-  } else if (item.payload_type === "audio" && mediaUrl) {
-    url = `${base}/send-audio`;
-    body = { phone: telefone, audio: mediaUrl };
-  } else if (item.payload_type === "document" && mediaUrl) {
-    url = `${base}/send-document`;
-    const fileName = (mediaUrl as string).split("?")[0].split("/").pop() || "documento";
-    body = { phone: telefone, document: mediaUrl, fileName };
-  } else if (item.payload_type === "video" && mediaUrl) {
-    url = `${base}/send-video`;
-    body = { phone: telefone, video: mediaUrl, caption: payload.mensagem || "" };
-  }
-
-  try {
-    const resp = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
-    const json = await resp.json().catch(() => ({}));
-    if (!resp.ok) return { ok: false, error: `Z-API ${resp.status}: ${JSON.stringify(json).slice(0, 300)}` };
-    return { ok: true, providerId: json.messageId ?? null };
-  } catch (e) {
-    return { ok: false, error: `Z-API exception: ${e instanceof Error ? e.message : String(e)}` };
-  }
+  const result = await sendViaZapiUnified(supabase, config, {
+    phone: telefone,
+    kind: (item.payload_type || "text") as any,
+    message: payload.mensagem ?? "",
+    mediaSource: payload.storage_path || payload.url_midia || payload.url || null,
+    payload,
+    functionName: "orbit-whatsapp-outbox-tick",
+  });
+  return { ok: result.ok, providerId: result.providerId ?? null, error: result.error };
 }
 
 // ── Persistência unificada em orbit_mensagens ──
@@ -709,6 +690,15 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
     return { outcome: "failed", reason: "zapi_config_missing" };
   }
 
+  // ── GATE 4 (atômico, último instante): estado de conexão relido do banco.
+  // Se caiu entre o claim e agora, devolve o item a pending sem tocar a Z-API.
+  const freshConn = await fetchZapiConnectionState(supabase, item.empresa_id);
+  const connBlockNow = zapiInstanceBlockReason(freshConn);
+  if (connBlockNow) {
+    await releaseHeldItem(item, connBlockNow, new Date(Date.now() + 5 * 60_000).toISOString());
+    return { outcome: "deferred", reason: connBlockNow };
+  }
+
   // Envio
   const result = await sendViaZapi(item, telefone, zcfg);
   if (result.ok) {
@@ -786,6 +776,15 @@ function sortClaimed(items: any[]): any[] {
 async function processTenant(empresa_id: string, batch: number): Promise<Record<string, number>> {
   const stats = { claimed: 0, sent: 0, simulated: 0, canceled: 0, deferred: 0, failed: 0, blocked: 0, retained: 0, held: 0 };
   const cfg = await getSendingConfig(empresa_id);
+
+  // ── GATE 0 (fail-closed): instância offline/bloqueada pausa a fila do tenant.
+  // Nunca falha item — apenas empurra a próxima tentativa.
+  const connState = await fetchZapiConnectionState(supabase, empresa_id);
+  const connBlock = zapiInstanceBlockReason(connState);
+  if (connBlock) {
+    stats.retained += await pauseTenantOutbox(supabase, empresa_id, connBlock);
+    return stats;
+  }
 
   // ── Hold/cadência ANTES de qualquer contagem de cota, claim ou fetch externo ──
   stats.held = await deferHeldPendingForTenant(empresa_id);

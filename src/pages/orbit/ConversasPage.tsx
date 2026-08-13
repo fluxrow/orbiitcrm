@@ -24,6 +24,7 @@ import { useOrbitSearch } from "@/hooks/useOrbitSearch";
 import { useTenant } from "@/contexts/TenantContext";
 import { useOrbitAIConfig } from "@/hooks/useOrbitConfig";
 import { getConversaOwnership } from "@/lib/conversa-ownership";
+import { ChatInput } from "@/components/orbit/ChatInput";
 
 
 function stripHtml(html: string): string {
@@ -509,13 +510,13 @@ export default function ConversasPage() {
                         }
                       }}
                     />
-                    <Input
-                      placeholder="Mensagem..."
+                    <ChatInput
                       value={msg}
-                      onChange={(e) => setMsg(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-                      className="flex-1"
+                      onChange={setMsg}
+                      onSend={handleSend}
                       disabled={isUploading}
+                      className="flex-1"
+                      data-testid="chat-input"
                     />
                     <Button size="icon" onClick={handleSend} disabled={sendMessage.isPending || isUploading || (!msg.trim() && !attachedFile)}>
                       {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
