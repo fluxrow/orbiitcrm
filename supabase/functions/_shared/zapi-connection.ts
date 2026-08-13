@@ -12,7 +12,7 @@ export const ZAPI_OFFLINE_REASON = "ZAPI_INSTANCE_OFFLINE";
 export const ZAPI_SEND_BLOCK_REASON = "ZAPI_SEND_TEMPORARILY_BLOCKED";
 
 /** Marcador de versão do stack Z-API (conexão/mídia/alerta). */
-export const ZAPI_STACK_VERSION = "zapi-stack-2026-08-13-ops-sender-guard";
+export const ZAPI_STACK_VERSION = "zapi-stack-2026-08-13-ops-email-alert";
 
 /** Cooldown do alerta operacional por instância (minutos). */
 export const OFFLINE_ALERT_COOLDOWN_MINUTES = 60;
