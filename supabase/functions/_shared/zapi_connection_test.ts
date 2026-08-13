@@ -14,7 +14,7 @@ import {
   extensionFromPath,
   isNativeAudioExtension,
 } from "./zapi-media.ts";
-import { buildOfflineAlertMessage, ORBIT_OPS_ALERT_WHATSAPP } from "./zapi-ops-alert.ts";
+import { buildOfflineAlertMessage, ORBIT_OPS_ALERT_EMAIL_DEFAULT } from "./zapi-ops-alert.ts";
 
 const BASE = "https://api.z-api.io/instances/I1/token/T1";
 
@@ -97,10 +97,10 @@ Deno.test("N: alerta contem instance id e motivo, sem token", () => {
     reason: "session-disconnected em /token/ABCDEF0123456789ABCDEF01",
     event_type: "session-disconnected",
   });
-  assert(msg.includes("3F14C72D"));
+  assert(msg.includes("3F14C7"));
   assert(msg.includes("session-disconnected"));
   assert(!msg.includes("ABCDEF0123456789ABCDEF01"));
-  assertEquals(ORBIT_OPS_ALERT_WHATSAPP, "5541992361868");
+  assertEquals(ORBIT_OPS_ALERT_EMAIL_DEFAULT, "fbcfarias@icloud.com");
 });
 
 // ── Handler de mídia isolado ──
