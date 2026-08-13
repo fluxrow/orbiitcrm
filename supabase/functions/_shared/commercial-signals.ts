@@ -517,6 +517,47 @@ export function buildCommercialV2PromptBlock(
   return lines.join("\n");
 }
 
+/**
+ * Detecta, de forma determinística, se a RESPOSTA do agente realmente explicou a
+ * oferta (duração, acompanhamento, nichos validados, estrutura, metodologia,
+ * entregáveis, "como funciona"). Necessário porque o lead frequentemente pede
+ * explicação com frases livres ("gostaria de entender melhor", "o que preciso
+ * pra começar"), que não casam com os padrões de pergunta catalogados — e o
+ * estado ficava com `product_explained=false` mesmo após vários turnos de
+ * explicação real.
+ */
+const RE_REPLY_EXPLAINS_OFFER: RegExp[] = [
+  /\b\d+\s*(?:meses|mes|semanas)\b[^.?!]{0,40}\bacompanhamento\b/,
+  /\bacompanhamento\s+(?:direto|individual|semanal|proximo)\b/,
+  /\bnichos?\s+(?:ja\s+)?validad\w+\b/,
+  /\bestrutura\s+(?:de\s+validacao|completa|pronta|tecnica)\b/,
+  /\bmetodologia\b/,
+  /\b(?:a\s+)?mentoria\s+(?:funciona|inclui|tem|e|eh)\b/,
+  /\b(?:funciona|inclui|contempla)\s+assim\b/,
+  /\bmineracao\s+de\s+referencias\b/,
+  /\broteiros?\s+de\s+alta\s+retencao\b/,
+  /\btitulos\s+de\s+alto\s+clique\b/,
+  /\banalise\s+de\s+metricas\b/,
+  /\bgrupo\s+de\s+whatsapp\b/,
+  /\bidiomas\s+de\s+atuacao\b/,
+  /\beu\s+(?:te\s+)?(?:entrego|libero|forneco|passo)\b[^.?!]{0,40}\b(?:nichos|estrutura|referencias|roteiros|tudo)\b/,
+];
+
+export function replyExplainsOffer(resposta: string | null | undefined): boolean {
+  const n = norm(resposta);
+  if (!n) return false;
+  return anyMatch(RE_REPLY_EXPLAINS_OFFER, n);
+}
+
+export interface UpdateCommercialStateOptions {
+  /**
+   * Quando true, `product_explained` também é marcado a partir da explicação
+   * presente na própria resposta do agente. Default false preserva o
+   * comportamento legado byte-for-byte.
+   */
+  detectExplanationInReply?: boolean;
+}
+
 /** Atualização idempotente do estado, a partir do turno concluído. */
 export function updateCommercialState(
   state: CommercialStateV2,
@@ -524,18 +565,21 @@ export function updateCommercialState(
   respostaFinal: string,
   perms: CommercialPermissions,
   nowISO: string,
+  opts?: UpdateCommercialStateOptions,
 ): CommercialStateV2 {
   const clauses = splitClauses(respostaFinal).map(classifySentence);
   const respondeuPreco = clauses.some((k) => k.price);
   const perguntouForma = clauses.some((k) => k.methodQuestion);
   const enviouDados = clauses.some((k) => k.paymentDetails) && perms.maySharePaymentDetails;
+  const explicouNaResposta = opts?.detectExplanationInReply === true && replyExplainsOffer(respostaFinal);
 
   const product = extracted.productMentioned ?? state.product_focus ?? null;
   const priceAsked = extracted.signals.has("direct_price_question") || extracted.signals.has("payment_terms_question");
 
   return {
     product_focus: product,
-    product_explained: state.product_explained || respondeuPreco || extracted.signals.has("informational_question"),
+    product_explained: state.product_explained || respondeuPreco || explicouNaResposta ||
+      extracted.signals.has("informational_question"),
     price_informed: respondeuPreco
       ? { product: product ?? state.price_informed?.product ?? "mentoria", at: nowISO }
       : state.price_informed,

@@ -36,6 +36,15 @@ import {
   enforceNoLocationCollection,
   LOCATION_GUARD_CORRECTIVE,
 } from "../_shared/no-location-collection.ts";
+import {
+  detectIdentitySplit,
+  enforceNoIdentitySplit,
+  buildIdentityPromptBlock,
+  isHandoffAllowed,
+  leadRequestsHuman,
+  IDENTITY_GUARD_CORRECTIVE,
+  type IdentityGuardContext,
+} from "../_shared/no-identity-split.ts";
 import { currentSaoPauloTime, evaluateBusinessHours } from "../_shared/business-hours.ts";
 import {
   evaluateCommercialStage,
@@ -1168,6 +1177,21 @@ serve(async (req) => {
       ? buildPrimaryOfferPromptBlock(primaryOfferCfg, primaryOfferPerm)
       : "";
 
+    // ── IDENTIDADE ÚNICA (tenant-scoped por orbit_ai_config.block_identity_split) ──
+    // O agente É o dono da oferta: nunca prometer especialista/consultor/equipe.
+    // Handoff real só com pedido explícito do lead, conversa assumida por humano
+    // ou intenção que exija ação humana (definida após a resposta do modelo).
+    const blockIdentitySplit = (aiConfig as any).block_identity_split === true;
+    const identityCtx: IdentityGuardContext = {
+      leadAskedHuman: leadRequestsHuman(mensagemAgregada),
+      humanTalk: (conversa as any)?.human_talk === true,
+      handoffAuthorized: false,
+    };
+    const identityBlock = blockIdentitySplit
+      ? buildIdentityPromptBlock(isHandoffAllowed(identityCtx))
+      : "";
+
+
     // Bloco tenant-scoped: reforça no prompt a proibição de coleta de localização/e-mail.
     const noCollectRules: string[] = [];
     if ((aiConfig as any).block_location_collection === true) {
@@ -1194,13 +1218,15 @@ ${campaignContinuity}${stateInstruction}${classificationInstruction}
 ${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${dataHoraAtualBlock}${schedulingModeBlock}
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
-${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}${commercialV2Block}${primaryOfferBlock}${noCollectBlock}
+${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}${commercialV2Block}${primaryOfferBlock}${identityBlock}${noCollectBlock}
 REGRAS CRÍTICAS:
 1. DADOS EXISTENTES: Se um dado do lead já está preenchido no contexto acima ou nos FATOS CANÔNICOS (personName, companyName, city, email, nível pretendido, cidade/estado etc.), NUNCA pergunte novamente. Use naturalmente na conversa.
 2. CAMPOS FALTANTES: Solicite APENAS os campos marcados como "true" em missingFields, e as perguntas dinâmicas ainda não respondidas.
 3. Se for PRIMEIRA INTERAÇÃO (isFirstInteraction=true) E NÃO for campanha, envie a mensagem de boas-vindas: "${aiConfig.mensagem_boas_vindas || 'Olá! Como posso ajudá-lo?'}"
 4. Se o cliente pedir ORÇAMENTO, COTAÇÃO ou demonstrar interesse em comprar, inicie a coleta dos campos faltantes.
-5. Quando TODAS as informações relevantes (cadastro + qualificação obrigatória) estiverem preenchidas, agradeça e informe: "Perfeito. Vou colocar um especialista para avançarmos de forma mais objetiva."
+5. ${blockIdentitySplit
+  ? `Quando TODAS as informações relevantes estiverem preenchidas, NÃO prometa nenhum especialista, consultor, equipe ou terceiro: avance você mesmo, em primeira pessoa (aprofunde a explicação, ofereça o investimento ou proponha o próximo passo direto com você).`
+  : `Quando TODAS as informações relevantes (cadastro + qualificação obrigatória) estiverem preenchidas, agradeça e informe: "Perfeito. Vou colocar um especialista para avançarmos de forma mais objetiva."`}
 6. NUNCA invente dados sobre produtos ou preços — se a Base de Conhecimento não trouxer a resposta, diga que vai confirmar e seguir.
 7. Seja cordial e responda de forma concisa — máximo 2-3 frases.
 8. SEMPRE responda no idioma configurado.
@@ -1380,6 +1406,33 @@ ${regrasBlock}`;
       parsed.mensagem = resposta;
     }
 
+    // ── GUARD TENANT-SCOPED: identidade única (proibida falsa transferência) ──
+    // Ativado apenas quando orbit_ai_config.block_identity_split = true.
+    if (blockIdentitySplit && detectIdentitySplit(resposta, identityCtx).violates) {
+      console.warn("[orbit-ai-agent] Guard de identidade acionado.", {
+        handoffAllowed: identityCtx.leadAskedHuman || identityCtx.humanTalk || identityCtx.handoffAuthorized,
+      });
+      const retryId = await callAnthropic({
+        model: normalizeAgentModel((aiConfig as any).modelo_ia),
+        system: systemPrompt,
+        messages: toAnthropicMessages([
+          { role: "user", content: userTurn },
+          { role: "assistant", content: resposta },
+          { role: "user", content: IDENTITY_GUARD_CORRECTIVE + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+        ]),
+        temperature: 0.5,
+        max_tokens: maxTokens,
+      });
+      const retryIdText = retryId.ok ? String(retryId.text || "").trim() : "";
+      if (retryIdText && !detectIdentitySplit(retryIdText, identityCtx).violates) {
+        resposta = retryIdText;
+      } else {
+        const enforcedId = enforceNoIdentitySplit(retryIdText || resposta, true, identityCtx);
+        resposta = enforcedId.text;
+        console.warn("[orbit-ai-agent] Falsa transferência sanitizada.", { fallback: enforcedId.fallbackUsed });
+      }
+      parsed.mensagem = resposta;
+    }
 
 
     // ── GUARD TENANT-SCOPED: estágio comercial (preço/pagamento/fechamento) ──
@@ -1502,10 +1555,29 @@ ${regrasBlock}`;
       // O contexto pendente torna a intenção de agendamento determinística.
       intencaoNormalizada = "agendar_call";
     }
+    // Tenant com identidade única: "falar_humano" só vale com pedido explícito do
+    // lead ou conversa já assumida por pessoa. Sem isso, o modelo não pode criar
+    // handoff fantasma a partir de uma dúvida comum.
+    if (
+      blockIdentitySplit &&
+      intencaoNormalizada === "falar_humano" &&
+      !identityCtx.leadAskedHuman &&
+      identityCtx.humanTalk !== true
+    ) {
+      console.warn("[orbit-ai-agent] falar_humano descartado: lead não pediu atendimento humano.");
+      intencaoNormalizada = "duvida";
+    }
+
     const isCommercialSignal =
       intencaoNormalizada === "agendar_call" ||
       intencaoNormalizada === "venda_fechada" ||
       intencaoNormalizada === "falar_humano";
+
+    // Handoff humano real: só com pedido explícito do lead, conversa assumida por
+    // humano, ou intenção que exige ação humana externa (venda/agendamento).
+    identityCtx.handoffAuthorized = isCommercialSignal;
+
+
 
     // ── Auto-agendamento: se lead pediu agendar_call, tentar via Google Calendar antes do handoff ──
     let scheduleOutcome: {
@@ -1617,6 +1689,9 @@ ${regrasBlock}`;
               String(parsed.mensagem || resposta || ""),
               commercialPerms,
               new Date().toISOString(),
+              // Tenant com identidade única: a explicação da oferta na própria
+              // resposta do agente já marca product_explained (idempotente).
+              { detectExplanationInReply: blockIdentitySplit },
             ),
           }
         : {}),
@@ -1897,6 +1972,11 @@ ${regrasBlock}`;
       if (finalLoc.changed) {
         console.warn("[orbit-ai-agent] Coleta de localização removida na saída final.", { fallback: finalLoc.fallbackUsed });
         resposta = finalLoc.text;
+      }
+      const finalIdentity = enforceNoIdentitySplit(resposta, blockIdentitySplit, identityCtx);
+      if (finalIdentity.changed) {
+        console.warn("[orbit-ai-agent] Falsa transferência removida na saída final.", { fallback: finalIdentity.fallbackUsed });
+        resposta = finalIdentity.text;
       }
       if (commercialV2Enabled && commercialPerms) {
         const finalV2 = sanitizeCommercialV2(resposta, commercialPerms);
