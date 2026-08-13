@@ -1824,6 +1824,11 @@ ${regrasBlock}`;
         console.warn("[orbit-ai-agent] Coleta de e-mail removida na saída final.", { fallback: finalEnforced.fallbackUsed });
         resposta = finalEnforced.text;
       }
+      const finalLoc = enforceNoLocationCollection(resposta, blockLocationCollection);
+      if (finalLoc.changed) {
+        console.warn("[orbit-ai-agent] Coleta de localização removida na saída final.", { fallback: finalLoc.fallbackUsed });
+        resposta = finalLoc.text;
+      }
       if (commercialV2Enabled && commercialPerms) {
         const finalV2 = sanitizeCommercialV2(resposta, commercialPerms);
         if (finalV2.changed) {
