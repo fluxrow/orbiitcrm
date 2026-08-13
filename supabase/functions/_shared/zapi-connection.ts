@@ -334,7 +334,11 @@ export async function markZapiInstanceOnline(
   return { config_id: cfg.id, recovered };
 }
 
-/** Registra que o alerta foi enviado (cooldown + auditoria). */
+/**
+ * Registra o resultado do alerta (cooldown + auditoria).
+ * Quando falha/pendente, o cooldown NÃO é gravado — o próximo ciclo tenta de
+ * novo e `alert_attempts` acumula para auditoria do retry.
+ */
 export async function markOfflineAlertSent(
   supabase: any,
   input: { config_id: string | null; event_id: string | null; error?: string | null },
@@ -344,11 +348,22 @@ export async function markOfflineAlertSent(
     await supabase.from("orbit_zapi_config").update({ offline_alert_sent_at: nowIso }).eq("id", input.config_id);
   }
   if (input.event_id) {
+    let attempts = 1;
+    try {
+      const { data } = await supabase
+        .from("orbit_zapi_status_events")
+        .select("alert_attempts")
+        .eq("id", input.event_id)
+        .maybeSingle();
+      attempts = Number((data as any)?.alert_attempts ?? 0) + 1;
+    } catch (_e) {
+      attempts = 1;
+    }
     await supabase
       .from("orbit_zapi_status_events")
       .update({
         alert_sent: !input.error,
-        alert_attempts: 1,
+        alert_attempts: attempts,
         alert_last_error: input.error ? sanitizeZapiReason(input.error) : null,
       })
       .eq("id", input.event_id);
