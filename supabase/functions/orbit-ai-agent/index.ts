@@ -1144,6 +1144,20 @@ serve(async (req) => {
       ? buildCommercialV2PromptBlock(commercialState, commercialPerms, commercialExtracted)
       : "";
 
+    // Bloco tenant-scoped: reforça no prompt a proibição de coleta de localização/e-mail.
+    const noCollectRules: string[] = [];
+    if ((aiConfig as any).block_location_collection === true) {
+      noCollectRules.push('- NUNCA pergunte cidade, estado, região, endereço ou qualquer localização do lead.');
+      noCollectRules.push('- NUNCA use expressões como "finalizar cadastro", "completar cadastro" ou "preciso dos seus dados".');
+    }
+    if ((aiConfig as any).block_email_collection === true) {
+      noCollectRules.push('- NUNCA pergunte e-mail do lead.');
+    }
+    const noCollectBlock = noCollectRules.length
+      ? `\nCOLETA DE DADOS (INVIOLÁVEL PARA ESTE TENANT):\n${noCollectRules.join("\n")}\n- Só pergunte um dado se ele for estritamente necessário ao fechamento e explicitamente autorizado pelas regras comerciais.\n`
+      : "";
+
+
     const systemPrompt = `${promptIdentidade}
 
 ESTILO DE ESCRITA (PT-BR, INVIOLÁVEL):
@@ -1156,7 +1170,7 @@ ${campaignContinuity}${stateInstruction}${classificationInstruction}
 ${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${dataHoraAtualBlock}${schedulingModeBlock}
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
-${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}${commercialV2Block}
+${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}${commercialV2Block}${noCollectBlock}
 REGRAS CRÍTICAS:
 1. DADOS EXISTENTES: Se um dado do lead já está preenchido no contexto acima ou nos FATOS CANÔNICOS (personName, companyName, city, email, nível pretendido, cidade/estado etc.), NUNCA pergunte novamente. Use naturalmente na conversa.
 2. CAMPOS FALTANTES: Solicite APENAS os campos marcados como "true" em missingFields, e as perguntas dinâmicas ainda não respondidas.
