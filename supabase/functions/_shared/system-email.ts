@@ -62,7 +62,7 @@ export async function getSystemEmailCandidates(
   const out: SystemEmailConfig[] = [];
   const push = (apiKey: string | null | undefined, fromEmail: string) => {
     if (!apiKey) return;
-    if (out.some((c) => c.apiKey === apiKey)) return;
+    if (out.some((c) => c.apiKey === apiKey && c.fromEmail === fromEmail)) return;
     out.push({ apiKey, fromEmail });
   };
   const systemFrom = `${SYSTEM_FROM_NAME} <${SYSTEM_FROM_EMAIL}>`;
