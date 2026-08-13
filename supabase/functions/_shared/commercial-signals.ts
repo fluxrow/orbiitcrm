@@ -578,7 +578,8 @@ export function updateCommercialState(
 
   return {
     product_focus: product,
-    product_explained: state.product_explained || respondeuPreco || extracted.signals.has("informational_question"),
+    product_explained: state.product_explained || respondeuPreco || explicouNaResposta ||
+      extracted.signals.has("informational_question"),
     price_informed: respondeuPreco
       ? { product: product ?? state.price_informed?.product ?? "mentoria", at: nowISO }
       : state.price_informed,
