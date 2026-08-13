@@ -53,6 +53,14 @@ import {
   updateCommercialState,
   EMPTY_COMMERCIAL_STATE,
 } from "../_shared/commercial-signals.ts";
+import {
+  readPrimaryOfferLockConfig,
+  computePrimaryOfferPermission,
+  detectSecondaryOffer,
+  sanitizeSecondaryOffer,
+  buildSecondaryOfferCorrective,
+  buildPrimaryOfferPromptBlock,
+} from "../_shared/primary-offer-guard.ts";
 
 
 
