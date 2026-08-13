@@ -53,6 +53,14 @@ import {
   updateCommercialState,
   EMPTY_COMMERCIAL_STATE,
 } from "../_shared/commercial-signals.ts";
+import {
+  readPrimaryOfferLockConfig,
+  computePrimaryOfferPermission,
+  detectSecondaryOffer,
+  sanitizeSecondaryOffer,
+  buildSecondaryOfferCorrective,
+  buildPrimaryOfferPromptBlock,
+} from "../_shared/primary-offer-guard.ts";
 
 
 
@@ -1144,6 +1152,22 @@ serve(async (req) => {
       ? buildCommercialV2PromptBlock(commercialState, commercialPerms, commercialExtracted)
       : "";
 
+    // ── TRAVA DE OFERTA PRINCIPAL (tenant-scoped por orbit_ai_config.primary_offer_lock) ──
+    // Pergunta genérica de preço não pode virar cardápio com a oferta secundária.
+    const primaryOfferCfg = readPrimaryOfferLockConfig(aiConfig as Record<string, unknown>);
+    const primaryOfferPerm = primaryOfferCfg
+      ? computePrimaryOfferPermission({
+          cfg: primaryOfferCfg,
+          inbound: mensagemAgregada,
+          tags: Array.isArray((prospect as any)?.tags) ? ((prospect as any).tags as string[]) : [],
+          stateFocus: commercialState.product_focus,
+          stateBudgetObjection: commercialState.budget_objection || commercialExtracted.signals?.has?.("budget_objection") === true,
+        })
+      : null;
+    const primaryOfferBlock = primaryOfferCfg && primaryOfferPerm
+      ? buildPrimaryOfferPromptBlock(primaryOfferCfg, primaryOfferPerm)
+      : "";
+
     // Bloco tenant-scoped: reforça no prompt a proibição de coleta de localização/e-mail.
     const noCollectRules: string[] = [];
     if ((aiConfig as any).block_location_collection === true) {
@@ -1170,7 +1194,7 @@ ${campaignContinuity}${stateInstruction}${classificationInstruction}
 ${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${dataHoraAtualBlock}${schedulingModeBlock}
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
-${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}${commercialV2Block}${noCollectBlock}
+${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}${commercialV2Block}${primaryOfferBlock}${noCollectBlock}
 REGRAS CRÍTICAS:
 1. DADOS EXISTENTES: Se um dado do lead já está preenchido no contexto acima ou nos FATOS CANÔNICOS (personName, companyName, city, email, nível pretendido, cidade/estado etc.), NUNCA pergunte novamente. Use naturalmente na conversa.
 2. CAMPOS FALTANTES: Solicite APENAS os campos marcados como "true" em missingFields, e as perguntas dinâmicas ainda não respondidas.
@@ -1419,6 +1443,37 @@ ${regrasBlock}`;
           const enforced = enforceCommercialStage(mensagemAgregada, retryText || resposta, true);
           resposta = enforced.text;
           console.warn("[orbit-ai-agent] Avanço comercial sanitizado.", { fallback: enforced.fallbackUsed });
+        }
+        parsed.mensagem = resposta;
+      }
+    }
+
+    // ── GUARD TENANT-SCOPED: trava de oferta principal (anti-cardápio/downsell) ──
+    if (primaryOfferCfg && primaryOfferPerm) {
+      const offerVerdict = detectSecondaryOffer(resposta, primaryOfferCfg, primaryOfferPerm);
+      if (offerVerdict.violates) {
+        console.warn("[orbit-ai-agent] Trava de oferta principal acionada.", {
+          reason: primaryOfferPerm.reason,
+          clauses: offerVerdict.offending.length,
+        });
+        const retryOffer = await callAnthropic({
+          model: normalizeAgentModel((aiConfig as any).modelo_ia),
+          system: systemPrompt,
+          messages: toAnthropicMessages([
+            { role: "user", content: userTurn },
+            { role: "assistant", content: resposta },
+            { role: "user", content: buildSecondaryOfferCorrective(primaryOfferCfg) + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+          ]),
+          temperature: 0.5,
+          max_tokens: maxTokens,
+        });
+        const retryOfferText = retryOffer.ok ? String(retryOffer.text || "").trim() : "";
+        if (retryOfferText && !detectSecondaryOffer(retryOfferText, primaryOfferCfg, primaryOfferPerm).violates) {
+          resposta = retryOfferText;
+        } else {
+          const enforcedOffer = sanitizeSecondaryOffer(retryOfferText || resposta, primaryOfferCfg, primaryOfferPerm);
+          resposta = enforcedOffer.text;
+          console.warn("[orbit-ai-agent] Oferta secundária sanitizada.", { fallback: enforcedOffer.fallbackUsed });
         }
         parsed.mensagem = resposta;
       }
@@ -1861,6 +1916,18 @@ ${regrasBlock}`;
           resposta = finalStage.text;
         }
       }
+      if (primaryOfferCfg && primaryOfferPerm) {
+        const finalOffer = sanitizeSecondaryOffer(resposta, primaryOfferCfg, primaryOfferPerm);
+        if (finalOffer.changed) {
+          console.warn("[orbit-ai-agent] Trava de oferta principal: saída final sanitizada.", {
+            fallback: finalOffer.fallbackUsed,
+            reason: primaryOfferPerm.reason,
+          });
+          resposta = finalOffer.text;
+        }
+      }
+
+
 
     }
 
