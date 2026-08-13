@@ -1168,6 +1168,21 @@ serve(async (req) => {
       ? buildPrimaryOfferPromptBlock(primaryOfferCfg, primaryOfferPerm)
       : "";
 
+    // ── IDENTIDADE ÚNICA (tenant-scoped por orbit_ai_config.block_identity_split) ──
+    // O agente É o dono da oferta: nunca prometer especialista/consultor/equipe.
+    // Handoff real só com pedido explícito do lead, conversa assumida por humano
+    // ou intenção que exija ação humana (definida após a resposta do modelo).
+    const blockIdentitySplit = (aiConfig as any).block_identity_split === true;
+    const identityCtx: IdentityGuardContext = {
+      leadAskedHuman: leadRequestsHuman(mensagemAgregada),
+      humanTalk: (conversa as any)?.human_talk === true,
+      handoffAuthorized: false,
+    };
+    const identityBlock = blockIdentitySplit
+      ? buildIdentityPromptBlock(isHandoffAllowed(identityCtx))
+      : "";
+
+
     // Bloco tenant-scoped: reforça no prompt a proibição de coleta de localização/e-mail.
     const noCollectRules: string[] = [];
     if ((aiConfig as any).block_location_collection === true) {
