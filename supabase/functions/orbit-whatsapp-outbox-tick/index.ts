@@ -36,8 +36,11 @@ import {
   fetchZapiConnectionState,
   zapiInstanceBlockReason,
   pauseTenantOutbox,
+  ZAPI_STACK_VERSION,
 } from "../_shared/zapi-connection.ts";
 import { sendViaZapiUnified } from "../_shared/zapi-send.ts";
+
+console.log("[orbit-whatsapp-outbox-tick] boot version:", ZAPI_STACK_VERSION);
 import {
   evaluateHoldGate,
   lastRecoverySentAtMs,
