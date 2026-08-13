@@ -153,6 +153,7 @@ Deno.serve(async (req: Request) => {
             reason,
             event_type: eventType,
             status_code: statusCode,
+            event_id: marked.event_id,
           });
           alerted = alert.sent;
           alertPending = alert.pending === true;
@@ -160,6 +161,9 @@ Deno.serve(async (req: Request) => {
             config_id: marked.config_id,
             event_id: marked.event_id,
             error: alert.sent ? null : alert.error ?? "alert_failed",
+            channel: alert.channel,
+            provider_message_id: alert.provider_message_id ?? null,
+            idempotency_key: alert.idempotency_key,
           });
         }
 
