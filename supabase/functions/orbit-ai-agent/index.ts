@@ -1448,6 +1448,37 @@ ${regrasBlock}`;
       }
     }
 
+    // ── GUARD TENANT-SCOPED: trava de oferta principal (anti-cardápio/downsell) ──
+    if (primaryOfferCfg && primaryOfferPerm) {
+      const offerVerdict = detectSecondaryOffer(resposta, primaryOfferCfg, primaryOfferPerm);
+      if (offerVerdict.violates) {
+        console.warn("[orbit-ai-agent] Trava de oferta principal acionada.", {
+          reason: primaryOfferPerm.reason,
+          clauses: offerVerdict.offending.length,
+        });
+        const retryOffer = await callAnthropic({
+          model: normalizeAgentModel((aiConfig as any).modelo_ia),
+          system: systemPrompt,
+          messages: toAnthropicMessages([
+            { role: "user", content: userTurn },
+            { role: "assistant", content: resposta },
+            { role: "user", content: buildSecondaryOfferCorrective(primaryOfferCfg) + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+          ]),
+          temperature: 0.5,
+          max_tokens: maxTokens,
+        });
+        const retryOfferText = retryOffer.ok ? String(retryOffer.text || "").trim() : "";
+        if (retryOfferText && !detectSecondaryOffer(retryOfferText, primaryOfferCfg, primaryOfferPerm).violates) {
+          resposta = retryOfferText;
+        } else {
+          const enforcedOffer = sanitizeSecondaryOffer(retryOfferText || resposta, primaryOfferCfg, primaryOfferPerm);
+          resposta = enforcedOffer.text;
+          console.warn("[orbit-ai-agent] Oferta secundária sanitizada.", { fallback: enforcedOffer.fallbackUsed });
+        }
+        parsed.mensagem = resposta;
+      }
+    }
+
 
 
 
