@@ -21,6 +21,7 @@ import {
   ZAPI_STACK_VERSION,
 } from "../_shared/zapi-connection.ts";
 import { sendOpsOfflineAlert } from "../_shared/zapi-ops-alert.ts";
+import { drainPendingOpsAlerts } from "../_shared/ops-alert-drain.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -207,7 +208,7 @@ Deno.serve(async (req: Request) => {
     }
 
     console.log("[orbit-zapi-heartbeat] version:", ZAPI_STACK_VERSION, "processados:", results.length, "dry_run:", dryRun);
-    return new Response(JSON.stringify({ ok: true, version: ZAPI_STACK_VERSION, dry_run: dryRun, checked: results.length, results }), {
+    return new Response(JSON.stringify({ ok: true, version: ZAPI_STACK_VERSION, dry_run: dryRun, checked: results.length, drained, results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   });
