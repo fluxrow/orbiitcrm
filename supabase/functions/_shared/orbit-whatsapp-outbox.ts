@@ -23,6 +23,7 @@ export type OutboxSourceType =
   | "ai_reply"
   | "meeting_confirmation"
   | "manual"
+  | "mixed_payment_confirmation"
   | "flow_initial"
   | "flow_followup"
   | "flow_stage"
@@ -34,8 +35,11 @@ export type OutboxPayloadType = "text" | "image" | "audio" | "document" | "video
 // e flow_initial: transições de etapa são intencionais (Agendado/No-show/Ganho/
 // Perdido/Negociação) e devem sair na frente de qualquer follow-up de prospecção,
 // mas não podem furar respostas de IA nem confirmações de reunião.
+// mixed_payment_confirmation é a ÚNICA mensagem do handoff de pagamento misto:
+// precisa sair na frente porque a conversa passa a human_talk imediatamente depois.
 export const OUTBOX_PRIORITY: Record<OutboxSourceType, number> = {
   ai_reply: 100,
+  mixed_payment_confirmation: 99,
   meeting_confirmation: 90,
   flow_stage: 75,
   manual: 80,
@@ -43,6 +47,7 @@ export const OUTBOX_PRIORITY: Record<OutboxSourceType, number> = {
   flow_followup: 40,
   campaign: 20,
 };
+
 
 export interface OutboxContext {
   empresa_id: string;
