@@ -13,6 +13,12 @@ import {
   createCalendarEvent,
 } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
+import {
+  decideImmediateKick,
+  kickOutboxDispatch,
+  readImmediateOutboxDispatchFlag,
+} from "../_shared/immediate-outbox-dispatch.ts";
+
 import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
 
 import {
