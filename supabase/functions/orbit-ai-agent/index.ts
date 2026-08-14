@@ -2570,6 +2570,210 @@ async function generateTTS(texto: string, ttsVoiceId: string, ttsApiKey: string)
   return res.arrayBuffer();
 }
 
+// ── PAGAMENTO MISTO: orquestrador por etapas, recuperável e idempotente ──
+// Ordem obrigatória: claim -> confirmação DURÁVEL -> human_talk -> notificação.
+// Nenhuma etapa é marcada antes do sucesso; retry retoma exatamente onde parou.
+async function runMixedPaymentHandoff(
+  supabase: any,
+  args: {
+    conversa_id: string;
+    empresaId: string | null;
+    prospect: any;
+    prospect_id: string | null;
+    telefone: string;
+    isDemo: boolean;
+    aiConfig: any;
+    confirmation: string;
+  },
+): Promise<Record<string, unknown>> {
+  const { conversa_id, empresaId, prospect, prospect_id, telefone, isDemo, aiConfig, confirmation } = args;
+
+  // Estado sempre relido do banco: a decisão do próximo passo é derivada dele.
+  const { data: conv } = await supabase
+    .from("orbit_conversas")
+    .select("id, ai_contexto, human_talk, prospect_id")
+    .eq("id", conversa_id)
+    .maybeSingle();
+  let ctx: Record<string, unknown> = (conv as any)?.ai_contexto || {};
+  let state = readMixedPaymentState(ctx);
+
+  if (state.handled) {
+    return { skipped: true, reason: "mixed_payment_already_handled", step: "done" };
+  }
+
+  // Inbound mais recente: identidade da ÚNICA confirmação (idempotência).
+  const { data: lastIn } = await supabase
+    .from("orbit_mensagens")
+    .select("id")
+    .eq("conversa_id", conversa_id)
+    .eq("direcao", "IN")
+    .order("timestamp", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const inboundId = (lastIn as any)?.id ?? conversa_id;
+
+  // ── Etapa 1: claim (não marca confirmação, não marca posse humana) ──
+  if (!state.claimed) {
+    const { data: claimed, error: claimError } = await supabase
+      .from("orbit_conversas")
+      .update({
+        ai_processing: false,
+        ai_contexto: { ...ctx, estado: "handoff", mixed_payment_handoff: buildMixedPaymentClaim(inboundId) },
+      })
+      .eq("id", conversa_id)
+      .filter("ai_contexto->mixed_payment_handoff", "is", null)
+      .select("id, ai_contexto");
+    if (claimError) {
+      console.error("[orbit-ai-agent] Falha no claim de pagamento misto:", claimError.message);
+      throw new Error("mixed_payment_claim_failed");
+    }
+    if (!claimed || claimed.length === 0) {
+      // Concorrência: outra execução já fez o claim deste inbound. Nada a duplicar.
+      return { skipped: true, reason: "mixed_payment_claim_lost", step: "claim" };
+    }
+    ctx = (claimed[0] as any).ai_contexto || ctx;
+    state = readMixedPaymentState(ctx);
+  }
+
+  const persist = async (patch: Record<string, string>) => {
+    const { data: row } = await supabase
+      .from("orbit_conversas")
+      .update({ ai_contexto: { ...ctx, estado: "handoff", mixed_payment_handoff: mergeMixedPaymentState(ctx, patch) } })
+      .eq("id", conversa_id)
+      .select("ai_contexto")
+      .maybeSingle();
+    ctx = (row as any)?.ai_contexto || ctx;
+    state = readMixedPaymentState(ctx);
+  };
+
+  // ── Etapa 2: confirmação DURÁVEL (uma única vez) ──
+  if (decideMixedPaymentNextStep(state) === "enqueue_confirmation") {
+    const adapterOn = !isDemo && !!empresaId && (await isAdapterEnabled(supabase, empresaId));
+    if (adapterOn) {
+      const { data: visual } = await supabase
+        .from("orbit_mensagens")
+        .insert({
+          conversa_id,
+          direcao: "OUT",
+          mensagem: confirmation,
+          canal: "whatsapp",
+          status: "queued",
+          empresa_id: empresaId,
+        })
+        .select("id")
+        .single();
+      const routed = await enqueueOutbox(supabase, {
+        empresa_id: empresaId!,
+        conversa_id,
+        prospect_id: prospect_id ?? (conv as any)?.prospect_id ?? null,
+        source_type: MIXED_PAYMENT_CONFIRMATION_SOURCE,
+        inbound_message_id: inboundId,
+        source_id: inboundId,
+        payload_type: "text",
+        payload: { mensagem: confirmation },
+        metadata: { orbit_message_id: visual?.id ?? null, mixed_payment_confirmation: true },
+      });
+      const durableId = routed.outbox_id ?? null;
+      if (!routed.enqueued && routed.reason !== "duplicate") {
+        // Falha ANTES do enqueue: nada é marcado, o retry tenta novamente.
+        if (visual?.id) await supabase.from("orbit_mensagens").delete().eq("id", visual.id);
+        console.error("[orbit-ai-agent] Confirmação de pagamento misto não enfileirada:", routed);
+        return { ok: false, step: "enqueue_confirmation", recoverable: true, reason: routed.reason ?? "enqueue_failed" };
+      }
+      if (!routed.enqueued && routed.reason === "duplicate" && visual?.id) {
+        await supabase.from("orbit_mensagens").delete().eq("id", visual.id);
+      }
+      await persist({
+        ...(durableId ? { confirmation_outbox_id: durableId } : {}),
+        confirmation_enqueued_at: new Date().toISOString(),
+      });
+      // Kick imediato (tenant-scoped, default OFF). Falha => segue pending no cron.
+      try {
+        if (durableId && readImmediateOutboxDispatchFlag(aiConfig as any)) {
+          const kick = await kickOutboxDispatch(
+            { outboxId: durableId, empresaId: empresaId! },
+            {
+              functionsBase: `${Deno.env.get("SUPABASE_URL")}/functions/v1`,
+              cronToken: Deno.env.get("SCHEDULER_CRON_TOKEN"),
+            },
+          );
+          console.log("[orbit-ai-agent] mixed payment kick:", { outbox_id: durableId, ...kick });
+        }
+      } catch (kickErr) {
+        console.warn("[orbit-ai-agent] kick da confirmação falhou (fail-safe):", kickErr);
+      }
+    } else {
+      // Tenant sem outbox (ou demo): caminho de envio existente, com todos os gates.
+      await sendAIResponse(supabase, telefone, confirmation, conversa_id, isDemo, empresaId, aiConfig, false);
+      await persist({ confirmation_enqueued_at: new Date().toISOString() });
+    }
+  }
+
+  // ── Etapa 3: posse humana SOMENTE após a confirmação durável ──
+  if (decideMixedPaymentNextStep(state) === "set_human_talk") {
+    const { error: htError } = await supabase
+      .from("orbit_conversas")
+      .update({ human_talk: true, ai_processing: false })
+      .eq("id", conversa_id);
+    if (htError) {
+      console.error("[orbit-ai-agent] Falha ao marcar human_talk no pagamento misto:", htError.message);
+      return { ok: false, step: "set_human_talk", recoverable: true, reason: "human_talk_update_failed" };
+    }
+    await persist({ human_talk_set_at: new Date().toISOString() });
+
+    // Cadência/follow-ups: cancelados SOMENTE após o handoff confirmado.
+    if (empresaId && prospect_id) {
+      try {
+        await supabase.rpc("cancel_cadence_on_reply", {
+          _empresa_id: empresaId,
+          _prospect_id: prospect_id,
+          _reason: "mixed_payment_handoff",
+        });
+      } catch (cadErr) {
+        console.warn("[orbit-ai-agent] Falha ao cancelar cadência no pagamento misto:", cadErr);
+      }
+    }
+  }
+
+  // ── Etapa 4: notificação interna (nunca marcada antes do sucesso) ──
+  if (decideMixedPaymentNextStep(state) === "notify") {
+    const notified = await notifyCommercialHumanDetected(supabase, {
+      prospect,
+      telefone_lead: telefone,
+      mensagem: MIXED_PAYMENT_NOTIFICATION_SUMMARY,
+      classification: "pagamento_misto",
+      empresa_id: empresaId,
+      isDemo,
+    });
+    if (notified.sent) {
+      await persist({ notification_sent_at: new Date().toISOString() });
+    } else if (notified.reason === "no_recipient") {
+      // Tenant sem destinatário: encerra sem retry infinito. Não reabre a IA.
+      await persist({ notification_sent_at: new Date().toISOString(), notification_skipped_reason: "no_recipient" });
+    } else {
+      // Falha de notificação NÃO reabre a IA e NÃO duplica confirmação.
+      console.warn("[orbit-ai-agent] Notificação de pagamento misto falhou — retry só da notificação:", notified.reason);
+      return {
+        ok: false,
+        step: "notify",
+        recoverable: true,
+        reason: notified.reason ?? "notify_failed",
+        human_talk: true,
+        confirmation_outbox_id: state.confirmation_outbox_id,
+      };
+    }
+  }
+
+  return {
+    ok: true,
+    step: "done",
+    human_talk: true,
+    confirmation_outbox_id: state.confirmation_outbox_id,
+    notified: !!state.notification_sent_at,
+  };
+}
+
+
 // ── sendAIResponse: envia resposta como texto e/ou áudio TTS ──
 async function sendAIResponse(
   supabase: any,
