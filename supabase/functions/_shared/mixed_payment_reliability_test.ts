@@ -196,9 +196,9 @@ Deno.test("P. frase de confirmação: sem autoapresentação, sem condições e 
 
 Deno.test("Q. tenant-scoped: default off preserva outros tenants e nada histórico é reprocessado", () => {
   assertEquals(readMixedPaymentHandoffConfig({} as any), null);
-  assertEquals(readMixedPaymentHandoffConfig({ mixed_payment_handoff: false } as any), null);
+  assertEquals(readMixedPaymentHandoffConfig({ mixed_payment_handoff: { enabled: false } } as any), null);
   assertEquals(readMixedPaymentHandoffConfig({ empresa_id: OTHER } as any), null);
-  assert(readMixedPaymentHandoffConfig({ mixed_payment_handoff: true } as any), "tenant habilitado deve ativar");
+  assert(readMixedPaymentHandoffConfig({ mixed_payment_handoff: { enabled: true } } as any), "tenant habilitado deve ativar");
 
   // Estado v1 legado (ciclo antigo já encerrado) nunca é reaberto/reprocessado.
   const legacy = readMixedPaymentState({ mixed_payment_handoff: { handled: true, notified: true, at: "2026-08-15T00:00:00Z" } });
