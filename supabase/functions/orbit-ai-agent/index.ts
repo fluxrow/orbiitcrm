@@ -90,6 +90,20 @@ import {
   isValidNotificationPhone,
   normalizeE164Digits,
 } from "../_shared/internal-notification.ts";
+import {
+  readMixedPaymentHandoffConfig,
+  detectMixedPaymentRequest,
+  readMixedPaymentState,
+  buildMixedPaymentState,
+  MIXED_PAYMENT_NOTIFICATION_SUMMARY,
+} from "../_shared/mixed-payment-handoff.ts";
+import {
+  readSelfIntroductionGuardConfig,
+  detectSelfIntroduction,
+  enforceNoSelfIntroduction,
+  buildNoSelfIntroPromptBlock,
+  SELF_INTRO_CORRECTIVE,
+} from "../_shared/no-self-introduction.ts";
 
 import {
   hydrateCanonicalFacts,
