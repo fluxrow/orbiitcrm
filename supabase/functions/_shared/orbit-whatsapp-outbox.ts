@@ -160,6 +160,12 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
   const reasons: string[] = [];
   const idempotency_key = stableKey(ctx);
   const isManual = ctx.source_type === "manual";
+  // Confirmação de pagamento misto: origem dedicada, produzida apenas pelo guard
+  // tenant-scoped. É autorizada a concluir mesmo com human_talk=true (a posse humana
+  // é justamente consequência dela). NÃO abre bypass para ai_reply nem outras origens:
+  // a isenção vale exclusivamente para o motivo de posse humana.
+  const isMixedPaymentConfirmation = ctx.source_type === "mixed_payment_confirmation";
+  const humanOwnershipExempt = isManual || isMixedPaymentConfirmation;
 
   // ── Corte de automação por tenant (auto_reply_new_leads_from).
   // Prospect anterior ao corte nunca recebe automação (IA/cadência/campanha/etapa).
@@ -171,9 +177,13 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
       conversa_id: ctx.conversa_id ?? null,
     });
     if (!cutoffDecision.allowed && cutoffDecision.reason) {
-      reasons.push(cutoffDecision.reason === "human_talk" ? "human_handoff" : cutoffDecision.reason);
+      const isHumanReason = cutoffDecision.reason === "human_talk";
+      if (!(isHumanReason && humanOwnershipExempt)) {
+        reasons.push(isHumanReason ? "human_handoff" : cutoffDecision.reason);
+      }
     }
   }
+
 
   // Regra flow_initial: created deve ser true
   if (ctx.source_type === "flow_initial" && ctx.event_created !== true) {
