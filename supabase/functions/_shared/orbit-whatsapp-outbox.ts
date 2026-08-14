@@ -216,7 +216,7 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
       .maybeSingle();
     if (!c) reasons.push("conversa_missing");
     else if (c.empresa_id && c.empresa_id !== ctx.empresa_id) reasons.push("cross_tenant");
-    else if (!isManual && (c.human_talk === true || c.human_user_id)) reasons.push("human_handoff");
+    else if (!humanOwnershipExempt && (c.human_talk === true || c.human_user_id)) reasons.push("human_handoff");
   }
 
   // ── flow_stage: elegibilidade dedicada de transição de etapa.
