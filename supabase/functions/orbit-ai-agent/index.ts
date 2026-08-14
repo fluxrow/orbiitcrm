@@ -94,9 +94,13 @@ import {
   readMixedPaymentHandoffConfig,
   detectMixedPaymentRequest,
   readMixedPaymentState,
-  buildMixedPaymentState,
+  buildMixedPaymentClaim,
+  mergeMixedPaymentState,
+  decideMixedPaymentNextStep,
+  MIXED_PAYMENT_CONFIRMATION_SOURCE,
   MIXED_PAYMENT_NOTIFICATION_SUMMARY,
 } from "../_shared/mixed-payment-handoff.ts";
+
 import {
   readSelfIntroductionGuardConfig,
   detectSelfIntroduction,
