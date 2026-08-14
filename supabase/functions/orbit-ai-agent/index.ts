@@ -344,7 +344,7 @@ async function notifyCommercialHumanDetected(
     empresa_id: string | null;
     isDemo: boolean;
   }
-) {
+): Promise<{ sent: boolean; reason?: string }> {
   const { prospect, telefone_lead, mensagem, classification, empresa_id, isDemo } = params;
 
   // Destinatário SEMPRE resolvido pela configuração do MESMO empresa_id.
@@ -358,7 +358,7 @@ async function notifyCommercialHumanDetected(
       empresa_id,
       reason: target.reason,
     });
-    return;
+    return { sent: false, reason: "no_recipient" };
   }
 
 
@@ -395,7 +395,7 @@ async function notifyCommercialHumanDetected(
 
   if (isDemo) {
     console.log("[orbit-ai-agent] Demo — notificação comercial simulada:", { vendedorPhone, source: target.source });
-    return;
+    return { sent: true, reason: "simulated" };
   }
 
 
@@ -412,7 +412,7 @@ async function notifyCommercialHumanDetected(
       zapi_config_id: zapiConfig?.id ?? null,
       payload_summary: { telefone: vendedorPhone },
     });
-    return;
+    return { sent: false, reason: "zapi_real_send_blocked" };
   }
 
   if (zapiConfig?.instance_id && zapiConfig?.token) {
@@ -428,7 +428,10 @@ async function notifyCommercialHumanDetected(
       }
     );
     console.log("[orbit-ai-agent] Notificação comercial enviada:", response.ok);
+    return response.ok ? { sent: true } : { sent: false, reason: `zapi_http_${response.status}` };
   }
+
+  return { sent: false, reason: "zapi_config_missing" };
 }
 
 // ── Calcular próximo estado da conversa ──
