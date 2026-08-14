@@ -13,6 +13,12 @@ import {
   createCalendarEvent,
 } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
+import {
+  decideImmediateKick,
+  kickOutboxDispatch,
+  readImmediateOutboxDispatchFlag,
+} from "../_shared/immediate-outbox-dispatch.ts";
+
 import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
 
 import {
@@ -2325,8 +2331,44 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw:
         await supabase.from("orbit_mensagens").delete().eq("id", novaTxt.id);
       }
       console.log("[orbit-ai-agent] Adapter routed ai_reply:", routed);
+
+      // ── Kick imediato do worker (tenant-scoped, default OFF) ──
+      // Só ai_reply/texto, só com flag. Nenhum caminho alternativo de envio:
+      // o próprio worker aplica todos os gates. Falha => fica pending p/ cron.
+      try {
+        const { data: cfgRow } = await supabase
+          .from("orbit_ai_config")
+          .select("ai_reply_debounce")
+          .eq("empresa_id", empresaId)
+          .maybeSingle();
+        const decision = decideImmediateKick({
+          flagEnabled: readImmediateOutboxDispatchFlag(cfgRow as any),
+          sourceType: "ai_reply",
+          payloadType: "text",
+          routed,
+          holdUntil: holdUntilQueued,
+          scheduledFor: holdUntilQueued,
+        });
+        if (decision.kick) {
+          const kick = await kickOutboxDispatch(
+            { outboxId: decision.outboxId, empresaId },
+            {
+              functionsBase: `${Deno.env.get("SUPABASE_URL")}/functions/v1`,
+              cronToken: Deno.env.get("SCHEDULER_CRON_TOKEN"),
+            },
+          );
+          console.log("[orbit-ai-agent] immediate outbox kick:", {
+            empresa_id: empresaId,
+            outbox_id: decision.outboxId,
+            ...kick,
+          });
+        }
+      } catch (kickErr) {
+        console.warn("[orbit-ai-agent] immediate outbox kick falhou (fail-safe, segue pending):", kickErr);
+      }
       return;
     }
+
 
 
     const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresaId);
