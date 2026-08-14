@@ -170,12 +170,8 @@ export function buildMixedPaymentClaim(
 /** Merge incremental do estado persistido (nunca apaga etapa já concluída). */
 export function mergeMixedPaymentState(
   aiContexto: Record<string, unknown> | null | undefined,
-  patch: Partial<{
-    confirmation_outbox_id: string | null;
-    confirmation_enqueued_at: string | null;
-    human_talk_set_at: string | null;
-    notification_sent_at: string | null;
-  }>,
+  patch: Record<string, string | null | undefined>,
+
 ): Record<string, unknown> {
   const prev = (aiContexto as any)?.mixed_payment_handoff;
   const base: Record<string, unknown> =
