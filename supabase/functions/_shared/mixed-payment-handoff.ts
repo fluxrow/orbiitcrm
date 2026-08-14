@@ -41,7 +41,7 @@ export function readMixedPaymentHandoffConfig(
   };
 }
 
-function normalize(text: string): string {
+function normalize(text: string | null | undefined): string {
   return String(text ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
