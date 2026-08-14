@@ -1214,6 +1214,9 @@ serve(async (req) => {
       ? buildIdentityPromptBlock(isHandoffAllowed(identityCtx))
       : "";
 
+    // ── SEM AUTOAPRESENTAÇÃO (tenant-scoped por orbit_ai_config.self_introduction_guard) ──
+    const selfIntroBlock = selfIntroCfg ? buildNoSelfIntroPromptBlock(selfIntroCfg) : "";
+
 
     // Bloco tenant-scoped: reforça no prompt a proibição de coleta de localização/e-mail.
     const noCollectRules: string[] = [];
@@ -1241,7 +1244,7 @@ ${campaignContinuity}${stateInstruction}${classificationInstruction}
 ${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${dataHoraAtualBlock}${schedulingModeBlock}
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
-${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}${commercialV2Block}${primaryOfferBlock}${identityBlock}${noCollectBlock}
+${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}${commercialV2Block}${primaryOfferBlock}${identityBlock}${selfIntroBlock}${noCollectBlock}
 REGRAS CRÍTICAS:
 1. DADOS EXISTENTES: Se um dado do lead já está preenchido no contexto acima ou nos FATOS CANÔNICOS (personName, companyName, city, email, nível pretendido, cidade/estado etc.), NUNCA pergunte novamente. Use naturalmente na conversa.
 2. CAMPOS FALTANTES: Solicite APENAS os campos marcados como "true" em missingFields, e as perguntas dinâmicas ainda não respondidas.
@@ -1456,6 +1459,34 @@ ${regrasBlock}`;
       }
       parsed.mensagem = resposta;
     }
+
+    // ── GUARD TENANT-SCOPED: sem autoapresentação artificial ──
+    // Ativado apenas quando orbit_ai_config.self_introduction_guard.enabled = true.
+    if (selfIntroCfg && detectSelfIntroduction(resposta, selfIntroCfg).violates) {
+      console.warn("[orbit-ai-agent] Guard de autoapresentação acionado.");
+      const retryIntro = await callAnthropic({
+        model: normalizeAgentModel((aiConfig as any).modelo_ia),
+        system: systemPrompt,
+        messages: toAnthropicMessages([
+          { role: "user", content: userTurn },
+          { role: "assistant", content: resposta },
+          { role: "user", content: SELF_INTRO_CORRECTIVE + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+        ]),
+        temperature: 0.5,
+        max_tokens: maxTokens,
+      });
+      const retryIntroText = retryIntro.ok ? String(retryIntro.text || "").trim() : "";
+      if (retryIntroText && !detectSelfIntroduction(retryIntroText, selfIntroCfg).violates) {
+        resposta = retryIntroText;
+      } else {
+        const enforcedIntro = enforceNoSelfIntroduction(retryIntroText || resposta, selfIntroCfg);
+        resposta = enforcedIntro.text;
+        console.warn("[orbit-ai-agent] Autoapresentação sanitizada.", { fallback: enforcedIntro.fallbackUsed });
+      }
+      parsed.mensagem = resposta;
+    }
+
+
 
 
     // ── GUARD TENANT-SCOPED: estágio comercial (preço/pagamento/fechamento) ──
@@ -2001,6 +2032,11 @@ ${regrasBlock}`;
       if (finalIdentity.changed) {
         console.warn("[orbit-ai-agent] Falsa transferência removida na saída final.", { fallback: finalIdentity.fallbackUsed });
         resposta = finalIdentity.text;
+      }
+      const finalSelfIntro = enforceNoSelfIntroduction(resposta, selfIntroCfg);
+      if (finalSelfIntro.changed) {
+        console.warn("[orbit-ai-agent] Autoapresentação removida na saída final.", { fallback: finalSelfIntro.fallbackUsed });
+        resposta = finalSelfIntro.text;
       }
       if (commercialV2Enabled && commercialPerms) {
         const finalV2 = sanitizeCommercialV2(resposta, commercialPerms);
