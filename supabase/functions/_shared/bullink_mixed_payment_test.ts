@@ -5,7 +5,8 @@ import {
   detectMixedPaymentRequest,
   readMixedPaymentHandoffConfig,
   readMixedPaymentState,
-  buildMixedPaymentState,
+  buildMixedPaymentClaim,
+  mergeMixedPaymentState,
   MIXED_PAYMENT_DEFAULT_CONFIRMATION,
 } from "./mixed-payment-handoff.ts";
 import {
@@ -80,9 +81,18 @@ Deno.test("E2: confirmação customizada do tenant é respeitada", () => {
 // ── F: idempotência de estado ──
 Deno.test("F: estado marcado impede segunda confirmação/notificação", () => {
   assertEquals(readMixedPaymentState({}).handled, false);
-  const st = buildMixedPaymentState(new Date("2026-08-15T10:00:00Z"));
+  const at = "2026-08-15T10:00:00.000Z";
+  const claim = buildMixedPaymentClaim("in-1", new Date(at));
+  // Claim isolado NÃO é "handled": as etapas ainda precisam concluir.
+  assertEquals(readMixedPaymentState({ mixed_payment_handoff: claim }).handled, false);
+  const st = mergeMixedPaymentState({ mixed_payment_handoff: claim }, {
+    confirmation_outbox_id: "ob-1",
+    confirmation_enqueued_at: at,
+    human_talk_set_at: at,
+    notification_sent_at: at,
+  });
   assertEquals(readMixedPaymentState({ mixed_payment_handoff: st }).handled, true);
-  assertEquals(readMixedPaymentState({ mixed_payment_handoff: st }).at, "2026-08-15T10:00:00.000Z");
+  assertEquals(readMixedPaymentState({ mixed_payment_handoff: st }).at, at);
 });
 
 // ── G: a confirmação passa pelo guard de identidade sem alteração ──

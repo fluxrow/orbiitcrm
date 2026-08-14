@@ -1,0 +1,2 @@
+ALTER TABLE public.orbit_whatsapp_outbox DROP CONSTRAINT IF EXISTS orbit_whatsapp_outbox_source_type_chk;
+ALTER TABLE public.orbit_whatsapp_outbox ADD CONSTRAINT orbit_whatsapp_outbox_source_type_chk CHECK (source_type = ANY (ARRAY['ai_reply'::text,'meeting_confirmation'::text,'manual'::text,'flow_initial'::text,'flow_followup'::text,'flow_stage'::text,'campaign'::text,'mixed_payment_confirmation'::text]));

@@ -78,7 +78,7 @@ const WORKER_ID = `outbox-${crypto.randomUUID().slice(0, 8)}`;
 const BUSINESS_TZ = "America/Sao_Paulo";
 const BUSINESS_HOUR_START = 8;
 const BUSINESS_HOUR_END = 20;
-const URGENT_SOURCES = new Set(["ai_reply", "meeting_confirmation", "manual"]);
+const URGENT_SOURCES = new Set(["ai_reply", "meeting_confirmation", "manual", "mixed_payment_confirmation"]);
 
 function nowInBusinessWindow(): boolean {
   const parts = new Intl.DateTimeFormat("en-US", {

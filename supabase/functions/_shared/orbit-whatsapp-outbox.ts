@@ -18,11 +18,14 @@
 //   flow_followup=40  campaign=20
 
 import { evaluateAutomationCutoff } from "./automation-cutoff.ts";
+import { mixedPaymentIdempotencyKey } from "./mixed-payment-handoff.ts";
+
 
 export type OutboxSourceType =
   | "ai_reply"
   | "meeting_confirmation"
   | "manual"
+  | "mixed_payment_confirmation"
   | "flow_initial"
   | "flow_followup"
   | "flow_stage"
@@ -34,8 +37,11 @@ export type OutboxPayloadType = "text" | "image" | "audio" | "document" | "video
 // e flow_initial: transições de etapa são intencionais (Agendado/No-show/Ganho/
 // Perdido/Negociação) e devem sair na frente de qualquer follow-up de prospecção,
 // mas não podem furar respostas de IA nem confirmações de reunião.
+// mixed_payment_confirmation é a ÚNICA mensagem do handoff de pagamento misto:
+// precisa sair na frente porque a conversa passa a human_talk imediatamente depois.
 export const OUTBOX_PRIORITY: Record<OutboxSourceType, number> = {
   ai_reply: 100,
+  mixed_payment_confirmation: 99,
   meeting_confirmation: 90,
   flow_stage: 75,
   manual: 80,
@@ -43,6 +49,7 @@ export const OUTBOX_PRIORITY: Record<OutboxSourceType, number> = {
   flow_followup: 40,
   campaign: 20,
 };
+
 
 export interface OutboxContext {
   empresa_id: string;
@@ -96,9 +103,19 @@ export interface EnqueueResult {
 }
 
 function stableKey(ctx: OutboxContext): string {
+  // Confirmação de pagamento misto: chave própria e explícita, sem sufixos/scope.
+  // Formato: mixed_payment_confirmation|<empresa>|<conversa>|<inbound>
+  if (ctx.source_type === "mixed_payment_confirmation") {
+    return mixedPaymentIdempotencyKey(
+      ctx.empresa_id,
+      ctx.conversa_id ?? "-",
+      ctx.inbound_message_id ?? ctx.source_id ?? "-",
+    );
+  }
   const scope = ctx.idempotency_scope ? `${ctx.idempotency_scope}:` : "";
   const parts: string[] = [scope, ctx.source_type];
   switch (ctx.source_type) {
+
     case "ai_reply":
       parts.push(ctx.empresa_id, ctx.prospect_id ?? "-", ctx.inbound_message_id ?? ctx.source_id ?? "-");
       break;
@@ -143,6 +160,12 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
   const reasons: string[] = [];
   const idempotency_key = stableKey(ctx);
   const isManual = ctx.source_type === "manual";
+  // Confirmação de pagamento misto: origem dedicada, produzida apenas pelo guard
+  // tenant-scoped. É autorizada a concluir mesmo com human_talk=true (a posse humana
+  // é justamente consequência dela). NÃO abre bypass para ai_reply nem outras origens:
+  // a isenção vale exclusivamente para o motivo de posse humana.
+  const isMixedPaymentConfirmation = ctx.source_type === "mixed_payment_confirmation";
+  const humanOwnershipExempt = isManual || isMixedPaymentConfirmation;
 
   // ── Corte de automação por tenant (auto_reply_new_leads_from).
   // Prospect anterior ao corte nunca recebe automação (IA/cadência/campanha/etapa).
@@ -154,9 +177,13 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
       conversa_id: ctx.conversa_id ?? null,
     });
     if (!cutoffDecision.allowed && cutoffDecision.reason) {
-      reasons.push(cutoffDecision.reason === "human_talk" ? "human_handoff" : cutoffDecision.reason);
+      const isHumanReason = cutoffDecision.reason === "human_talk";
+      if (!(isHumanReason && humanOwnershipExempt)) {
+        reasons.push(isHumanReason ? "human_handoff" : cutoffDecision.reason);
+      }
     }
   }
+
 
   // Regra flow_initial: created deve ser true
   if (ctx.source_type === "flow_initial" && ctx.event_created !== true) {
@@ -189,7 +216,7 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
       .maybeSingle();
     if (!c) reasons.push("conversa_missing");
     else if (c.empresa_id && c.empresa_id !== ctx.empresa_id) reasons.push("cross_tenant");
-    else if (!isManual && (c.human_talk === true || c.human_user_id)) reasons.push("human_handoff");
+    else if (!humanOwnershipExempt && (c.human_talk === true || c.human_user_id)) reasons.push("human_handoff");
   }
 
   // ── flow_stage: elegibilidade dedicada de transição de etapa.
