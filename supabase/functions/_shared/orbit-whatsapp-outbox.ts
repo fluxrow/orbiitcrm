@@ -18,6 +18,8 @@
 //   flow_followup=40  campaign=20
 
 import { evaluateAutomationCutoff } from "./automation-cutoff.ts";
+import { mixedPaymentIdempotencyKey } from "./mixed-payment-handoff.ts";
+
 
 export type OutboxSourceType =
   | "ai_reply"
