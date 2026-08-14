@@ -1038,6 +1038,96 @@ serve(async (req) => {
     // Uma conversa só é nova quando nunca houve saída. Áudio/imagem não reinicia a persona.
     const primeiraInteracao = !introAlreadySent && mensagensOUT === 0;
 
+    // ── SEM AUTOAPRESENTAÇÃO (tenant-scoped) ──
+    const selfIntroCfg = readSelfIntroductionGuardConfig(aiConfig as Record<string, unknown>);
+
+    // ── PAGAMENTO MISTO PIX + CARTÃO (tenant-scoped por orbit_ai_config.mixed_payment_handoff) ──
+    // Fluxo determinístico, sem LLM: confirma UMA vez que é possível combinar
+    // parte no PIX e o restante no cartão, encerra a atuação automática
+    // (human_talk = true, aguardando Fernando) e notifica o responsável do MESMO tenant.
+    // Nunca define entrada, parcelas, desconto, link ou chave.
+    const mixedPaymentCfg = readMixedPaymentHandoffConfig(aiConfig as Record<string, unknown>);
+    if (mixedPaymentCfg && detectMixedPaymentRequest(mensagemAgregada)) {
+      if (readMixedPaymentState(aiContexto).handled) {
+        console.log("[orbit-ai-agent] Pagamento misto já tratado — nenhuma nova resposta automática.", { conversa_id });
+        return new Response(
+          JSON.stringify({ ok: true, skipped: true, reason: "mixed_payment_already_handled" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      // Claim idempotente: só o primeiro inbound marca o estado, responde e notifica.
+      const { data: claimed, error: claimError } = await supabase
+        .from("orbit_conversas")
+        .update({
+          human_talk: true,
+          ai_processing: false,
+          ai_contexto: {
+            ...aiContexto,
+            estado: "handoff",
+            mixed_payment_handoff: buildMixedPaymentState(),
+          },
+        })
+        .eq("id", conversa_id)
+        .filter("ai_contexto->mixed_payment_handoff", "is", null)
+        .select("id");
+
+      if (claimError) {
+        console.error("[orbit-ai-agent] Falha no claim de pagamento misto:", claimError.message);
+        throw new Error("mixed_payment_claim_failed");
+      }
+      if (!claimed || claimed.length === 0) {
+        console.log("[orbit-ai-agent] Claim de pagamento misto perdido (concorrência) — nada a fazer.", { conversa_id });
+        return new Response(
+          JSON.stringify({ ok: true, skipped: true, reason: "mixed_payment_claim_lost" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      // Única confirmação (mesmo caminho de envio já existente, com todos os gates).
+      await sendAIResponse(
+        supabase,
+        telefone,
+        mixedPaymentCfg.confirmation_message,
+        conversa_id,
+        isDemo,
+        empresaId,
+        aiConfig,
+        false,
+      );
+
+      // Notificação interna pelo resolvedor tenant-scoped (nunca canário/cross-tenant).
+      await notifyCommercialHumanDetected(supabase, {
+        prospect,
+        telefone_lead: telefone,
+        mensagem: MIXED_PAYMENT_NOTIFICATION_SUMMARY,
+        classification: "pagamento_misto",
+        empresa_id: empresaId || null,
+        isDemo,
+      });
+
+      // Follow-ups / cadência pendentes ficam cancelados após o handoff.
+      if (empresaId && prospect_id) {
+        try {
+          await supabase.rpc("cancel_cadence_on_reply", {
+            _empresa_id: empresaId,
+            _prospect_id: prospect_id,
+            _reason: "mixed_payment_handoff",
+          });
+        } catch (cadErr) {
+          console.warn("[orbit-ai-agent] Falha ao cancelar cadência no pagamento misto:", cadErr);
+        }
+      }
+
+      console.log("[orbit-ai-agent] Pagamento misto confirmado e conversa entregue ao humano.", { conversa_id });
+      return new Response(
+        JSON.stringify({ ok: true, mixed_payment_handoff: true, human_talk: true, simulated: isDemo }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+
+
     const emColetaOrcamento = aiContexto.em_coleta_orcamento || false;
     const camposColetados = aiContexto.campos_coletados || {};
     const camposCadastro: string[] = Array.isArray(aiConfig.campos_qualificacao)
