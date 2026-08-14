@@ -377,6 +377,7 @@ async function notifyCommercialHumanDetected(
     motivo === "venda_fechada" ? "Venda confirmada"
     : motivo === "agendar_call" ? "Call agendada"
     : motivo === "falar_humano" ? "Lead pediu atendimento humano"
+    : motivo === "pagamento_misto" ? "Lead pediu pagamento misto (PIX + cartão)"
     : "Novo sinal comercial";
 
   const notificacao = [
