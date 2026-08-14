@@ -90,6 +90,20 @@ import {
   isValidNotificationPhone,
   normalizeE164Digits,
 } from "../_shared/internal-notification.ts";
+import {
+  readMixedPaymentHandoffConfig,
+  detectMixedPaymentRequest,
+  readMixedPaymentState,
+  buildMixedPaymentState,
+  MIXED_PAYMENT_NOTIFICATION_SUMMARY,
+} from "../_shared/mixed-payment-handoff.ts";
+import {
+  readSelfIntroductionGuardConfig,
+  detectSelfIntroduction,
+  enforceNoSelfIntroduction,
+  buildNoSelfIntroPromptBlock,
+  SELF_INTRO_CORRECTIVE,
+} from "../_shared/no-self-introduction.ts";
 
 import {
   hydrateCanonicalFacts,
@@ -363,6 +377,7 @@ async function notifyCommercialHumanDetected(
     motivo === "venda_fechada" ? "Venda confirmada"
     : motivo === "agendar_call" ? "Call agendada"
     : motivo === "falar_humano" ? "Lead pediu atendimento humano"
+    : motivo === "pagamento_misto" ? "Lead pediu pagamento misto (PIX + cartão)"
     : "Novo sinal comercial";
 
   const notificacao = [
@@ -1024,6 +1039,96 @@ serve(async (req) => {
     // Uma conversa só é nova quando nunca houve saída. Áudio/imagem não reinicia a persona.
     const primeiraInteracao = !introAlreadySent && mensagensOUT === 0;
 
+    // ── SEM AUTOAPRESENTAÇÃO (tenant-scoped) ──
+    const selfIntroCfg = readSelfIntroductionGuardConfig(aiConfig as Record<string, unknown>);
+
+    // ── PAGAMENTO MISTO PIX + CARTÃO (tenant-scoped por orbit_ai_config.mixed_payment_handoff) ──
+    // Fluxo determinístico, sem LLM: confirma UMA vez que é possível combinar
+    // parte no PIX e o restante no cartão, encerra a atuação automática
+    // (human_talk = true, aguardando Fernando) e notifica o responsável do MESMO tenant.
+    // Nunca define entrada, parcelas, desconto, link ou chave.
+    const mixedPaymentCfg = readMixedPaymentHandoffConfig(aiConfig as Record<string, unknown>);
+    if (mixedPaymentCfg && detectMixedPaymentRequest(mensagemAgregada)) {
+      if (readMixedPaymentState(aiContexto).handled) {
+        console.log("[orbit-ai-agent] Pagamento misto já tratado — nenhuma nova resposta automática.", { conversa_id });
+        return new Response(
+          JSON.stringify({ ok: true, skipped: true, reason: "mixed_payment_already_handled" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      // Claim idempotente: só o primeiro inbound marca o estado, responde e notifica.
+      const { data: claimed, error: claimError } = await supabase
+        .from("orbit_conversas")
+        .update({
+          human_talk: true,
+          ai_processing: false,
+          ai_contexto: {
+            ...aiContexto,
+            estado: "handoff",
+            mixed_payment_handoff: buildMixedPaymentState(),
+          },
+        })
+        .eq("id", conversa_id)
+        .filter("ai_contexto->mixed_payment_handoff", "is", null)
+        .select("id");
+
+      if (claimError) {
+        console.error("[orbit-ai-agent] Falha no claim de pagamento misto:", claimError.message);
+        throw new Error("mixed_payment_claim_failed");
+      }
+      if (!claimed || claimed.length === 0) {
+        console.log("[orbit-ai-agent] Claim de pagamento misto perdido (concorrência) — nada a fazer.", { conversa_id });
+        return new Response(
+          JSON.stringify({ ok: true, skipped: true, reason: "mixed_payment_claim_lost" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      // Única confirmação (mesmo caminho de envio já existente, com todos os gates).
+      await sendAIResponse(
+        supabase,
+        telefone,
+        mixedPaymentCfg.confirmation_message,
+        conversa_id,
+        isDemo,
+        empresaId,
+        aiConfig,
+        false,
+      );
+
+      // Notificação interna pelo resolvedor tenant-scoped (nunca canário/cross-tenant).
+      await notifyCommercialHumanDetected(supabase, {
+        prospect,
+        telefone_lead: telefone,
+        mensagem: MIXED_PAYMENT_NOTIFICATION_SUMMARY,
+        classification: "pagamento_misto",
+        empresa_id: empresaId || null,
+        isDemo,
+      });
+
+      // Follow-ups / cadência pendentes ficam cancelados após o handoff.
+      if (empresaId && prospect_id) {
+        try {
+          await supabase.rpc("cancel_cadence_on_reply", {
+            _empresa_id: empresaId,
+            _prospect_id: prospect_id,
+            _reason: "mixed_payment_handoff",
+          });
+        } catch (cadErr) {
+          console.warn("[orbit-ai-agent] Falha ao cancelar cadência no pagamento misto:", cadErr);
+        }
+      }
+
+      console.log("[orbit-ai-agent] Pagamento misto confirmado e conversa entregue ao humano.", { conversa_id });
+      return new Response(
+        JSON.stringify({ ok: true, mixed_payment_handoff: true, human_talk: true, simulated: isDemo }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+
+
     const emColetaOrcamento = aiContexto.em_coleta_orcamento || false;
     const camposColetados = aiContexto.campos_coletados || {};
     const camposCadastro: string[] = Array.isArray(aiConfig.campos_qualificacao)
@@ -1200,6 +1305,9 @@ serve(async (req) => {
       ? buildIdentityPromptBlock(isHandoffAllowed(identityCtx))
       : "";
 
+    // ── SEM AUTOAPRESENTAÇÃO (tenant-scoped por orbit_ai_config.self_introduction_guard) ──
+    const selfIntroBlock = selfIntroCfg ? buildNoSelfIntroPromptBlock(selfIntroCfg) : "";
+
 
     // Bloco tenant-scoped: reforça no prompt a proibição de coleta de localização/e-mail.
     const noCollectRules: string[] = [];
@@ -1227,7 +1335,7 @@ ${campaignContinuity}${stateInstruction}${classificationInstruction}
 ${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${dataHoraAtualBlock}${schedulingModeBlock}
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
-${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}${commercialV2Block}${primaryOfferBlock}${identityBlock}${noCollectBlock}
+${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}${commercialV2Block}${primaryOfferBlock}${identityBlock}${selfIntroBlock}${noCollectBlock}
 REGRAS CRÍTICAS:
 1. DADOS EXISTENTES: Se um dado do lead já está preenchido no contexto acima ou nos FATOS CANÔNICOS (personName, companyName, city, email, nível pretendido, cidade/estado etc.), NUNCA pergunte novamente. Use naturalmente na conversa.
 2. CAMPOS FALTANTES: Solicite APENAS os campos marcados como "true" em missingFields, e as perguntas dinâmicas ainda não respondidas.
@@ -1442,6 +1550,34 @@ ${regrasBlock}`;
       }
       parsed.mensagem = resposta;
     }
+
+    // ── GUARD TENANT-SCOPED: sem autoapresentação artificial ──
+    // Ativado apenas quando orbit_ai_config.self_introduction_guard.enabled = true.
+    if (selfIntroCfg && detectSelfIntroduction(resposta, selfIntroCfg).violates) {
+      console.warn("[orbit-ai-agent] Guard de autoapresentação acionado.");
+      const retryIntro = await callAnthropic({
+        model: normalizeAgentModel((aiConfig as any).modelo_ia),
+        system: systemPrompt,
+        messages: toAnthropicMessages([
+          { role: "user", content: userTurn },
+          { role: "assistant", content: resposta },
+          { role: "user", content: SELF_INTRO_CORRECTIVE + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+        ]),
+        temperature: 0.5,
+        max_tokens: maxTokens,
+      });
+      const retryIntroText = retryIntro.ok ? String(retryIntro.text || "").trim() : "";
+      if (retryIntroText && !detectSelfIntroduction(retryIntroText, selfIntroCfg).violates) {
+        resposta = retryIntroText;
+      } else {
+        const enforcedIntro = enforceNoSelfIntroduction(retryIntroText || resposta, selfIntroCfg);
+        resposta = enforcedIntro.text;
+        console.warn("[orbit-ai-agent] Autoapresentação sanitizada.", { fallback: enforcedIntro.fallbackUsed });
+      }
+      parsed.mensagem = resposta;
+    }
+
+
 
 
     // ── GUARD TENANT-SCOPED: estágio comercial (preço/pagamento/fechamento) ──
@@ -1987,6 +2123,11 @@ ${regrasBlock}`;
       if (finalIdentity.changed) {
         console.warn("[orbit-ai-agent] Falsa transferência removida na saída final.", { fallback: finalIdentity.fallbackUsed });
         resposta = finalIdentity.text;
+      }
+      const finalSelfIntro = enforceNoSelfIntroduction(resposta, selfIntroCfg);
+      if (finalSelfIntro.changed) {
+        console.warn("[orbit-ai-agent] Autoapresentação removida na saída final.", { fallback: finalSelfIntro.fallbackUsed });
+        resposta = finalSelfIntro.text;
       }
       if (commercialV2Enabled && commercialPerms) {
         const finalV2 = sanitizeCommercialV2(resposta, commercialPerms);

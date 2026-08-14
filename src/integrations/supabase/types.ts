@@ -907,6 +907,7 @@ export type Database = {
           max_tokens: number | null
           mensagem_boas_vindas: string | null
           mensagem_fora_horario: string | null
+          mixed_payment_handoff: Json | null
           modelo_ia: string | null
           modo_automatico: boolean | null
           notification_recipient_whatsapp: string | null
@@ -919,6 +920,7 @@ export type Database = {
           scheduling_handoff_whatsapp: string | null
           scheduling_meeting_duration_minutes: number
           scheduling_mode: string
+          self_introduction_guard: Json | null
           strict_commercial_stage_guard: boolean
           tempo_espera: number | null
           tom_conversa: string | null
@@ -953,6 +955,7 @@ export type Database = {
           max_tokens?: number | null
           mensagem_boas_vindas?: string | null
           mensagem_fora_horario?: string | null
+          mixed_payment_handoff?: Json | null
           modelo_ia?: string | null
           modo_automatico?: boolean | null
           notification_recipient_whatsapp?: string | null
@@ -965,6 +968,7 @@ export type Database = {
           scheduling_handoff_whatsapp?: string | null
           scheduling_meeting_duration_minutes?: number
           scheduling_mode?: string
+          self_introduction_guard?: Json | null
           strict_commercial_stage_guard?: boolean
           tempo_espera?: number | null
           tom_conversa?: string | null
@@ -999,6 +1003,7 @@ export type Database = {
           max_tokens?: number | null
           mensagem_boas_vindas?: string | null
           mensagem_fora_horario?: string | null
+          mixed_payment_handoff?: Json | null
           modelo_ia?: string | null
           modo_automatico?: boolean | null
           notification_recipient_whatsapp?: string | null
@@ -1011,6 +1016,7 @@ export type Database = {
           scheduling_handoff_whatsapp?: string | null
           scheduling_meeting_duration_minutes?: number
           scheduling_mode?: string
+          self_introduction_guard?: Json | null
           strict_commercial_stage_guard?: boolean
           tempo_espera?: number | null
           tom_conversa?: string | null
