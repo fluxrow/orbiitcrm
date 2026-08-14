@@ -101,9 +101,19 @@ export interface EnqueueResult {
 }
 
 function stableKey(ctx: OutboxContext): string {
+  // Confirmação de pagamento misto: chave própria e explícita, sem sufixos/scope.
+  // Formato: mixed_payment_confirmation|<empresa>|<conversa>|<inbound>
+  if (ctx.source_type === "mixed_payment_confirmation") {
+    return mixedPaymentIdempotencyKey(
+      ctx.empresa_id,
+      ctx.conversa_id ?? "-",
+      ctx.inbound_message_id ?? ctx.source_id ?? "-",
+    );
+  }
   const scope = ctx.idempotency_scope ? `${ctx.idempotency_scope}:` : "";
   const parts: string[] = [scope, ctx.source_type];
   switch (ctx.source_type) {
+
     case "ai_reply":
       parts.push(ctx.empresa_id, ctx.prospect_id ?? "-", ctx.inbound_message_id ?? ctx.source_id ?? "-");
       break;
