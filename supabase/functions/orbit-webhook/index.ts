@@ -76,7 +76,7 @@ async function consolidateInbound(
 
     let q = supabase
       .from("orbit_mensagens")
-      .select("conteudo, timestamp")
+      .select("mensagem, media_extracted_text, timestamp")
       .eq("empresa_id", empresaId)
       .eq("conversa_id", conversaId)
       .eq("direcao", "IN")
@@ -84,9 +84,10 @@ async function consolidateInbound(
       .limit(10);
     if (lastOut?.timestamp) q = q.gt("timestamp", lastOut.timestamp);
 
-    const { data: ins } = await q;
+    const { data: ins, error: insError } = await q;
+    if (insError) return { text: fallbackText, batchSize: 1 };
     const texts = (ins ?? [])
-      .map((m: any) => String(m.conteudo ?? "").trim())
+      .map((m: any) => String(m.mensagem ?? m.media_extracted_text ?? "").trim())
       .filter((t: string) => t.length > 0);
     if (texts.length === 0) return { text: fallbackText, batchSize: 1 };
     return { text: texts.join("\n"), batchSize: texts.length };
