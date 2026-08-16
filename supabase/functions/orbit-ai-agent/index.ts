@@ -2381,9 +2381,21 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw:
       const inboundId = (lastIn as any)?.id ?? conversa_id;
       const { data: conv } = await supabase
         .from("orbit_conversas")
-        .select("prospect_id")
+        .select("prospect_id, human_talk, human_user_id, handoff_sent_at")
         .eq("id", conversa_id)
         .maybeSingle();
+      // Revalidação de posse humana IMEDIATAMENTE antes de materializar a OUT e
+      // enfileirar: entre a geração e o enqueue o humano pode ter assumido a
+      // conversa. Nenhuma ai_reply pode nascer depois de human_talk/handoff.
+      if (
+        (conv as any)?.human_talk === true ||
+        (conv as any)?.human_user_id ||
+        (conv as any)?.handoff_sent_at
+      ) {
+        console.log("[orbit-ai-agent] ai_reply abortada: conversa sob posse humana", { conversa_id });
+        await supabase.from("orbit_conversas").update({ ai_processing: false }).eq("id", conversa_id);
+        return;
+      }
       // Pré-cria linha "queued" para linkar orbit_message_id.
       const { data: novaTxt } = await supabase
         .from("orbit_mensagens")
