@@ -31,18 +31,19 @@ serve(async (req) => {
   const results: Array<Record<string, unknown>> = [];
 
   try {
+    // Busca com carência ZERO e aplica a carência por tenant abaixo:
+    // o default (DEBOUNCE_RECOVERY_GRACE_MS) permanece inalterado.
     const { data: rows, error } = await supabase
       .from("orbit_ai_reply_debounce")
       .select("conversa_id, empresa_id, prospect_id, claim_token, fire_after, status, attempts, last_inbound_at, last_inbound_message_id")
       .eq("status", "pending")
-      .lte("fire_after", new Date(now.getTime() - DEBOUNCE_RECOVERY_GRACE_MS).toISOString())
+      .lte("fire_after", now.toISOString())
       .gte("fire_after", new Date(now.getTime() - MAX_AGE_MS).toISOString())
       .order("fire_after", { ascending: true })
       .limit(50);
     if (error) throw error;
 
     for (const row of rows ?? []) {
-      if (!isRecoverable(row as any, now)) continue;
       if ((row.attempts ?? 0) >= MAX_ATTEMPTS) {
         await supabase.from("orbit_ai_reply_debounce")
           .update({ status: "canceled", last_error: "max_attempts", updated_at: now.toISOString() })
@@ -63,6 +64,12 @@ serve(async (req) => {
           .eq("conversa_id", row.conversa_id).eq("claim_token", row.claim_token);
         continue;
       }
+
+      const graceRaw = (cfgRow as any)?.ai_reply_debounce?.recovery_grace_ms;
+      const graceMs = Number.isFinite(Number(graceRaw))
+        ? Math.min(120_000, Math.max(0, Math.round(Number(graceRaw))))
+        : DEBOUNCE_RECOVERY_GRACE_MS;
+      if (!isRecoverable(row as any, now, graceMs)) continue;
 
       const { data: conversa } = await supabase
         .from("orbit_conversas")
@@ -98,18 +105,45 @@ serve(async (req) => {
         .maybeSingle();
       let q = supabase
         .from("orbit_mensagens")
-        .select("conteudo, telefone")
+        .select("mensagem, media_extracted_text, timestamp")
         .eq("empresa_id", row.empresa_id)
         .eq("conversa_id", row.conversa_id)
         .eq("direcao", "IN")
         .order("timestamp", { ascending: true })
         .limit(10);
       if (lastOut?.timestamp) q = q.gt("timestamp", lastOut.timestamp);
-      const { data: ins } = await q;
-      const texts = (ins ?? []).map((m: any) => String(m.conteudo ?? "").trim()).filter(Boolean);
+      const { data: ins, error: insError } = await q;
+      if (insError) {
+        // Erro de leitura NUNCA pode ser confundido com "nada a responder":
+        // devolve a linha a pending para o próximo tick tentar de novo.
+        await supabase.from("orbit_ai_reply_debounce")
+          .update({ status: "pending", last_error: "inbound_read_failed", updated_at: now.toISOString() })
+          .eq("conversa_id", row.conversa_id).eq("claim_token", row.claim_token);
+        await supabase.from("orbit_conversas").update({ ai_processing: false }).eq("id", row.conversa_id);
+        continue;
+      }
+      const texts = (ins ?? [])
+        .map((m: any) => String(m.mensagem ?? m.media_extracted_text ?? "").trim())
+        .filter(Boolean);
       if (texts.length === 0) {
         await supabase.from("orbit_ai_reply_debounce")
           .update({ status: "canceled", last_error: "nothing_to_answer", updated_at: now.toISOString() })
+          .eq("conversa_id", row.conversa_id).eq("claim_token", row.claim_token);
+        await supabase.from("orbit_conversas").update({ ai_processing: false }).eq("id", row.conversa_id);
+        continue;
+      }
+
+      // Revalidação de posse humana IMEDIATAMENTE antes de acionar o agente:
+      // nenhuma ai_reply pode nascer depois de human_talk=true/handoff.
+      const { data: freshConversa } = await supabase
+        .from("orbit_conversas")
+        .select("human_talk, human_user_id, handoff_sent_at")
+        .eq("id", row.conversa_id)
+        .maybeSingle();
+      if (freshConversa?.human_talk === true || freshConversa?.human_user_id || freshConversa?.handoff_sent_at) {
+        await supabase.from("orbit_conversas").update({ ai_processing: false }).eq("id", row.conversa_id);
+        await supabase.from("orbit_ai_reply_debounce")
+          .update({ status: "canceled", last_error: "human_talk", updated_at: now.toISOString() })
           .eq("conversa_id", row.conversa_id).eq("claim_token", row.claim_token);
         continue;
       }
