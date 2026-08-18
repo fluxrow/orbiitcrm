@@ -4382,6 +4382,7 @@ export type Database = {
       orbit_zapi_config: {
         Row: {
           ativo: boolean | null
+          canary_mode_enabled: boolean
           canary_phone_numbers: string[]
           client_token: string | null
           client_token_secret_id: string | null
@@ -4407,6 +4408,7 @@ export type Database = {
         }
         Insert: {
           ativo?: boolean | null
+          canary_mode_enabled?: boolean
           canary_phone_numbers?: string[]
           client_token?: string | null
           client_token_secret_id?: string | null
@@ -4432,6 +4434,7 @@ export type Database = {
         }
         Update: {
           ativo?: boolean | null
+          canary_mode_enabled?: boolean
           canary_phone_numbers?: string[]
           client_token?: string | null
           client_token_secret_id?: string | null
