@@ -13,6 +13,8 @@ import {
   createCalendarEvent,
 } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
+import { extractPublicMessage, looksLikeInternalPayload, sanitizedLeakSummary } from "../_shared/ai-output-guard.ts";
+
 import {
   decideImmediateKick,
   kickOutboxDispatch,
@@ -1372,16 +1374,25 @@ ${regrasBlock}`;
 
     const content = aiResult.text || "";
 
-    let parsed: any;
-    try {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { mensagem: content };
-    } catch {
-      parsed = { mensagem: content };
+    // Parse robusto + barreira anti-vazamento (JSON puro, ```json, prefixo "json").
+    // NUNCA usa raw output como fallback ao cliente quando parece metadado interno.
+    const publicOut = extractPublicMessage(content);
+    let parsed: any = publicOut.parsed ?? { mensagem: publicOut.text };
+    let suppressReply: string | null = null;
+    if (publicOut.blocked) {
+      console.error(
+        "[orbit-ai-agent] Saída estruturada bloqueada (não enviada ao lead):",
+        JSON.stringify(sanitizedLeakSummary(content)),
+      );
+      suppressReply = "blocked_structured_output";
+    } else if (publicOut.skip) {
+      console.warn("[orbit-ai-agent] Sem mensagem pública para enviar:", publicOut.reason, publicOut.intencao || "");
+      suppressReply = publicOut.reason;
     }
 
-    let resposta = parsed.mensagem || content;
+    let resposta = publicOut.text;
     console.log("[orbit-ai-agent] Resposta gerada:", resposta.substring(0, 100));
+
 
     // ── GUARD DETERMINÍSTICO: nunca perguntar campo conhecido nem repetir pergunta recente ──
     {
@@ -2112,7 +2123,15 @@ ${regrasBlock}`;
 
 
     // Enviar resposta via WhatsApp (fallback: texto)
+    if (suppressReply || !resposta.trim() || looksLikeInternalPayload(resposta)) {
+      console.warn("[orbit-ai-agent] Envio suprimido:", suppressReply || "empty_or_structured_output");
+      return new Response(
+        JSON.stringify({ ok: true, suppressed: true, reason: suppressReply || "empty_or_structured_output", state: novoContexto.estado }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
     await sendAIResponse(supabase, telefone, resposta, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
+
 
     return new Response(JSON.stringify({ ok: true, resposta, parsed, state: novoContexto.estado, simulated: isDemo }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

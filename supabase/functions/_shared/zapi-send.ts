@@ -9,6 +9,8 @@
 // NÃO decide elegibilidade/quota: isso é do worker da outbox.
 
 import { signOrbitMediaUrl } from "./orbit-media.ts";
+import { looksLikeInternalPayload, sanitizedLeakSummary } from "./ai-output-guard.ts";
+
 import {
   buildZapiRequest,
   isMediaKind,
@@ -110,6 +112,16 @@ export async function sendViaZapiUnified(
   if (!cfg.instance_id || !cfg.token) {
     return { ok: false, error: "zapi_config_missing" };
   }
+
+  // ── ÚLTIMA BARREIRA NO SENDER: nunca enviar metadado interno ao lead ──
+  if (looksLikeInternalPayload(input.message)) {
+    console.error(
+      "[zapi-send] texto estruturado bloqueado:",
+      JSON.stringify({ fn: input.functionName ?? null, ...sanitizedLeakSummary(input.message) }),
+    );
+    return { ok: false, error: "internal_payload_blocked", effectiveKind: input.kind };
+  }
+
 
   const base = zapiBaseUrl(cfg);
   let mediaUrl: string | null = null;
