@@ -13,6 +13,8 @@ import {
   createCalendarEvent,
 } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
+import { extractPublicMessage, looksLikeInternalPayload, sanitizedLeakSummary } from "../_shared/ai-output-guard.ts";
+
 import {
   decideImmediateKick,
   kickOutboxDispatch,
@@ -2121,7 +2123,15 @@ ${regrasBlock}`;
 
 
     // Enviar resposta via WhatsApp (fallback: texto)
+    if (suppressReply || !resposta.trim() || looksLikeInternalPayload(resposta)) {
+      console.warn("[orbit-ai-agent] Envio suprimido:", suppressReply || "empty_or_structured_output");
+      return new Response(
+        JSON.stringify({ ok: true, suppressed: true, reason: suppressReply || "empty_or_structured_output", state: novoContexto.estado }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
     await sendAIResponse(supabase, telefone, resposta, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
+
 
     return new Response(JSON.stringify({ ok: true, resposta, parsed, state: novoContexto.estado, simulated: isDemo }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
