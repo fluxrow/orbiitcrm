@@ -10,7 +10,10 @@ export interface OrbitZapiRuntimeConfig {
   token: string | null;
   client_token: string | null;
   envio_real_liberado?: boolean | null;
+  canary_mode_enabled?: boolean | null;
+  canary_phone_numbers?: string[] | null;
 }
+
 
 export async function getOrbitZapiRuntimeConfig(
   supabase: any,
