@@ -411,7 +411,7 @@ async function sendZapi(empresaId: string, telefone: string, kind: "text" | "ima
   }
 
   // ── Trava global/por tenant: envio real só se explicitamente liberado ──
-  const blockReason = getOrbitZapiRealSendBlockReason(zapi);
+  const blockReason = getOrbitZapiRealSendBlockReason(zapi, telefone);
   if (blockReason) {
     console.warn("[executor] envio real bloqueado", { empresaId, kind, reason: blockReason });
     await auditZapiSendAttempt(supabase, {

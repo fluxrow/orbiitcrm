@@ -732,7 +732,7 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
 
   // Z-API config + kill switch
   const zcfg = await getOrbitZapiRuntimeConfig(supabase, item.empresa_id);
-  const block = getOrbitZapiRealSendBlockReason(zcfg);
+  const block = getOrbitZapiRealSendBlockReason(zcfg, telefone);
   if (block) {
     await auditZapiSendAttempt(supabase, {
       empresa_id: item.empresa_id,

@@ -93,7 +93,7 @@ const handler = async (req: Request): Promise<Response> => {
       (prospect.segmento ? `🏷️ *Segmento:* ${prospect.segmento}\n` : "") +
       `\nAcesse o Orbit CRM para mais detalhes.`;
 
-    const vendedorBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
+    const vendedorBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig, target.phone);
     if (vendedorBlockReason) {
       console.warn("[send-vendedor-notification] Envio real bloqueado:", { empresa_id, reason: vendedorBlockReason });
       await auditZapiSendAttempt(supabase, {

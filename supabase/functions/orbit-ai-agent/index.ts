@@ -238,18 +238,6 @@ function messageTextForAgent(message: { mensagem?: string | null; media_extracte
   return `${isPlaceholder ? "" : `${visible}\n`}[${label}: ${extracted}]`.trim();
 }
 
-async function isCanaryPhoneAllowed(supabase: any, empresaId: string | null | undefined, telefone: string): Promise<boolean> {
-  if (!empresaId) return false;
-  const { data } = await supabase
-    .from("orbit_zapi_config")
-    .select("canary_phone_numbers")
-    .eq("empresa_id", empresaId)
-    .maybeSingle();
-  const target = normalizePhone(telefone);
-  return Array.isArray(data?.canary_phone_numbers)
-    && data.canary_phone_numbers.some((candidate: unknown) => normalizePhone(candidate) === target);
-}
-
 // ── Validação de dados extraídos ──
 function validateExtractedData(dados: Record<string, any>): Record<string, any> {
   const validated: Record<string, any> = {};
@@ -402,7 +390,7 @@ async function notifyCommercialHumanDetected(
 
 
   const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresa_id);
-  const notifyBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
+  const notifyBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig, vendedorPhone);
   if (notifyBlockReason) {
     console.warn("[orbit-ai-agent] Notificação comercial bloqueada:", notifyBlockReason);
     await auditZapiSendAttempt(supabase, {
@@ -732,7 +720,7 @@ async function sendWhatsAppAudio(
       console.log("[orbit-ai-agent] Z-API não configurado para envio de áudio de biblioteca");
       return;
     }
-    const audioBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
+    const audioBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig, telefone);
     if (audioBlockReason) {
       console.warn("[orbit-ai-agent] Áudio biblioteca bloqueado:", audioBlockReason);
       return;
@@ -2286,7 +2274,7 @@ async function handleSellerHandoff(supabase: any, params: HandoffParams) {
       await supabase.from("orbit_handoffs").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", handoff.id);
     } else {
       const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresa_id);
-      const handoffBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
+      const handoffBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig, vendedorPhone);
       if (handoffBlockReason) {
         console.warn("[orbit-ai-agent] Handoff bloqueado:", handoffBlockReason);
         await supabase.from("orbit_handoffs").update({ status: "failed" }).eq("id", handoff.id);
@@ -2492,18 +2480,7 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw:
 
 
     const zapiConfig = await getOrbitZapiRuntimeConfig(supabase, empresaId);
-    const configuredBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
-    const canaryAllowed = configuredBlockReason
-      ? await isCanaryPhoneAllowed(supabase, empresaId, telefone)
-      : false;
-    const replyBlockReason = canaryAllowed ? null : configuredBlockReason;
-
-    if (canaryAllowed) {
-      console.warn("[orbit-ai-agent] Envio canario autorizado com kill switch global ativo", {
-        empresa_id: empresaId,
-        telefone: normalizePhone(telefone),
-      });
-    }
+    const replyBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig, telefone);
 
     if (replyBlockReason) {
       console.warn("[orbit-ai-agent] Resposta automática bloqueada:", replyBlockReason);

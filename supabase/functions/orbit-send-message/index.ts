@@ -228,7 +228,7 @@ serve(async (req) => {
         telefone: telefone || "EMPTY",
       }));
 
-      const realSendBlock = getOrbitZapiRealSendBlockReason(zapiConfig);
+      const realSendBlock = getOrbitZapiRealSendBlockReason(zapiConfig, telefone);
       if (realSendBlock) {
         messageStatus = "falhou";
         failReason = realSendBlock;
