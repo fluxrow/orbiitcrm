@@ -19,6 +19,8 @@
 
 import { evaluateAutomationCutoff } from "./automation-cutoff.ts";
 import { mixedPaymentIdempotencyKey } from "./mixed-payment-handoff.ts";
+import { looksLikeInternalPayload, sanitizedLeakSummary } from "./ai-output-guard.ts";
+
 
 
 export type OutboxSourceType =
@@ -371,10 +373,24 @@ export async function isAdapterEnabled(supabase: any, empresa_id: string | null 
 /** Enfileira item no outbox. Retorna enqueued=false se elegibilidade falhar
  * ou se já existir (dedupe por idempotency_key). */
 export async function enqueueOutbox(supabase: any, input: EnqueueInput): Promise<EnqueueResult> {
+  // ── ÚLTIMA BARREIRA GLOBAL: nunca enfileirar metadado interno como texto ──
+  {
+    const p: any = input.payload ?? {};
+    const candidates = [p.mensagem, p.message, p.texto, p.caption, p.legenda];
+    if (candidates.some((c) => looksLikeInternalPayload(c))) {
+      console.error(
+        "[outbox] payload estruturado bloqueado:",
+        JSON.stringify({ empresa_id: input.empresa_id, source_type: input.source_type, ...sanitizedLeakSummary(candidates.find((c) => looksLikeInternalPayload(c))) }),
+      );
+      return { enqueued: false, reason: "internal_payload_blocked", reasons: ["internal_payload_blocked"] };
+    }
+  }
+
   const elig = await checkEligibility(supabase, input);
   if (!elig.eligible) {
     return { enqueued: false, idempotency_key: elig.idempotency_key, reason: elig.reasons[0], reasons: elig.reasons };
   }
+
 
   // Verifica dedupe explícito
   const { data: existing } = await supabase
