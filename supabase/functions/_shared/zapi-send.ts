@@ -25,6 +25,8 @@ import {
   sanitizeZapiReason,
 } from "./zapi-connection.ts";
 import { sendOpsOfflineAlert } from "./zapi-ops-alert.ts";
+import { getOrbitZapiRealSendBlockReason } from "./orbit-zapi.ts";
+import { auditZapiSendAttempt } from "./zapi-audit.ts";
 
 export interface ZapiSendConfig {
   id?: string | null;
@@ -32,6 +34,9 @@ export interface ZapiSendConfig {
   instance_id?: string | null;
   token?: string | null;
   client_token?: string | null;
+  envio_real_liberado?: boolean | null;
+  canary_mode_enabled?: boolean | null;
+  canary_phone_numbers?: string[] | null;
 }
 
 export interface ZapiSendInput {
@@ -101,14 +106,32 @@ async function handleConnectionFailure(
 }
 
 /**
- * Executa o envio. Assume que TODOS os gates (kill switch, quota, hold,
- * instância online) já foram avaliados pelo chamador.
+ * Executa o envio. Quota, hold e estado da instância são responsabilidade do
+ * chamador; o gate global/canário é obrigatoriamente revalidado aqui.
  */
 export async function sendViaZapiUnified(
   supabase: any,
   cfg: ZapiSendConfig,
   input: ZapiSendInput,
 ): Promise<ZapiSendResult> {
+  // Defesa em profundidade: nenhum chamador pode contornar o gate global/canário.
+  // Esta checagem acontece antes de assinar mídia e, principalmente, antes do fetch.
+  const sendBlockReason = getOrbitZapiRealSendBlockReason(cfg, input.phone);
+  if (sendBlockReason) {
+    await auditZapiSendAttempt(supabase, {
+      empresa_id: cfg.empresa_id ?? null,
+      function_name: input.functionName,
+      action: `unified_send_${input.kind}`,
+      blocked: true,
+      block_reason: cfg.canary_mode_enabled === true
+        ? "ZAPI_CANARY_RECIPIENT_BLOCKED"
+        : "ZAPI_REAL_SEND_BLOCKED",
+      zapi_config_id: cfg.id ?? null,
+      payload_summary: { phone: input.phone, kind: input.kind, gate: "sender_final" },
+    });
+    return { ok: false, error: sendBlockReason, effectiveKind: input.kind };
+  }
+
   if (!cfg.instance_id || !cfg.token) {
     return { ok: false, error: "zapi_config_missing" };
   }
