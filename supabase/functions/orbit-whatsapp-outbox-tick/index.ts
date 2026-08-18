@@ -44,6 +44,7 @@ import {
   ZAPI_STACK_VERSION,
 } from "../_shared/zapi-connection.ts";
 import { sendViaZapiUnified } from "../_shared/zapi-send.ts";
+import { pilotInboundBlockReason } from "../_shared/outbox-pilot.ts";
 
 console.log("[orbit-whatsapp-outbox-tick] boot version:", ZAPI_STACK_VERSION);
 import {
@@ -452,6 +453,24 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
   if (!holdVerdict.allowed) {
     await releaseHeldItem(item, holdVerdict.reason ?? OUTBOX_HOLD_REASON, holdVerdict.retryAtIso);
     return { outcome: "deferred", reason: holdVerdict.reason ?? OUTBOX_HOLD_REASON };
+  }
+
+  // Modo piloto fail-closed da Viver: bloqueia qualquer origem proativa e exige
+  // que ai_reply aponte para uma inbound real da mesma conversa/tenant. O canário
+  // manual controlado continua permitido e ainda passa pelo gate de destinatário.
+  const pilotBlock = await pilotInboundBlockReason(supabase, item);
+  if (pilotBlock) {
+    await supabase
+      .from("orbit_whatsapp_outbox")
+      .update({
+        status: "canceled",
+        canceled_at: new Date().toISOString(),
+        canceled_reason: pilotBlock,
+        locked_at: null,
+        locked_by: null,
+      })
+      .eq("id", item.id);
+    return { outcome: "canceled", reason: pilotBlock };
   }
 
   // Kill switch por tenant + horário comercial para não-urgentes
