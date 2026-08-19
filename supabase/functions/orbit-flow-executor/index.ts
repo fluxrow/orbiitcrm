@@ -223,6 +223,10 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
       derived_source_type: sourceType,
     };
     if (simulate) metadata.simulate = true;
+    if (cfg?.viver_pilot_typebot_d0 === true) {
+      metadata.viver_pilot_typebot_d0 = true;
+      metadata.pilot_not_before = cfg?.pilot_not_before;
+    }
     const routed = await enqueueOutbox(supabase, {
       empresa_id: run.empresa_id,
       prospect_id: prospectId,

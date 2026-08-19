@@ -2,6 +2,7 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   PILOT_INBOUND_REQUIRED,
   PILOT_SOURCE_BLOCKED,
+  PILOT_TYPEBOT_EVIDENCE_REQUIRED,
   pilotStaticBlockReason,
   VIVER_SEMIJOIAS_EMPRESA_ID,
 } from "./outbox-pilot.ts";
@@ -10,6 +11,22 @@ Deno.test("pilot blocks every proactive source for Viver", () => {
   for (const source_type of ["campaign", "flow_initial", "flow_followup", "flow_stage", "meeting_confirmation", "manual"]) {
     assertEquals(pilotStaticBlockReason({ empresa_id: VIVER_SEMIJOIAS_EMPRESA_ID, source_type, metadata: {} }), PILOT_SOURCE_BLOCKED);
   }
+});
+
+Deno.test("pilot permits only the explicitly marked Viver Typebot D0 action", () => {
+  assertEquals(pilotStaticBlockReason({
+    empresa_id: VIVER_SEMIJOIAS_EMPRESA_ID,
+    source_type: "flow_initial",
+    source_id: "848f46f3-9165-48c7-bd5b-ab220096288b",
+    metadata: { viver_pilot_typebot_d0: true, pilot_not_before: "2026-08-19T20:30:00Z" },
+  }), null);
+  assertEquals(pilotStaticBlockReason({
+    empresa_id: VIVER_SEMIJOIAS_EMPRESA_ID,
+    source_type: "flow_initial",
+    source_id: "wrong-action",
+    metadata: { viver_pilot_typebot_d0: true, pilot_not_before: "2026-08-19T20:30:00Z" },
+  }), PILOT_SOURCE_BLOCKED);
+  assertEquals(PILOT_TYPEBOT_EVIDENCE_REQUIRED, "PILOT_TYPEBOT_EVIDENCE_REQUIRED");
 });
 
 Deno.test("pilot requires inbound id for ai reply", () => {
