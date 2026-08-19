@@ -170,6 +170,8 @@ serve(async (req) => {
           canal: canal || "whatsapp",
           status: "queued",
           empresa_id: conversaEmpresaId || profile.empresa_id,
+          sender_type: "human_orbit",
+          sent_by_user_id: userId,
           tipo_midia: tipo_midia || null,
           url_midia: url_midia || null,
           storage_path: storage_path || null,
