@@ -1006,18 +1006,35 @@ serve(async (req) => {
     const { classification: msgClassification, confidence: msgConfidence } = await classifyMessage(mensagemAgregada);
     console.log("[orbit-ai-agent] Classificação:", msgClassification, "confiança:", msgConfidence);
 
-    // Buscar histórico completo (últimas 20 mensagens para contexto)
+    // Janela de contexto: 20 mensagens por padrão. Se houve atendimento humano
+    // (handoff/release), amplia até 40 para cobrir todo o período humano — com
+    // limite de segurança: acima disso ficam apenas as últimas mensagens.
+    const handoffMarker =
+      (conversa as any)?.handoff_sent_at ||
+      ((conversa as any)?.ai_contexto?.last_ai_release?.at ?? null);
+    const historyLimit = handoffMarker ? 40 : 20;
     const { data: mensagens } = await supabase
       .from("orbit_mensagens")
-      .select("direcao, mensagem, media_extracted_text, tipo_midia, timestamp")
+      .select("direcao, mensagem, media_extracted_text, tipo_midia, timestamp, sender_type")
       .eq("conversa_id", conversa_id)
       .order("timestamp", { ascending: false })
-      .limit(20);
+      .limit(historyLimit);
+
+
+    // Autoria explícita: o modelo precisa distinguir Cliente, Atendente humano
+    // (Orbit ou celular) e o próprio Assistente para não repetir/contradizer o humano.
+    const authorLabel = (m: { direcao?: string | null; sender_type?: string | null }) => {
+      if (m.direcao === "IN") return "Cliente";
+      if (m.sender_type === "human_orbit" || m.sender_type === "human_phone") return "Atendente humano";
+      if (m.sender_type === "system") return "Sistema";
+      return "Assistente";
+    };
 
     const historicoFormatado = (mensagens || [])
       .reverse()
-      .map((m) => `${m.direcao === "IN" ? "Cliente" : "Assistente"}: ${messageTextForAgent(m)}`)
+      .map((m) => `${authorLabel(m as any)}: ${messageTextForAgent(m)}`)
       .join("\n");
+
 
     // A janela de contexto tem só 20 mensagens. A primeira interação precisa usar
     // o histórico total para áudio/imagem ou conversas longas nunca reiniciarem a persona.
@@ -2388,16 +2405,16 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw:
       const inboundId = (lastIn as any)?.id ?? conversa_id;
       const { data: conv } = await supabase
         .from("orbit_conversas")
-        .select("prospect_id, human_talk, human_user_id, handoff_sent_at")
+        .select("prospect_id, human_talk, human_user_id")
         .eq("id", conversa_id)
         .maybeSingle();
-      // Revalidação de posse humana IMEDIATAMENTE antes de materializar a OUT e
-      // enfileirar: entre a geração e o enqueue o humano pode ter assumido a
-      // conversa. Nenhuma ai_reply pode nascer depois de human_talk/handoff.
+      // Revalidação de POSSE ATUAL imediatamente antes de materializar a OUT e
+      // enfileirar: entre a geração e o enqueue o humano pode ter assumido.
+      // handoff_sent_at é histórico e NÃO bloqueia sozinho (após devolução para a
+      // IA a conversa volta a responder normalmente).
       if (
         (conv as any)?.human_talk === true ||
-        (conv as any)?.human_user_id ||
-        (conv as any)?.handoff_sent_at
+        (conv as any)?.human_user_id
       ) {
         console.log("[orbit-ai-agent] ai_reply abortada: conversa sob posse humana", { conversa_id });
         await supabase.from("orbit_conversas").update({ ai_processing: false }).eq("id", conversa_id);

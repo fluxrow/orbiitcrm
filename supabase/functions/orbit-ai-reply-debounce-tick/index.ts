@@ -133,14 +133,14 @@ serve(async (req) => {
         continue;
       }
 
-      // Revalidação de posse humana IMEDIATAMENTE antes de acionar o agente:
-      // nenhuma ai_reply pode nascer depois de human_talk=true/handoff.
+      // Revalidação de POSSE ATUAL imediatamente antes de acionar o agente.
+      // handoff_sent_at é histórico e não bloqueia sozinho.
       const { data: freshConversa } = await supabase
         .from("orbit_conversas")
-        .select("human_talk, human_user_id, handoff_sent_at")
+        .select("human_talk, human_user_id")
         .eq("id", row.conversa_id)
         .maybeSingle();
-      if (freshConversa?.human_talk === true || freshConversa?.human_user_id || freshConversa?.handoff_sent_at) {
+      if (freshConversa?.human_talk === true || freshConversa?.human_user_id) {
         await supabase.from("orbit_conversas").update({ ai_processing: false }).eq("id", row.conversa_id);
         await supabase.from("orbit_ai_reply_debounce")
           .update({ status: "canceled", last_error: "human_talk", updated_at: now.toISOString() })

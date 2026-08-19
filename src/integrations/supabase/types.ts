@@ -3082,6 +3082,8 @@ export type Database = {
           media_provider: string | null
           mensagem: string | null
           provider_message_id: string | null
+          sender_type: string | null
+          sent_by_user_id: string | null
           status: string | null
           storage_path: string | null
           timestamp: string | null
@@ -3104,6 +3106,8 @@ export type Database = {
           media_provider?: string | null
           mensagem?: string | null
           provider_message_id?: string | null
+          sender_type?: string | null
+          sent_by_user_id?: string | null
           status?: string | null
           storage_path?: string | null
           timestamp?: string | null
@@ -3126,6 +3130,8 @@ export type Database = {
           media_provider?: string | null
           mensagem?: string | null
           provider_message_id?: string | null
+          sender_type?: string | null
+          sent_by_user_id?: string | null
           status?: string | null
           storage_path?: string | null
           timestamp?: string | null
@@ -4220,6 +4226,60 @@ export type Database = {
             columns: ["empresa_id"]
             isOneToOne: false
             referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_whatsapp_lid_map: {
+        Row: {
+          conversa_id: string | null
+          created_at: string
+          empresa_id: string
+          id: string
+          instance_id: string | null
+          lid: string
+          prospect_id: string | null
+          resolved_via: string | null
+          telefone: string | null
+          updated_at: string
+        }
+        Insert: {
+          conversa_id?: string | null
+          created_at?: string
+          empresa_id: string
+          id?: string
+          instance_id?: string | null
+          lid: string
+          prospect_id?: string | null
+          resolved_via?: string | null
+          telefone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          conversa_id?: string | null
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          instance_id?: string | null
+          lid?: string
+          prospect_id?: string | null
+          resolved_via?: string | null
+          telefone?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_whatsapp_lid_map_conversa_id_fkey"
+            columns: ["conversa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_conversas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_whatsapp_lid_map_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_prospects"
             referencedColumns: ["id"]
           },
         ]
@@ -5788,6 +5848,10 @@ export type Database = {
           size_bytes: number
           storage_path: string
         }[]
+      }
+      orbit_release_conversa_to_ai: {
+        Args: { p_conversa_id: string }
+        Returns: Json
       }
       orbit_resend_has_api_key: {
         Args: { p_empresa_id: string }

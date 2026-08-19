@@ -17,7 +17,12 @@
 // Este módulo é puro: não faz IO e não dispara nada. Alternar posse nunca gera
 // resposta retroativa — apenas o próximo inbound elegível pode acionar a IA.
 
-export type ConversaOwnerState = "ai" | "ai_paused" | "human_assigned" | "awaiting_human";
+export type ConversaOwnerState =
+  | "ai"
+  | "ai_paused"
+  | "human_assigned"
+  | "awaiting_human"
+  | "human_external";
 
 export interface ConversaOwnershipInput {
   conversa: {
@@ -25,11 +30,14 @@ export interface ConversaOwnershipInput {
     human_user_id?: string | null;
     human_user?: { id?: string | null; nome?: string | null } | null;
     archived_at?: string | null;
+    /** ai_contexto.external_human_active = atendente falou pelo celular (fora do Orbit). */
+    ai_contexto?: { external_human_active?: boolean | null } | null;
   } | null | undefined;
   prospect?: { created_at?: string | null } | null;
   /** orbit_ai_config do tenant atual. */
   aiConfig?: { modo_automatico?: boolean | null; auto_reply_new_leads_from?: string | null } | null;
 }
+
 
 export interface ConversaOwnership {
   state: ConversaOwnerState;
@@ -96,6 +104,20 @@ export function getConversaOwnership(input: ConversaOwnershipInput): ConversaOwn
 
   // C) Bloqueada para IA, mas ninguém assumiu.
   if (!ownerId) {
+    // C.1) Atendimento humano EXTERNO (mensagem enviada pelo celular do atendente):
+    // ninguém assumiu no Orbit, mas o usuário autorizado pode assumir OU devolver.
+    const externalHuman = conversa?.ai_contexto?.external_human_active === true;
+    if (externalHuman) {
+      return {
+        state: "human_external",
+        statusLabel: "Atendimento humano externo",
+        ownerName: null,
+        canAssume: true,
+        canRelease: releaseBlockedReason === null,
+        releaseBlockedReason,
+        beforeCutoff,
+      };
+    }
     return {
       state: "awaiting_human",
       statusLabel: "Aguardando atendimento humano",
@@ -106,6 +128,7 @@ export function getConversaOwnership(input: ConversaOwnershipInput): ConversaOwn
       beforeCutoff,
     };
   }
+
 
   // B) Humano assumiu.
   return {

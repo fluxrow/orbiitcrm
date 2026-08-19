@@ -146,50 +146,33 @@ export function useStartHumanTakeover() {
 }
 
 /**
- * Devolver para IA: limpa o responsável humano.
- * Só libera human_talk=false quando o tenant está em modo automático E o prospect
- * nasceu a partir do corte (auto_reply_new_leads_from). Lead anterior ao corte
- * permanece em atendimento humano obrigatório. Não dispara resposta retroativa.
+ * Devolver para IA: operação ATÔMICA no backend (RPC tenant-scoped).
+ * A RPC valida auth.uid, membership/empresa, modo automático e o corte
+ * (auto_reply_new_leads_from), limpa posse humana + marcador histórico de handoff
+ * e cancela debounce pendente. Não dispara resposta retroativa.
  */
 export function useEndHumanTakeover() {
   const queryClient = useQueryClient();
-  const { empresaId } = useTenant();
 
   return useMutation({
     mutationFn: async (conversa_id: string) => {
-      const { data: conversa, error: convErr } = await supabase
-        .from("orbit_conversas")
-        .select("id, empresa_id, prospect:orbit_prospects!orbit_conversas_prospect_id_fkey(created_at)")
-        .eq("id", conversa_id)
-        .maybeSingle();
-      if (convErr) throw convErr;
-      if (!conversa) throw new Error("Conversa não encontrada.");
-
-      const { data: config, error: cfgErr } = await supabase
-        .from("orbit_ai_config")
-        .select("modo_automatico, auto_reply_new_leads_from")
-        .eq("empresa_id", conversa.empresa_id!)
-        .maybeSingle();
-      if (cfgErr) throw cfgErr;
-
-      const ownership = getConversaOwnership({
-        conversa: { human_talk: true, human_user_id: "any" },
-        prospect: (conversa as any).prospect ?? null,
-        aiConfig: config ?? null,
+      const { data, error } = await supabase.rpc("orbit_release_conversa_to_ai", {
+        p_conversa_id: conversa_id,
       });
-      if (!ownership.canRelease) {
-        throw new Error(ownership.releaseBlockedReason ?? RELEASE_BLOCKED_CUTOFF_MESSAGE);
-      }
-
-      let query = supabase
-        .from("orbit_conversas")
-        .update({ human_talk: false, human_user_id: null, ai_processing: false })
-        .eq("id", conversa_id);
-      if (empresaId) query = query.eq("empresa_id", empresaId);
-
-      const { data, error } = await query.select().single();
       if (error) throw error;
-      return data;
+
+      const result = (data ?? {}) as { ok?: boolean; error?: string };
+      if (!result.ok) {
+        const messages: Record<string, string> = {
+          unauthenticated: "Sessão expirada: entre novamente para devolver a conversa.",
+          forbidden: "Você não tem permissão para devolver esta conversa.",
+          conversa_not_found: "Conversa não encontrada.",
+          automatic_mode_off: "O modo automático da empresa está desligado.",
+          before_automation_cutoff: RELEASE_BLOCKED_CUTOFF_MESSAGE,
+        };
+        throw new Error(messages[result.error ?? ""] ?? "Não foi possível devolver a conversa para a IA.");
+      }
+      return result;
     },
     onSuccess: (_, conversa_id) => {
       queryClient.invalidateQueries({ queryKey: ["orbit_conversas"] });
@@ -197,6 +180,7 @@ export function useEndHumanTakeover() {
     },
   });
 }
+
 
 
 export function useMarkConversaAsRead() {

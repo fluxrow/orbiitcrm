@@ -228,6 +228,14 @@ import {
   resolveEmpresaByInstance,
   safePreview,
 } from "../_shared/inbound-zapi.ts";
+import {
+  classifyZapiInbound,
+  extractLid,
+  extractTrustedPhone,
+  sanitizeUnresolvedLidPayload,
+} from "../_shared/inbound-identity.ts";
+
+
 
 
 
@@ -521,30 +529,82 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
 
     console.log("[orbit-webhook] Resolved empresa_id:", empresaId);
 
-    const fromMe = payload.fromMe === true || eventType === "on-send";
+    const notifyOwnMessages = zapiRows?.[0]?.notificar_enviadas_por_mim === true;
+    const isOnSend = eventType === "on-send";
 
-    // ── Elegibilidade + extração (helpers puros, cobertos por testes) ──
-    if (!fromMe) {
-      const eligibility = inboundEligibility(payload, "on-receive");
-      if (!eligibility.process) {
-        if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: eligibility.reason }).eq("id", logId);
-        return new Response(JSON.stringify({ ok: true, skipped: true, reason: eligibility.reason }), {
+    // ── Classificação (helpers puros, cobertos por testes) ──
+    // on-send permanece callback de delivery/status (comportamento legado).
+    // on-receive com fromMe=true e fromApi=false é OUT externa (celular do atendente).
+    let externalOut = false;
+    if (!isOnSend) {
+      const cls = classifyZapiInbound(payload, "on-receive", { notifyOwnMessages });
+      if (cls.kind === "orbit_echo") {
+        if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "duplicate_message" }).eq("id", logId);
+        return new Response(JSON.stringify({ ok: true, skipped: true, reason: "duplicate_message" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+      if (cls.kind === "ignore" || cls.kind === "status_callback") {
+        if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: cls.reason }).eq("id", logId);
+        return new Response(JSON.stringify({ ok: true, skipped: true, reason: cls.reason }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      externalOut = cls.kind === "external_out";
     }
+
+    const fromMe = isOnSend || payload.fromMe === true;
 
     const { messageText, tipoMidia, urlMidia } = extractInboundContent(payload);
     const messageId = providerMessageId(payload);
-    const normalizedPhone = extractInboundPhone(payload);
     const inboundAt = inboundTimestampIso(payload);
 
-    if (!normalizedPhone) {
-      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "no_phone" }).eq("id", logId);
-      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "no_phone" }), {
+    if (!messageText && !tipoMidia) {
+      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "empty_payload" }).eq("id", logId);
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "empty_payload" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // ── Telefone confiável (nunca connectedPhone, nunca dígitos de @lid) ──
+    const payloadLid = extractLid(payload);
+    let normalizedPhone = extractTrustedPhone(payload);
+    let lidResolvedVia: string | null = normalizedPhone ? "payload_phone" : null;
+
+    if (!normalizedPhone && payloadLid && empresaId) {
+      const { data: lidRow } = await supabase
+        .from("orbit_whatsapp_lid_map")
+        .select("telefone, prospect_id, conversa_id")
+        .eq("empresa_id", empresaId)
+        .eq("lid", payloadLid)
+        .maybeSingle();
+      if (lidRow?.telefone) {
+        normalizedPhone = lidRow.telefone;
+        lidResolvedVia = "lid_map";
+      }
+    }
+
+    if (!normalizedPhone) {
+      // Sem telefone confiável: nunca inventamos número a partir do LID e nunca
+      // acionamos a IA. Estado é observável para correlação posterior.
+      const unresolvedReason = payloadLid ? "phone_lid_unresolved" : "no_phone";
+      if (logId) {
+        await supabase
+          .from("orbit_webhook_logs")
+          .update({
+            status: "ignored",
+            error_message: unresolvedReason,
+            payload: { sanitized: sanitizeUnresolvedLidPayload(payload), webhook_log_id: logId },
+          })
+          .eq("id", logId);
+      }
+      console.warn(JSON.stringify({ event: unresolvedReason, empresa_id: empresaId, webhook_log_id: logId }));
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: unresolvedReason }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+
 
 
     // Generate phone variants for matching (with/without 9th digit)
@@ -836,6 +896,7 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       timestamp: inboundAt,
       tipo_midia: tipoMidia,
       url_midia: urlMidia,
+      sender_type: externalOut ? "human_phone" : (fromMe ? "ai" : "lead"),
       media_processing_status: shouldProcessMedia ? "pending" : (tipoMidia ? "disabled" : null),
     }).select("id").single();
     if (savedMessageError) {
@@ -903,6 +964,56 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       })
       .eq("id", conversa.id);
 
+    // 5a-lid. Correlação LID → lead/conversa persistida por tenant (nunca global).
+    if (payloadLid && empresaId) {
+      const { error: lidErr } = await supabase
+        .from("orbit_whatsapp_lid_map")
+        .upsert({
+          empresa_id: empresaId,
+          lid: payloadLid,
+          telefone: normalizedPhone,
+          prospect_id: prospect?.id ?? null,
+          conversa_id: conversa?.id ?? null,
+          instance_id: payloadInstanceId,
+          resolved_via: lidResolvedVia ?? "payload_phone",
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "empresa_id,lid" });
+      if (lidErr) console.warn("[orbit-webhook] lid map upsert falhou:", lidErr.message);
+    }
+
+    // 5c. OUT externa (atendente falou pelo celular): pausa a IA imediatamente.
+    //     human_user_id permanece null — não sabemos qual usuário escreveu.
+    if (externalOut && conversa?.id) {
+      const externalCtx = {
+        ...((conversa.ai_contexto as Record<string, unknown>) ?? {}),
+        external_human_active: true,
+        external_human_at: new Date().toISOString(),
+      };
+      await supabase
+        .from("orbit_conversas")
+        .update({
+          human_talk: true,
+          ai_processing: false,
+          handoff_sent_at: new Date().toISOString(),
+          ai_contexto: externalCtx,
+        })
+        .eq("id", conversa.id);
+      await supabase
+        .from("orbit_ai_reply_debounce")
+        .update({ status: "canceled", last_error: "external_human_out", updated_at: new Date().toISOString() })
+        .eq("conversa_id", conversa.id)
+        .in("status", ["pending", "generating"]);
+      console.log(JSON.stringify({
+        event: "external_out_processed",
+        empresa_id: empresaId,
+        conversa_id: conversa.id,
+      }));
+      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "processed", error_message: "external_out_processed" }).eq("id", logId);
+      return new Response(JSON.stringify({ ok: true, external_out: true, conversa_id: conversa.id }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // 5b. Lead respondeu → cancela cadência (D+1/D+3) e outbox futuro ligado a ela.
     //     Nunca cancela a resposta atual (ai_reply/manual ficam fora do escopo).
     if (!fromMe && prospect?.id) {
@@ -914,6 +1025,7 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       if (cancelError) console.error("[orbit-webhook] cancel_cadence_on_reply falhou:", cancelError.message);
       else console.log("[orbit-webhook] cadência cancelada:", canceled);
     }
+
 
     // 6. Somente APÓS o commit do inbound: pipeline de mídia / agente.
     //    Falha aqui nunca desfaz a mensagem IN — apenas loga e libera retry.
