@@ -896,6 +896,7 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       timestamp: inboundAt,
       tipo_midia: tipoMidia,
       url_midia: urlMidia,
+      sender_type: externalOut ? "human_phone" : (fromMe ? "ai" : "lead"),
       media_processing_status: shouldProcessMedia ? "pending" : (tipoMidia ? "disabled" : null),
     }).select("id").single();
     if (savedMessageError) {
