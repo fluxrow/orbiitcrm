@@ -964,6 +964,46 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       })
       .eq("id", conversa.id);
 
+    // 5a-lid. Correlação LID → lead/conversa persistida por tenant (nunca global).
+    if (payloadLid && empresaId) {
+      const { error: lidErr } = await supabase
+        .from("orbit_whatsapp_lid_map")
+        .upsert({
+          empresa_id: empresaId,
+          lid: payloadLid,
+          telefone: normalizedPhone,
+          prospect_id: prospect?.id ?? null,
+          conversa_id: conversa?.id ?? null,
+          instance_id: payloadInstanceId,
+          resolved_via: lidResolvedVia ?? "payload_phone",
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "empresa_id,lid" });
+      if (lidErr) console.warn("[orbit-webhook] lid map upsert falhou:", lidErr.message);
+    }
+
+    // 5c. OUT externa (atendente falou pelo celular): pausa a IA imediatamente.
+    //     human_user_id permanece null — não sabemos qual usuário escreveu.
+    if (externalOut && conversa?.id) {
+      await supabase
+        .from("orbit_conversas")
+        .update({ human_talk: true, ai_processing: false, handoff_sent_at: new Date().toISOString() })
+        .eq("id", conversa.id);
+      await supabase
+        .from("orbit_ai_reply_debounce")
+        .update({ status: "canceled", last_error: "external_human_out", updated_at: new Date().toISOString() })
+        .eq("conversa_id", conversa.id)
+        .in("status", ["pending", "generating"]);
+      console.log(JSON.stringify({
+        event: "external_out_processed",
+        empresa_id: empresaId,
+        conversa_id: conversa.id,
+      }));
+      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "processed", error_message: "external_out_processed" }).eq("id", logId);
+      return new Response(JSON.stringify({ ok: true, external_out: true, conversa_id: conversa.id }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // 5b. Lead respondeu → cancela cadência (D+1/D+3) e outbox futuro ligado a ela.
     //     Nunca cancela a resposta atual (ai_reply/manual ficam fora do escopo).
     if (!fromMe && prospect?.id) {
@@ -975,6 +1015,7 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       if (cancelError) console.error("[orbit-webhook] cancel_cadence_on_reply falhou:", cancelError.message);
       else console.log("[orbit-webhook] cadência cancelada:", canceled);
     }
+
 
     // 6. Somente APÓS o commit do inbound: pipeline de mídia / agente.
     //    Falha aqui nunca desfaz a mensagem IN — apenas loga e libera retry.
