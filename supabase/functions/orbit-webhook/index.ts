@@ -984,9 +984,19 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
     // 5c. OUT externa (atendente falou pelo celular): pausa a IA imediatamente.
     //     human_user_id permanece null — não sabemos qual usuário escreveu.
     if (externalOut && conversa?.id) {
+      const externalCtx = {
+        ...((conversa.ai_contexto as Record<string, unknown>) ?? {}),
+        external_human_active: true,
+        external_human_at: new Date().toISOString(),
+      };
       await supabase
         .from("orbit_conversas")
-        .update({ human_talk: true, ai_processing: false, handoff_sent_at: new Date().toISOString() })
+        .update({
+          human_talk: true,
+          ai_processing: false,
+          handoff_sent_at: new Date().toISOString(),
+          ai_contexto: externalCtx,
+        })
         .eq("id", conversa.id);
       await supabase
         .from("orbit_ai_reply_debounce")
