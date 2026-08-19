@@ -307,6 +307,8 @@ serve(async (req) => {
         status: messageStatus,
         provider_message_id: providerId,
         empresa_id: conversaEmpresaId || profile?.empresa_id || null,
+        sender_type: "human_orbit",
+        sent_by_user_id: userId,
         erro: failReason,
         tipo_midia: tipo_midia || null,
         url_midia: url_midia || null,
