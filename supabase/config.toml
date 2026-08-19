@@ -1,5 +1,8 @@
 project_id = "oqsnzwkiwgqwopuaugxj"
 
+[functions.orbit-tenant-ops-read]
+verify_jwt = true
+
 [functions.create-empresa]
 verify_jwt = false
 
