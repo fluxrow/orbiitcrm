@@ -228,6 +228,14 @@ import {
   resolveEmpresaByInstance,
   safePreview,
 } from "../_shared/inbound-zapi.ts";
+import {
+  classifyZapiInbound,
+  extractLid,
+  extractTrustedPhone,
+  sanitizeUnresolvedLidPayload,
+} from "../_shared/inbound-identity.ts";
+
+
 
 
 
