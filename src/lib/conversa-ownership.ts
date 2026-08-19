@@ -104,6 +104,20 @@ export function getConversaOwnership(input: ConversaOwnershipInput): ConversaOwn
 
   // C) Bloqueada para IA, mas ninguém assumiu.
   if (!ownerId) {
+    // C.1) Atendimento humano EXTERNO (mensagem enviada pelo celular do atendente):
+    // ninguém assumiu no Orbit, mas o usuário autorizado pode assumir OU devolver.
+    const externalHuman = conversa?.ai_contexto?.external_human_active === true;
+    if (externalHuman) {
+      return {
+        state: "human_external",
+        statusLabel: "Atendimento humano externo",
+        ownerName: null,
+        canAssume: true,
+        canRelease: releaseBlockedReason === null,
+        releaseBlockedReason,
+        beforeCutoff,
+      };
+    }
     return {
       state: "awaiting_human",
       statusLabel: "Aguardando atendimento humano",
@@ -114,6 +128,7 @@ export function getConversaOwnership(input: ConversaOwnershipInput): ConversaOwn
       beforeCutoff,
     };
   }
+
 
   // B) Humano assumiu.
   return {
