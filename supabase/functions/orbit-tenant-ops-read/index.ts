@@ -103,6 +103,22 @@ Deno.serve(async (req) => {
       return failure(req, requestId, "TENANT_CONTEXT_MISSING", "Nenhum tenant ativo foi encontrado na sessão.", 409);
     }
 
+    // Keep the HTTP boundary tenant-scoped and fail closed before invoking the
+    // aggregate RPC. Missing rows in orbit_feature_flags mean disabled.
+    const { data: featureFlag, error: featureFlagError } = await supabase
+      .from("orbit_feature_flags")
+      .select("enabled")
+      .eq("empresa_id", profile.empresa_id)
+      .eq("feature_key", "tenant_operations_center_v1")
+      .maybeSingle();
+
+    if (featureFlagError) {
+      return failure(req, requestId, "DATA_SOURCE_UNAVAILABLE", "Não foi possível validar a liberação do módulo.", 503, true);
+    }
+    if (!["health", "capabilities"].includes(section) && featureFlag?.enabled !== true) {
+      return failure(req, requestId, "FEATURE_DISABLED", "Centro de Operações não habilitado para este tenant.", 403);
+    }
+
     const { data, error } = await supabase.rpc("orbit_tenant_ops_read", { p_section: section });
     if (error) {
       const raw = `${error.code ?? ""} ${error.message ?? ""}`.toLowerCase();

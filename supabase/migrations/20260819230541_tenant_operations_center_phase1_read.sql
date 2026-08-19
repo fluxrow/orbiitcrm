@@ -1,7 +1,7 @@
 -- Tenant Operations Center, phase 1: read-only contracts and tenant-scoped
 -- feature flag. No operational mutation is introduced by this migration.
 
-CREATE TABLE IF NOT EXISTS public.orbit_tenant_feature_flags (
+CREATE TABLE IF NOT EXISTS public.orbit_feature_flags (
   empresa_id uuid NOT NULL REFERENCES public.orbit_empresas(id) ON DELETE CASCADE,
   feature_key text NOT NULL,
   enabled boolean NOT NULL DEFAULT false,
@@ -11,22 +11,22 @@ CREATE TABLE IF NOT EXISTS public.orbit_tenant_feature_flags (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (empresa_id, feature_key),
-  CONSTRAINT orbit_tenant_feature_flags_key_chk
+  CONSTRAINT orbit_feature_flags_key_chk
     CHECK (feature_key ~ '^[a-z][a-z0-9_]{2,80}$')
 );
 
-COMMENT ON TABLE public.orbit_tenant_feature_flags IS
+COMMENT ON TABLE public.orbit_feature_flags IS
   'Tenant-scoped rollout flags. Missing rows are disabled by definition.';
 
-ALTER TABLE public.orbit_tenant_feature_flags ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.orbit_feature_flags ENABLE ROW LEVEL SECURITY;
 
-REVOKE ALL ON TABLE public.orbit_tenant_feature_flags FROM PUBLIC, anon;
-GRANT SELECT ON TABLE public.orbit_tenant_feature_flags TO authenticated;
-GRANT ALL ON TABLE public.orbit_tenant_feature_flags TO service_role;
+REVOKE ALL ON TABLE public.orbit_feature_flags FROM PUBLIC, anon;
+GRANT SELECT ON TABLE public.orbit_feature_flags TO authenticated;
+GRANT ALL ON TABLE public.orbit_feature_flags TO service_role;
 
-DROP POLICY IF EXISTS orbit_tenant_feature_flags_select ON public.orbit_tenant_feature_flags;
-CREATE POLICY orbit_tenant_feature_flags_select
-  ON public.orbit_tenant_feature_flags FOR SELECT TO authenticated
+DROP POLICY IF EXISTS orbit_feature_flags_select ON public.orbit_feature_flags;
+CREATE POLICY orbit_feature_flags_select
+  ON public.orbit_feature_flags FOR SELECT TO authenticated
   USING (
     empresa_id = public.get_user_empresa_id((SELECT auth.uid()))
     OR public.has_role((SELECT auth.uid()), 'super_admin'::public.app_role)
@@ -179,7 +179,7 @@ BEGIN
   END IF;
 
   SELECT COALESCE(f.enabled, false) INTO v_enabled
-  FROM public.orbit_tenant_feature_flags f
+  FROM public.orbit_feature_flags f
   WHERE f.empresa_id = v_empresa_id
     AND f.feature_key = 'tenant_operations_center_v1';
 
