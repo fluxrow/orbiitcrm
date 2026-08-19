@@ -17,7 +17,7 @@ Deno.test("pilot permits only the explicitly marked Viver Typebot D0 action", ()
   assertEquals(pilotStaticBlockReason({
     empresa_id: VIVER_SEMIJOIAS_EMPRESA_ID,
     source_type: "flow_initial",
-    source_id: "848f46f3-9165-48c7-bd5b-ab220096288b",
+    source_id: "f69f59ad-5c0b-4c90-aae0-5b8578abcc24",
     metadata: { viver_pilot_typebot_d0: true, pilot_not_before: "2026-08-19T20:30:00Z" },
   }), null);
   assertEquals(pilotStaticBlockReason({

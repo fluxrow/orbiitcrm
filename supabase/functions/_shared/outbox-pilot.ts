@@ -10,8 +10,8 @@ export const PILOT_INBOUND_REQUIRED = "PILOT_INBOUND_REQUIRED";
 export const PILOT_TYPEBOT_EVIDENCE_REQUIRED = "PILOT_TYPEBOT_EVIDENCE_REQUIRED";
 
 const VIVER_TYPEBOT_D0_ACTIONS = new Map([
-  ["848f46f3-9165-48c7-bd5b-ab220096288b", "9f20eab5-abfe-4998-a8ac-a7afa616f1e6"],
-  ["dd4b4f0a-3376-4f44-9c2c-a324075a7506", "0da4e8dc-05ee-4faa-b4ca-4b359ae5feb7"],
+  ["f69f59ad-5c0b-4c90-aae0-5b8578abcc24", "9f20eab5-abfe-4998-a8ac-a7afa616f1e6"],
+  ["25bac605-9d27-4dfc-8137-45539414097f", "0da4e8dc-05ee-4faa-b4ca-4b359ae5feb7"],
 ]);
 
 export function isPilotTenant(empresaId: unknown): boolean {
