@@ -1009,15 +1009,25 @@ serve(async (req) => {
     // Buscar histórico completo (últimas 20 mensagens para contexto)
     const { data: mensagens } = await supabase
       .from("orbit_mensagens")
-      .select("direcao, mensagem, media_extracted_text, tipo_midia, timestamp")
+      .select("direcao, mensagem, media_extracted_text, tipo_midia, timestamp, sender_type")
       .eq("conversa_id", conversa_id)
       .order("timestamp", { ascending: false })
       .limit(20);
 
+    // Autoria explícita: o modelo precisa distinguir Cliente, Atendente humano
+    // (Orbit ou celular) e o próprio Assistente para não repetir/contradizer o humano.
+    const authorLabel = (m: { direcao?: string | null; sender_type?: string | null }) => {
+      if (m.direcao === "IN") return "Cliente";
+      if (m.sender_type === "human_orbit" || m.sender_type === "human_phone") return "Atendente humano";
+      if (m.sender_type === "system") return "Sistema";
+      return "Assistente";
+    };
+
     const historicoFormatado = (mensagens || [])
       .reverse()
-      .map((m) => `${m.direcao === "IN" ? "Cliente" : "Assistente"}: ${messageTextForAgent(m)}`)
+      .map((m) => `${authorLabel(m as any)}: ${messageTextForAgent(m)}`)
       .join("\n");
+
 
     // A janela de contexto tem só 20 mensagens. A primeira interação precisa usar
     // o histórico total para áudio/imagem ou conversas longas nunca reiniciarem a persona.
