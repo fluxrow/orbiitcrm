@@ -17,7 +17,12 @@
 // Este módulo é puro: não faz IO e não dispara nada. Alternar posse nunca gera
 // resposta retroativa — apenas o próximo inbound elegível pode acionar a IA.
 
-export type ConversaOwnerState = "ai" | "ai_paused" | "human_assigned" | "awaiting_human";
+export type ConversaOwnerState =
+  | "ai"
+  | "ai_paused"
+  | "human_assigned"
+  | "awaiting_human"
+  | "human_external";
 
 export interface ConversaOwnershipInput {
   conversa: {
@@ -25,11 +30,14 @@ export interface ConversaOwnershipInput {
     human_user_id?: string | null;
     human_user?: { id?: string | null; nome?: string | null } | null;
     archived_at?: string | null;
+    /** ai_contexto.external_human_active = atendente falou pelo celular (fora do Orbit). */
+    ai_contexto?: { external_human_active?: boolean | null } | null;
   } | null | undefined;
   prospect?: { created_at?: string | null } | null;
   /** orbit_ai_config do tenant atual. */
   aiConfig?: { modo_automatico?: boolean | null; auto_reply_new_leads_from?: string | null } | null;
 }
+
 
 export interface ConversaOwnership {
   state: ConversaOwnerState;
