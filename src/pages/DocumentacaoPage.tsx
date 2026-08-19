@@ -345,12 +345,25 @@ export default function DocumentacaoPage() {
 
             <Step title="2.3 Google Calendar" action="Conectar conta Google via OAuth2 para agendar reuniões.">
               <EntityTable headers={["Entidade", "Detalhes"]} rows={[
-                ["orbit_google_tokens, orbit_google_oauth_states", "Tabelas"],
+                ["orbit_google_tokens", "access_token, refresh_token, expires_at, availability_start, availability_end, availability_break_start, availability_break_end, timezone, calendar_id — campos time nullable devem ser ambos nulos ou ambos preenchidos; início < fim; dentro de availability_start/end"],
+                ["orbit_google_oauth_states", "Tabela de estados OAuth2"],
                 ["Edge Functions", "orbit-google-auth, orbit-google-callback, orbit-google-status, orbit-google-disconnect, orbit-google-calendar, orbit-meeting-scheduler"],
                 ["_shared/google-calendar.ts", "getTokenForEmpresa, ensureFreshAccessToken, checkAvailability, createCalendarEvent, listUpcomingEvents"],
                 ["orbit_meetings", "Tabela de reuniões"],
                 ["ConfigPage → tab agenda", "AgendaConfigTab"],
               ]} />
+            </Step>
+
+            <Step title="2.3.1 Pausa diária de disponibilidade" action="Definir intervalo semiaberto [início, fim) em que o agente não sugere nem aceita agendamentos.">
+              <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
+                <li><strong className="text-foreground">Entidade:</strong> <code className="font-mono text-xs">orbit_google_tokens.availability_break_start</code> e <code className="font-mono text-xs">availability_break_end</code> (time nullable). Ambos nulos desabilitam a pausa; ambos preenchidos ativam-na. <code className="font-mono text-xs">início &lt; fim</code> e o intervalo deve estar contido em <code className="font-mono text-xs">availability_start</code>–<code className="font-mono text-xs">availability_end</code> (garantido por constraint).</li>
+                <li><strong className="text-foreground">Semântica:</strong> intervalo semiaberto <code className="font-mono text-xs">[início, fim)</code>. Slots de agendamento que começam, terminam ou atravessam a pausa são bloqueados; o horário final (ex.: 14:00) volta a ser elegível se estiver livre.</li>
+                <li><strong className="text-foreground">Comportamento do agente:</strong> o <code className="font-mono text-xs">orbit-ai-agent</code> exclui a pausa das sugestões de horário e recusa pedidos explícitos que a sobreponham, informando indisponibilidade e oferecendo alternativas fora da pausa.</li>
+                <li><strong className="text-foreground">Configuração vigente (Fábrica de Pesquisadores):</strong> tenant <code className="font-mono text-xs">fa0ac793…</code>, timezone <code className="font-mono text-xs">America/Sao_Paulo</code>, janela 09:00–18:00, pausa 11:00–14:00, antecedência 60 min e horizonte 60 dias; 14:00 é elegível quando livre.</li>
+                <li><strong className="text-foreground">Preservação:</strong> Google Meet continua sendo criado via <code className="font-mono text-xs">createCalendarEvent</code>; links, mídias e texto do evento não são afetados pela pausa.</li>
+                <li><strong className="text-foreground">Limitação conhecida:</strong> a UI <code className="font-mono text-xs">orbit-google-calendar/update_config</code> ainda não expõe os campos de pausa. Por enquanto altere somente via operação administrativa tenant-scoped e valide a constraint.</li>
+                <li><strong className="text-foreground">Checklist de validação:</strong> 10:30 com duração que atravessa 11:00 → bloqueado; 13:00 → bloqueado; 14:00 → permitido se livre; alternativas nunca dentro de 11:00–14:00; confirmação contém Meet quando criado.</li>
+              </ul>
             </Step>
 
             <Step title="2.4 Meta WhatsApp Business" action="Configurar Meta Cloud API como canal alternativo.">
