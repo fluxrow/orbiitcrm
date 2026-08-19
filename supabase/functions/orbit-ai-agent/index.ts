@@ -1006,13 +1006,20 @@ serve(async (req) => {
     const { classification: msgClassification, confidence: msgConfidence } = await classifyMessage(mensagemAgregada);
     console.log("[orbit-ai-agent] Classificação:", msgClassification, "confiança:", msgConfidence);
 
-    // Buscar histórico completo (últimas 20 mensagens para contexto)
+    // Janela de contexto: 20 mensagens por padrão. Se houve atendimento humano
+    // (handoff/release), amplia até 40 para cobrir todo o período humano — com
+    // limite de segurança: acima disso ficam apenas as últimas mensagens.
+    const handoffMarker =
+      (conversa as any)?.handoff_sent_at ||
+      ((conversa as any)?.ai_contexto?.last_ai_release?.at ?? null);
+    const historyLimit = handoffMarker ? 40 : 20;
     const { data: mensagens } = await supabase
       .from("orbit_mensagens")
       .select("direcao, mensagem, media_extracted_text, tipo_midia, timestamp, sender_type")
       .eq("conversa_id", conversa_id)
       .order("timestamp", { ascending: false })
-      .limit(20);
+      .limit(historyLimit);
+
 
     // Autoria explícita: o modelo precisa distinguir Cliente, Atendente humano
     // (Orbit ou celular) e o próprio Assistente para não repetir/contradizer o humano.
