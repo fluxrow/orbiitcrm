@@ -2110,6 +2110,47 @@ export type Database = {
         }
         Relationships: []
       }
+      orbit_feature_flags: {
+        Row: {
+          created_at: string
+          empresa_id: string
+          enabled: boolean
+          enabled_at: string | null
+          enabled_by: string | null
+          feature_key: string
+          rollout_metadata: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          empresa_id: string
+          enabled?: boolean
+          enabled_at?: string | null
+          enabled_by?: string | null
+          feature_key: string
+          rollout_metadata?: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          empresa_id?: string
+          enabled?: boolean
+          enabled_at?: string | null
+          enabled_by?: string | null
+          feature_key?: string
+          rollout_metadata?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_feature_flags_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_flow_actions: {
         Row: {
           action_config: Json

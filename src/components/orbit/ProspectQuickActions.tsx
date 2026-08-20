@@ -39,6 +39,7 @@ export function ProspectQuickActions({ prospect }: Props) {
       const { data: conv, error } = await supabase
         .from("orbit_conversas")
         .select("id, empresa_id, human_talk, human_user_id, prospect:orbit_prospects!orbit_conversas_prospect_id_fkey(created_at)")
+        .eq("empresa_id", empresaId!)
         .eq("prospect_id", prospect.id)
         .eq("status", "aberta")
         .order("created_at", { ascending: false })
@@ -79,7 +80,8 @@ export function ProspectQuickActions({ prospect }: Props) {
         const { error: upErr } = await supabase
           .from("orbit_conversas")
           .update({ human_talk: false, human_user_id: null, ai_processing: false })
-          .eq("id", conv.id);
+          .eq("id", conv.id)
+          .eq("empresa_id", empresaId!);
         if (upErr) throw upErr;
         toast.success("IA reativada — sem resposta retroativa");
       }

@@ -15,14 +15,16 @@ export function useOrbitConversas(canal?: string, matchedIds?: string[]) {
 
   // Real-time subscription
   useEffect(() => {
+    if (!empresaId) return;
     const channel = supabase
-      .channel("orbit_conversas_changes")
+      .channel(`orbit_conversas_changes_${empresaId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "orbit_conversas",
+          filter: `empresa_id=eq.${empresaId}`,
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["orbit_conversas"] });
@@ -33,7 +35,7 @@ export function useOrbitConversas(canal?: string, matchedIds?: string[]) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [empresaId, queryClient]);
 
   return useQuery({
     queryKey: ["orbit_conversas", empresaId, canal, matchedIds],
@@ -84,6 +86,7 @@ export function useOrbitConversa(id: string | undefined) {
           human_user:profiles!orbit_conversas_human_user_id_fkey(id, nome)
         `)
         .eq("id", id)
+        .eq("empresa_id", empresaId!)
         .single();
       if (error) throw error;
       return data;
@@ -94,6 +97,7 @@ export function useOrbitConversa(id: string | undefined) {
 
 export function useUpdateConversa() {
   const queryClient = useQueryClient();
+  const { empresaId } = useTenant();
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: ConversaUpdate & { id: string }) => {
@@ -101,6 +105,7 @@ export function useUpdateConversa() {
         .from("orbit_conversas")
         .update(updates)
         .eq("id", id)
+        .eq("empresa_id", empresaId!)
         .select()
         .single();
       if (error) throw error;
@@ -181,13 +186,15 @@ export function useEndHumanTakeover() {
 
 export function useMarkConversaAsRead() {
   const queryClient = useQueryClient();
+  const { empresaId } = useTenant();
 
   return useMutation({
     mutationFn: async (conversa_id: string) => {
       const { error } = await supabase
         .from("orbit_conversas")
         .update({ mensagens_nao_lidas: 0 })
-        .eq("id", conversa_id);
+        .eq("id", conversa_id)
+        .eq("empresa_id", empresaId!);
       if (error) throw error;
     },
     onSuccess: (_, conversa_id) => {
