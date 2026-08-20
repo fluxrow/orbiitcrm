@@ -132,6 +132,7 @@ export interface WhatsappOpsRead {
     token_present: boolean;
     client_token_present: boolean;
     vault_backed: boolean | null;
+    valid: boolean;
   };
   heartbeat: {
     last_check_at: string | null;

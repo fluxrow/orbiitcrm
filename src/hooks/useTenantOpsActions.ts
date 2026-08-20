@@ -8,12 +8,19 @@ export type TenantOpsActionType =
   | "pause_tenant_ai"
   | "resume_tenant_ai"
   | "retry_failed_queues"
-  | "clear_pending_queues";
+  | "clear_pending_queues"
+  | "toggle_whatsapp_live_send"
+  | "pause_queue_processing"
+  | "resume_queue_processing"
+  | "preview_stale_messages"
+  | "cancel_stale_messages";
 
 export interface TenantOpsActionResult {
   ok: true;
   action: TenantOpsActionType;
   affected_rows: number;
+  preview_count?: number;
+  new_state?: boolean;
   message: string;
 }
 
@@ -43,6 +50,7 @@ export function useTenantOpsActions() {
       return result as TenantOpsActionResult;
     },
     onSuccess: async (result) => {
+      if (result.action === "preview_stale_messages") return;
       toast({
         title: result.message,
         description: `${result.affected_rows} registro(s) alterado(s).`,

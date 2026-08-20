@@ -107,7 +107,7 @@ const mapQueue = (root: JsonObject): QueueOpsRead => {
       active: number(locks.active ?? raw.active_locks),
       possibly_orphaned: number(locks.possibly_orphaned ?? raw.possibly_orphaned_locks),
     },
-    stale_status_supported: boolean(raw.stale_status_supported),
+    stale_status_supported: boolean(raw.stale_status_supported, "stale_canceled_count" in raw),
   };
 };
 
@@ -134,6 +134,7 @@ const mapWhatsapp = (root: JsonObject): WhatsappOpsRead => {
       token_present: boolean(credentials.token_present, boolean(raw.token_present)),
       client_token_present: boolean(credentials.client_token_present, boolean(raw.client_token_present)),
       vault_backed: typeof credentials.vault_backed === "boolean" ? credentials.vault_backed : null,
+      valid: boolean(credentials.valid, boolean(raw.credentials_valid)),
     },
     heartbeat: {
       last_check_at: nullableString(heartbeat.last_check_at ?? raw.last_check_at),
