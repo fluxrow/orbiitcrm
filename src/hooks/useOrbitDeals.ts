@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 import { useTenant } from "@/contexts/TenantContext";
 import { orbitProspectKeys } from "@/lib/query-keys";
+import { useFunnelReadShadow } from "@/hooks/useTenantExplicitReadShadow";
 
 type Deal = Tables<"orbit_deals">;
 type DealInsert = TablesInsert<"orbit_deals">;
@@ -115,7 +116,7 @@ export function useOrbitDealsGrouped() {
     };
   }, [queryClient]);
 
-  return useQuery({
+  const query = useQuery({
     queryKey: ["orbit_deals_grouped", empresaId],
     enabled: !!empresaId,
     queryFn: async () => {
@@ -156,6 +157,8 @@ export function useOrbitDealsGrouped() {
       return grouped;
     },
   });
+  useFunnelReadShadow(query.data, query.isSuccess);
+  return query;
 }
 
 export function useCreateDeal() {

@@ -4,6 +4,7 @@ import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase
 import { orbitProspectKeys } from "@/lib/query-keys";
 import { useTenant } from "@/contexts/TenantContext";
 import { pickUpdate } from "@/lib/supabase-update";
+import { useProspectReadShadow } from "@/hooks/useTenantExplicitReadShadow";
 
 
 type Prospect = Tables<"orbit_prospects">;
@@ -93,21 +94,28 @@ export function useOrbitProspects(
 }
 
 export function useOrbitProspect(id: string | undefined) {
-  return useQuery({
-    queryKey: id ? orbitProspectKeys.detail(id) : orbitProspectKeys.details(),
+  const { empresaId } = useTenant();
+  const query = useQuery({
+    queryKey: [
+      ...(id ? orbitProspectKeys.detail(id) : orbitProspectKeys.details()),
+      empresaId,
+    ],
     queryFn: async () => {
       if (!id) return null;
       const { data, error } = await supabase
         .from("orbit_prospects")
         .select("*, responsavel:profiles!orbit_prospects_responsavel_id_fkey(id, nome, email)")
         .eq("id", id)
+        .eq("empresa_id", empresaId!)
         .is("deleted_at", null)
         .single();
       if (error) throw error;
       return data;
     },
-    enabled: !!id,
+    enabled: !!id && !!empresaId,
   });
+  useProspectReadShadow(id, query.data, query.isSuccess);
+  return query;
 }
 
 export function useCreateProspect() {

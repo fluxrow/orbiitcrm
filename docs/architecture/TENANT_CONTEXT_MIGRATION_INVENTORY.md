@@ -30,9 +30,9 @@ O rollout permanece aditivo. `switch_active_empresa` não será removido enquant
 | Conversas — upload | Usa conversa ativa, mas possui fallback para `profiles.empresa_id` | C | `ConversasPage` | P0 |
 | Conversas — update/leitura | Predicado inclui `empresa_id`; assumir/devolver usam RPCs atômicas | A | `useOrbitConversas` | P0 — testes |
 | Prospects — lista/contagem | Filtro e query key incluem `empresaId` | A | `useOrbitProspects` | P0 — preservar |
-| Prospect — detalhe | Busca somente por `id` | B | `useOrbitProspect` | P0 |
+| Prospect — detalhe | Filtro imediato por tenant + RPC explícita em shadow mode | A (shadow) | `useOrbitProspect`; `orbit_tenant_prospect_read_scoped` | Onda 1 em canário |
 | Prospect — editar/excluir | Mutação somente por `id`; isolamento depende da RLS ativa | B | `useUpdateProspect`, `useDeleteProspect` | P0 |
-| Funil — stages/deals | Leituras filtradas por `empresaId` | A | `useOrbitDeals`, `usePipelineStages` | P0 — preservar |
+| Funil — stages/deals | Leituras filtradas + snapshot RPC em shadow mode | A (shadow) | `useOrbitDeals`; `orbit_tenant_funnel_read_scoped` | Onda 1 em canário |
 | Funil — Realtime | Assina todos os deals e apenas invalida cache | B | `useOrbitDealsGrouped` | P1 |
 | Funil — mutações | Update/move/archive/reorder usam somente IDs | B | `useOrbitDeals`, `useOrbitPipelineConfig` | P0 |
 | Mensagens | Query key, leitura e Realtime incluem tenant da rota | A | `useOrbitMensagens` | P0 — preservar |
@@ -53,6 +53,9 @@ O rollout permanece aditivo. `switch_active_empresa` não será removido enquant
 3. No `fluxrow`, executar leitura nova e comparar IDs, tenant e contagens com o resultado legado.
 4. Registrar apenas métricas sanitizadas de divergência; nunca conteúdo/PII.
 5. Não renderizar o resultado shadow até obter equivalência estável.
+
+Implementação: `tenant_explicit_reads_wave1_v1`, ativa exclusivamente no `fluxrow`.
+As comparações registram somente recurso e contagens, sem IDs, conteúdo ou PII.
 
 ### Onda 2 — P0, mutações
 
