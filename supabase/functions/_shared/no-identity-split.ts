@@ -61,7 +61,8 @@ const THIRD_PERSON_SELF_PATTERNS: RegExp[] = [
 
 /**
  * Usos legítimos que NUNCA devem ser bloqueados:
- *  - "IA especialista em algoritmo do YouTube" (entregável real da Mentoria);
+ *  - menção a "IA/ferramenta" não é pessoa: este guard não reage. Prometer
+ *    ACESSO a IA/ferramenta é falso e é tratado por `no-false-benefits.ts`;
  *  - o próprio Fernando se descrevendo como especialista;
  *  - "acompanhamento direto comigo" e variantes de primeira pessoa.
  */
