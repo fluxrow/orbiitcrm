@@ -1270,6 +1270,11 @@ serve(async (req) => {
     // ── SEM AUTOAPRESENTAÇÃO (tenant-scoped por orbit_ai_config.self_introduction_guard) ──
     const selfIntroBlock = selfIntroCfg ? buildNoSelfIntroPromptBlock(selfIntroCfg) : "";
 
+    // ── ENTREGÁVEIS VERDADEIROS (tenant-scoped por orbit_ai_config.false_benefits_guard) ──
+    // Proíbe prometer acesso a IA/ferramenta e grupo/comunidade (não existem na oferta).
+    const falseBenefitsCfg = readFalseBenefitsGuardConfig(aiConfig as Record<string, unknown>);
+    const falseBenefitsBlock = falseBenefitsCfg ? buildFalseBenefitsPromptBlock() : "";
+
 
     // Bloco tenant-scoped: reforça no prompt a proibição de coleta de localização/e-mail.
     const noCollectRules: string[] = [];
