@@ -78,6 +78,21 @@ há migração automática ou invisível de deals entre etapas.
 
 Migrar configurações, Agenda/Google, fluxos e busca global após auditoria das Edge Functions e RPCs correspondentes. Realtime deve sempre usar filtro de tenant e canal com nome tenant-scoped.
 
+#### Parte 3.1 — busca global explícita
+
+Auditoria read-only confirmou que `orbit_global_search` é `SECURITY INVOKER`,
+filtra todas as entidades pelo `_empresa_id`, mas ainda aceita esse UUID do
+frontend e depende da RLS/contexto persistido. A RPC
+`orbit_global_search_scoped` passa a resolver o tenant pelo slug, validar o
+usuário e a flag `tenant_explicit_search_wave3_v1` antes de executar a busca.
+O rollout ativo permanece exclusivo do `fluxrow`; os demais tenants continuam
+no contrato legado com a flag `false`.
+
+Agenda/Google já valida JWT e associação por perfil ou membership dentro das
+Edge Functions antes de usar `service_role`. Configurações, fluxos e fontes de
+lead ainda possuem mutações por ID e grants históricos amplos para `anon` e
+serão tratados nas partes seguintes, sem ampliar o rollout da Parte 3.1.
+
 ### Onda 4 — remoção do contexto persistido
 
 Somente após todas as ondas:

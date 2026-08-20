@@ -2,6 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/contexts/TenantContext";
 import { useDebounce } from "@/hooks/useDebounce";
+import { isTenantFeatureEnabled } from "@/lib/tenant-explicit-mutations";
+
+export const TENANT_EXPLICIT_SEARCH_WAVE3_FLAG =
+  "tenant_explicit_search_wave3_v1" as const;
 
 export type OrbitSearchKind = "conversa" | "prospect" | "deal" | "tarefa" | "reuniao";
 
@@ -31,7 +35,7 @@ export function isSearchable(term: string): boolean {
  * Nunca filtra apenas a página já carregada em memória.
  */
 export function useOrbitSearch(term: string, kinds?: OrbitSearchKind[], limit = 20) {
-  const { empresaId } = useTenant();
+  const { empresaId, slug } = useTenant();
   const debounced = useDebounce(term, 300);
   const normalized = normalizeSearchTerm(debounced);
 
@@ -39,11 +43,21 @@ export function useOrbitSearch(term: string, kinds?: OrbitSearchKind[], limit = 
     queryKey: ["orbit_global_search", empresaId, normalized, kinds, limit],
     enabled: !!empresaId && isSearchable(normalized),
     queryFn: async (): Promise<OrbitSearchResult[]> => {
-      const { data, error } = await supabase.rpc("orbit_global_search", {
-        _empresa_id: empresaId!,
-        _term: debounced,
-        _limit: limit,
-      });
+      const useScopedSearch = !!slug && await isTenantFeatureEnabled(
+        empresaId!,
+        TENANT_EXPLICIT_SEARCH_WAVE3_FLAG,
+      );
+      const { data, error } = useScopedSearch
+        ? await supabase.rpc("orbit_global_search_scoped", {
+            p_tenant_slug: slug!,
+            p_term: debounced,
+            p_limit: limit,
+          })
+        : await supabase.rpc("orbit_global_search", {
+            _empresa_id: empresaId!,
+            _term: debounced,
+            _limit: limit,
+          });
       if (error) throw error;
       return (data ?? []) as OrbitSearchResult[];
     },

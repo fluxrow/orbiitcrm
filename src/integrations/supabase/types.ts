@@ -6023,6 +6023,19 @@ export type Database = {
           updated_at: string
         }[]
       }
+      orbit_global_search_scoped: {
+        Args: { p_limit?: number; p_tenant_slug: string; p_term: string }
+        Returns: {
+          conversa_id: string
+          detail: string
+          id: string
+          kind: string
+          prospect_id: string
+          subtitle: string
+          title: string
+          updated_at: string
+        }[]
+      }
       orbit_onboarding_orphan_assets: {
         Args: { p_onboarding_id: string }
         Returns: {
