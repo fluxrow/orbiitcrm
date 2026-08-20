@@ -7,6 +7,10 @@ const migration = readFileSync(
   resolve(__dirname, "../../supabase/migrations/20260821060000_tenant_config_governance_wave3_part3a.sql"),
   "utf8",
 );
+const rlsGuard = readFileSync(
+  resolve(__dirname, "../../supabase/migrations/20260821061000_tenant_config_governance_wave3_part3a_rls_guard.sql"),
+  "utf8",
+);
 
 describe("tenant config governance wave 3.3a", () => {
   it("routes canary AI and Resend writes through the scoped RPC", () => {
@@ -41,5 +45,12 @@ describe("tenant config governance wave 3.3a", () => {
     expect(migration).toContain("('bullink-negocios',false)");
     expect(migration).toContain("('fabrica-de-pesquisadores',false)");
     expect(migration).toContain("('viver-semijoias',false)");
+  });
+
+  it("blocks direct canary DML while leaving the RPC as the only write path", () => {
+    expect(rlsGuard.match(/AS RESTRICTIVE/g)).toHaveLength(6);
+    expect(rlsGuard).toContain("tenant_config_wave3_ai_update_guard");
+    expect(rlsGuard).toContain("tenant_config_wave3_resend_update_guard");
+    expect(rlsGuard).toContain("orbit_tenant_config_direct_dml_allowed");
   });
 });
