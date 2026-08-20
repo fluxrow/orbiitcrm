@@ -61,7 +61,8 @@ const THIRD_PERSON_SELF_PATTERNS: RegExp[] = [
 
 /**
  * Usos legítimos que NUNCA devem ser bloqueados:
- *  - "IA especialista em algoritmo do YouTube" (entregável real da Mentoria);
+ *  - menção a "IA/ferramenta" não é pessoa: este guard não reage. Prometer
+ *    ACESSO a IA/ferramenta é falso e é tratado por `no-false-benefits.ts`;
  *  - o próprio Fernando se descrevendo como especialista;
  *  - "acompanhamento direto comigo" e variantes de primeira pessoa.
  */
@@ -187,7 +188,7 @@ export function buildIdentityPromptBlock(handoffAllowed: boolean): string {
     "ou qualquer terceiro que vá entrar em contato, assumir ou continuar o atendimento.",
     "PROIBIDO falar do Fernando em terceira pessoa ou sugerir que o lead fale com o Fernando: você é ele.",
     "Quando o lead já entendeu a oferta, avance você mesmo: aprofunde, ofereça o investimento ou proponha o próximo passo.",
-    'Permitido citar a "IA especialista em algoritmo do YouTube" — é uma ferramenta de apoio entregue na Mentoria, não uma pessoa.',
+    "Permitido explicar que o método usa IA na produção dos canais; PROIBIDO prometer acesso a qualquer IA, agente ou ferramenta.",
     handoffAllowed
       ? "Neste turno o lead pediu contato humano ou a conversa já é conduzida por pessoa: pode avisar que você mesmo continua por aqui, sem inventar outro especialista."
       : "Neste turno NÃO existe pedido de atendimento humano: não sugira nem insinue transferência de qualquer tipo.",

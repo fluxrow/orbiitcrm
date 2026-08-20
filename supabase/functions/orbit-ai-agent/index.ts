@@ -53,6 +53,13 @@ import {
   IDENTITY_GUARD_CORRECTIVE,
   type IdentityGuardContext,
 } from "../_shared/no-identity-split.ts";
+import {
+  readFalseBenefitsGuardConfig,
+  detectFalseBenefits,
+  enforceNoFalseBenefits,
+  buildFalseBenefitsPromptBlock,
+  FALSE_BENEFITS_CORRECTIVE,
+} from "../_shared/no-false-benefits.ts";
 import { currentSaoPauloTime, evaluateBusinessHours } from "../_shared/business-hours.ts";
 import {
   evaluateCommercialStage,
@@ -1263,6 +1270,11 @@ serve(async (req) => {
     // ── SEM AUTOAPRESENTAÇÃO (tenant-scoped por orbit_ai_config.self_introduction_guard) ──
     const selfIntroBlock = selfIntroCfg ? buildNoSelfIntroPromptBlock(selfIntroCfg) : "";
 
+    // ── ENTREGÁVEIS VERDADEIROS (tenant-scoped por orbit_ai_config.false_benefits_guard) ──
+    // Proíbe prometer acesso a IA/ferramenta e grupo/comunidade (não existem na oferta).
+    const falseBenefitsCfg = readFalseBenefitsGuardConfig(aiConfig as Record<string, unknown>);
+    const falseBenefitsBlock = falseBenefitsCfg ? buildFalseBenefitsPromptBlock() : "";
+
 
     // Bloco tenant-scoped: reforça no prompt a proibição de coleta de localização/e-mail.
     const noCollectRules: string[] = [];
@@ -1290,7 +1302,7 @@ ${campaignContinuity}${stateInstruction}${classificationInstruction}
 ${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${dataHoraAtualBlock}${schedulingModeBlock}
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
-${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}${commercialV2Block}${primaryOfferBlock}${identityBlock}${selfIntroBlock}${noCollectBlock}
+${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}${commercialV2Block}${primaryOfferBlock}${identityBlock}${selfIntroBlock}${falseBenefitsBlock}${noCollectBlock}
 REGRAS CRÍTICAS:
 1. DADOS EXISTENTES: Se um dado do lead já está preenchido no contexto acima ou nos FATOS CANÔNICOS (personName, companyName, city, email, nível pretendido, cidade/estado etc.), NUNCA pergunte novamente. Use naturalmente na conversa.
 2. CAMPOS FALTANTES: Solicite APENAS os campos marcados como "true" em missingFields, e as perguntas dinâmicas ainda não respondidas.
@@ -1540,6 +1552,36 @@ ${regrasBlock}`;
       }
       parsed.mensagem = resposta;
     }
+
+    // ── GUARD TENANT-SCOPED: sem benefício falso (IA entregue / grupo) ──
+    // Ativado apenas quando orbit_ai_config.false_benefits_guard.enabled = true.
+    if (falseBenefitsCfg && detectFalseBenefits(resposta).violates) {
+      console.warn("[orbit-ai-agent] Guard de benefício falso acionado.", {
+        kinds: detectFalseBenefits(resposta).kinds,
+      });
+      const retryFb = await callAnthropic({
+        model: normalizeAgentModel((aiConfig as any).modelo_ia),
+        system: systemPrompt,
+        messages: toAnthropicMessages([
+          { role: "user", content: userTurn },
+          { role: "assistant", content: resposta },
+          { role: "user", content: FALSE_BENEFITS_CORRECTIVE + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+        ]),
+        temperature: 0.5,
+        max_tokens: maxTokens,
+      });
+      const retryFbText = retryFb.ok ? String(retryFb.text || "").trim() : "";
+      if (retryFbText && !detectFalseBenefits(retryFbText).violates) {
+        resposta = retryFbText;
+      } else {
+        const enforcedFb = enforceNoFalseBenefits(retryFbText || resposta, true);
+        resposta = enforcedFb.text;
+        console.warn("[orbit-ai-agent] Promessa falsa sanitizada.", { fallback: enforcedFb.fallbackUsed });
+      }
+      parsed.mensagem = resposta;
+    }
+
+
 
 
 
@@ -2087,6 +2129,11 @@ ${regrasBlock}`;
       if (finalIdentity.changed) {
         console.warn("[orbit-ai-agent] Falsa transferência removida na saída final.", { fallback: finalIdentity.fallbackUsed });
         resposta = finalIdentity.text;
+      }
+      const finalFalseBenefits = enforceNoFalseBenefits(resposta, falseBenefitsCfg !== null);
+      if (finalFalseBenefits.changed) {
+        console.warn("[orbit-ai-agent] Promessa falsa removida na saída final.", { fallback: finalFalseBenefits.fallbackUsed });
+        resposta = finalFalseBenefits.text;
       }
       const finalSelfIntro = enforceNoSelfIntroduction(resposta, selfIntroCfg);
       if (finalSelfIntro.changed) {

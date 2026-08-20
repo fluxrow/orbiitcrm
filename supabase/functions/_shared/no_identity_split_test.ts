@@ -57,13 +57,15 @@ Deno.test("F) 'vou chamar um especialista' cai no fallback de primeira pessoa", 
   assertEquals(enforced.text, IDENTITY_GUARD_FALLBACK);
 });
 
-// G) "IA especialista em algoritmo" é legítimo.
-Deno.test("G) IA especialista em algoritmo é permitida", () => {
-  const out =
-    "Você recebe acesso à IA especialista em algoritmo do YouTube para minerar referências.";
-  assertFalse(detectIdentitySplit(out, NO_HANDOFF).violates);
+// G) Menção a "IA" não é pessoa: este guard (identidade) não deve reagir.
+// ATENÇÃO: prometer acesso a IA/ferramenta é FALSO e é bloqueado pelo guard
+// `no-false-benefits.ts` (tenant-scoped), não por este.
+Deno.test("G) menção a IA não é tratada como terceiro por este guard", () => {
   assertFalse(
-    detectIdentitySplit("Tenho uma IA especialista em algoritmo que valida seus títulos.", NO_HANDOFF).violates,
+    detectIdentitySplit("O método usa IA na produção dos vídeos do canal.", NO_HANDOFF).violates,
+  );
+  assertFalse(
+    detectIdentitySplit("Uso IA para validar títulos junto com você.", NO_HANDOFF).violates,
   );
 });
 
