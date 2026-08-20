@@ -1,0 +1,42 @@
+name: Frontend Quality Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: frontend-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      CI: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: npm
+
+      - name: Clean install
+        run: npm ci --ignore-scripts
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: Unit and smoke tests
+        run: npm test -- --maxWorkers=2 --minWorkers=1
+
+      - name: Production build
+        run: npm run build

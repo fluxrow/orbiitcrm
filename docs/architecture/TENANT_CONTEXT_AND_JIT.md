@@ -117,3 +117,5 @@ A primeira etapa do desacoplamento é aditiva e limitada ao Centro de Operaçõe
 O hook seleciona o contrato pela flag `tenant_explicit_context_v1` e inclui `empresaId`, slug e modo de contexto na chave do React Query. Assim, troca de slug não reutiliza cache de outro tenant. O rollout inicial habilita o novo contrato somente para `fluxrow`; os tenants protegidos permanecem explicitamente desligados.
 
 Esta etapa não remove `switch_active_empresa`, pois outras telas e policies ainda dependem do perfil persistido. A remoção só ocorrerá após inventário e migração das demais leituras/escritas tenant-scoped.
+
+O inventário executável e a ordem das ondas de migração estão em `docs/architecture/TENANT_CONTEXT_MIGRATION_INVENTORY.md`.
