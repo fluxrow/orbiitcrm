@@ -31,10 +31,11 @@ O rollout permanece aditivo. `switch_active_empresa` não será removido enquant
 | Conversas — update/leitura | Predicado inclui `empresa_id`; assumir/devolver usam RPCs atômicas | A | `useOrbitConversas` | P0 — testes |
 | Prospects — lista/contagem | Filtro e query key incluem `empresaId` | A | `useOrbitProspects` | P0 — preservar |
 | Prospect — detalhe | Filtro imediato por tenant + RPC explícita em shadow mode | A (shadow) | `useOrbitProspect`; `orbit_tenant_prospect_read_scoped` | Onda 1 em canário |
-| Prospect — editar/excluir | Mutação somente por `id`; isolamento depende da RLS ativa | B | `useUpdateProspect`, `useDeleteProspect` | P0 |
+| Prospect — editar/excluir | RPC atômica tenant-scoped no canário; legado também ganhou predicado de tenant | A (canário) | `orbit_tenant_entity_mutate_scoped` | Onda 2.1 |
 | Funil — stages/deals | Leituras filtradas + snapshot RPC em shadow mode | A (shadow) | `useOrbitDeals`; `orbit_tenant_funnel_read_scoped` | Onda 1 em canário |
 | Funil — Realtime | Assina todos os deals e apenas invalida cache | B | `useOrbitDealsGrouped` | P1 |
-| Funil — mutações | Update/move/archive/reorder usam somente IDs | B | `useOrbitDeals`, `useOrbitPipelineConfig` | P0 |
+| Funil — deal update/move/delete | RPC atômica tenant-scoped no canário; legado também ganhou predicado | A (canário) | `useOrbitDeals`; `orbit_tenant_entity_mutate_scoped` | Onda 2.1 |
+| Funil — stages archive/reorder | Operações ainda usam somente IDs | B | `useOrbitPipelineConfig` | Onda 2.2 |
 | Mensagens | Query key, leitura e Realtime incluem tenant da rota | A | `useOrbitMensagens` | P0 — preservar |
 | Configurações | Maioria das leituras recebe `empresaId`; algumas mutações dependem de RLS | A/B | `useOrbitConfig` | P1 |
 | Agenda/Google | Edge Functions recebem `empresa_id` do frontend | B | `useOrbitGoogleCalendar` | P1 — validar server-side |
@@ -63,6 +64,10 @@ As comparações registram somente recurso e contagens, sem IDs, conteúdo ou PI
 2. Exigir `p_tenant_slug`, validar associação e flag específica de mutação.
 3. Usar `WITH CHECK`/validação de tenant e auditoria obrigatória.
 4. Homologar apenas no `fluxrow`, com registros sintéticos identificados.
+
+Parte 2.1: `tenant_explicit_mutations_wave2_v1` cobre edição/soft delete de
+prospect e edição/movimentação/soft delete de deal. A RPC usa lock de linha,
+allowlist de campos, valida referências no mesmo tenant e grava diff na auditoria.
 
 ### Onda 3 — P1
 

@@ -6068,6 +6068,15 @@ export type Database = {
         Args: { p_tenant_slug: string }
         Returns: Json
       }
+      orbit_tenant_entity_mutate_scoped: {
+        Args: {
+          p_action_type: string
+          p_entity_id: string
+          p_payload?: Json
+          p_tenant_slug: string
+        }
+        Returns: Json
+      }
       orbit_tenant_prospect_read_scoped: {
         Args: { p_prospect_id: string; p_tenant_slug: string }
         Returns: Json

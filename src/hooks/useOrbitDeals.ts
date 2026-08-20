@@ -5,6 +5,7 @@ import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase
 import { useTenant } from "@/contexts/TenantContext";
 import { orbitProspectKeys } from "@/lib/query-keys";
 import { useFunnelReadShadow } from "@/hooks/useTenantExplicitReadShadow";
+import { runTenantMutation } from "@/lib/tenant-explicit-mutations";
 
 type Deal = Tables<"orbit_deals">;
 type DealInsert = TablesInsert<"orbit_deals">;
@@ -183,17 +184,29 @@ export function useCreateDeal() {
 
 export function useUpdateDeal() {
   const queryClient = useQueryClient();
+  const { empresaId, slug } = useTenant();
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: DealUpdate & { id: string }) => {
-      const { data, error } = await supabase
-        .from("orbit_deals")
-        .update(updates)
-        .eq("id", id)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+      if (!empresaId || !slug) throw new Error("TENANT_CONTEXT_MISSING");
+      return runTenantMutation<Deal>({
+        empresaId,
+        tenantSlug: slug,
+        actionType: "update_deal",
+        entityId: id,
+        payload: updates as Record<string, unknown>,
+        legacy: async () => {
+          const { data, error } = await supabase
+            .from("orbit_deals")
+            .update(updates)
+            .eq("id", id)
+            .eq("empresa_id", empresaId)
+            .select()
+            .single();
+          if (error) throw error;
+          return data;
+        },
+      });
     },
     onMutate: async ({ id, ...updates }) => {
       await queryClient.cancelQueries({ queryKey: ["orbit_deals"] });
@@ -228,20 +241,34 @@ export function useUpdateDeal() {
 
 export function useMoveDealToStage() {
   const queryClient = useQueryClient();
+  const { empresaId, slug } = useTenant();
 
   return useMutation({
     mutationFn: async ({ deal_id, etapa_id, motivo_perda }: { deal_id: string; etapa_id: string; motivo_perda?: string }) => {
       const updates: any = { etapa_id, moved_at: new Date().toISOString() };
       if (motivo_perda) updates.motivo_perda = motivo_perda;
 
-      const { data, error } = await supabase
-        .from("orbit_deals")
-        .update(updates)
-        .eq("id", deal_id)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+      if (!empresaId || !slug) throw new Error("TENANT_CONTEXT_MISSING");
+      const rpcPayload: Record<string, unknown> = { etapa_id };
+      if (motivo_perda) rpcPayload.motivo_perda = motivo_perda;
+      return runTenantMutation<Deal>({
+        empresaId,
+        tenantSlug: slug,
+        actionType: "move_deal",
+        entityId: deal_id,
+        payload: rpcPayload,
+        legacy: async () => {
+          const { data, error } = await supabase
+            .from("orbit_deals")
+            .update(updates)
+            .eq("id", deal_id)
+            .eq("empresa_id", empresaId)
+            .select()
+            .single();
+          if (error) throw error;
+          return data;
+        },
+      });
     },
     onMutate: async ({ deal_id, ...updates }) => {
       await queryClient.cancelQueries({ queryKey: ["orbit_deals"] });
@@ -282,14 +309,28 @@ export function useMoveDealToStage() {
 
 export function useDeleteDeal() {
   const queryClient = useQueryClient();
+  const { empresaId, slug } = useTenant();
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from("orbit_deals")
-        .update({ deleted_at: new Date().toISOString() } as any)
-        .eq("id", id);
-      if (error) throw error;
+      if (!empresaId || !slug) throw new Error("TENANT_CONTEXT_MISSING");
+      await runTenantMutation<Deal>({
+        empresaId,
+        tenantSlug: slug,
+        actionType: "soft_delete_deal",
+        entityId: id,
+        legacy: async () => {
+          const { data, error } = await supabase
+            .from("orbit_deals")
+            .update({ deleted_at: new Date().toISOString() } as any)
+            .eq("id", id)
+            .eq("empresa_id", empresaId)
+            .select()
+            .single();
+          if (error) throw error;
+          return data;
+        },
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orbit_deals"] });

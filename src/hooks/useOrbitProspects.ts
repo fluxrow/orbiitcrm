@@ -5,6 +5,7 @@ import { orbitProspectKeys } from "@/lib/query-keys";
 import { useTenant } from "@/contexts/TenantContext";
 import { pickUpdate } from "@/lib/supabase-update";
 import { useProspectReadShadow } from "@/hooks/useTenantExplicitReadShadow";
+import { runTenantMutation } from "@/lib/tenant-explicit-mutations";
 
 
 type Prospect = Tables<"orbit_prospects">;
@@ -175,16 +176,29 @@ export function useCreateProspect() {
 
 export function useUpdateProspect() {
   const queryClient = useQueryClient();
+  const { empresaId, slug } = useTenant();
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: ProspectUpdate & { id: string }) => {
-      const { data, error } = await supabase
-        .from("orbit_prospects")
-        .update(updates)
-        .eq("id", id)
-        .select()
-        .single();
-      if (error) throw error;
+      if (!empresaId || !slug) throw new Error("TENANT_CONTEXT_MISSING");
+      const data = await runTenantMutation<Prospect>({
+        empresaId,
+        tenantSlug: slug,
+        actionType: "update_prospect",
+        entityId: id,
+        payload: updates as Record<string, unknown>,
+        legacy: async () => {
+          const { data: legacyData, error } = await supabase
+            .from("orbit_prospects")
+            .update(updates)
+            .eq("id", id)
+            .eq("empresa_id", empresaId)
+            .select()
+            .single();
+          if (error) throw error;
+          return legacyData;
+        },
+      });
 
       // H2.a — promover para qualificado deve materializar card no funil
       if (data?.status_qualificacao === "qualificado") {
@@ -207,14 +221,28 @@ export function useUpdateProspect() {
 
 export function useDeleteProspect() {
   const queryClient = useQueryClient();
+  const { empresaId, slug } = useTenant();
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from("orbit_prospects")
-        .update({ deleted_at: new Date().toISOString() } as any)
-        .eq("id", id);
-      if (error) throw error;
+      if (!empresaId || !slug) throw new Error("TENANT_CONTEXT_MISSING");
+      await runTenantMutation<Prospect>({
+        empresaId,
+        tenantSlug: slug,
+        actionType: "soft_delete_prospect",
+        entityId: id,
+        legacy: async () => {
+          const { data, error } = await supabase
+            .from("orbit_prospects")
+            .update({ deleted_at: new Date().toISOString() } as any)
+            .eq("id", id)
+            .eq("empresa_id", empresaId)
+            .select()
+            .single();
+          if (error) throw error;
+          return data;
+        },
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: orbitProspectKeys.all });
