@@ -897,6 +897,7 @@ export type Database = {
           commercial_stage_v2_enabled: boolean
           created_at: string | null
           empresa_id: string | null
+          false_benefits_guard: Json | null
           horario_fim: string | null
           horario_inicio: string | null
           id: string
@@ -945,6 +946,7 @@ export type Database = {
           commercial_stage_v2_enabled?: boolean
           created_at?: string | null
           empresa_id?: string | null
+          false_benefits_guard?: Json | null
           horario_fim?: string | null
           horario_inicio?: string | null
           id?: string
@@ -993,6 +995,7 @@ export type Database = {
           commercial_stage_v2_enabled?: boolean
           created_at?: string | null
           empresa_id?: string | null
+          false_benefits_guard?: Json | null
           horario_fim?: string | null
           horario_inicio?: string | null
           id?: string
