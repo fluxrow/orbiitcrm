@@ -1,0 +1,41 @@
+import { useEffect, useMemo, useState } from "react";
+import { Download, FileClock, Headphones, Settings2, ShieldCheck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { useTenantOpsActions } from "@/hooks/useTenantOpsActions";
+import { useActiveSupportSession, useSupportSessionActions, useTenantAlertConfig, useTenantAuditLogs, type AuditItem } from "@/hooks/useTenantGovernance";
+import { useIsSuperAdmin } from "@/hooks/useUserRole";
+
+function download(name:string,type:string,content:string){const url=URL.createObjectURL(new Blob([content],{type}));const link=document.createElement("a");link.href=url;link.download=name;link.click();URL.revokeObjectURL(url)}
+const csvCell=(value:unknown)=>`"${String(value??"").replace(/"/g,'""')}"`;
+
+export function AuditLogDrawer(){
+ const [open,setOpen]=useState(false),[filter,setFilter]=useState(""),[page,setPage]=useState(0);const limit=25;
+ const audit=useTenantAuditLogs(filter,limit,page*limit,open);const items=audit.data?.items??[];
+ const exportJson=()=>download("orbit-auditoria-sanitizada.json","application/json",JSON.stringify(items,null,2));
+ const exportCsv=()=>download("orbit-auditoria-sanitizada.csv","text/csv;charset=utf-8",["data,ator,tipo,acao,recurso,resultado,motivo",...items.map(i=>[i.occurred_at,i.actor_display_name,i.actor_type,i.action,i.resource_type,i.result,i.reason].map(csvCell).join(","))].join("\n"));
+ return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button size="sm" variant="outline"><FileClock className="mr-2 h-4 w-4"/>Auditoria</Button></DialogTrigger><DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto"><DialogHeader><DialogTitle>Trilha de auditoria sanitizada</DialogTitle><DialogDescription>Retenção administrativa de 365 dias. Segredos e dados pessoais são mascarados na origem.</DialogDescription></DialogHeader>
+ <div className="flex flex-wrap gap-2"><Input className="max-w-sm" value={filter} onChange={e=>{setFilter(e.target.value);setPage(0)}} placeholder="Filtrar por ação"/><Button variant="outline" onClick={exportJson} disabled={!items.length}><Download className="mr-2 h-4 w-4"/>JSON</Button><Button variant="outline" onClick={exportCsv} disabled={!items.length}><Download className="mr-2 h-4 w-4"/>CSV</Button></div>
+ <div className="space-y-2">{audit.isLoading?<p className="text-sm text-muted-foreground">Carregando…</p>:items.length===0?<p className="text-sm text-muted-foreground">Nenhum registro encontrado.</p>:items.map((item:AuditItem)=><div key={item.id} className="rounded-md border p-3 text-sm"><div className="flex flex-wrap justify-between gap-2"><strong>{item.action}</strong><span className="text-muted-foreground">{new Date(item.occurred_at).toLocaleString("pt-BR")}</span></div><p>{item.actor_display_name} · {item.actor_type} · {item.resource_type}</p>{item.reason?<p className="text-muted-foreground">Motivo: {item.reason}</p>:null}</div>)}</div>
+ <DialogFooter className="items-center"><span className="mr-auto text-xs text-muted-foreground">{audit.data?.total??0} registro(s)</span><Button variant="outline" disabled={page===0} onClick={()=>setPage(v=>v-1)}>Anterior</Button><Button variant="outline" disabled={!audit.data?.has_more} onClick={()=>setPage(v=>v+1)}>Próxima</Button></DialogFooter></DialogContent></Dialog>
+}
+
+export function AlertConfigDialog(){
+ const query=useTenantAlertConfig(),action=useTenantOpsActions();const [open,setOpen]=useState(false),[emails,setEmails]=useState(""),[enabled,setEnabled]=useState(true),[warning,setWarning]=useState(25),[critical,setCritical]=useState(100),[offline,setOffline]=useState(5);
+ useEffect(()=>{if(query.data){setEmails(query.data.operational_emails.join(", "));setEnabled(query.data.email_enabled);setWarning(query.data.queue_warning_threshold);setCritical(query.data.queue_critical_threshold);setOffline(query.data.instance_offline_minutes)}},[query.data]);
+ const save=async()=>{await action.mutateAsync({action:"update_tenant_alert_config",payload:{operational_emails:emails.split(",").map(v=>v.trim()).filter(Boolean),email_enabled:enabled,queue_warning_threshold:warning,queue_critical_threshold:critical,instance_offline_minutes:offline}});setOpen(false);await query.refetch()};
+ return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button size="sm" variant="outline"><Settings2 className="mr-2 h-4 w-4"/>Configurar alertas</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Alertas e observabilidade</DialogTitle><DialogDescription>Na ausência de destinatários válidos, o canal master fbcfarias@icloud.com permanece como fallback.</DialogDescription></DialogHeader><div className="space-y-4"><div><Label>E-mails operacionais (separados por vírgula)</Label><Input value={emails} onChange={e=>setEmails(e.target.value)}/></div><div className="flex items-center justify-between"><Label>Canal de e-mail ativo</Label><Switch checked={enabled} onCheckedChange={setEnabled}/></div><div className="grid grid-cols-3 gap-3"><div><Label>Fila: aviso</Label><Input type="number" min={0} value={warning} onChange={e=>setWarning(Number(e.target.value))}/></div><div><Label>Fila: crítico</Label><Input type="number" min={warning} value={critical} onChange={e=>setCritical(Number(e.target.value))}/></div><div><Label>Offline (min)</Label><Input type="number" min={1} value={offline} onChange={e=>setOffline(Number(e.target.value))}/></div></div><p className="text-xs text-muted-foreground">Fallback: {query.data?.fallback_email??"fbcfarias@icloud.com"}</p></div><DialogFooter><Button variant="outline" onClick={()=>setOpen(false)}>Cancelar</Button><Button disabled={action.isPending||critical<warning||offline<1} onClick={save}>{action.isPending?"Salvando…":"Salvar"}</Button></DialogFooter></DialogContent></Dialog>
+}
+
+export function SupportSessionBanner(){
+ const session=useActiveSupportSession(),actions=useSupportSessionActions(),{hasRole}=useIsSuperAdmin();const [open,setOpen]=useState(false),[reason,setReason]=useState(""),[now,setNow]=useState(Date.now());
+ useEffect(()=>{const id=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(id)},[]);
+ const remaining=useMemo(()=>Math.max(0,Math.floor((new Date(session.data?.expires_at??0).getTime()-now)/1000)),[session.data?.expires_at,now]);
+ if(session.data?.active)return <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-amber-500 bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-100"><ShieldCheck className="h-5 w-5"/><strong>Sessão de Suporte Ativa</strong><span>Motivo: {session.data.reason}</span><span>Expira em: {String(Math.floor(remaining/60)).padStart(2,"0")}:{String(remaining%60).padStart(2,"0")}</span><Button className="ml-auto" size="sm" variant="destructive" disabled={actions.isPending} onClick={()=>actions.mutate({type:"end",sessionId:session.data!.session_id!})}>Encerrar sessão</Button></div>;
+ if(!hasRole||session.data?.is_master_super_admin===false)return null;
+ return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button className="mb-4" variant="outline"><Headphones className="mr-2 h-4 w-4"/>Ativar suporte JIT</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Ativar suporte seguro por 60 minutos</DialogTitle><DialogDescription>A justificativa será vinculada automaticamente a todas as ações realizadas durante a sessão.</DialogDescription></DialogHeader><div><Label>Justificativa obrigatória</Label><Textarea value={reason} onChange={e=>setReason(e.target.value)} placeholder="Descreva o chamado, incidente ou autorização do tenant."/></div><DialogFooter><Button variant="outline" onClick={()=>setOpen(false)}>Cancelar</Button><Button disabled={reason.trim().length<10||actions.isPending} onClick={async()=>{await actions.mutateAsync({type:"start",reason:reason.trim()});setOpen(false);setReason("")}}>Ativar sessão</Button></DialogFooter></DialogContent></Dialog>;
+}

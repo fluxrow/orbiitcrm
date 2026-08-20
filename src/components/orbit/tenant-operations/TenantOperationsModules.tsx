@@ -19,6 +19,7 @@ import { OperationsCard } from "./OperationsCard";
 import { AgendaOperationsActions } from "./AgendaOperationsActions";
 import { MediaOperationsManager } from "./MediaOperationsManager";
 import { PromptsFlowsManager } from "./PromptsFlowsManager";
+import { AlertConfigDialog, AuditLogDrawer } from "./GovernanceControls";
 
 const number = (value: unknown) => typeof value === "number" ? value : 0;
 const yesNo = (value: unknown) => value === true ? "Sim" : "Não";
@@ -306,6 +307,7 @@ export function TenantOperationsModules() {
           { label: "Informativos", value: number(alertCounts?.informational) },
           { label: "Falhas de entrega", value: number(alertCounts?.delivery_failed) },
         ]}
+        actions={<><AlertConfigDialog /><AuditLogDrawer /></>}
       />
     </div>
   );

@@ -5,6 +5,7 @@ import { TenantOperationsModules, TenantOperationsOverview } from "@/components/
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useTenantOperationsFeature } from "@/hooks/useTenantOperations";
 import { useQueryClient } from "@tanstack/react-query";
+import { SupportSessionBanner } from "@/components/orbit/tenant-operations/GovernanceControls";
 
 export default function TenantOperationsPage() {
   const queryClient = useQueryClient();
@@ -36,6 +37,7 @@ export default function TenantOperationsPage() {
         </Alert>
       ) : (
         <>
+          <SupportSessionBanner />
           <TenantOperationsOverview health={feature.data} refreshing={feature.isFetching} onRefresh={refresh} />
           <TenantOperationsModules />
         </>

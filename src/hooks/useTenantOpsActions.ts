@@ -23,7 +23,8 @@ export type TenantOpsActionType =
   | "rollback_prompt_version"
   | "save_flow_draft"
   | "publish_flow_version"
-  | "rollback_flow_version";
+  | "rollback_flow_version"
+  | "update_tenant_alert_config";
 
 export interface TenantOpsActionResult {
   ok: true;
