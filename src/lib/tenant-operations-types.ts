@@ -172,6 +172,7 @@ export interface QueueOpsRead {
 }
 
 export interface MediaOpsRead {
+  total_storage_mb: number;
   counts: { active: number; processing: number; failed: number; soft_deleted: number; referenced_by_flows: number };
   by_type: Record<string, number>;
   storage_health: {

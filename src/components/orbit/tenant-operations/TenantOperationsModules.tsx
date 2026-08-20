@@ -84,7 +84,7 @@ export function TenantOperationsModules() {
         error={media.isError}
         metrics={[
           { label: "Ativas", value: number(media.data?.counts?.active) },
-          { label: "Processando", value: number(media.data?.counts?.processing) },
+          { label: "Armazenamento", value: `${number(media.data?.total_storage_mb)} MB` },
           { label: "Falhas", value: number(media.data?.counts?.failed) },
           { label: "Vinculadas a fluxos", value: number(media.data?.counts?.referenced_by_flows) },
         ]}

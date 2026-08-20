@@ -3,22 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import type {
   TenantOperationsDataMap,
   TenantOperationsSection,
-  TenantOpsError,
 } from "@/lib/tenant-operations-types";
+import { mapTenantOperationsPayload } from "@/lib/tenant-operations-mappers";
 import { useTenant } from "@/contexts/TenantContext";
-
-type RpcEnvelope<T> = { ok: true; data: T } | TenantOpsError | T;
-
-function unwrapTenantOps<T>(payload: RpcEnvelope<T>): T {
-  if (payload && typeof payload === "object" && "ok" in payload) {
-    if (payload.ok === false) {
-      const failure = payload as TenantOpsError;
-      throw new Error(failure.error?.message || failure.error?.code || "Falha ao consultar o Centro de Operações.");
-    }
-    if ("data" in payload) return payload.data as T;
-  }
-  return payload as T;
-}
 
 export function useTenantOperations<S extends TenantOperationsSection>(
   section: S,
@@ -36,7 +23,7 @@ export function useTenantOperations<S extends TenantOperationsSection>(
         p_section: section,
       });
       if (error) throw error;
-      return unwrapTenantOps<TenantOperationsDataMap[S]>(data as RpcEnvelope<TenantOperationsDataMap[S]>);
+      return mapTenantOperationsPayload(section, data);
     },
   });
 }
