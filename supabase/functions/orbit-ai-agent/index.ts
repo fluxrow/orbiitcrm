@@ -1553,6 +1553,36 @@ ${regrasBlock}`;
       parsed.mensagem = resposta;
     }
 
+    // ── GUARD TENANT-SCOPED: sem benefício falso (IA entregue / grupo) ──
+    // Ativado apenas quando orbit_ai_config.false_benefits_guard.enabled = true.
+    if (falseBenefitsCfg && detectFalseBenefits(resposta).violates) {
+      console.warn("[orbit-ai-agent] Guard de benefício falso acionado.", {
+        kinds: detectFalseBenefits(resposta).kinds,
+      });
+      const retryFb = await callAnthropic({
+        model: normalizeAgentModel((aiConfig as any).modelo_ia),
+        system: systemPrompt,
+        messages: toAnthropicMessages([
+          { role: "user", content: userTurn },
+          { role: "assistant", content: resposta },
+          { role: "user", content: FALSE_BENEFITS_CORRECTIVE + " Responda apenas com a nova mensagem final ao cliente, sem JSON." },
+        ]),
+        temperature: 0.5,
+        max_tokens: maxTokens,
+      });
+      const retryFbText = retryFb.ok ? String(retryFb.text || "").trim() : "";
+      if (retryFbText && !detectFalseBenefits(retryFbText).violates) {
+        resposta = retryFbText;
+      } else {
+        const enforcedFb = enforceNoFalseBenefits(retryFbText || resposta, true);
+        resposta = enforcedFb.text;
+        console.warn("[orbit-ai-agent] Promessa falsa sanitizada.", { fallback: enforcedFb.fallbackUsed });
+      }
+      parsed.mensagem = resposta;
+    }
+
+
+
 
 
 
