@@ -6060,6 +6060,10 @@ export type Database = {
         Returns: Json
       }
       orbit_tenant_ops_read: { Args: { p_section?: string }; Returns: Json }
+      orbit_tenant_ops_read_scoped: {
+        Args: { p_section?: string; p_tenant_slug: string }
+        Returns: Json
+      }
       orbit_zapi_connection_status: {
         Args: { _empresa_id: string }
         Returns: {

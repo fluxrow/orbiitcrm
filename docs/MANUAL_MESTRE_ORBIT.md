@@ -26,6 +26,7 @@ O Super Admin master é `fbcfarias@icloud.com`. A feature flag `tenant_operation
 ## RPCs do Centro de Operações
 
 - `orbit_tenant_ops_read(p_section)`: leitura agregada tenant-scoped.
+- `orbit_tenant_ops_read_scoped(p_tenant_slug,p_section)`: leitura canário com tenant explícito, resolvido e autorizado no banco; exige também `tenant_explicit_context_v1`.
 - `orbit_tenant_ops_action(p_tenant_slug,p_action_type,p_payload)`: ações atômicas, feature-gated e auditadas.
 - `orbit_get_tenant_audit_logs(...)`: auditoria paginada e sanitizada; limite máximo de 200 registros por chamada.
 - `orbit_start_jit_support_session(p_tenant_slug,p_reason)`: abre sessão de até 60 minutos, somente para o master.
@@ -72,6 +73,8 @@ Prompts e fluxos mantêm rascunho separado da versão publicada. Versões são i
 5. Ativar `tenant_operations_center_v1` somente para o tenant aprovado.
 6. Homologar menu, rota, isolamento de cache e rejeição de tenants não habilitados.
 7. Monitorar auditoria, filas, instância e alertas antes de ampliar o rollout.
+
+O desacoplamento de contexto usa uma segunda flag, `tenant_explicit_context_v1`. Ela nasce desabilitada e deve ser promovida tenant a tenant somente após os testes de duas abas, troca rápida de slug, isolamento de cache e equivalência do envelope com a RPC legada. No canário inicial, apenas `fluxrow` usa a RPC explícita.
 
 ## Operação segura
 

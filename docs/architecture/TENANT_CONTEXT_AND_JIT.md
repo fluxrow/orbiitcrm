@@ -102,3 +102,18 @@ Exceções devem ser mínimas e explícitas, por exemplo início/encerramento da
 - Cache React Query e Realtime separados por `empresa_id`.
 
 Até esses testes serem aprovados, nenhuma ampliação do Centro de Operações deve ocorrer fora do `fluxrow`.
+
+## Implementação canário: leitura explícita do Centro de Operações
+
+A primeira etapa do desacoplamento é aditiva e limitada ao Centro de Operações:
+
+- `orbit_tenant_ops_read_scoped(p_tenant_slug,p_section)` resolve o slug no banco;
+- a função exige usuário autenticado e valida Super Admin, perfil ativo do tenant ou membership;
+- as flags `tenant_operations_center_v1` e `tenant_explicit_context_v1` precisam estar ativas;
+- o `empresa_id` resolvido é aplicado a todas as agregações e volta no envelope junto com `tenant_slug`;
+- `PUBLIC` e `anon` não possuem `EXECUTE`;
+- a RPC antiga permanece disponível durante a transição.
+
+O hook seleciona o contrato pela flag `tenant_explicit_context_v1` e inclui `empresaId`, slug e modo de contexto na chave do React Query. Assim, troca de slug não reutiliza cache de outro tenant. O rollout inicial habilita o novo contrato somente para `fluxrow`; os tenants protegidos permanecem explicitamente desligados.
+
+Esta etapa não remove `switch_active_empresa`, pois outras telas e policies ainda dependem do perfil persistido. A remoção só ocorrerá após inventário e migração das demais leituras/escritas tenant-scoped.
