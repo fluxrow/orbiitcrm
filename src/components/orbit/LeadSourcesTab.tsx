@@ -175,9 +175,9 @@ export function LeadSourcesTab({ empresaId }: { empresaId: string | null | undef
                       variant="ghost"
                       size="icon"
                       onClick={() => {
-                        if (confirm(`Excluir a fonte "${s.nome}"? Esta ação é irreversível.`)) {
+                        if (confirm(`Arquivar a fonte "${s.nome}"? Ela deixará de receber novos leads.`)) {
                           del.mutate(s.id, {
-                            onSuccess: () => toast.success("Fonte excluída"),
+                            onSuccess: () => toast.success("Fonte arquivada"),
                           });
                         }
                       }}

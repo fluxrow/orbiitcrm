@@ -6107,6 +6107,15 @@ export type Database = {
         }
         Returns: Json
       }
+      orbit_tenant_lead_source_mutate_scoped: {
+        Args: {
+          p_action_type: string
+          p_payload?: Json
+          p_source_id?: string
+          p_tenant_slug: string
+        }
+        Returns: Json
+      }
       orbit_zapi_connection_status: {
         Args: { _empresa_id: string }
         Returns: {

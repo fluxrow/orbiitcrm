@@ -93,6 +93,19 @@ Edge Functions antes de usar `service_role`. Configurações, fluxos e fontes de
 lead ainda possuem mutações por ID e grants históricos amplos para `anon` e
 serão tratados nas partes seguintes, sem ampliar o rollout da Parte 3.1.
 
+#### Parte 3.2 — governança de fontes de lead
+
+`tenant_lead_sources_wave3_v1` migra criação, edição, arquivamento e rotação de
+token para uma RPC tenant-scoped exclusiva do canário. A exclusão física foi
+substituída por `deleted_at`, e a rotação do segredo passou a ocorrer no banco.
+O audit log registra somente os nomes dos campos alterados, nunca o token.
+
+Grants anônimos sem policy correspondente foram removidos das configurações e
+do motor de fluxos. O endpoint público de ingestão não depende deles: autentica
+o `x-source-token` e acessa as tabelas via `service_role`. Privilégios
+`TRUNCATE`, `TRIGGER` e `REFERENCES` também foram removidos de `authenticated`;
+as permissões DML necessárias e as policies RLS permanecem intactas.
+
 ### Onda 4 — remoção do contexto persistido
 
 Somente após todas as ondas:
