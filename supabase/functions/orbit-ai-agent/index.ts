@@ -2130,6 +2130,11 @@ ${regrasBlock}`;
         console.warn("[orbit-ai-agent] Falsa transferência removida na saída final.", { fallback: finalIdentity.fallbackUsed });
         resposta = finalIdentity.text;
       }
+      const finalFalseBenefits = enforceNoFalseBenefits(resposta, falseBenefitsCfg !== null);
+      if (finalFalseBenefits.changed) {
+        console.warn("[orbit-ai-agent] Promessa falsa removida na saída final.", { fallback: finalFalseBenefits.fallbackUsed });
+        resposta = finalFalseBenefits.text;
+      }
       const finalSelfIntro = enforceNoSelfIntroduction(resposta, selfIntroCfg);
       if (finalSelfIntro.changed) {
         console.warn("[orbit-ai-agent] Autoapresentação removida na saída final.", { fallback: finalSelfIntro.fallbackUsed });
