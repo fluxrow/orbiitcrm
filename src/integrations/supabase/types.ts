@@ -5614,16 +5614,145 @@ export type Database = {
         }
         Relationships: []
       }
+      orbit_tenant_ops_agenda_v: {
+        Row: {
+          availability_break_end: string | null
+          availability_break_start: string | null
+          availability_end: string | null
+          availability_start: string | null
+          booking_max_horizon_days: number | null
+          booking_min_notice_minutes: number | null
+          calendar_id_masked: string | null
+          connected: boolean | null
+          empresa_id: string | null
+          expires_at: string | null
+          google_account_masked: string | null
+          timezone: string | null
+          token_present: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          availability_break_end?: string | null
+          availability_break_start?: string | null
+          availability_end?: string | null
+          availability_start?: string | null
+          booking_max_horizon_days?: number | null
+          booking_min_notice_minutes?: number | null
+          calendar_id_masked?: never
+          connected?: never
+          empresa_id?: string | null
+          expires_at?: string | null
+          google_account_masked?: never
+          timezone?: string | null
+          token_present?: never
+          updated_at?: string | null
+        }
+        Update: {
+          availability_break_end?: string | null
+          availability_break_start?: string | null
+          availability_end?: string | null
+          availability_start?: string | null
+          booking_max_horizon_days?: number | null
+          booking_min_notice_minutes?: number | null
+          calendar_id_masked?: never
+          connected?: never
+          empresa_id?: string | null
+          expires_at?: string | null
+          google_account_masked?: never
+          timezone?: string | null
+          token_present?: never
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_google_tokens_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_tenant_ops_ai_handoff_v: {
+        Row: {
+          ai_active: number | null
+          awaiting_human: number | null
+          empresa_id: string | null
+          handoff_sent: number | null
+          human_owned: number | null
+          possibly_stuck: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_conversas_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_tenant_ops_media_v: {
+        Row: {
+          active: number | null
+          empresa_id: string | null
+          inactive: number | null
+          kind: string | null
+          legacy_public_urls: number | null
+          reference_count: number | null
+          total: number | null
+        }
+        Relationships: []
+      }
+      orbit_tenant_ops_queue_v: {
+        Row: {
+          active_locks: number | null
+          empresa_id: string | null
+          item_count: number | null
+          oldest_pending_at: string | null
+          over_24h: number | null
+          possibly_orphaned_locks: number | null
+          status: string | null
+        }
+        Relationships: []
+      }
+      orbit_tenant_ops_whatsapp_v: {
+        Row: {
+          adapter_enabled: boolean | null
+          ativo: boolean | null
+          canary_mode_enabled: boolean | null
+          canary_numbers_count: number | null
+          client_token_present: boolean | null
+          daily_limit: number | null
+          empresa_id: string | null
+          envio_real_liberado: boolean | null
+          instance_id_masked: string | null
+          instance_id_present: boolean | null
+          instance_offline: boolean | null
+          last_online_at: string | null
+          last_status_check_at: string | null
+          max_per_minute: number | null
+          offline_reason: string | null
+          offline_since: string | null
+          queue_enabled: boolean | null
+          source_number_masked: string | null
+          token_present: boolean | null
+          vault_backed: boolean | null
+          warmup_enabled: boolean | null
+          warmup_start_date: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_zapi_config_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
-      orbit_take_conversa: {
-        Args: { p_conversa_id: string }
-        Returns: Json
-      }
-      orbit_tenant_ops_read: {
-        Args: { p_section?: string }
-        Returns: Json
-      }
       _build_orbit_zapi_public_response: {
         Args: { p_config_id: string }
         Returns: Json
@@ -5918,6 +6047,8 @@ export type Database = {
         Args: { _empresa_id: string }
         Returns: undefined
       }
+      orbit_take_conversa: { Args: { p_conversa_id: string }; Returns: Json }
+      orbit_tenant_ops_read: { Args: { p_section?: string }; Returns: Json }
       orbit_zapi_connection_status: {
         Args: { _empresa_id: string }
         Returns: {
