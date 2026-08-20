@@ -16,12 +16,12 @@ export function TenantOperationsOverview({ health, refreshing, onRefresh }: Prop
         <div className="flex items-start gap-3">
           <div className="rounded-full bg-emerald-500/10 p-2 text-emerald-500"><Activity className="h-5 w-5" /></div>
           <div>
-            <p className="font-semibold">Leitura operacional ativa</p>
+            <p className="font-semibold">Operação segura ativa</p>
             <p className="text-sm text-muted-foreground">
-              Dados isolados pelo tenant da sessão. Nenhuma ação de escrita está disponível nesta fase.
+              Dados isolados pelo tenant da sessão. Ações críticas exigem confirmação e geram auditoria.
             </p>
             <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-              <ShieldCheck className="h-4 w-4" /> RPC tenant-scoped · atualização sob demanda
+              <ShieldCheck className="h-4 w-4" /> RPC tenant-scoped · mutações atômicas · atualização sob demanda
             </div>
           </div>
         </div>

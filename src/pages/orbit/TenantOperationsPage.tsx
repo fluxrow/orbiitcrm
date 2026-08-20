@@ -16,7 +16,7 @@ export default function TenantOperationsPage() {
     <OrbitLayout>
       <PageHeader
         title="Centro de Operações"
-        description="Saúde operacional do tenant em modo somente leitura"
+        description="Monitoramento e ações operacionais controladas do tenant"
       />
 
       {feature.isLoading ? (
