@@ -3,6 +3,17 @@ import { supabase } from "@/integrations/supabase/client";
 export const TENANT_EXPLICIT_MUTATIONS_WAVE2_FLAG =
   "tenant_explicit_mutations_wave2_v1" as const;
 
+export async function isTenantFeatureEnabled(empresaId: string, featureKey: string) {
+  const { data, error } = await supabase
+    .from("orbit_feature_flags")
+    .select("enabled")
+    .eq("empresa_id", empresaId)
+    .eq("feature_key", featureKey)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.enabled === true;
+}
+
 type TenantMutationAction =
   | "update_prospect"
   | "soft_delete_prospect"
@@ -27,15 +38,9 @@ export async function runTenantMutation<T>({
   payload = {},
   legacy,
 }: RunTenantMutationArgs<T>): Promise<T> {
-  const { data: rollout, error: rolloutError } = await supabase
-    .from("orbit_feature_flags")
-    .select("enabled")
-    .eq("empresa_id", empresaId)
-    .eq("feature_key", TENANT_EXPLICIT_MUTATIONS_WAVE2_FLAG)
-    .maybeSingle();
-
-  if (rolloutError) throw rolloutError;
-  if (rollout?.enabled !== true) return legacy();
+  if (!await isTenantFeatureEnabled(empresaId, TENANT_EXPLICIT_MUTATIONS_WAVE2_FLAG)) {
+    return legacy();
+  }
 
   const { data, error } = await supabase.rpc("orbit_tenant_entity_mutate_scoped", {
     p_tenant_slug: tenantSlug,

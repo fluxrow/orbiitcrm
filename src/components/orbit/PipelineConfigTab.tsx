@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { ArrowDown, ArrowUp, Loader2, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Loader2, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
 import {
   usePipelineStages,
   usePipelineTemplates,
@@ -17,6 +17,7 @@ import {
   useArchiveStage,
   useReorderStages,
   useApplyTemplate,
+  useStageArchiveImpact,
   type PipelineStage,
 } from "@/hooks/useOrbitPipelineConfig";
 
@@ -41,6 +42,8 @@ export function PipelineConfigTab() {
   const applyTpl = useApplyTemplate();
 
   const [editing, setEditing] = useState<Partial<PipelineStage> | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<PipelineStage | null>(null);
+  const archiveImpact = useStageArchiveImpact(archiveTarget?.id);
   const [tplId, setTplId] = useState<string>("");
   const [tplReplace, setTplReplace] = useState(false);
 
@@ -115,7 +118,7 @@ export function PipelineConfigTab() {
                   <AlertDialogTitle>Aplicar template?</AlertDialogTitle>
                   <AlertDialogDescription>
                     {tplReplace
-                      ? "As etapas atuais serão arquivadas e substituídas pelas do template. Deals existentes mantêm referência mas ficam em etapas arquivadas."
+                      ? "A substituição é bloqueada no modo seguro. Arquive individualmente apenas etapas sem dependências antes de aplicar um novo modelo."
                       : "As etapas do template serão adicionadas ao final do pipeline atual. Nada será apagado."}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
@@ -185,23 +188,9 @@ export function PipelineConfigTab() {
                     <Button size="icon" variant="ghost" onClick={() => setEditing({ ...s, ...({ _tipo: tipo } as any) })}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button size="icon" variant="ghost"><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Arquivar etapa "{s.nome}"?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            A etapa deixa de aparecer no funil. Deals existentes preservam o vínculo histórico.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => archive.mutate(s.id)}>Arquivar</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                    <Button size="icon" variant="ghost" onClick={() => setArchiveTarget(s)}>
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
                   </div>
                 );
               })}
@@ -209,6 +198,49 @@ export function PipelineConfigTab() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!archiveTarget} onOpenChange={(open) => !open && setArchiveTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Arquivar etapa "{archiveTarget?.nome}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O sistema verifica deals, fluxos publicados e ações agendadas antes de permitir o arquivamento.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {archiveImpact.isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />Analisando dependências…
+            </div>
+          ) : archiveImpact.isError ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+              Não foi possível validar as dependências. O arquivamento permanece bloqueado.
+            </div>
+          ) : archiveImpact.data && !archiveImpact.data.can_archive ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+              <div className="flex items-center gap-2 font-medium text-destructive">
+                <AlertTriangle className="h-4 w-4" />Arquivamento bloqueado
+              </div>
+              <p className="mt-2 text-muted-foreground">
+                Deals ativos: {archiveImpact.data.active_deals}. Referências em fluxos/ações: {archiveImpact.data.active_flow_actions + archiveImpact.data.active_flow_configs + archiveImpact.data.active_flow_versions + archiveImpact.data.active_scheduled_actions}.
+              </p>
+            </div>
+          ) : archiveImpact.data?.can_archive ? (
+            <p className="text-sm text-muted-foreground">Nenhuma dependência ativa foi encontrada.</p>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={archiveImpact.isLoading || archiveImpact.isError || archive.isPending || archiveImpact.data?.can_archive === false}
+              onClick={() => archiveTarget && archive.mutate(archiveTarget.id, {
+                onSuccess: () => setArchiveTarget(null),
+              })}
+            >
+              {archive.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Arquivar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Edit dialog */}
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>

@@ -6081,6 +6081,19 @@ export type Database = {
         Args: { p_prospect_id: string; p_tenant_slug: string }
         Returns: Json
       }
+      orbit_tenant_pipeline_stage_impact_scoped: {
+        Args: { p_stage_id: string; p_tenant_slug: string }
+        Returns: Json
+      }
+      orbit_tenant_pipeline_stage_mutate_scoped: {
+        Args: {
+          p_action_type: string
+          p_payload?: Json
+          p_stage_id?: string
+          p_tenant_slug: string
+        }
+        Returns: Json
+      }
       orbit_zapi_connection_status: {
         Args: { _empresa_id: string }
         Returns: {

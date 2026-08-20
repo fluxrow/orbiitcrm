@@ -35,7 +35,7 @@ O rollout permanece aditivo. `switch_active_empresa` não será removido enquant
 | Funil — stages/deals | Leituras filtradas + snapshot RPC em shadow mode | A (shadow) | `useOrbitDeals`; `orbit_tenant_funnel_read_scoped` | Onda 1 em canário |
 | Funil — Realtime | Assina todos os deals e apenas invalida cache | B | `useOrbitDealsGrouped` | P1 |
 | Funil — deal update/move/delete | RPC atômica tenant-scoped no canário; legado também ganhou predicado | A (canário) | `useOrbitDeals`; `orbit_tenant_entity_mutate_scoped` | Onda 2.1 |
-| Funil — stages archive/reorder | Operações ainda usam somente IDs | B | `useOrbitPipelineConfig` | Onda 2.2 |
+| Funil — stages create/update/archive/reorder | RPC atômica e análise de impacto no canário; legado ganhou predicado de tenant | A (canário) | `useOrbitPipelineConfig`; RPCs de stage | Onda 2.2 |
 | Mensagens | Query key, leitura e Realtime incluem tenant da rota | A | `useOrbitMensagens` | P0 — preservar |
 | Configurações | Maioria das leituras recebe `empresaId`; algumas mutações dependem de RLS | A/B | `useOrbitConfig` | P1 |
 | Agenda/Google | Edge Functions recebem `empresa_id` do frontend | B | `useOrbitGoogleCalendar` | P1 — validar server-side |
@@ -68,6 +68,11 @@ As comparações registram somente recurso e contagens, sem IDs, conteúdo ou PI
 Parte 2.1: `tenant_explicit_mutations_wave2_v1` cobre edição/soft delete de
 prospect e edição/movimentação/soft delete de deal. A RPC usa lock de linha,
 allowlist de campos, valida referências no mesmo tenant e grava diff na auditoria.
+
+Parte 2.2: `tenant_pipeline_stages_wave2_v1` cobre criação, edição,
+arquivamento e reordenação atômica. O arquivamento é bloqueado quando a etapa
+possui deals ativos, referências em fluxos publicados ou ações agendadas. Não
+há migração automática ou invisível de deals entre etapas.
 
 ### Onda 3 — P1
 
