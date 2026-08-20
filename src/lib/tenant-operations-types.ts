@@ -7,6 +7,7 @@ export type TenantOperationsSection =
   | "ai_handoff"
   | "queues"
   | "media"
+  | "prompts_flows"
   | "alerts"
   | "audit"
   | "capabilities"
@@ -203,6 +204,42 @@ export interface MediaOpsRead {
   }>;
 }
 
+export interface ContentVersionRead {
+  id: string;
+  version_number: number;
+  is_active: boolean;
+  changelog: string;
+  published_at: string;
+  published_by: string | null;
+  author_name: string | null;
+}
+
+export interface PromptsFlowsOpsRead {
+  prompts: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    runtime_slot: "prompt_identidade" | "prompt_roteiro" | "prompt_regras";
+    draft_content: string;
+    draft_description: string | null;
+    status: "published" | "draft";
+    active_version_id: string | null;
+    active_version_number: number | null;
+    versions: ContentVersionRead[];
+  }>;
+  flows: Array<{
+    id: string;
+    name: string;
+    status: "published" | "draft";
+    active: boolean;
+    nodes_schema: Record<string, unknown>;
+    edges_schema: unknown[];
+    active_version_id: string | null;
+    active_version_number: number | null;
+    versions: ContentVersionRead[];
+  }>;
+}
+
 export interface AlertsOpsRead {
   tenant_email_masked: string | null;
   master_channel_configured: boolean;
@@ -259,6 +296,7 @@ export type TenantOperationsDataMap = {
   ai_handoff: AiHandoffOpsRead;
   queues: QueueOpsRead;
   media: MediaOpsRead;
+  prompts_flows: PromptsFlowsOpsRead;
   alerts: AlertsOpsRead;
   audit: TenantAuditRead;
   capabilities: TenantOpsCapabilities;

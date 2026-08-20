@@ -3,6 +3,7 @@ import type {
   AiHandoffOpsRead,
   AlertsOpsRead,
   MediaOpsRead,
+  PromptsFlowsOpsRead,
   QueueOpsRead,
   TenantOperationsDataMap,
   TenantOperationsSection,
@@ -205,6 +206,44 @@ const mapMedia = (root: JsonObject): MediaOpsRead => {
   };
 };
 
+const mapVersions = (value: unknown) => array(value).map((item) => {
+  const version = object(item);
+  return {
+    id: string(version.id), version_number: number(version.version_number), is_active: boolean(version.is_active),
+    changelog: string(version.changelog), published_at: string(version.published_at),
+    published_by: nullableString(version.published_by), author_name: nullableString(version.author_name),
+  };
+});
+
+const mapPromptsFlows = (root: JsonObject): PromptsFlowsOpsRead => {
+  const raw = node(root, "prompts_flows");
+  return {
+    prompts: array(raw.prompts).map((item) => {
+      const prompt = object(item);
+      const slot = prompt.runtime_slot;
+      return {
+        id: string(prompt.id), name: string(prompt.name), description: nullableString(prompt.description),
+        runtime_slot: slot === "prompt_roteiro" || slot === "prompt_regras" ? slot : "prompt_identidade",
+        draft_content: string(prompt.draft_content), draft_description: nullableString(prompt.draft_description),
+        status: prompt.status === "published" ? "published" : "draft",
+        active_version_id: nullableString(prompt.active_version_id),
+        active_version_number: typeof prompt.active_version_number === "number" ? prompt.active_version_number : null,
+        versions: mapVersions(prompt.versions),
+      };
+    }),
+    flows: array(raw.flows).map((item) => {
+      const flow = object(item);
+      return {
+        id: string(flow.id), name: string(flow.name), status: flow.status === "published" ? "published" : "draft",
+        active: boolean(flow.active), nodes_schema: object(flow.nodes_schema), edges_schema: array(flow.edges_schema),
+        active_version_id: nullableString(flow.active_version_id),
+        active_version_number: typeof flow.active_version_number === "number" ? flow.active_version_number : null,
+        versions: mapVersions(flow.versions),
+      };
+    }),
+  };
+};
+
 const mapAlerts = (root: JsonObject): AlertsOpsRead => {
   const raw = node(root, "alerts");
   const counts = object(raw.counts);
@@ -235,7 +274,7 @@ const mapHealth = (root: JsonObject): TenantOpsHealth => ({
   api_available: true,
   database_available: true,
   feature_enabled: boolean(root.feature_enabled),
-  supported_sections: ["summary", "agenda", "whatsapp", "ai_handoff", "queues", "media", "alerts", "audit", "capabilities", "health"],
+  supported_sections: ["summary", "agenda", "whatsapp", "ai_handoff", "queues", "media", "prompts_flows", "alerts", "audit", "capabilities", "health"],
   generated_at: string(root.generated_at, new Date().toISOString()),
 });
 
@@ -247,6 +286,7 @@ export function mapTenantOperationsPayload<S extends TenantOperationsSection>(se
     ai_handoff: mapAi(root),
     queues: mapQueue(root),
     media: mapMedia(root),
+    prompts_flows: mapPromptsFlows(root),
     alerts: mapAlerts(root),
     summary: mapSummary(root),
     health: mapHealth(root),

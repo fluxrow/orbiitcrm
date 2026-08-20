@@ -17,7 +17,13 @@ export type TenantOpsActionType =
   | "update_agenda_config"
   | "add_agenda_date_exception"
   | "soft_delete_media"
-  | "restore_soft_deleted_media";
+  | "restore_soft_deleted_media"
+  | "save_prompt_draft"
+  | "publish_prompt_version"
+  | "rollback_prompt_version"
+  | "save_flow_draft"
+  | "publish_flow_version"
+  | "rollback_flow_version";
 
 export interface TenantOpsActionResult {
   ok: true;
@@ -27,6 +33,8 @@ export interface TenantOpsActionResult {
   new_state?: boolean;
   linked_count?: number;
   entity_id?: string;
+  version_id?: string;
+  version_number?: number;
   message: string;
 }
 

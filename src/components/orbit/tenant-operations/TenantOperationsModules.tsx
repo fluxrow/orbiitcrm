@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bell, Bot, CalendarClock, Database, Images, MessageCircle, Pause, Play, RotateCcw, ShieldAlert, XCircle } from "lucide-react";
+import { Bell, Bot, CalendarClock, Database, GitBranch, Images, MessageCircle, Pause, Play, RotateCcw, ShieldAlert, XCircle } from "lucide-react";
 import { useTenantOperations } from "@/hooks/useTenantOperations";
 import { useTenantOpsActions, type TenantOpsActionType } from "@/hooks/useTenantOpsActions";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import {
 import { OperationsCard } from "./OperationsCard";
 import { AgendaOperationsActions } from "./AgendaOperationsActions";
 import { MediaOperationsManager } from "./MediaOperationsManager";
+import { PromptsFlowsManager } from "./PromptsFlowsManager";
 
 const number = (value: unknown) => typeof value === "number" ? value : 0;
 const yesNo = (value: unknown) => value === true ? "Sim" : "Não";
@@ -104,6 +105,7 @@ export function TenantOperationsModules() {
   const queues = useTenantOperations("queues", { refetchInterval: 30_000 });
   const ai = useTenantOperations("ai_handoff", { refetchInterval: 30_000 });
   const media = useTenantOperations("media");
+  const promptsFlows = useTenantOperations("prompts_flows");
   const alerts = useTenantOperations("alerts", { refetchInterval: 60_000 });
   const action = useTenantOpsActions();
 
@@ -275,6 +277,21 @@ export function TenantOperationsModules() {
           { label: "Vinculadas a fluxos", value: number(media.data?.counts?.referenced_by_flows) },
         ]}
         actions={<MediaOperationsManager media={media.data} />}
+      />
+      <OperationsCard
+        title="Prompts & Fluxos"
+        description="Rascunhos, versões publicadas e rollback"
+        icon={GitBranch}
+        status="healthy"
+        loading={promptsFlows.isLoading}
+        error={promptsFlows.isError}
+        metrics={[
+          { label: "Prompts", value: number(promptsFlows.data?.prompts.length) },
+          { label: "Prompts publicados", value: promptsFlows.data?.prompts.filter((item) => item.status === "published").length || 0 },
+          { label: "Fluxos", value: number(promptsFlows.data?.flows.length) },
+          { label: "Fluxos ativos", value: promptsFlows.data?.flows.filter((item) => item.active).length || 0 },
+        ]}
+        actions={<PromptsFlowsManager data={promptsFlows.data} />}
       />
       <OperationsCard
         title="Alertas"
