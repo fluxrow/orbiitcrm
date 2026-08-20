@@ -53,6 +53,13 @@ import {
   IDENTITY_GUARD_CORRECTIVE,
   type IdentityGuardContext,
 } from "../_shared/no-identity-split.ts";
+import {
+  readFalseBenefitsGuardConfig,
+  detectFalseBenefits,
+  enforceNoFalseBenefits,
+  buildFalseBenefitsPromptBlock,
+  FALSE_BENEFITS_CORRECTIVE,
+} from "../_shared/no-false-benefits.ts";
 import { currentSaoPauloTime, evaluateBusinessHours } from "../_shared/business-hours.ts";
 import {
   evaluateCommercialStage,
