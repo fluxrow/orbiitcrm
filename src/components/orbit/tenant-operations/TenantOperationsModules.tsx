@@ -16,6 +16,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { OperationsCard } from "./OperationsCard";
+import { AgendaOperationsActions } from "./AgendaOperationsActions";
+import { MediaOperationsManager } from "./MediaOperationsManager";
 
 const number = (value: unknown) => typeof value === "number" ? value : 0;
 const yesNo = (value: unknown) => value === true ? "Sim" : "Não";
@@ -125,6 +127,7 @@ export function TenantOperationsModules() {
           { label: "Antecedência", value: `${number(agenda.data?.booking_min_notice_minutes)} min` },
           { label: "Horizonte", value: `${number(agenda.data?.booking_max_horizon_days)} dias` },
         ]}
+        actions={<AgendaOperationsActions agenda={agenda.data} />}
       />
       <OperationsCard
         title="WhatsApp"
@@ -271,6 +274,7 @@ export function TenantOperationsModules() {
           { label: "Falhas", value: number(media.data?.counts?.failed) },
           { label: "Vinculadas a fluxos", value: number(media.data?.counts?.referenced_by_flows) },
         ]}
+        actions={<MediaOperationsManager media={media.data} />}
       />
       <OperationsCard
         title="Alertas"

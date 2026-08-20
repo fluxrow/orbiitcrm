@@ -117,6 +117,13 @@ export interface AgendaOpsRead {
     token_expired_or_refresh_required: boolean | null;
     updated_at: string | null;
   };
+  exceptions: Array<{
+    id: string;
+    exception_date: string;
+    reason: string;
+    is_available: boolean;
+    created_at: string;
+  }>;
 }
 
 export interface WhatsappOpsRead {
@@ -181,6 +188,19 @@ export interface MediaOpsRead {
     signed_url_enabled: boolean;
     legacy_public_urls_detected: number;
   };
+  items: Array<{
+    id: string;
+    name: string;
+    kind: string;
+    purpose: string;
+    mime: string | null;
+    size_bytes: number;
+    active: boolean;
+    approved: boolean;
+    deleted_at: string | null;
+    active_flow_references: number;
+    created_at: string;
+  }>;
 }
 
 export interface AlertsOpsRead {

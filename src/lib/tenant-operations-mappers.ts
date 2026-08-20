@@ -20,6 +20,7 @@ const number = (value: unknown, fallback = 0) => typeof value === "number" && Nu
 const boolean = (value: unknown, fallback = false) => typeof value === "boolean" ? value : fallback;
 const string = (value: unknown, fallback = "") => typeof value === "string" ? value : fallback;
 const nullableString = (value: unknown) => typeof value === "string" ? value : null;
+const array = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 
 function unwrap(payload: unknown): JsonObject {
   const envelope = object(payload);
@@ -46,8 +47,8 @@ const mapAgenda = (root: JsonObject): AgendaOpsRead => {
     availability: {
       start: string(object(raw.availability).start ?? raw.availability_start),
       end: string(object(raw.availability).end ?? raw.availability_end),
-      break_start: nullableString(object(raw.availability).break_start ?? raw.break_start),
-      break_end: nullableString(object(raw.availability).break_end ?? raw.break_end),
+      break_start: nullableString(object(raw.availability).break_start ?? raw.break_start ?? raw.availability_break_start),
+      break_end: nullableString(object(raw.availability).break_end ?? raw.break_end ?? raw.availability_break_end),
       break_semantics: "[start,end)",
     },
     meeting_duration_default_minutes: typeof raw.meeting_duration_default_minutes === "number" ? raw.meeting_duration_default_minutes : null,
@@ -61,6 +62,16 @@ const mapAgenda = (root: JsonObject): AgendaOpsRead => {
         : null,
       updated_at: nullableString(object(raw.diagnostics).updated_at ?? raw.updated_at),
     },
+    exceptions: array(raw.exceptions).map((item) => {
+      const exception = object(item);
+      return {
+        id: string(exception.id),
+        exception_date: string(exception.exception_date),
+        reason: string(exception.reason),
+        is_available: boolean(exception.is_available),
+        created_at: string(exception.created_at),
+      };
+    }),
   };
 };
 
@@ -163,7 +174,7 @@ const mapMedia = (root: JsonObject): MediaOpsRead => {
   return {
     total_storage_mb: number(raw.total_storage_mb),
     counts: {
-      active: number(counts.active ?? raw.media_count),
+      active: number(counts.active ?? raw.active_count ?? raw.media_count),
       processing: number(counts.processing ?? raw.processing_count),
       failed: number(counts.failed ?? raw.failed_count),
       soft_deleted: number(counts.soft_deleted ?? raw.soft_deleted_count),
@@ -171,10 +182,26 @@ const mapMedia = (root: JsonObject): MediaOpsRead => {
     },
     by_type: object(raw.by_type) as Record<string, number>,
     storage_health: {
-      private_bucket_expected: boolean(storage.private_bucket_expected),
-      signed_url_enabled: boolean(storage.signed_url_enabled),
-      legacy_public_urls_detected: number(storage.legacy_public_urls_detected),
+      private_bucket_expected: boolean(storage.private_bucket_expected, boolean(raw.private_bucket_expected)),
+      signed_url_enabled: boolean(storage.signed_url_enabled, boolean(raw.signed_url_enabled)),
+      legacy_public_urls_detected: number(storage.legacy_public_urls_detected ?? raw.legacy_public_urls),
     },
+    items: array(raw.items).map((item) => {
+      const media = object(item);
+      return {
+        id: string(media.id),
+        name: string(media.name),
+        kind: string(media.kind),
+        purpose: string(media.purpose),
+        mime: nullableString(media.mime),
+        size_bytes: number(media.size_bytes),
+        active: boolean(media.active),
+        approved: boolean(media.approved),
+        deleted_at: nullableString(media.deleted_at),
+        active_flow_references: number(media.active_flow_references),
+        created_at: string(media.created_at),
+      };
+    }),
   };
 };
 

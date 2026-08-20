@@ -13,7 +13,11 @@ export type TenantOpsActionType =
   | "pause_queue_processing"
   | "resume_queue_processing"
   | "preview_stale_messages"
-  | "cancel_stale_messages";
+  | "cancel_stale_messages"
+  | "update_agenda_config"
+  | "add_agenda_date_exception"
+  | "soft_delete_media"
+  | "restore_soft_deleted_media";
 
 export interface TenantOpsActionResult {
   ok: true;
@@ -21,6 +25,8 @@ export interface TenantOpsActionResult {
   affected_rows: number;
   preview_count?: number;
   new_state?: boolean;
+  linked_count?: number;
+  entity_id?: string;
   message: string;
 }
 
