@@ -6051,6 +6051,14 @@ export type Database = {
         Returns: undefined
       }
       orbit_take_conversa: { Args: { p_conversa_id: string }; Returns: Json }
+      orbit_tenant_ops_action: {
+        Args: {
+          p_action_type: string
+          p_payload?: Json
+          p_tenant_slug: string
+        }
+        Returns: Json
+      }
       orbit_tenant_ops_read: { Args: { p_section?: string }; Returns: Json }
       orbit_zapi_connection_status: {
         Args: { _empresa_id: string }

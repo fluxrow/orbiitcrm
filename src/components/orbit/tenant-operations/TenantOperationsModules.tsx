@@ -1,9 +1,62 @@
-import { Bell, Bot, CalendarClock, Database, Images, MessageCircle } from "lucide-react";
+import { Bell, Bot, CalendarClock, Database, Images, MessageCircle, Pause, Play, RotateCcw, XCircle } from "lucide-react";
 import { useTenantOperations } from "@/hooks/useTenantOperations";
+import { useTenantOpsActions, type TenantOpsActionType } from "@/hooks/useTenantOpsActions";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { OperationsCard } from "./OperationsCard";
 
 const number = (value: unknown) => typeof value === "number" ? value : 0;
 const yesNo = (value: unknown) => value === true ? "Sim" : "Não";
+
+interface ConfirmActionProps {
+  action: TenantOpsActionType;
+  label: string;
+  title: string;
+  description: string;
+  pending: boolean;
+  destructive?: boolean;
+  icon: typeof Pause;
+  onConfirm: (action: TenantOpsActionType) => void;
+}
+
+function ConfirmAction({ action, label, title, description, pending, destructive, icon: Icon, onConfirm }: ConfirmActionProps) {
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button variant={destructive ? "destructive" : "outline"} size="sm" disabled={pending}>
+          <Icon className="mr-2 h-4 w-4" />
+          {pending ? "Processando..." : label}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={pending}>Voltar</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={pending}
+            className={destructive ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : undefined}
+            onClick={() => onConfirm(action)}
+          >
+            Confirmar
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
 
 export function TenantOperationsModules() {
   const agenda = useTenantOperations("agenda");
@@ -12,6 +65,7 @@ export function TenantOperationsModules() {
   const ai = useTenantOperations("ai_handoff", { refetchInterval: 30_000 });
   const media = useTenantOperations("media");
   const alerts = useTenantOperations("alerts", { refetchInterval: 60_000 });
+  const action = useTenantOpsActions();
 
   const queueCounts = queues.data?.counts;
   const aiCounts = ai.data?.counts;
@@ -60,6 +114,29 @@ export function TenantOperationsModules() {
           { label: "Falhas", value: number(queueCounts?.failed) },
           { label: "Acima de 24h", value: number(queues.data?.age_buckets?.over_24h) },
         ]}
+        actions={
+          <>
+            <ConfirmAction
+              action="retry_failed_queues"
+              label="Reprocessar falhas"
+              title="Reprocessar mensagens com falha?"
+              description="As mensagens em status failed voltarão para pending, com tentativas zeradas e novo processamento imediato."
+              pending={action.isPending}
+              icon={RotateCcw}
+              onConfirm={(actionType) => action.mutate({ action: actionType, payload: { source: "tenant_operations_ui" } })}
+            />
+            <ConfirmAction
+              action="clear_pending_queues"
+              label="Cancelar pendentes"
+              title="Cancelar todas as mensagens pendentes?"
+              description="As mensagens pending serão marcadas como canceled. Nenhum registro será excluído fisicamente."
+              pending={action.isPending}
+              destructive
+              icon={XCircle}
+              onConfirm={(actionType) => action.mutate({ action: actionType, payload: { source: "tenant_operations_ui" } })}
+            />
+          </>
+        }
       />
       <OperationsCard
         title="IA e handoff"
@@ -74,6 +151,19 @@ export function TenantOperationsModules() {
           { label: "Aguardando humano", value: number(aiCounts?.awaiting_human) },
           { label: "Possivelmente presas", value: number(aiCounts?.possibly_stuck) },
         ]}
+        actions={
+          <ConfirmAction
+            action={ai.data?.automatic_mode_enabled ? "pause_tenant_ai" : "resume_tenant_ai"}
+            label={ai.data?.automatic_mode_enabled ? "Pausar IA global" : "Retomar IA global"}
+            title={ai.data?.automatic_mode_enabled ? "Pausar a IA deste tenant?" : "Retomar a IA deste tenant?"}
+            description={ai.data?.automatic_mode_enabled
+              ? "Novas respostas automáticas serão pausadas para este tenant até a retomada manual."
+              : "As respostas automáticas serão reativadas para este tenant."}
+            pending={action.isPending}
+            icon={ai.data?.automatic_mode_enabled ? Pause : Play}
+            onConfirm={(actionType) => action.mutate({ action: actionType, payload: { source: "tenant_operations_ui" } })}
+          />
+        }
       />
       <OperationsCard
         title="Mídias"

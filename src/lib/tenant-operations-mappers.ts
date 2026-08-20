@@ -69,7 +69,7 @@ const mapAi = (root: JsonObject): AiHandoffOpsRead => {
   const counts = object(raw.counts);
   const value = (key: string, alias?: string) => number(counts[key] ?? raw[key] ?? (alias ? raw[alias] : undefined));
   return {
-    automatic_mode_enabled: boolean(raw.automatic_mode_enabled),
+    automatic_mode_enabled: boolean(raw.automatic_mode_enabled, boolean(raw.modo_automatico)),
     automation_cutoff: nullableString(raw.automation_cutoff),
     counts: {
       ai_active: value("ai_active"),

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +16,7 @@ interface OperationsCardProps {
   metrics: OperationsMetric[];
   loading?: boolean;
   error?: boolean;
+  actions?: ReactNode;
 }
 
 const statusLabels = {
@@ -32,6 +34,7 @@ export function OperationsCard({
   metrics,
   loading,
   error,
+  actions,
 }: OperationsCardProps) {
   const badgeVariant = status === "critical" ? "destructive" : status === "healthy" ? "secondary" : "outline";
 
@@ -64,6 +67,9 @@ export function OperationsCard({
             ))}
           </dl>
         )}
+        {!loading && !error && actions ? (
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-border/60 pt-4">{actions}</div>
+        ) : null}
       </CardContent>
     </Card>
   );
