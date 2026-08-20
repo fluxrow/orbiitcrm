@@ -13,13 +13,20 @@
 
 As estruturas materiais das Fases 1–4 existem no catálogo de produção e correspondem ao desenho versionado no repositório. O ledger de migrations, porém, termina em `20260820173745` e não contém as migrations tenant-ops criadas entre `20260819230541` e `20260820230000`. Isso confirma aplicação direta de DDL e drift do histórico.
 
-A migration `20260820235900_lovable_phase1_4_baseline_reconciliation.sql` cria um ponto de reconciliação idempotente, preserva decisões existentes de rollout, reduz grants anônimos e valida o contrato antes de concluir. Ela foi apenas versionada; aplicar ou reparar o ledger exige uma etapa separada e explicitamente autorizada.
+A migration `20260820235900_lovable_phase1_4_baseline_reconciliation.sql` cria um ponto de reconciliação idempotente, preserva decisões existentes de rollout, reduz grants anônimos e valida o contrato antes de concluir.
+
+Após autorização explícita, ela foi aplicada em 20/08/2026 pela integração interna do Lovable Cloud e registrada no ledger com:
+
+- versão `20260820235900`;
+- nome `lovable_phase1_4_baseline_reconciliation`;
+- idempotency key `orbit-phase0-20260820235900`.
 
 Consequentemente:
 
-- **Paridade de schema no escopo Fases 1–4:** comprovada com ressalvas descritas abaixo.
-- **Paridade do ledger de migrations:** ainda não concluída.
-- **Paridade total de 100%:** não pode ser declarada antes da aplicação controlada e reauditoria.
+- **Paridade de schema no escopo Fases 1–4:** comprovada.
+- **Ponto de reconciliação no ledger:** registrado e comprovado.
+- **Grants anônimos no escopo saneado:** zero após a aplicação.
+- **Paridade da baseline das Fases 1–4:** concluída para os objetos e contratos enumerados neste documento.
 
 ## Objetos confirmados
 
@@ -55,7 +62,7 @@ As policies relevantes estão direcionadas a `authenticated` e filtram tenant ou
 - `orbit_onboarding_implementation_drafts`;
 - `orbit_whatsapp_outbox`.
 
-RLS sem policy para `anon` impede acesso normal a linhas, mas manter privilégios de tabela aumenta a superfície e viola o baseline de menor privilégio. A migration de reconciliação revoga esses grants.
+RLS sem policy para `anon` impedia acesso normal a linhas, mas manter privilégios de tabela aumentava a superfície e violava o baseline de menor privilégio. A migration de reconciliação revogou esses grants; a reauditoria retornou zero privilégios de tabela para `anon` no conjunto saneado.
 
 As colunas de token não possuem `SELECT` para `anon` ou `authenticated`. O catálogo ainda mostrava privilégios de escrita herdados de grants de tabela em algumas configurações. Esses caminhos devem ser testados antes de retirar grants de `authenticated`, para não interromper OAuth/configuração; o acesso por `anon` é revogado na reconciliação.
 
@@ -89,12 +96,25 @@ Estados sanitizados de WhatsApp:
 
 Esses números são fotografia do instante da consulta, não métricas permanentes.
 
-## Gates pendentes
+## Reauditoria pós-aplicação
 
-1. Revisar a migration de reconciliação.
-2. Executá-la em janela autorizada e registrar corretamente no ledger.
-3. Reconsultar grants, funções, views, flags e constraints.
-4. Confirmar que nenhuma fila/configuração operacional mudou.
-5. Só então declarar paridade total.
+Confirmado após o commit transacional:
+
+1. Migration presente no ledger.
+2. `fluxrow=true`; Bullink, Fábrica e Viver permanecem `false`.
+3. Zero grants de tabela para `anon` no conjunto saneado.
+4. Zero `EXECUTE` público nas RPCs auditadas.
+5. `orbit_tenant_ops_read` permanece invoker; funções mutáveis permanecem definer com `search_path=public`.
+6. As cinco views permanecem `security_invoker=true`.
+7. Zero sessão JIT ativa.
+8. Estados sanitizados das instâncias WhatsApp permaneceram inalterados.
+9. Pendentes, falhas e canceladas permaneceram inalteradas. A contagem `sent` da Bullink avançou em uma unidade durante a janela, compatível com processamento normal da fila ativa e sem relação com a migration de grants.
+
+## Gates arquiteturais seguintes
+
+- Desacoplar tenant da mutação de `profiles.empresa_id`.
+- Tornar JIT obrigatório para escrita cross-tenant após shadow mode.
+- Inventariar e consolidar wrappers das RPCs privilegiadas.
+- Introduzir idempotência uniforme nas ações administrativas.
 
 Nenhum tenant cliente deve receber novas flags ou mudanças funcionais durante esse saneamento.
