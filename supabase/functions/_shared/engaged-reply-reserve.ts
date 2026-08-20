@@ -26,6 +26,8 @@ export const RETAIN_REASON_RESERVE_CONVERSA = "ENGAGED_RESERVE_CONVERSA_LIMIT";
 export const ENGAGED_REPLY_RESERVE_TENANTS: Readonly<Record<string, number>> = {
   // Bullink
   "4f6b4a18-f3aa-4bfb-a13f-926e4a07ad18": 100,
+  // Viver Semijoias
+  "36f26579-66ad-4ef1-9788-141e4c727232": 100,
 };
 
 /**
@@ -41,6 +43,8 @@ export const ENGAGED_REPLY_RESERVE_TENANTS: Readonly<Record<string, number>> = {
 export const ENGAGED_REPLY_UNCAPPED_TENANTS: ReadonlySet<string> = new Set([
   // Bullink
   "4f6b4a18-f3aa-4bfb-a13f-926e4a07ad18",
+  // Viver Semijoias
+  "36f26579-66ad-4ef1-9788-141e4c727232",
 ]);
 
 export function engagedReplyUncapped(empresaId: string | null | undefined): boolean {

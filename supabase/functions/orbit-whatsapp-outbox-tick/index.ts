@@ -74,6 +74,7 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
 });
 
 const WORKER_ID = `outbox-${crypto.randomUUID().slice(0, 8)}`;
+const VIVER_SEMIJOIAS_EMPRESA_ID = "36f26579-66ad-4ef1-9788-141e4c727232";
 
 // Janela comercial para sources não urgentes
 const BUSINESS_TZ = "America/Sao_Paulo";
@@ -113,8 +114,9 @@ async function getSendingConfig(empresa_id: string): Promise<SendingConfig | nul
 }
 
 async function getDailyUsage(empresa_id: string): Promise<number> {
-  // Cota diária de warm-up: conta TODOS os envios reais do tenant no dia,
-  // qualquer source_type e qualquer payload_type. Sem bypass por origem.
+  // Cota diária de warm-up: por padrão conta todos os envios reais do tenant.
+  // Na Viver, o limite aprovado é de NOVOS contatos: ai_reply com inbound real
+  // validado e marcado pela reserva engajada não consome essa cota.
   const { count, error } = await supabase
     .from("orbit_whatsapp_outbox")
     .select("id", { count: "exact", head: true })
@@ -122,7 +124,19 @@ async function getDailyUsage(empresa_id: string): Promise<number> {
     .eq("status", "sent")
     .gte("sent_at", saoPauloDayStartIso());
   if (error) throw new Error(`daily_usage_query_failed: ${error.message}`);
-  return Number(count ?? 0);
+  const total = Number(count ?? 0);
+  if (empresa_id !== VIVER_SEMIJOIAS_EMPRESA_ID) return total;
+
+  const { count: engagedCount, error: engagedError } = await supabase
+    .from("orbit_whatsapp_outbox")
+    .select("id", { count: "exact", head: true })
+    .eq("empresa_id", empresa_id)
+    .eq("status", "sent")
+    .eq("source_type", "ai_reply")
+    .gte("sent_at", saoPauloDayStartIso())
+    .eq("metadata->>quota_reason", "engaged_reply_reserve");
+  if (engagedError) throw new Error(`engaged_daily_usage_query_failed: ${engagedError.message}`);
+  return Math.max(0, total - Number(engagedCount ?? 0));
 }
 
 async function bumpDailyUsage(empresa_id: string, delta: number): Promise<void> {

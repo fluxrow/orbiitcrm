@@ -3,6 +3,7 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   engagedReserveLimit,
+  engagedReplyUncapped,
   isEngagedReserveCandidate,
   validateEngagedInbound,
   countEngagedReserveUsedToday,
@@ -16,6 +17,7 @@ import {
 import { nextAttemptForRetain, RETAIN_REASON_DAILY, saoPauloDate } from "./outbox-quota.ts";
 
 const BULLINK = "4f6b4a18-f3aa-4bfb-a13f-926e4a07ad18";
+const VIVER = "36f26579-66ad-4ef1-9788-141e4c727232";
 const OTHER = "4de0ed22-0fe5-40ef-aaed-703dd3070291"; // Fluxrow
 const CUTOFF = "2026-08-11T19:34:16.656913Z";
 const CONVERSA = "c0000000-0000-4000-8000-000000000001";
@@ -51,9 +53,13 @@ const conversa = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-Deno.test("R1 reserva habilitada só no Bullink, teto 100", () => {
+Deno.test("R1 reserva habilitada só nos tenants autorizados, teto 100", () => {
   assertEquals(engagedReserveLimit(BULLINK), 100);
+  assertEquals(engagedReserveLimit(VIVER), 100);
+  assertEquals(engagedReplyUncapped(BULLINK), true);
+  assertEquals(engagedReplyUncapped(VIVER), true);
   assertEquals(engagedReserveLimit(OTHER), 0);
+  assertEquals(engagedReplyUncapped(OTHER), false);
   assertEquals(engagedReserveLimit(null), 0);
   assertEquals(ENGAGED_RESERVE_CONVERSA_LIMIT, 30);
 });
