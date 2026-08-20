@@ -45,6 +45,7 @@ import TarefasPage from "./pages/orbit/TarefasPage";
 import OnboardingPage from "./pages/orbit/OnboardingPage";
 import ClientOnboardingPage from "./pages/public/ClientOnboardingPage";
 import NovaCampanhaPage from "./pages/orbit/NovaCampanhaPage";
+import TenantOperationsPage from "./pages/orbit/TenantOperationsPage";
 
 // PE Admin Pages
 import PeAdminLayout from "./pages/pe-admin/PeAdminLayout";
@@ -170,6 +171,7 @@ function OrbitRoutes() {
       <Route path="onboarding" element={<SuperAdminRoute><OnboardingPage /></SuperAdminRoute>} />
       <Route path="meu-plano" element={<MeuPlanoPage />} />
       <Route path="usuarios" element={<UsuariosEmpresaPage />} />
+      <Route path="operacoes" element={<TenantOperationsPage />} />
     </Routes>
   );
 }

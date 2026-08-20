@@ -15,14 +15,16 @@ export function useOrbitConversas(canal?: string, matchedIds?: string[]) {
 
   // Real-time subscription
   useEffect(() => {
+    if (!empresaId) return;
     const channel = supabase
-      .channel("orbit_conversas_changes")
+      .channel(`orbit_conversas_changes_${empresaId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "orbit_conversas",
+          filter: `empresa_id=eq.${empresaId}`,
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["orbit_conversas"] });
@@ -33,7 +35,7 @@ export function useOrbitConversas(canal?: string, matchedIds?: string[]) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [empresaId, queryClient]);
 
   return useQuery({
     queryKey: ["orbit_conversas", empresaId, canal, matchedIds],
@@ -84,6 +86,7 @@ export function useOrbitConversa(id: string | undefined) {
           human_user:profiles!orbit_conversas_human_user_id_fkey(id, nome)
         `)
         .eq("id", id)
+        .eq("empresa_id", empresaId!)
         .single();
       if (error) throw error;
       return data;
@@ -94,6 +97,7 @@ export function useOrbitConversa(id: string | undefined) {
 
 export function useUpdateConversa() {
   const queryClient = useQueryClient();
+  const { empresaId } = useTenant();
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: ConversaUpdate & { id: string }) => {
@@ -101,6 +105,7 @@ export function useUpdateConversa() {
         .from("orbit_conversas")
         .update(updates)
         .eq("id", id)
+        .eq("empresa_id", empresaId!)
         .select()
         .single();
       if (error) throw error;
@@ -115,32 +120,28 @@ export function useUpdateConversa() {
 
 /**
  * Assumir conversa: humano passa a ser o responsável.
- * Sempre grava human_talk=true + human_user_id do usuário autenticado, com escopo
- * de empresa (RLS). Nunca gera resposta: só troca a posse.
+ * RPC atômica valida auth.uid()/tenant e grava human_talk + responsável.
+ * Nunca gera resposta: só troca a posse.
  */
 export function useStartHumanTakeover() {
   const queryClient = useQueryClient();
-  const { empresaId } = useTenant();
 
   return useMutation({
-    mutationFn: async ({ conversa_id, user_id }: { conversa_id: string; user_id?: string }) => {
-      const { data: auth } = await supabase.auth.getUser();
-      const uid = auth?.user?.id || user_id || null;
-      if (!uid) throw new Error("Sessão expirada: entre novamente para assumir a conversa.");
-
-      let query = supabase
-        .from("orbit_conversas")
-        .update({ human_talk: true, human_user_id: uid, ai_processing: false })
-        .eq("id", conversa_id);
-      if (empresaId) query = query.eq("empresa_id", empresaId);
-
-      const { data, error } = await query.select().single();
+    mutationFn: async (conversa_id: string) => {
+      const { data, error } = await supabase.rpc("orbit_take_conversa", {
+        p_conversa_id: conversa_id,
+      });
       if (error) throw error;
-      return data;
+
+      const result = (data ?? {}) as { ok?: boolean; error?: string };
+      if (!result.ok) {
+        throw new Error(result.error || "Não foi possível assumir a conversa.");
+      }
+      return result;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (_, conversa_id) => {
       queryClient.invalidateQueries({ queryKey: ["orbit_conversas"] });
-      queryClient.invalidateQueries({ queryKey: ["orbit_conversa", variables.conversa_id] });
+      queryClient.invalidateQueries({ queryKey: ["orbit_conversa", conversa_id] });
     },
   });
 }
@@ -185,13 +186,15 @@ export function useEndHumanTakeover() {
 
 export function useMarkConversaAsRead() {
   const queryClient = useQueryClient();
+  const { empresaId } = useTenant();
 
   return useMutation({
     mutationFn: async (conversa_id: string) => {
       const { error } = await supabase
         .from("orbit_conversas")
         .update({ mensagens_nao_lidas: 0 })
-        .eq("id", conversa_id);
+        .eq("id", conversa_id)
+        .eq("empresa_id", empresaId!);
       if (error) throw error;
     },
     onSuccess: (_, conversa_id) => {

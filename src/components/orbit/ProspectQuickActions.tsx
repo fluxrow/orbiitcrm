@@ -39,6 +39,7 @@ export function ProspectQuickActions({ prospect }: Props) {
       const { data: conv, error } = await supabase
         .from("orbit_conversas")
         .select("id, empresa_id, human_talk, human_user_id, prospect:orbit_prospects!orbit_conversas_prospect_id_fkey(created_at)")
+        .eq("empresa_id", empresaId!)
         .eq("prospect_id", prospect.id)
         .eq("status", "aberta")
         .order("created_at", { ascending: false })
@@ -52,15 +53,13 @@ export function ProspectQuickActions({ prospect }: Props) {
       const pausingIA = !conv.human_talk;
 
       if (pausingIA) {
-        // Assumir: humano vira responsável explícito.
-        const { data: auth } = await supabase.auth.getUser();
-        const uid = auth?.user?.id;
-        if (!uid) throw new Error("Sessão expirada: entre novamente.");
-        const { error: upErr } = await supabase
-          .from("orbit_conversas")
-          .update({ human_talk: true, human_user_id: uid, ai_processing: false })
-          .eq("id", conv.id);
-        if (upErr) throw upErr;
+        // Assumir: RPC atômica valida sessão, tenant e grava o responsável.
+        const { data: takeResult, error: takeError } = await supabase.rpc("orbit_take_conversa", {
+          p_conversa_id: conv.id,
+        });
+        if (takeError) throw takeError;
+        const result = (takeResult ?? {}) as { ok?: boolean; error?: string };
+        if (!result.ok) throw new Error(result.error || "Não foi possível assumir a conversa.");
         toast.success("IA pausada — você assumiu a conversa");
       } else {
         // Devolver para IA: respeita modo automático e corte do tenant.
@@ -81,12 +80,13 @@ export function ProspectQuickActions({ prospect }: Props) {
         const { error: upErr } = await supabase
           .from("orbit_conversas")
           .update({ human_talk: false, human_user_id: null, ai_processing: false })
-          .eq("id", conv.id);
+          .eq("id", conv.id)
+          .eq("empresa_id", empresaId!);
         if (upErr) throw upErr;
         toast.success("IA reativada — sem resposta retroativa");
       }
 
-      qc.invalidateQueries({ queryKey: ["orbit-conversas"] });
+      qc.invalidateQueries({ queryKey: ["orbit_conversas"] });
     } catch (err: any) {
       toast.error(`Erro: ${err.message}`);
     } finally {

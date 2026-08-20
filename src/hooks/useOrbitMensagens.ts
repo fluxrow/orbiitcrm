@@ -3,28 +3,30 @@ import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { handleApiResponse } from "@/lib/api-envelope";
 import type { Tables } from "@/integrations/supabase/types";
+import { useTenant } from "@/contexts/TenantContext";
 
 type Mensagem = Tables<"orbit_mensagens">;
 
 export function useOrbitMensagens(conversa_id: string | undefined) {
   const queryClient = useQueryClient();
+  const { empresaId } = useTenant();
 
   // Real-time subscription
   useEffect(() => {
-    if (!conversa_id) return;
+    if (!conversa_id || !empresaId) return;
 
     const channel = supabase
-      .channel(`orbit_mensagens_${conversa_id}`)
+      .channel(`orbit_mensagens_${empresaId}_${conversa_id}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "orbit_mensagens",
-          filter: `conversa_id=eq.${conversa_id}`,
+          filter: `empresa_id=eq.${empresaId}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ["orbit_mensagens", conversa_id] });
+          queryClient.invalidateQueries({ queryKey: ["orbit_mensagens", empresaId, conversa_id] });
         }
       )
       .subscribe();
@@ -32,21 +34,22 @@ export function useOrbitMensagens(conversa_id: string | undefined) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [conversa_id, queryClient]);
+  }, [conversa_id, empresaId, queryClient]);
 
   return useQuery({
-    queryKey: ["orbit_mensagens", conversa_id],
+    queryKey: ["orbit_mensagens", empresaId, conversa_id],
     queryFn: async () => {
       if (!conversa_id) return [];
       const { data, error } = await supabase
         .from("orbit_mensagens")
         .select("*")
         .eq("conversa_id", conversa_id)
+        .eq("empresa_id", empresaId!)
         .order("timestamp", { ascending: true });
       if (error) throw error;
       return data;
     },
-    enabled: !!conversa_id,
+    enabled: !!conversa_id && !!empresaId,
   });
 }
 
@@ -89,7 +92,7 @@ export function useSendMensagem() {
       return handleApiResponse(response);
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["orbit_mensagens", variables.conversa_id] });
+      queryClient.invalidateQueries({ queryKey: ["orbit_mensagens"] });
       queryClient.invalidateQueries({ queryKey: ["orbit_conversas"] });
     },
   });

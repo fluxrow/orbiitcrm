@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -49,26 +49,32 @@ export function TenantProvider({ children }: TenantProviderProps) {
   const { slug } = useParams<{ slug: string }>();
   const { user } = useAuth();
   const [state, setState] = useState<TenantState>(defaultState);
+  const loadRequestRef = useRef(0);
 
   useEffect(() => {
+    const requestId = ++loadRequestRef.current;
     if (!user) {
-      setState(s => ({ ...s, isLoading: false }));
+      setState({ ...defaultState, isLoading: false });
       return;
     }
 
     if (slug) {
-      loadSlugTenant(slug);
+      // Fail closed while resolving a new route. Never render/cache the prior
+      // tenant underneath a new slug, even for a single frame.
+      setState({ ...defaultState, slug, basePath: `/${slug}`, isLoading: true });
+      loadSlugTenant(slug, requestId);
     }
   }, [user?.id, slug]);
 
-  async function loadSlugTenant(slugParam: string) {
+  async function loadSlugTenant(slugParam: string, requestId: number) {
+    const isCurrentRequest = () => loadRequestRef.current === requestId;
     try {
       const { data, error } = await supabase.rpc("get_empresa_by_slug", {
         p_slug: slugParam,
       });
 
       if (error || !data) {
-        setState(s => ({ ...s, isLoading: false, notFound: true }));
+        if (isCurrentRequest()) setState(s => ({ ...s, isLoading: false, notFound: true }));
         return;
       }
 
@@ -91,7 +97,7 @@ export function TenantProvider({ children }: TenantProviderProps) {
         profile?.empresa_id === empresaId || !!membership || !!isSuperAdmin;
 
       if (!belongsToEmpresa) {
-        setState(s => ({
+        if (isCurrentRequest()) setState(s => ({
           ...s,
           isLoading: false,
           isBlocked: true,
@@ -106,9 +112,11 @@ export function TenantProvider({ children }: TenantProviderProps) {
       // a user with access to multiple empresas (e.g. Promotrip + Fluxrow) would see
       // data from their "home" tenant on every other tenant's screens.
       if (profile?.empresa_id !== empresaId) {
-        await supabase.rpc("switch_active_empresa", { p_empresa_id: empresaId });
+        const { error: switchError } = await supabase.rpc("switch_active_empresa", { p_empresa_id: empresaId });
+        if (switchError) throw switchError;
       }
 
+      if (!isCurrentRequest()) return;
       setState({
         empresaId,
         slug: slugParam,
@@ -125,7 +133,7 @@ export function TenantProvider({ children }: TenantProviderProps) {
         notFound: false,
       });
     } catch {
-      setState(s => ({ ...s, isLoading: false, notFound: true }));
+      if (isCurrentRequest()) setState(s => ({ ...s, isLoading: false, notFound: true }));
     }
   }
 

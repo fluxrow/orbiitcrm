@@ -332,6 +332,7 @@ export default function ProspectsPage() {
                     let { data: conversa } = await supabase
                       .from("orbit_conversas")
                       .select("id")
+                      .eq("empresa_id", pr.empresa_id)
                       .eq("prospect_id", pr.id)
                       .eq("status", "aberta")
                       .maybeSingle();
