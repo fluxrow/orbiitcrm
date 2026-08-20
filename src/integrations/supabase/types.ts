@@ -5575,6 +5575,14 @@ export type Database = {
       }
     }
     Functions: {
+      orbit_take_conversa: {
+        Args: { p_conversa_id: string }
+        Returns: Json
+      }
+      orbit_tenant_ops_read: {
+        Args: { p_section?: string }
+        Returns: Json
+      }
       _build_orbit_zapi_public_response: {
         Args: { p_config_id: string }
         Returns: Json

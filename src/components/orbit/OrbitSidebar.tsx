@@ -15,6 +15,7 @@ import {
   Building2,
   ClipboardList,
   Shield,
+  Activity,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { usePlanGuard } from "@/hooks/usePlanGuard";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { EmpresaSwitcher } from "@/components/orbit/EmpresaSwitcher";
+import { useTenantOperationsFeature } from "@/hooks/useTenantOperations";
 import {
   Tooltip,
   TooltipContent,
@@ -75,6 +77,7 @@ export function OrbitSidebar() {
   };
 
   const { canUseFeature } = usePlanGuard();
+  const { enabled: tenantOperationsEnabled } = useTenantOperationsFeature();
 
   const navigation: Array<{ name: string; href: string; icon: LucideIcon; badge?: number; badgeLabel?: string; featured?: boolean }> = [
     { name: "Funil", href: `${basePath}/funil`, icon: Kanban, featured: true },
@@ -87,6 +90,7 @@ export function OrbitSidebar() {
     ...(canUseFeature("whatsapp") || canUseFeature("email") ? [{ name: "Campanhas", href: `${basePath}/campanhas`, icon: Mail }] : []),
     { name: "Templates", href: `${basePath}/templates`, icon: FileText },
     { name: "Analytics", href: `${basePath}/analytics`, icon: BarChart3 },
+    ...(isAdmin && tenantOperationsEnabled ? [{ name: "Operações", href: `${basePath}/operacoes`, icon: Activity }] : []),
     ...(isAdmin ? [{ name: "Meu Plano", href: `${basePath}/meu-plano`, icon: CreditCard }] : []),
     { name: "Configurações", href: `${basePath}/config`, icon: Settings },
   ];

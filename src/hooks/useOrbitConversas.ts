@@ -115,32 +115,28 @@ export function useUpdateConversa() {
 
 /**
  * Assumir conversa: humano passa a ser o responsável.
- * Sempre grava human_talk=true + human_user_id do usuário autenticado, com escopo
- * de empresa (RLS). Nunca gera resposta: só troca a posse.
+ * RPC atômica valida auth.uid()/tenant e grava human_talk + responsável.
+ * Nunca gera resposta: só troca a posse.
  */
 export function useStartHumanTakeover() {
   const queryClient = useQueryClient();
-  const { empresaId } = useTenant();
 
   return useMutation({
-    mutationFn: async ({ conversa_id, user_id }: { conversa_id: string; user_id?: string }) => {
-      const { data: auth } = await supabase.auth.getUser();
-      const uid = auth?.user?.id || user_id || null;
-      if (!uid) throw new Error("Sessão expirada: entre novamente para assumir a conversa.");
-
-      let query = supabase
-        .from("orbit_conversas")
-        .update({ human_talk: true, human_user_id: uid, ai_processing: false })
-        .eq("id", conversa_id);
-      if (empresaId) query = query.eq("empresa_id", empresaId);
-
-      const { data, error } = await query.select().single();
+    mutationFn: async (conversa_id: string) => {
+      const { data, error } = await supabase.rpc("orbit_take_conversa", {
+        p_conversa_id: conversa_id,
+      });
       if (error) throw error;
-      return data;
+
+      const result = (data ?? {}) as { ok?: boolean; error?: string };
+      if (!result.ok) {
+        throw new Error(result.error || "Não foi possível assumir a conversa.");
+      }
+      return result;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (_, conversa_id) => {
       queryClient.invalidateQueries({ queryKey: ["orbit_conversas"] });
-      queryClient.invalidateQueries({ queryKey: ["orbit_conversa", variables.conversa_id] });
+      queryClient.invalidateQueries({ queryKey: ["orbit_conversa", conversa_id] });
     },
   });
 }

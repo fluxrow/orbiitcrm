@@ -163,7 +163,7 @@ export default function ConversasPage() {
 
   const handleAssume = async () => {
     try {
-      await assume.mutateAsync({ conversa_id: active!.id, user_id: user?.id });
+      await assume.mutateAsync(active!.id);
       toast.success("Você assumiu esta conversa. A IA não responderá.");
     } catch (e: any) {
       toast.error(e?.message || "Não foi possível assumir a conversa.");
