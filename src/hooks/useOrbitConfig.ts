@@ -1,11 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesUpdate } from "@/integrations/supabase/types";
+import { useTenant } from "@/contexts/TenantContext";
+import { isTenantFeatureEnabled } from "@/lib/tenant-explicit-mutations";
+
+export const TENANT_CONFIG_GOVERNANCE_WAVE3_FLAG =
+  "tenant_config_governance_wave3_v1" as const;
 
 type AIConfig = Tables<"orbit_ai_config">;
 type AIConfigUpdate = TablesUpdate<"orbit_ai_config">;
 type ResendConfig = Tables<"orbit_resend_config">;
 type ResendConfigUpdate = TablesUpdate<"orbit_resend_config">;
+
+// Secret material is intentionally excluded from every browser read.
+const AI_CONFIG_SAFE_COLS =
+  "id,tom_conversa,modo_automatico,responder_fora_horario,horario_inicio,horario_fim,mensagem_boas_vindas,mensagem_fora_horario,created_at,updated_at,empresa_id,idioma,max_tokens,tempo_espera,tts_ativo,tts_provider,tts_voice_id,tts_modo,prompt_identidade,prompt_roteiro,prompt_regras,campos_qualificacao,knowledge_base_enabled,modelo_ia,advisor_locked_paths,advisor_thresholds,advisor_playbook_flow_prefixes,inbound_image_understanding_enabled,inbound_audio_transcription_enabled,scheduling_mode,scheduling_handoff_whatsapp,scheduling_handoff_message,scheduling_meeting_duration_minutes,notification_recipient_whatsapp,auto_reply_new_leads_from,block_email_collection,strict_commercial_stage_guard,commercial_stage_v2_enabled,campos_cadastro_obrigatorios,block_location_collection,primary_offer_lock,block_identity_split,ai_reply_debounce,mixed_payment_handoff,self_introduction_guard,false_benefits_guard";
 
 export interface OrbitZAPIConfigView {
   id: string;
@@ -39,7 +48,7 @@ export function useOrbitAIConfig(empresaId?: string | null) {
   return useQuery({
     queryKey: ["orbit_ai_config", empresaId],
     queryFn: async () => {
-      let query = supabase.from("orbit_ai_config").select("*");
+      let query = supabase.from("orbit_ai_config").select(AI_CONFIG_SAFE_COLS);
       if (empresaId) {
         query = query.eq("empresa_id", empresaId);
       }
@@ -53,15 +62,33 @@ export function useOrbitAIConfig(empresaId?: string | null) {
 
 export function useUpdateAIConfig() {
   const queryClient = useQueryClient();
+  const { empresaId: contextEmpresaId, slug } = useTenant();
 
   return useMutation({
     mutationFn: async (updates: AIConfigUpdate & { empresa_id?: string | null }) => {
-      const empresaId = updates.empresa_id;
-      // First check if config exists for this empresa
-      let existingQuery = supabase.from("orbit_ai_config").select("id");
-      if (empresaId) {
-        existingQuery = existingQuery.eq("empresa_id", empresaId);
+      const empresaId = contextEmpresaId;
+      if (!empresaId || !slug) throw new Error("TENANT_CONTEXT_MISSING");
+      if (updates.empresa_id && updates.empresa_id !== empresaId) {
+        throw new Error("TENANT_CONTEXT_MISMATCH");
       }
+      if (await isTenantFeatureEnabled(empresaId, TENANT_CONFIG_GOVERNANCE_WAVE3_FLAG)) {
+        const { id: _id, empresa_id: _empresaId, created_at: _createdAt,
+          updated_at: _updatedAt, ...rawPayload } = updates;
+        const payload = Object.fromEntries(
+          Object.entries(rawPayload).filter(([key, value]) =>
+            value !== undefined && !(key === "tts_api_key" && value === "")),
+        );
+        const { data, error } = await (supabase.rpc as any)("orbit_tenant_config_mutate_scoped", {
+          p_tenant_slug: slug,
+          p_config_type: "ai",
+          p_payload: payload,
+        });
+        if (error) throw error;
+        return (data as any)?.data as AIConfig;
+      }
+      // First check if config exists for this empresa
+      let existingQuery = supabase.from("orbit_ai_config").select("id")
+        .eq("empresa_id", empresaId);
       const { data: existing } = await existingQuery.maybeSingle();
 
       if (existing) {
@@ -69,7 +96,7 @@ export function useUpdateAIConfig() {
           .from("orbit_ai_config")
           .update(updates)
           .eq("id", existing.id)
-          .select()
+          .select(AI_CONFIG_SAFE_COLS)
           .single();
         if (error) throw error;
         return data;
@@ -77,7 +104,7 @@ export function useUpdateAIConfig() {
         const { data, error } = await supabase
           .from("orbit_ai_config")
           .insert({ ...updates, empresa_id: empresaId } as any)
-          .select()
+          .select(AI_CONFIG_SAFE_COLS)
           .single();
         if (error) throw error;
         return data;
@@ -232,12 +259,32 @@ export function useOrbitResendConfig(empresaId?: string | null) {
 
 export function useUpdateResendConfig() {
   const queryClient = useQueryClient();
+  const { empresaId: contextEmpresaId, slug } = useTenant();
 
   return useMutation({
     mutationFn: async (updates: ResendConfigUpdate & { api_key?: string; dominio_verificado?: string; email_teste?: string; empresa_id?: string | null }) => {
-      const empresaId = updates.empresa_id;
-      let existingQ = supabase.from("orbit_resend_config").select("id");
-      if (empresaId) existingQ = existingQ.eq("empresa_id", empresaId);
+      const empresaId = contextEmpresaId;
+      if (!empresaId || !slug) throw new Error("TENANT_CONTEXT_MISSING");
+      if (updates.empresa_id && updates.empresa_id !== empresaId) {
+        throw new Error("TENANT_CONTEXT_MISMATCH");
+      }
+      if (await isTenantFeatureEnabled(empresaId, TENANT_CONFIG_GOVERNANCE_WAVE3_FLAG)) {
+        const { id: _id, empresa_id: _empresaId, created_at: _createdAt,
+          updated_at: _updatedAt, ...rawPayload } = updates;
+        const payload = Object.fromEntries(
+          Object.entries(rawPayload).filter(([key, value]) =>
+            value !== undefined && !(key === "api_key" && value === "")),
+        );
+        const { data, error } = await (supabase.rpc as any)("orbit_tenant_config_mutate_scoped", {
+          p_tenant_slug: slug,
+          p_config_type: "resend",
+          p_payload: payload,
+        });
+        if (error) throw error;
+        return (data as any)?.data as ResendConfig;
+      }
+      let existingQ = supabase.from("orbit_resend_config").select("id")
+        .eq("empresa_id", empresaId);
       const { data: existing } = await existingQ.maybeSingle();
 
       if (existing) {
