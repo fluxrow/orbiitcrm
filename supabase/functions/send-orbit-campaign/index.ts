@@ -7,6 +7,7 @@ import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 import { checkCampaignRecipientEligibility, markRecipientIgnorado } from "../_shared/campaign-safety.ts";
+import { claimCampaignDispatchAuthorization } from "../_shared/campaign-dispatch-authorization.ts";
 import {
   WARMUP_SCALE,
   getEffectiveDailyLimit,
@@ -210,6 +211,33 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (campaign.aprovacao_status !== "aprovada") {
       return fail(ErrorCodes.VALIDATION_ERROR, "Campanha não aprovada", 400, undefined, req);
+    }
+
+    // ── Dispatch authorization gate ──
+    // While the tenant flag is false this is an inert shadow pass. Once enabled,
+    // the database atomically consumes a single approved authorization before
+    // this function changes campaign state or contacts any provider.
+    let dispatchClaim;
+    try {
+      dispatchClaim = await claimCampaignDispatchAuthorization(supabase, campaign_id);
+    } catch (claimError: any) {
+      console.error("[send-campaign] dispatch authorization unavailable", claimError);
+      return fail(
+        ErrorCodes.INTERNAL_ERROR,
+        "Não foi possível validar a autorização de disparo.",
+        503,
+        { code: "CAMPAIGN_DISPATCH_GATE_UNAVAILABLE" },
+        req,
+      );
+    }
+    if (!dispatchClaim.allowed) {
+      return fail(
+        ErrorCodes.UNAUTHORIZED,
+        "A campanha não possui uma autorização de disparo válida.",
+        403,
+        { code: dispatchClaim.reason, gate_enabled: dispatchClaim.gate_enabled },
+        req,
+      );
     }
 
     // ── Plan enforcement ──

@@ -93,7 +93,16 @@ Deno.serve(async (req) => {
         const json = await resp.json().catch(() => ({}));
         const ok = resp.ok && (json?.ok === true);
         if (ok) dispatched++;
-        else errors++;
+        else {
+          errors++;
+          // A claim de status não deve deixar a campanha presa quando qualquer
+          // gate downstream (incluindo autorização) rejeitar o disparo.
+          await supabase
+            .from("orbit_campaigns")
+            .update({ status: "agendada" })
+            .eq("id", c.id)
+            .eq("status", "aprovada_para_envio");
+        }
         results.push({ id: c.id, ok, http: resp.status, error: json?.error ?? null });
         console.log(JSON.stringify({
           scope: "campaign_scheduler_tick", tick_id: tickId, campaign_id: c.id,

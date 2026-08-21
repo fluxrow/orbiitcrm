@@ -225,6 +225,19 @@ O gate só poderá ser ativado no canário depois que `send-orbit-campaign` e o
 scheduler exigirem uma autorização aprovada, não expirada, não consumida e
 compatível com o snapshot atual. Até lá, esta fundação permanece inerte.
 
+#### Parte 4.3c1 — enforcement em shadow mode
+
+`orbit_campaign_dispatch_claim` é uma RPC exclusiva do `service_role`. Com a
+flag desligada, retorna o caminho inerte sem ler ou alterar autorizações. Quando
+ativada futuramente, ela bloqueia a campanha até encontrar autorização aprovada,
+não expirada e compatível com snapshot e volume, consumindo-a atomicamente uma
+única vez. Retomadas aceitam somente a autorização já consumida da mesma
+campanha em estado de execução.
+
+`send-orbit-campaign` executa esse claim antes de alterar status, consumir plano
+ou chamar provedores. O scheduler restaura `agendada` se qualquer gate downstream
+rejeitar o início, evitando campanhas presas em `aprovada_para_envio`.
+
 ## Gates de promoção
 
 - CI verde: instalação limpa, TypeScript, testes e build.

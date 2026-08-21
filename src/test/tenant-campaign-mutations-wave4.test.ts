@@ -6,6 +6,10 @@ const read = (path: string) => readFileSync(resolve(__dirname, path), "utf8");
 const migration = read("../../supabase/migrations/20260821183043_tenant_campaign_mutations_wave4_part3b.sql");
 const atomicMigration = read("../../supabase/migrations/20260821184552_tenant_campaign_atomic_draft_wave4_part3b.sql");
 const dispatchPreflight = read("../../supabase/migrations/20260821185359_tenant_campaign_dispatch_preflight_wave4_part3c.sql");
+const dispatchEnforcement = read("../../supabase/migrations/20260821190307_tenant_campaign_dispatch_shadow_enforcement_wave4_part3c.sql");
+const sendCampaign = read("../../supabase/functions/send-orbit-campaign/index.ts");
+const campaignScheduler = read("../../supabase/functions/orbit-campaign-scheduler-tick/index.ts");
+const dispatchHelper = read("../../supabase/functions/_shared/campaign-dispatch-authorization.ts");
 const helper = read("../lib/tenant-campaign-mutations.ts");
 const campaigns = read("../hooks/useOrbitCampaigns.ts");
 const wizard = read("../components/orbit/CampaignWizardContent.tsx");
@@ -66,5 +70,20 @@ describe("tenant campaign mutations wave 4.3b", () => {
     expect(dispatchPreflight).toContain("orbit_tenant_campaign_dispatch_preflight_scoped");
     expect(dispatchPreflight).toContain("'dispatch_gate_active',false");
     expect(dispatchPreflight).not.toContain("send-orbit-campaign");
+  });
+
+  it("enforces authorization server-side while the rollout remains inert", () => {
+    expect(dispatchEnforcement).toContain("CAMPAIGN_DISPATCH_GATE_MUST_REMAIN_DISABLED");
+    expect(dispatchEnforcement).toContain("IF NOT v_gate_enabled THEN");
+    expect(dispatchEnforcement).toContain("'mode','shadow_legacy'");
+    expect(dispatchEnforcement).toContain("FOR UPDATE SKIP LOCKED");
+    expect(dispatchEnforcement).toContain("SET status='consumed'");
+    expect(dispatchEnforcement).toContain("FROM PUBLIC,anon,authenticated");
+    expect(dispatchEnforcement).toContain("TO service_role");
+    expect(dispatchHelper).toContain('"orbit_campaign_dispatch_claim"');
+    expect(sendCampaign).toContain("claimCampaignDispatchAuthorization");
+    expect(sendCampaign.indexOf("claimCampaignDispatchAuthorization(supabase, campaign_id)"))
+      .toBeLessThan(sendCampaign.indexOf('update({ status: "enviando" })'));
+    expect(campaignScheduler).toContain('update({ status: "agendada" })');
   });
 });
