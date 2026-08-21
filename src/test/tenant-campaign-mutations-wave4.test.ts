@@ -21,6 +21,7 @@ const review = read("../components/orbit/CampaignReviewDialog.tsx");
 const permissionsHook = read("../hooks/useTenantCampaignPermissions.ts");
 const permissionsDialog = read("../components/orbit/CampaignPermissionsDialog.tsx");
 const configUsers = read("../components/orbit/ConfigUsersTab.tsx");
+const configPage = read("../pages/orbit/ConfigPage.tsx");
 
 describe("tenant campaign mutations wave 4.3b", () => {
   it("keeps the rollout canary-only and dispatch outside the contract", () => {
@@ -141,6 +142,7 @@ describe("tenant campaign mutations wave 4.3b", () => {
     expect(permissionsDialog).toContain("Não libera envio real sozinho");
     expect(configUsers).toContain('slug === "fluxrow"');
     expect(configUsers).toContain("CampaignPermissionsDialog");
+    expect(configPage).toContain("isOrgAdmin || isSuperAdmin");
     expect(campaignsPage).toContain("useTenantCampaignCapabilities");
     expect(campaignsPage).toContain("canDispatch={canDispatchCampaign}");
     expect(review).toContain("canApprove &&");

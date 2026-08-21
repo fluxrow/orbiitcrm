@@ -408,7 +408,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
           <TabsTrigger value="pipeline"><Workflow className="h-4 w-4 mr-2" />Pipeline</TabsTrigger>
           <TabsTrigger value="fluxos"><GitBranch className="h-4 w-4 mr-2" />Fluxos</TabsTrigger>
           <TabsTrigger value="lead-sources"><Webhook className="h-4 w-4 mr-2" />Fontes de Lead</TabsTrigger>
-          {isOrgAdmin && <TabsTrigger value="users"><Users className="h-4 w-4 mr-2" />Usuários</TabsTrigger>}
+          {(isOrgAdmin || isSuperAdmin) && <TabsTrigger value="users"><Users className="h-4 w-4 mr-2" />Usuários</TabsTrigger>}
           <TabsTrigger value="flow-templates"><Layers className="h-4 w-4 mr-2" />Templates</TabsTrigger>
           {isSuperAdmin && <TabsTrigger value="health"><Activity className="h-4 w-4 mr-2" />Saúde do Sistema</TabsTrigger>}
         </TabsList>
@@ -1929,7 +1929,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
         <TabsContent value="agenda">
           {empresaId ? <AgendaConfigTab empresaId={empresaId} /> : <div className="text-sm text-muted-foreground">Selecione uma empresa para configurar a agenda.</div>}
         </TabsContent>
-        {isOrgAdmin && (
+        {(isOrgAdmin || isSuperAdmin) && (
           <TabsContent value="users">
             <ConfigUsersTab />
           </TabsContent>
