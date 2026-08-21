@@ -12,6 +12,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useOrbitLeadSources } from "@/hooks/useOrbitLeadSources";
 import type { OrbitFlow } from "@/hooks/useOrbitFlows";
+import { mutateTenantFlowScoped, usesScopedFlows } from "@/hooks/useOrbitFlows";
+import { useTenant } from "@/contexts/TenantContext";
 
 type PayloadMatch = { uid: string; key: string; value: string };
 
@@ -40,6 +42,7 @@ export function FlowConditionsDialog({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
+  const { slug } = useTenant();
   const { data: sources } = useOrbitLeadSources(empresaId);
   const [cond, setCond] = useState<Conditions>({});
   const [payloadRows, setPayloadRows] = useState<PayloadMatch[]>([]);
@@ -113,9 +116,16 @@ export function FlowConditionsDialog({
       const v = (next as any)[k];
       if (v === "" || v === undefined || v === null || v === false) delete (next as any)[k];
     });
-    const { error } = await (supabase.from("orbit_flows" as any) as any)
-      .update({ condicoes: next })
-      .eq("id", flow.id);
+    let error: any = null;
+    if (await usesScopedFlows(empresaId, slug)) {
+      try { await mutateTenantFlowScoped(slug!, "update_conditions", flow.id, { condicoes: next }); }
+      catch (caught) { error = caught; }
+    } else {
+      const result = await (supabase.from("orbit_flows" as any) as any)
+        .update({ condicoes: next })
+        .eq("id", flow.id);
+      error = result.error;
+    }
     setSaving(false);
     if (error) {
       toast.error(`Erro: ${error.message}`);

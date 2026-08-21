@@ -1,12 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import type { OrbitFlowAction } from "./useOrbitFlows";
+import { mutateTenantFlowScoped, usesScopedFlows, type OrbitFlowAction } from "./useOrbitFlows";
+import { useTenant } from "@/contexts/TenantContext";
 
 // Persiste nova ordem de várias ações em um único upsert em lote,
 // com atualização otimista do cache (UI reflete instantaneamente) e
 // rollback caso o servidor falhe.
 export function useReorderFlowActions() {
   const qc = useQueryClient();
+  const { empresaId, slug } = useTenant();
   return useMutation({
     mutationFn: async ({
       flow_id,
@@ -22,6 +24,10 @@ export function useReorderFlowActions() {
         .map((a, i) => ({ ...a, ordem: i }))
         .filter((a) => prevById.get(a.id) !== a.ordem);
       if (!changed.length) return { changed: 0 };
+      if (await usesScopedFlows(empresaId, slug)) {
+        await mutateTenantFlowScoped(slug!, "reorder_actions", flow_id, { ordered_ids: ordered.map((a) => a.id) });
+        return { changed: changed.length };
+      }
       const rows = changed.map((a) => ({
         id: a.id,
         flow_id: a.flow_id,
@@ -35,7 +41,7 @@ export function useReorderFlowActions() {
       return { changed: changed.length };
     },
     onMutate: async ({ flow_id, ordered }) => {
-      const key = ["orbit-flow-actions", flow_id];
+      const key = ["orbit-flow-actions", empresaId, slug, flow_id];
       await qc.cancelQueries({ queryKey: key });
       const snapshot = qc.getQueryData<OrbitFlowAction[]>(key);
       const optimistic = ordered.map((a, i) => ({ ...a, ordem: i }));
@@ -46,7 +52,7 @@ export function useReorderFlowActions() {
       if (ctx?.snapshot && ctx.key) qc.setQueryData(ctx.key, ctx.snapshot);
     },
     onSettled: (_data, _err, v) => {
-      qc.invalidateQueries({ queryKey: ["orbit-flow-actions", v.flow_id] });
+      qc.invalidateQueries({ queryKey: ["orbit-flow-actions"] });
     },
   });
 }

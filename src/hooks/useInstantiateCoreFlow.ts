@@ -4,6 +4,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { injectPlaceholderValues } from "@/lib/flowTemplateSchema";
 import type { OrbitFlowTemplate } from "@/hooks/useOrbitFlows";
+import { mutateTenantFlowScoped, usesScopedFlows } from "@/hooks/useOrbitFlows";
+import { useTenant } from "@/contexts/TenantContext";
 
 export type InstantiateVars = {
   "empresa.nome"?: string;
@@ -13,6 +15,7 @@ export type InstantiateVars = {
 
 export function useInstantiateCoreFlow() {
   const qc = useQueryClient();
+  const { slug } = useTenant();
   return useMutation({
     mutationFn: async ({
       empresaId,
@@ -24,6 +27,14 @@ export function useInstantiateCoreFlow() {
       values: InstantiateVars;
     }) => {
       const patched = injectPlaceholderValues(template.definicao ?? {}, values as Record<string, string>);
+      if (await usesScopedFlows(empresaId, slug)) {
+        const result = await mutateTenantFlowScoped<any>(slug!, "create_flow", null, {
+          template_id: template.id, nome: template.nome, descricao: template.descricao ?? null,
+          trigger_type: patched.trigger_type ?? "lead_recebido", trigger_config: patched.trigger_config ?? {},
+          condicoes: patched.condicoes ?? {}, actions: Array.isArray(patched.actions) ? patched.actions : [],
+        });
+        return result?.flow_id as string;
+      }
       const { data: flow, error: e1 } = await (supabase.from("orbit_flows" as any) as any)
         .insert({
           empresa_id: empresaId,

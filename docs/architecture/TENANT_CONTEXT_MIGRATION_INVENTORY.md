@@ -125,6 +125,15 @@ os demais tenants preservam o payload legado enquanto a flag estiver desligada.
 O callback OAuth continua confiando apenas no state persistido pelo servidor, e
 o redirecionamento pós-consentimento fica limitado à origem configurada do app.
 
+#### Parte 3.5 — gestão de fluxos
+
+`tenant_flows_context_wave3_v1` move as leituras de fluxos, ações e execuções,
+além das mutações administrativas, para RPCs que resolvem o tenant pelo slug.
+No canário, políticas restritivas impedem DML direto nas tabelas de fluxos e
+ações, obrigando o contrato auditado e atômico. IDs de fluxo e ação sempre são
+revalidados contra o tenant resolvido; templates globais permanecem somente
+leitura. Os tenants protegidos preservam o caminho legado com a flag desligada.
+
 ### Onda 4 — remoção do contexto persistido
 
 Somente após todas as ondas:

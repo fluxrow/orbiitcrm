@@ -1,5 +1,29 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenant } from "@/contexts/TenantContext";
+import { isTenantFeatureEnabled } from "@/lib/tenant-explicit-mutations";
+
+export const TENANT_FLOWS_CONTEXT_WAVE3_FLAG = "tenant_flows_context_wave3_v1" as const;
+
+export async function usesScopedFlows(empresaId?: string | null, tenantSlug?: string | null) {
+  return !!empresaId && !!tenantSlug && await isTenantFeatureEnabled(empresaId, TENANT_FLOWS_CONTEXT_WAVE3_FLAG);
+}
+
+export async function readTenantFlowsScoped<T>(tenantSlug: string, section: "flows" | "actions" | "runs", flowId?: string | null) {
+  const { data, error } = await supabase.rpc("orbit_tenant_flows_read_scoped" as any, {
+    p_tenant_slug: tenantSlug, p_section: section, p_flow_id: flowId ?? null,
+  } as any);
+  if (error) throw error;
+  return (((data as any)?.data ?? []) as T[]);
+}
+
+export async function mutateTenantFlowScoped<T>(tenantSlug: string, actionType: string, flowId: string | null, payload: Record<string, unknown> = {}) {
+  const { data, error } = await supabase.rpc("orbit_tenant_flows_mutate_scoped" as any, {
+    p_tenant_slug: tenantSlug, p_action_type: actionType, p_flow_id: flowId, p_payload: payload,
+  } as any);
+  if (error) throw error;
+  return data as T;
+}
 
 export type OrbitFlow = {
   id: string;
@@ -40,6 +64,7 @@ export type OrbitFlowAction = {
 
 export function useUpsertFlowAction() {
   const qc = useQueryClient();
+  const { empresaId, slug } = useTenant();
   return useMutation({
     mutationFn: async (action: {
       id?: string;
@@ -57,6 +82,10 @@ export function useUpsertFlowAction() {
         delay_seconds: action.delay_seconds ?? 0,
       };
       if (action.id) row.id = action.id;
+      if (await usesScopedFlows(empresaId, slug)) {
+        const result = await mutateTenantFlowScoped<any>(slug!, "upsert_action", action.flow_id, row);
+        return result?.data;
+      }
       const { data, error } = await (supabase.from("orbit_flow_actions" as any) as any)
         .upsert(row)
         .select("*")
@@ -64,18 +93,23 @@ export function useUpsertFlowAction() {
       if (error) throw error;
       return data;
     },
-    onSuccess: (_d, v) => qc.invalidateQueries({ queryKey: ["orbit-flow-actions", v.flow_id] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["orbit-flow-actions"] }),
   });
 }
 
 export function useDeleteFlowAction() {
   const qc = useQueryClient();
+  const { empresaId, slug } = useTenant();
   return useMutation({
-    mutationFn: async ({ id }: { id: string; flow_id: string }) => {
+    mutationFn: async ({ id, flow_id }: { id: string; flow_id: string }) => {
+      if (await usesScopedFlows(empresaId, slug)) {
+        await mutateTenantFlowScoped(slug!, "delete_action", flow_id, { action_id: id });
+        return;
+      }
       const { error } = await (supabase.from("orbit_flow_actions" as any) as any).delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: (_d, v) => qc.invalidateQueries({ queryKey: ["orbit-flow-actions", v.flow_id] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["orbit-flow-actions"] }),
   });
 }
 
@@ -104,10 +138,12 @@ export type OrbitFlowRun = {
 };
 
 export function useOrbitFlows(empresaId: string | null | undefined) {
+  const { slug } = useTenant();
   return useQuery({
-    queryKey: ["orbit-flows", empresaId],
+    queryKey: ["orbit-flows", empresaId, slug],
     enabled: !!empresaId,
     queryFn: async () => {
+      if (await usesScopedFlows(empresaId, slug)) return readTenantFlowsScoped<OrbitFlow>(slug!, "flows");
       const { data, error } = await supabase
         .from("orbit_flows" as any)
         .select("*")
@@ -136,10 +172,12 @@ export function useOrbitFlowTemplates() {
 }
 
 export function useOrbitFlowActions(flowId: string | null | undefined) {
+  const { empresaId, slug } = useTenant();
   return useQuery({
-    queryKey: ["orbit-flow-actions", flowId],
+    queryKey: ["orbit-flow-actions", empresaId, slug, flowId],
     enabled: !!flowId,
     queryFn: async () => {
+      if (await usesScopedFlows(empresaId, slug)) return readTenantFlowsScoped<OrbitFlowAction>(slug!, "actions", flowId);
       const { data, error } = await supabase
         .from("orbit_flow_actions" as any)
         .select("*")
@@ -152,10 +190,12 @@ export function useOrbitFlowActions(flowId: string | null | undefined) {
 }
 
 export function useOrbitFlowRuns(flowId: string | null | undefined) {
+  const { empresaId, slug } = useTenant();
   return useQuery({
-    queryKey: ["orbit-flow-runs", flowId],
+    queryKey: ["orbit-flow-runs", empresaId, slug, flowId],
     enabled: !!flowId,
     queryFn: async () => {
+      if (await usesScopedFlows(empresaId, slug)) return readTenantFlowsScoped<OrbitFlowRun>(slug!, "runs", flowId);
       const { data, error } = await supabase
         .from("orbit_flow_runs" as any)
         .select("*")
@@ -170,8 +210,12 @@ export function useOrbitFlowRuns(flowId: string | null | undefined) {
 
 export function useToggleFlow() {
   const qc = useQueryClient();
+  const { empresaId, slug } = useTenant();
   return useMutation({
     mutationFn: async ({ id, ativo }: { id: string; ativo: boolean }) => {
+      if (await usesScopedFlows(empresaId, slug)) {
+        await mutateTenantFlowScoped(slug!, "toggle_flow", id, { ativo }); return;
+      }
       const { error } = await supabase.from("orbit_flows" as any).update({ ativo }).eq("id", id);
       if (error) throw error;
     },
@@ -181,8 +225,12 @@ export function useToggleFlow() {
 
 export function useDeleteFlow() {
   const qc = useQueryClient();
+  const { empresaId, slug } = useTenant();
   return useMutation({
     mutationFn: async (id: string) => {
+      if (await usesScopedFlows(empresaId, slug)) {
+        await mutateTenantFlowScoped(slug!, "soft_delete_flow", id); return;
+      }
       const { error } = await supabase
         .from("orbit_flows" as any)
         .update({ deleted_at: new Date().toISOString(), ativo: false })
@@ -195,9 +243,18 @@ export function useDeleteFlow() {
 
 export function useCreateFlowFromTemplate() {
   const qc = useQueryClient();
+  const { slug } = useTenant();
   return useMutation({
     mutationFn: async ({ empresaId, template }: { empresaId: string; template: OrbitFlowTemplate | null }) => {
       const def = template?.definicao ?? {};
+      if (await usesScopedFlows(empresaId, slug)) {
+        const result = await mutateTenantFlowScoped<any>(slug!, "create_flow", null, {
+          template_id: template?.id ?? null, nome: template?.nome ?? "Novo fluxo",
+          descricao: template?.descricao ?? null, trigger_type: def.trigger_type ?? "deal_stage_changed",
+          trigger_config: def.trigger_config ?? {}, condicoes: def.condicoes ?? {}, actions: Array.isArray(def.actions) ? def.actions : [],
+        });
+        return result?.flow_id as string | undefined;
+      }
       const { data: flow, error: e1 } = await (supabase
         .from("orbit_flows" as any) as any)
         .insert({
