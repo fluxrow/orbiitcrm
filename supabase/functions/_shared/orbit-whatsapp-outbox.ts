@@ -382,7 +382,12 @@ export async function enqueueOutbox(supabase: any, input: EnqueueInput): Promise
         "[outbox] payload estruturado bloqueado:",
         JSON.stringify({ empresa_id: input.empresa_id, source_type: input.source_type, ...sanitizedLeakSummary(candidates.find((c) => looksLikeInternalPayload(c))) }),
       );
-      return { enqueued: false, reason: "internal_payload_blocked", reasons: ["internal_payload_blocked"] };
+      return {
+        enqueued: false,
+        idempotency_key: stableKey(input),
+        reason: "internal_payload_blocked",
+        reasons: ["internal_payload_blocked"],
+      };
     }
   }
 
