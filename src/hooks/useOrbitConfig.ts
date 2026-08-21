@@ -117,9 +117,18 @@ export function useUpdateAIConfig() {
 }
 
 export function useOrbitZAPIConfig(empresaId?: string | null) {
+  const { slug } = useTenant();
   return useQuery({
-    queryKey: ["orbit_zapi_config", empresaId],
+    queryKey: ["orbit_zapi_config", empresaId, slug],
     queryFn: async () => {
+      if (slug && await isTenantFeatureEnabled(empresaId!, TENANT_CONFIG_GOVERNANCE_WAVE3_FLAG)) {
+        const { data, error } = await (supabase.rpc as any)(
+          "orbit_tenant_delivery_config_read_scoped",
+          { p_tenant_slug: slug, p_config_type: "zapi" },
+        );
+        if (error) throw error;
+        return ((data as any)?.data ?? null) as OrbitZAPIConfigView | null;
+      }
       const { data, error } = await (supabase.rpc as any)("get_orbit_zapi_config_public", {
         p_empresa_id: empresaId,
       });
@@ -133,11 +142,30 @@ export function useOrbitZAPIConfig(empresaId?: string | null) {
 
 export function useUpdateZAPIConfig() {
   const queryClient = useQueryClient();
+  const { empresaId, slug } = useTenant();
 
   return useMutation({
     mutationFn: async (updates: OrbitZAPIConfigInput) => {
+      if (!empresaId || !slug) throw new Error("TENANT_CONTEXT_MISSING");
+      if (updates.empresa_id && updates.empresa_id !== empresaId) {
+        throw new Error("TENANT_CONTEXT_MISMATCH");
+      }
+      if (await isTenantFeatureEnabled(empresaId, TENANT_CONFIG_GOVERNANCE_WAVE3_FLAG)) {
+        const { id: _id, empresa_id: _empresaId, ...rawPayload } = updates;
+        const payload = Object.fromEntries(
+          Object.entries(rawPayload).filter(([key, value]) =>
+            value !== undefined &&
+            !((key === "token" || key === "client_token") && value === "")),
+        );
+        const { data, error } = await (supabase.rpc as any)(
+          "orbit_tenant_delivery_config_mutate_scoped",
+          { p_tenant_slug: slug, p_config_type: "zapi", p_payload: payload },
+        );
+        if (error) throw error;
+        return ((data as any)?.data ?? null) as OrbitZAPIConfigView | null;
+      }
       const { data, error } = await (supabase.rpc as any)("upsert_orbit_zapi_config_secure", {
-        p_empresa_id: updates.empresa_id,
+        p_empresa_id: empresaId,
         p_nome_instancia: updates.nome_instancia ?? null,
         p_instance_id: updates.instance_id ?? null,
         p_token: updates.token?.trim() ? updates.token.trim() : null,
@@ -314,9 +342,18 @@ export function useUpdateResendConfig() {
 
 // WhatsApp Sending Config Hooks
 export function useWhatsAppSendingConfig(empresaId?: string | null) {
+  const { slug } = useTenant();
   return useQuery({
-    queryKey: ["orbit_whatsapp_sending_config", empresaId],
+    queryKey: ["orbit_whatsapp_sending_config", empresaId, slug],
     queryFn: async () => {
+      if (slug && await isTenantFeatureEnabled(empresaId!, TENANT_CONFIG_GOVERNANCE_WAVE3_FLAG)) {
+        const { data, error } = await (supabase.rpc as any)(
+          "orbit_tenant_delivery_config_read_scoped",
+          { p_tenant_slug: slug, p_config_type: "whatsapp_sending" },
+        );
+        if (error) throw error;
+        return (data as any)?.data ?? null;
+      }
       const { data, error } = await supabase
         .from("orbit_whatsapp_sending_config")
         .select("*")
@@ -331,10 +368,23 @@ export function useWhatsAppSendingConfig(empresaId?: string | null) {
 
 export function useUpdateWhatsAppSendingConfig() {
   const queryClient = useQueryClient();
+  const { empresaId: contextEmpresaId, slug } = useTenant();
 
   return useMutation({
     mutationFn: async (updates: any & { empresa_id: string }) => {
-      const empresaId = updates.empresa_id;
+      const empresaId = contextEmpresaId;
+      if (!empresaId || !slug) throw new Error("TENANT_CONTEXT_MISSING");
+      if (updates.empresa_id !== empresaId) throw new Error("TENANT_CONTEXT_MISMATCH");
+      if (await isTenantFeatureEnabled(empresaId, TENANT_CONFIG_GOVERNANCE_WAVE3_FLAG)) {
+        const { id: _id, empresa_id: _empresaId, created_at: _createdAt,
+          updated_at: _updatedAt, ...payload } = updates;
+        const { data, error } = await (supabase.rpc as any)(
+          "orbit_tenant_delivery_config_mutate_scoped",
+          { p_tenant_slug: slug, p_config_type: "whatsapp_sending", p_payload: payload },
+        );
+        if (error) throw error;
+        return (data as any)?.data ?? null;
+      }
       const { data: existing } = await supabase
         .from("orbit_whatsapp_sending_config")
         .select("id")

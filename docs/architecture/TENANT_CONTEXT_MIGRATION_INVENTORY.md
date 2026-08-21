@@ -106,6 +106,16 @@ o `x-source-token` e acessa as tabelas via `service_role`. Privilégios
 `TRUNCATE`, `TRIGGER` e `REFERENCES` também foram removidos de `authenticated`;
 as permissões DML necessárias e as policies RLS permanecem intactas.
 
+#### Parte 3.3 — governança de configurações
+
+`tenant_config_governance_wave3_v1` mantém o rollout exclusivo do `fluxrow`.
+A Parte 3.3a moveu IA e Resend para uma RPC por slug, com allowlist e segredos
+redigidos. A Parte 3.3b aplica o mesmo limite à Z-API e à configuração de
+cadência do WhatsApp: o UUID enviado pelo navegador deixa de ser autoridade,
+tokens nunca retornam nem entram na auditoria, e grants anônimos históricos da
+configuração de envio são revogados. Os tenants protegidos continuam no caminho
+legado enquanto a flag permanecer `false`.
+
 ### Onda 4 — remoção do contexto persistido
 
 Somente após todas as ondas:
