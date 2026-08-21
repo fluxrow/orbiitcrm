@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,10 +22,16 @@ export default function ClientOnboardingPage() {
   const { data, isLoading, error, refetch } = usePublicOnboarding(token);
   const save = useSavePublicOnboarding();
   const submit = useSubmitPublicOnboarding();
+  const saveMutationRef = useRef(save.mutateAsync);
+  saveMutationRef.current = save.mutateAsync;
 
   const [responses, setResponses] = useState<Record<string, Record<string, any>>>({});
   const [stepIdx, setStepIdx] = useState(0);
   const [submitted, setSubmitted] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const hydratedRef = useRef(false);
+  const lastSavedSnapshotRef = useRef("");
   // Chaves "sectionKey.fieldKey" marcadas como faltantes na última tentativa de envio.
   const [missingKeys, setMissingKeys] = useState<Set<string>>(new Set());
 
@@ -39,7 +45,13 @@ export default function ClientOnboardingPage() {
   }, [missingKeys]);
 
   useEffect(() => {
-    if (data?.responses) setResponses(data.responses as any);
+    if (data?.responses) {
+      const loaded = data.responses as any;
+      setResponses(loaded);
+      lastSavedSnapshotRef.current = JSON.stringify(loaded);
+      hydratedRef.current = true;
+      setSaveStatus("saved");
+    }
   }, [data?.id]);
 
   const section = ONBOARDING_SECTIONS[stepIdx];
@@ -116,23 +128,63 @@ export default function ClientOnboardingPage() {
   }, [responses]);
   const hasUploading = uploadingCount > 0;
 
+  const currentSnapshot = useMemo(() => JSON.stringify(responses), [responses]);
+  const hasUnsavedChanges = hydratedRef.current && currentSnapshot !== lastSavedSnapshotRef.current;
 
-  const persist = async () => {
-    if (!token) return;
+  // Autosave real: persiste depois de uma pequena pausa na digitação. O snapshot
+  // evita chamadas repetidas e mantém explícito qual versão foi confirmada.
+  useEffect(() => {
+    if (!token || !hydratedRef.current || hasUploading || !hasUnsavedChanges) return;
+    const snapshotToSave = currentSnapshot;
+    const responsesToSave = responses;
+    const timer = window.setTimeout(async () => {
+      setSaveStatus("saving");
+      try {
+        await saveMutationRef.current({ token, responses: responsesToSave });
+        lastSavedSnapshotRef.current = snapshotToSave;
+        setLastSavedAt(new Date());
+        setSaveStatus("saved");
+      } catch {
+        setSaveStatus("error");
+      }
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [currentSnapshot, hasUnsavedChanges, hasUploading, responses, token]);
+
+  useEffect(() => {
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedChanges && !hasUploading && saveStatus !== "saving") return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [hasUnsavedChanges, hasUploading, saveStatus]);
+
+
+  const persist = async (): Promise<boolean> => {
+    if (!token) return false;
     if (hasUploading) {
       toast.warning("Aguarde o envio dos arquivos terminar antes de salvar.");
-      return;
+      return false;
     }
+    setSaveStatus("saving");
     try {
       await save.mutateAsync({ token, responses });
+      lastSavedSnapshotRef.current = JSON.stringify(responses);
+      setLastSavedAt(new Date());
+      setSaveStatus("saved");
+      return true;
     } catch (e: any) {
+      setSaveStatus("error");
       toast.error(e?.message || "Falha ao salvar");
+      return false;
     }
   };
 
   const next = async () => {
-    await persist();
-    if (stepIdx < total - 1) setStepIdx(stepIdx + 1);
+    const saved = await persist();
+    if (saved && stepIdx < total - 1) setStepIdx(stepIdx + 1);
   };
 
   const finish = async () => {
@@ -288,6 +340,19 @@ export default function ClientOnboardingPage() {
                 </Button>
 
                 <div className="flex items-center gap-2">
+                  {!hasUploading && saveStatus === "saving" && (
+                    <span className="text-xs text-muted-foreground flex items-center gap-1.5" aria-live="polite">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvando…
+                    </span>
+                  )}
+                  {!hasUploading && saveStatus === "saved" && (
+                    <span className="text-xs text-muted-foreground" aria-live="polite">
+                      {lastSavedAt ? `Salvo às ${lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Respostas carregadas"}
+                    </span>
+                  )}
+                  {!hasUploading && saveStatus === "error" && (
+                    <span className="text-xs text-destructive" aria-live="assertive">Falha ao salvar — tente novamente</span>
+                  )}
                   {hasUploading && (
                     <span className="text-xs text-muted-foreground flex items-center gap-1.5">
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
