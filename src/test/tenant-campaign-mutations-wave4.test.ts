@@ -12,6 +12,7 @@ const campaignScheduler = read("../../supabase/functions/orbit-campaign-schedule
 const dispatchHelper = read("../../supabase/functions/_shared/campaign-dispatch-authorization.ts");
 const conversationPolicyFix = read("../../supabase/migrations/20260821190925_fix_conversas_update_policy_membership_check.sql");
 const directWriteGate = read("../../supabase/migrations/20260821191858_tenant_campaign_direct_write_gate_wave4_part3d.sql");
+const granularPermissions = read("../../supabase/migrations/20260821192811_tenant_campaign_granular_permissions_wave4_part3e.sql");
 const helper = read("../lib/tenant-campaign-mutations.ts");
 const campaigns = read("../hooks/useOrbitCampaigns.ts");
 const wizard = read("../components/orbit/CampaignWizardContent.tsx");
@@ -108,5 +109,25 @@ describe("tenant campaign mutations wave 4.3b", () => {
     expect(directWriteGate).toContain("WITH CHECK (");
     expect(directWriteGate).toContain("FROM PUBLIC, anon");
     expect(directWriteGate).toContain("TO authenticated");
+  });
+
+  it("authorizes each campaign lifecycle action with a distinct tenant permission", () => {
+    expect(granularPermissions).toContain("orbit_tenant_user_permissions");
+    expect(granularPermissions).toContain("'campaign_create'");
+    expect(granularPermissions).toContain("'campaign_edit'");
+    expect(granularPermissions).toContain("'campaign_submit_review'");
+    expect(granularPermissions).toContain("'campaign_approve'");
+    expect(granularPermissions).toContain("'campaign_dispatch'");
+    expect(granularPermissions).toContain("orbit_tenant_campaign_authorize");
+    expect(granularPermissions).toContain("p_tenant_slug, p_action_type, p_campaign_id");
+    expect(granularPermissions).toContain("CAMPAIGN_PERMISSION_DENIED:");
+    expect(granularPermissions).toContain("orbit_get_tenant_campaign_capabilities");
+    expect(granularPermissions).toContain("orbit_set_tenant_campaign_permission");
+    expect(granularPermissions).toContain("TARGET_USER_NOT_IN_TENANT");
+    expect(granularPermissions).toContain("campaign_permission_granted");
+    expect(granularPermissions).toContain("campaign_permission_revoked");
+    expect(granularPermissions).toContain("ENABLE ROW LEVEL SECURITY");
+    expect(granularPermissions).toContain("FROM PUBLIC, anon");
+    expect(granularPermissions).toContain("TO authenticated");
   });
 });
