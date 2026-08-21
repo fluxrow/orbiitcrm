@@ -100,11 +100,12 @@ export function useOrbitDealsGrouped() {
 
 
   useEffect(() => {
+    if (!empresaId) return;
     const channel = supabase
-      .channel("orbit_deals_realtime")
+      .channel(`orbit_deals_realtime:${empresaId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "orbit_deals" },
+        { event: "*", schema: "public", table: "orbit_deals", filter: `empresa_id=eq.${empresaId}` },
         () => {
           queryClient.invalidateQueries({ queryKey: ["orbit_deals"] });
           queryClient.invalidateQueries({ queryKey: ["orbit_deals_grouped"] });
@@ -115,7 +116,7 @@ export function useOrbitDealsGrouped() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [empresaId, queryClient]);
 
   const query = useQuery({
     queryKey: ["orbit_deals_grouped", empresaId],

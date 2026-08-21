@@ -27,13 +27,13 @@ O rollout permanece aditivo. `switch_active_empresa` não será removido enquant
 |---|---|---:|---|---:|
 | Centro de Operações | RPC `orbit_tenant_ops_read_scoped` resolve slug e valida acesso | A | `useTenantOperations`; flag `tenant_explicit_context_v1` | concluído no canário |
 | Conversas — lista/detalhe | Filtro, query key e Realtime usam `empresaId` da rota | A | `useOrbitConversas` | P0 — preservar |
-| Conversas — upload | Usa conversa ativa, mas possui fallback para `profiles.empresa_id` | C | `ConversasPage` | P0 |
+| Conversas — upload | Exige igualdade entre conversa ativa e `empresaId` da rota; sem fallback de perfil | A | `ConversasPage` | concluído |
 | Conversas — update/leitura | Predicado inclui `empresa_id`; assumir/devolver usam RPCs atômicas | A | `useOrbitConversas` | P0 — testes |
 | Prospects — lista/contagem | Filtro e query key incluem `empresaId` | A | `useOrbitProspects` | P0 — preservar |
 | Prospect — detalhe | Filtro imediato por tenant + RPC explícita em shadow mode | A (shadow) | `useOrbitProspect`; `orbit_tenant_prospect_read_scoped` | Onda 1 em canário |
 | Prospect — editar/excluir | RPC atômica tenant-scoped no canário; legado também ganhou predicado de tenant | A (canário) | `orbit_tenant_entity_mutate_scoped` | Onda 2.1 |
 | Funil — stages/deals | Leituras filtradas + snapshot RPC em shadow mode | A (shadow) | `useOrbitDeals`; `orbit_tenant_funnel_read_scoped` | Onda 1 em canário |
-| Funil — Realtime | Assina todos os deals e apenas invalida cache | B | `useOrbitDealsGrouped` | P1 |
+| Funil — Realtime | Canal e filtro `postgres_changes` incluem `empresaId` da rota | A | `useOrbitDealsGrouped` | concluído |
 | Funil — deal update/move/delete | RPC atômica tenant-scoped no canário; legado também ganhou predicado | A (canário) | `useOrbitDeals`; `orbit_tenant_entity_mutate_scoped` | Onda 2.1 |
 | Funil — stages create/update/archive/reorder | RPC atômica e análise de impacto no canário; legado ganhou predicado de tenant | A (canário) | `useOrbitPipelineConfig`; RPCs de stage | Onda 2.2 |
 | Mensagens | Query key, leitura e Realtime incluem tenant da rota | A | `useOrbitMensagens` | P0 — preservar |
@@ -133,6 +133,19 @@ No canário, políticas restritivas impedem DML direto nas tabelas de fluxos e
 ações, obrigando o contrato auditado e atômico. IDs de fluxo e ação sempre são
 revalidados contra o tenant resolvido; templates globais permanecem somente
 leitura. Os tenants protegidos preservam o caminho legado com a flag desligada.
+
+#### Parte 3.6 — gaps client-side
+
+O upload de mídia em conversas deixa de consultar `profiles.empresa_id` como
+fallback e falha fechado quando a conversa não pertence ao tenant da rota. A
+assinatura Realtime do funil passa a usar canal nomeado por tenant e filtro
+server-side por `empresa_id`, impedindo eventos de outro tenant de invalidarem
+o cache da aba atual.
+
+O gate de remoção do contexto persistido permanece fechado: a auditoria do
+banco em 21/08/2026 encontrou 100 policies em 54 tabelas ainda referenciando
+`get_user_empresa_id(auth.uid())` ou `profiles`. Elas devem ser substituídas em
+ondas menores antes de remover `switch_active_empresa`.
 
 ### Onda 4 — remoção do contexto persistido
 

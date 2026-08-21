@@ -193,17 +193,12 @@ export default function ConversasPage() {
 
   const uploadFile = async (file: File): Promise<{ storage_path: string; tipo: string }> => {
     const ext = file.name.split(".").pop() || "bin";
-    // Resolve empresa_id do server-state (conversa ativa ou profile) — NUNCA do input do usuário.
-    let empresaId: string | undefined = (active as any)?.empresa_id;
-    if (!empresaId && user?.id) {
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("empresa_id")
-        .eq("id", user.id)
-        .maybeSingle();
-      empresaId = (prof as any)?.empresa_id;
+    // A rota é a autoridade visual; a conversa precisa pertencer ao mesmo tenant.
+    // Nunca use profiles.empresa_id, pois ele é compartilhado entre abas.
+    const conversaEmpresaId = (active as any)?.empresa_id as string | undefined;
+    if (!empresaId || !conversaEmpresaId || conversaEmpresaId !== empresaId) {
+      throw new Error("Conversa fora do contexto de tenant ativo.");
     }
-    if (!empresaId) throw new Error("Empresa não identificada para upload.");
 
     const filePath = `${empresaId}/conversas/${crypto.randomUUID()}.${ext}`;
 
