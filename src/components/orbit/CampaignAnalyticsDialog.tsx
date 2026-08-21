@@ -18,6 +18,7 @@ import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { downloadCsv } from "@/lib/csv";
 import { toast } from "sonner";
+import { useTenant } from "@/contexts/TenantContext";
 
 const PAGE_SIZE = 50;
 
@@ -80,6 +81,7 @@ function MetricCard({
 }
 
 export function CampaignAnalyticsDialog({ open, onOpenChange, campaignId, campaignName, onCreateFollowUp }: Props) {
+  const { empresaId } = useTenant();
   const [page, setPage] = useState(0);
   const [engagementFilter, setEngagementFilter] = useState<EngagementFilter>("todos");
   const [followUpAudience, setFollowUpAudience] = useState<FollowUpAudience>("abriu");
@@ -106,7 +108,7 @@ export function CampaignAnalyticsDialog({ open, onOpenChange, campaignId, campai
   };
 
   const handleCreateFollowUp = () => {
-    if (!campaignId) return;
+    if (!campaignId || !empresaId) return;
     onCreateFollowUp?.(campaignId, followUpAudience, campaignName || "Campanha");
     onOpenChange(false);
   };
@@ -116,7 +118,7 @@ export function CampaignAnalyticsDialog({ open, onOpenChange, campaignId, campai
    * then download as CSV. Caps at 10k rows to protect the browser.
    */
   const handleDownloadCsv = async () => {
-    if (!campaignId) return;
+    if (!campaignId || !empresaId) return;
     try {
       setExporting(true);
       let query = supabase
@@ -124,6 +126,7 @@ export function CampaignAnalyticsDialog({ open, onOpenChange, campaignId, campai
         .select(
           "id, email, telefone, status, engagement_status, enviado_em, delivered_at, opened_at, clicked_at, bounced_at, complained_at, prospect:orbit_prospects(nome_razao, nome_fantasia)"
         )
+        .eq("empresa_id", empresaId)
         .eq("campaign_id", campaignId)
         .order("enviado_em", { ascending: false, nullsFirst: false })
         .limit(10000);

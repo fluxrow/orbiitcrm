@@ -185,8 +185,10 @@ export function useUpdateZAPIConfig() {
 }
 
 export function useOrbitDistribuicao() {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: ["orbit_distribuicao_config"],
+    queryKey: ["orbit_distribuicao_config", empresaId],
+    enabled: !!empresaId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orbit_distribuicao_config")
@@ -194,6 +196,7 @@ export function useOrbitDistribuicao() {
           *,
           vendedor:profiles!orbit_distribuicao_config_vendedor_id_fkey(id, nome, email)
         `)
+        .eq("empresa_id", empresaId!)
         .order("ordem_fila", { ascending: true });
       if (error) throw error;
       return data;

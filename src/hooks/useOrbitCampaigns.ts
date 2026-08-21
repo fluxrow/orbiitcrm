@@ -20,18 +20,19 @@ export function useOrbitCampaigns(filters?: CampaignFilters) {
   const { empresaId } = useTenant();
 
   useEffect(() => {
+    if (!empresaId) return;
     const channel = supabase
-      .channel("orbit_campaigns_realtime")
+      .channel(`orbit_campaigns_realtime:${empresaId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "orbit_campaigns" },
+        { event: "*", schema: "public", table: "orbit_campaigns", filter: `empresa_id=eq.${empresaId}` },
         () => {
           queryClient.invalidateQueries({ queryKey: orbitCampaignKeys.all });
         },
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "orbit_campaign_recipients" },
+        { event: "*", schema: "public", table: "orbit_campaign_recipients", filter: `empresa_id=eq.${empresaId}` },
         () => {
           queryClient.invalidateQueries({ queryKey: orbitCampaignKeys.counts() });
           queryClient.invalidateQueries({ queryKey: orbitCampaignKeys.all });
@@ -42,7 +43,7 @@ export function useOrbitCampaigns(filters?: CampaignFilters) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [empresaId, queryClient]);
 
   return useQuery({
     queryKey: orbitCampaignKeys.list(filters, empresaId),

@@ -169,6 +169,19 @@ chave de cache era tenant-scoped, mas a consulta dependia exclusivamente da RLS.
 Esta parte ainda não autoriza remover `switch_active_empresa`: cobre somente
 SELECT e apenas oito das 54 tabelas dependentes identificadas no gate.
 
+#### Parte 4.2 — configurações e campanhas
+
+`tenant_explicit_config_campaign_reads_wave4_v1` adiciona policies canário de
+SELECT para campanhas, destinatários, aprovações, templates de mensagem, IA,
+Resend, distribuição e cadência de WhatsApp. A autorização exige associação ao
+tenant e flag ativa; policies legadas e escritas permanecem inalteradas.
+
+No cliente, campanhas, destinatários, perfis de responsáveis e distribuição
+passam a incluir `empresa_id` da rota tanto na consulta quanto na chave do
+React Query. As assinaturas Realtime de campanhas e destinatários também usam
+canal e filtro tenant-scoped. RPCs analíticas e mutações de campanha continuam
+fora deste lote e impedem a remoção do contexto persistido.
+
 ## Gates de promoção
 
 - CI verde: instalação limpa, TypeScript, testes e build.

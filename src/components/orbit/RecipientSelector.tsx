@@ -98,26 +98,30 @@ export function RecipientSelector({
   const deleteSendGroup = useDeleteSendGroup();
 
   const { data: companyProfiles } = useQuery({
-    queryKey: ["company-profiles-for-filter"],
+    queryKey: ["company-profiles-for-filter", tenantEmpresaId],
+    enabled: !!tenantEmpresaId,
     queryFn: async () => {
-      const { data, error } = await supabase.from("profiles").select("id, nome, email").eq("ativo", true);
+      const { data, error } = await supabase.from("profiles").select("id, nome, email")
+        .eq("empresa_id", tenantEmpresaId!).eq("ativo", true);
       if (error) throw error;
       return data;
     },
   });
 
   // Resolve empresa_id from prospects to load engagement summary
-  const empresaId = prospects?.[0]?.empresa_id || null;
+  const empresaId = tenantEmpresaId;
   const engajJanela = filtros.engaj_janela_dias ?? 90;
   const { data: engagementMap } = useProspectEngagement(empresaId, engajJanela);
 
   // Fetch past campaigns for segmentation filters
   const { data: pastCampaigns } = useQuery({
-    queryKey: ["past-campaigns-for-segmentation"],
+    queryKey: ["past-campaigns-for-segmentation", tenantEmpresaId],
+    enabled: !!tenantEmpresaId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("orbit_campaigns")
         .select("id, nome, canal, status")
+        .eq("empresa_id", tenantEmpresaId!)
         .in("status", ["enviando", "concluida", "pausada", "pausada_por_limite"])
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -128,17 +132,18 @@ export function RecipientSelector({
   // Fetch recipient prospect_ids for active campaign filters
   const campaignFilterId = filtros.excluir_campanha_id || filtros.apenas_abriu_campanha_id || filtros.nao_abriu_campanha_id || null;
   const { data: campaignRecipients } = useQuery({
-    queryKey: ["campaign-recipients-filter", campaignFilterId],
+    queryKey: ["campaign-recipients-filter", tenantEmpresaId, campaignFilterId],
     queryFn: async () => {
       if (!campaignFilterId) return null;
       const { data, error } = await supabase
         .from("orbit_campaign_recipients")
         .select("prospect_id, status, opened_at")
+        .eq("empresa_id", tenantEmpresaId!)
         .eq("campaign_id", campaignFilterId);
       if (error) throw error;
       return data;
     },
-    enabled: !!campaignFilterId,
+    enabled: !!tenantEmpresaId && !!campaignFilterId,
   });
 
   const distinctValues = useMemo(() => {

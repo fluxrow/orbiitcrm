@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenant } from "@/contexts/TenantContext";
 
 /* ─── Email Campaign Types ─── */
 
@@ -167,8 +168,9 @@ export function useOrbitCampaignRecipients(
   pageSize: number = 50,
   engagementFilter: EngagementFilter = "todos"
 ) {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: ["orbit_campaign_recipients_page", campaignId, page, pageSize, engagementFilter],
+    queryKey: ["orbit_campaign_recipients_page", empresaId, campaignId, page, pageSize, engagementFilter],
     queryFn: async () => {
       if (!campaignId) throw new Error("No campaign");
 
@@ -181,6 +183,7 @@ export function useOrbitCampaignRecipients(
           "id, email, status, engagement_status, enviado_em, delivered_at, opened_at, clicked_at, bounced_at, complained_at, prospect:orbit_prospects(nome_razao)",
           { count: "exact" }
         )
+        .eq("empresa_id", empresaId!)
         .eq("campaign_id", campaignId)
         .order("enviado_em", { ascending: false, nullsFirst: false });
 
@@ -222,7 +225,7 @@ export function useOrbitCampaignRecipients(
 
       return { recipients, totalCount: count || 0 };
     },
-    enabled: !!campaignId,
+    enabled: !!empresaId && !!campaignId,
   });
 }
 
@@ -273,8 +276,9 @@ export function useWhatsAppCampaignRecipients(
   pageSize: number = 50,
   filter: WhatsAppEngagementFilter = "todos"
 ) {
+  const { empresaId } = useTenant();
   return useQuery({
-    queryKey: ["whatsapp_campaign_recipients_page", campaignId, page, pageSize, filter],
+    queryKey: ["whatsapp_campaign_recipients_page", empresaId, campaignId, page, pageSize, filter],
     queryFn: async () => {
       if (!campaignId) throw new Error("No campaign");
 
@@ -287,6 +291,7 @@ export function useWhatsAppCampaignRecipients(
           "id, telefone, email, status, enviado_em, delivered_at, read_at, replied_at, erro, prospect:orbit_prospects(nome_razao, nome_fantasia)",
           { count: "exact" }
         )
+        .eq("empresa_id", empresaId!)
         .eq("campaign_id", campaignId)
         .order("enviado_em", { ascending: false, nullsFirst: false });
 
@@ -331,7 +336,7 @@ export function useWhatsAppCampaignRecipients(
 
       return { recipients, totalCount: count || 0 };
     },
-    enabled: !!campaignId,
+    enabled: !!empresaId && !!campaignId,
   });
 }
 
