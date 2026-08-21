@@ -23,6 +23,7 @@ export function useOrbitActivities(filters?: ActivityFilters) {
       let query = supabase
         .from("orbit_activities")
         .select("*, responsavel:profiles!orbit_activities_responsavel_id_fkey(id, nome, email)")
+        .eq("empresa_id", empresaId!)
         .order("data_atividade", { ascending: false });
 
       if (filters?.prospect_id) {

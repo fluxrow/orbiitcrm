@@ -156,6 +156,19 @@ Somente após todas as ondas:
 3. manter empresa preferida apenas como preferência de UX, sem valor de autorização;
 4. repetir testes de duas abas, refresh alternado, navegação A → B → A e sessão JIT.
 
+#### Parte 4.1 — leituras centrais aditivas
+
+`tenant_explicit_core_reads_wave4_v1` adiciona policies de leitura por associação
+explícita para conversas, mensagens, deals, etapas, tarefas, atividades,
+prospects e perfis relacionados. A policy nova exige simultaneamente acesso ao
+tenant e flag ativa no próprio tenant. As policies legadas não são removidas,
+permitindo rollback pela flag e preservando integralmente os tenants protegidos.
+
+O frontend também passa a filtrar `orbit_activities` por `empresa_id`; antes a
+chave de cache era tenant-scoped, mas a consulta dependia exclusivamente da RLS.
+Esta parte ainda não autoriza remover `switch_active_empresa`: cobre somente
+SELECT e apenas oito das 54 tabelas dependentes identificadas no gate.
+
 ## Gates de promoção
 
 - CI verde: instalação limpa, TypeScript, testes e build.
