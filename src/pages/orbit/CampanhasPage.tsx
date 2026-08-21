@@ -21,6 +21,7 @@ import { CheckCircle2 } from "lucide-react";
 import { useTenant } from "@/contexts/TenantContext";
 import { isTenantFeatureEnabled } from "@/lib/tenant-explicit-mutations";
 import { TENANT_CAMPAIGN_MUTATIONS_WAVE4_FLAG } from "@/lib/tenant-campaign-mutations";
+import { useTenantCampaignCapabilities } from "@/hooks/useTenantCampaignPermissions";
 
 const TENANT_CAMPAIGN_ANALYTICS_WAVE4_FLAG = "tenant_campaign_analytics_context_wave4_v1";
 
@@ -52,6 +53,12 @@ export default function CampanhasPage() {
   const { data: campaigns, isLoading, refetch } = useOrbitCampaigns({ status: statusFilter, canal: canalFilter });
   const updateCampaign = useUpdateCampaign();
   const deleteCampaign = useDeleteCampaign();
+  const { data: campaignCapabilities } = useTenantCampaignCapabilities();
+  const canCreateCampaign = campaignCapabilities?.campaign_create ?? true;
+  const canEditCampaign = campaignCapabilities?.campaign_edit ?? true;
+  const canSubmitReview = campaignCapabilities?.campaign_submit_review ?? true;
+  const canApproveCampaign = campaignCapabilities?.campaign_approve ?? isSuperAdmin;
+  const canDispatchCampaign = campaignCapabilities?.campaign_dispatch ?? true;
 
   const campaignIds = campaigns?.map(c => c.id) || [];
   const { data: recipientCounts } = useQuery({
@@ -279,10 +286,10 @@ export default function CampanhasPage() {
       <PageHeader
         title="Campanhas"
         description="Gerencie campanhas de email e WhatsApp"
-        action={
+        action={canCreateCampaign ?
           <Button size="sm" onClick={() => navigate("nova")}>
             <Plus className="h-4 w-4 mr-2" />Nova Campanha
-          </Button>
+          </Button> : undefined
         }
       />
 
@@ -322,9 +329,9 @@ export default function CampanhasPage() {
       ) : campaigns?.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <p>Nenhuma campanha encontrada</p>
-          <Button variant="link" onClick={() => navigate("nova")}>
+          {canCreateCampaign && <Button variant="link" onClick={() => navigate("nova")}>
             Criar primeira campanha
-          </Button>
+          </Button>}
         </div>
       ) : (
         <div className="space-y-4">
@@ -404,7 +411,10 @@ export default function CampanhasPage() {
                   pendingRecipients={pendingRecipients}
                   hasTemplate={hasTemplate}
                   aprovacaoStatus={c.aprovacao_status}
-                  canApproveDispatch={isSuperAdmin}
+                  canApproveDispatch={canApproveCampaign}
+                  canEdit={canEditCampaign}
+                  canSubmitReview={canSubmitReview}
+                  canDispatch={canDispatchCampaign}
                   onReview={handleReview}
                   onSend={handleSend}
                   onPause={handlePause}
@@ -428,6 +438,8 @@ export default function CampanhasPage() {
         recipientCounts={reviewCampaignId ? recipientCounts?.[reviewCampaignId] : undefined}
         onApproveForSend={handleApproveForSend}
         loading={actionLoading === reviewCampaignId}
+        canApprove={canApproveCampaign}
+        canEditRecipients={canEditCampaign}
       />
 
       <CampaignAnalyticsDialog
@@ -514,6 +526,9 @@ interface CampaignActionsProps {
   hasTemplate: boolean;
   aprovacaoStatus?: string | null;
   canApproveDispatch?: boolean;
+  canEdit?: boolean;
+  canSubmitReview?: boolean;
+  canDispatch?: boolean;
   onReview: (id: string) => void;
   onSend: (id: string) => void;
   onPause: (id: string) => void;
@@ -525,14 +540,14 @@ interface CampaignActionsProps {
 
 function CampaignActions({
   status, campaignId, campaignCanal, loading, totalRecipients, pendingRecipients,
-  hasTemplate, aprovacaoStatus, canApproveDispatch, onReview, onSend, onPause, onCancel, onDelete, onAnalytics, onApproveDispatch,
+  hasTemplate, aprovacaoStatus, canApproveDispatch, canEdit = true, canSubmitReview = true, canDispatch = true, onReview, onSend, onPause, onCancel, onDelete, onAnalytics, onApproveDispatch,
 }: CampaignActionsProps) {
-  const canReview = ["rascunho", "em_revisao"].includes(status) && hasTemplate && totalRecipients > 0;
-  const canSend = status === "aprovada_para_envio" && pendingRecipients > 0;
-  const canResume = (status === "enviando" || status === "pausada" || status === "pausada_por_limite") && pendingRecipients > 0;
-  const canPause = status === "enviando";
-  const canCancel = !["concluida", "falha", "cancelada"].includes(status);
-  const canDelete = status === "rascunho";
+  const canReview = canSubmitReview && ["rascunho", "em_revisao"].includes(status) && hasTemplate && totalRecipients > 0;
+  const canSend = canDispatch && status === "aprovada_para_envio" && pendingRecipients > 0;
+  const canResume = canDispatch && (status === "enviando" || status === "pausada" || status === "pausada_por_limite") && pendingRecipients > 0;
+  const canPause = canEdit && status === "enviando";
+  const canCancel = canEdit && !["concluida", "falha", "cancelada"].includes(status);
+  const canDelete = canEdit && status === "rascunho";
   const canAnalytics = ["enviando", "concluida", "falha", "pausada", "pausada_por_limite"].includes(status);
   const canApprove =
     !!canApproveDispatch &&

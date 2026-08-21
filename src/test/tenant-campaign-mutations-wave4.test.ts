@@ -15,8 +15,12 @@ const directWriteGate = read("../../supabase/migrations/20260821191858_tenant_ca
 const granularPermissions = read("../../supabase/migrations/20260821192811_tenant_campaign_granular_permissions_wave4_part3e.sql");
 const helper = read("../lib/tenant-campaign-mutations.ts");
 const campaigns = read("../hooks/useOrbitCampaigns.ts");
+const campaignsPage = read("../pages/orbit/CampanhasPage.tsx");
 const wizard = read("../components/orbit/CampaignWizardContent.tsx");
 const review = read("../components/orbit/CampaignReviewDialog.tsx");
+const permissionsHook = read("../hooks/useTenantCampaignPermissions.ts");
+const permissionsDialog = read("../components/orbit/CampaignPermissionsDialog.tsx");
+const configUsers = read("../components/orbit/ConfigUsersTab.tsx");
 
 describe("tenant campaign mutations wave 4.3b", () => {
   it("keeps the rollout canary-only and dispatch outside the contract", () => {
@@ -129,5 +133,17 @@ describe("tenant campaign mutations wave 4.3b", () => {
     expect(granularPermissions).toContain("ENABLE ROW LEVEL SECURITY");
     expect(granularPermissions).toContain("FROM PUBLIC, anon");
     expect(granularPermissions).toContain("TO authenticated");
+  });
+
+  it("renders and enforces the granular permissions in the canary UI", () => {
+    expect(permissionsHook).toContain("orbit_get_tenant_campaign_capabilities");
+    expect(permissionsHook).toContain("orbit_set_tenant_campaign_permission");
+    expect(permissionsDialog).toContain("Não libera envio real sozinho");
+    expect(configUsers).toContain('slug === "fluxrow"');
+    expect(configUsers).toContain("CampaignPermissionsDialog");
+    expect(campaignsPage).toContain("useTenantCampaignCapabilities");
+    expect(campaignsPage).toContain("canDispatch={canDispatchCampaign}");
+    expect(review).toContain("canApprove &&");
+    expect(review).toContain("canEditRecipients &&");
   });
 });

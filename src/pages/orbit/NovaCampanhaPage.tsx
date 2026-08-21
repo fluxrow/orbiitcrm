@@ -1,14 +1,17 @@
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { OrbitLayout } from "@/components/orbit/OrbitLayout";
 import { CampaignWizardContent } from "@/components/orbit/CampaignWizardContent";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
+import { useTenantCampaignCapabilities } from "@/hooks/useTenantCampaignPermissions";
 
 export default function NovaCampanhaPage() {
   const navigate = useNavigate();
+  const { data: capabilities, isLoading } = useTenantCampaignCapabilities();
 
   const handleBack = () => navigate("../campanhas");
 
+  if (!isLoading && capabilities && !capabilities.campaign_create) return <Navigate to="../campanhas" replace />;
   return (
     <OrbitLayout>
       <div className="flex flex-col h-full -m-6">

@@ -13,14 +13,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EditUserDialog } from "@/components/orbit/EditUserDialog";
-import { UserPlus, Plus, Mail, Clock, RefreshCw, Pencil } from "lucide-react";
+import { CampaignPermissionsDialog } from "@/components/orbit/CampaignPermissionsDialog";
+import { UserPlus, Plus, Mail, Clock, RefreshCw, Pencil, ShieldCheck } from "lucide-react";
 import { format } from "date-fns";
 
 export default function ConfigUsersTab() {
   // Multi-tenant fix: derive orgId from the ACTIVE tenant (URL-based), not from
   // the user's home pe_users.organization_id. Otherwise an admin navigating to
   // /fluxrow/config sees users of their original org (e.g. Promotrip).
-  const { empresaId } = useTenant();
+  const { empresaId, slug } = useTenant();
 
   const { data: orgId, isLoading: orgIdLoading } = useQuery({
     queryKey: ["tenant-org-id", empresaId],
@@ -49,6 +50,7 @@ export default function ConfigUsersTab() {
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
+  const [permissionUser, setPermissionUser] = useState<any>(null);
   const [inviteForm, setInviteForm] = useState({ email: "", role_code: "", full_name: "" });
   const [addForm, setAddForm] = useState({ email: "", password: "", role_code: "", full_name: "" });
 
@@ -124,9 +126,10 @@ export default function ConfigUsersTab() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon" onClick={() => handleEditUser(u)}>
-                      <Pencil className="w-4 h-4" />
-                    </Button>
+                    <div className="flex">
+                      {slug === "fluxrow" && <Button variant="ghost" size="icon" title="Permissões de campanhas" onClick={() => setPermissionUser(u)}><ShieldCheck className="w-4 h-4" /></Button>}
+                      <Button variant="ghost" size="icon" onClick={() => handleEditUser(u)}><Pencil className="w-4 h-4" /></Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -190,6 +193,7 @@ export default function ConfigUsersTab() {
         roles={roles || []}
         orgId={orgId || ""}
       />
+      <CampaignPermissionsDialog open={!!permissionUser} onOpenChange={(open) => !open && setPermissionUser(null)} user={permissionUser} />
 
       {/* Dialog: Convidar */}
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>

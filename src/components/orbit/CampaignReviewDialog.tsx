@@ -26,6 +26,8 @@ interface CampaignReviewDialogProps {
   recipientCounts?: RecipientCounts;
   onApproveForSend: (id: string) => void;
   loading: boolean;
+  canApprove?: boolean;
+  canEditRecipients?: boolean;
 }
 
 export function CampaignReviewDialog({
@@ -35,6 +37,8 @@ export function CampaignReviewDialog({
   recipientCounts,
   onApproveForSend,
   loading,
+  canApprove = true,
+  canEditRecipients = true,
 }: CampaignReviewDialogProps) {
   const { user } = useAuth();
   const { peUser } = usePeAuth();
@@ -208,7 +212,7 @@ export function CampaignReviewDialog({
                 Nenhum destinatário pendente para envio.
               </div>
             )}
-            <div className="mt-3">
+            {canEditRecipients && <div className="mt-3">
               <Button
                 variant="outline"
                 size="sm"
@@ -222,7 +226,7 @@ export function CampaignReviewDialog({
                 )}
                 Recarregar destinatários
               </Button>
-            </div>
+            </div>}
           </div>
         </div>
 
@@ -230,7 +234,7 @@ export function CampaignReviewDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Fechar
           </Button>
-          <Button
+          {canApprove && <Button
             onClick={() => onApproveForSend(campaign.id)}
             disabled={loading || pendingRecipients === 0}
             className="bg-green-600 hover:bg-green-700 text-white"
@@ -241,7 +245,7 @@ export function CampaignReviewDialog({
               <CheckCircle className="h-4 w-4 mr-2" />
             )}
             Aprovar para Envio
-          </Button>
+          </Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>
