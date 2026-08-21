@@ -8,6 +8,7 @@ const analytics = read("../hooks/useOrbitEmailAnalytics.ts");
 const dialog = read("../components/orbit/CampaignAnalyticsDialog.tsx");
 const keys = read("../lib/query-keys.ts");
 const migration = read("../../supabase/migrations/20260821180706_tenant_campaign_analytics_context_wave4_part3a.sql");
+const whatsappMigration = read("../../supabase/migrations/20260821182517_tenant_campaign_whatsapp_summary_alignment_wave4_part3a.sql");
 
 describe("tenant campaign analytics wave 4.3a", () => {
   it("routes canary analytics through the explicit tenant contract", () => {
@@ -16,8 +17,18 @@ describe("tenant campaign analytics wave 4.3a", () => {
     expect(analytics).toContain('"orbit_tenant_campaign_analytics_read"');
     expect(analytics).toContain('section: "email_summary"');
     expect(analytics).toContain('section: "whatsapp_summary"');
+    expect(analytics).toContain('"orbit_tenant_campaign_whatsapp_summary_read"');
     expect(analytics).toContain('section: "timeline"');
+    expect(analytics).toContain('.eq("empresa_id", empresaId!)');
+    expect(analytics).not.toContain('"get_whatsapp_campaign_summary"');
     expect(keys).toContain("empresaId ?? null");
+  });
+
+  it("aligns WhatsApp totals to the tenant recipient ledger", () => {
+    expect(whatsappMigration).toContain("orbit_tenant_context_authorize");
+    expect(whatsappMigration).toContain("r.empresa_id = v_empresa_id");
+    expect(whatsappMigration).toContain("r.campaign_id = p_campaign_id");
+    expect(whatsappMigration).toContain("FROM PUBLIC, anon");
   });
 
   it("renders channel-specific analytics without inventing WhatsApp telemetry", () => {

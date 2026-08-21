@@ -18,13 +18,18 @@ async function readCampaignAnalytics(params: {
   );
   if (!useScopedContract) return null;
 
-  const { data, error } = await (supabase.rpc as any)("orbit_tenant_campaign_analytics_read", {
-    p_tenant_slug: params.tenantSlug,
-    p_section: params.section,
-    p_campaign_id: params.campaignId,
-    p_campaign_ids: null,
-    p_interval: params.interval ?? "1 day",
-  });
+  const { data, error } = params.section === "whatsapp_summary"
+    ? await (supabase.rpc as any)("orbit_tenant_campaign_whatsapp_summary_read", {
+        p_tenant_slug: params.tenantSlug,
+        p_campaign_id: params.campaignId,
+      })
+    : await (supabase.rpc as any)("orbit_tenant_campaign_analytics_read", {
+        p_tenant_slug: params.tenantSlug,
+        p_section: params.section,
+        p_campaign_id: params.campaignId,
+        p_campaign_ids: null,
+        p_interval: params.interval ?? "1 day",
+      });
   if (error) throw error;
   return (data as any)?.data?.rows || [];
 }
@@ -282,9 +287,29 @@ export function useWhatsAppCampaignSummary(campaignId: string | null) {
       });
       let data: any = scopedRows;
       if (scopedRows === null) {
-        const legacy = await (supabase.rpc as any)("get_whatsapp_campaign_summary", { p_campaign_id: campaignId });
-        if (legacy.error) throw legacy.error;
-        data = legacy.data;
+        const base = () => supabase
+          .from("orbit_campaign_recipients")
+          .select("id", { count: "exact", head: true })
+          .eq("empresa_id", empresaId!)
+          .eq("campaign_id", campaignId);
+        const [all, sent, delivered, failed, pending] = await Promise.all([
+          base(),
+          base().in("status", ["enviado", "simulated", "clicado"]),
+          base().not("delivered_at", "is", null),
+          base().eq("status", "falhou"),
+          base().eq("status", "pendente"),
+        ]);
+        const legacyError = all.error || sent.error || delivered.error || failed.error || pending.error;
+        if (legacyError) throw legacyError;
+        data = [{
+          total_recipients: all.count || 0,
+          total_sent: sent.count || 0,
+          delivered: delivered.count || 0,
+          read: 0,
+          replied: 0,
+          failed: failed.count || 0,
+          pending: pending.count || 0,
+        }];
       }
 
       const row = (data as any[])?.[0] || {};
