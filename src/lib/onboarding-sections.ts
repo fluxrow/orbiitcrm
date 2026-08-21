@@ -226,6 +226,39 @@ export const ONBOARDING_SECTIONS: OnboardingSection[] = [
     fields: [
       { key: "whatsapp_numero", label: "Número WhatsApp comercial", type: "text", placeholder: "+55 11 ...", required: true },
       { key: "whatsapp_provider", label: "Provedor WhatsApp atual", type: "select", options: ["Z-API", "Oficial Meta", "Outro", "Nenhum"] },
+      {
+        key: "notification_recipient_whatsapp",
+        label: "WhatsApp que receberá notificações internas",
+        type: "text",
+        placeholder: "+55 11 99999-9999",
+        helper: "Pode ser diferente do número comercial. O Orbit enviará os avisos a partir da instância WhatsApp do próprio tenant somente depois da configuração e homologação.",
+      },
+      {
+        key: "notification_events",
+        label: "Quais eventos devem gerar notificação?",
+        type: "multiselect",
+        options: [
+          "Lead PRIORITY/HOT qualificado",
+          "Reunião agendada ou alterada",
+          "Pedido de atendimento humano",
+          "Venda ou pagamento identificado",
+          "Falha operacional crítica",
+        ],
+        helper: "Escolha somente avisos que exigem atenção. As preferências serão revisadas antes do go-live.",
+      },
+      {
+        key: "notification_quiet_hours",
+        label: "Horário em que não deseja receber notificações",
+        type: "text",
+        placeholder: "Ex: 22h às 7h; urgências podem ser exceção",
+      },
+      {
+        key: "notification_consent",
+        label: "Autoriza receber notificações operacionais nesse WhatsApp?",
+        type: "select",
+        options: ["Sim", "Não", "Definir na reunião de implantação"],
+        helper: "A autorização pode ser revogada depois. Isso não autoriza campanhas ou mensagens promocionais.",
+      },
       { key: "email_dominio", label: "Domínio de envio de email", type: "text", placeholder: "envio.seudominio.com.br" },
       { key: "calendar_email", label: "Email do Google Calendar para agendamentos", type: "email" },
       { key: "fontes_lead", label: "Fontes de lead que você usa hoje", type: "textarea" },
@@ -566,6 +599,10 @@ export interface ImplementationProfile {
   integracoes: {
     whatsapp_numero: string;
     whatsapp_provider: string;
+    notification_recipient_whatsapp: string;
+    notification_events: string[];
+    notification_quiet_hours: string;
+    notification_consent: string;
     calendar_email: string;
     email_dominio: string;
   };
@@ -639,6 +676,10 @@ export function buildImplementationProfile(
     integracoes: {
       whatsapp_numero: getVal(responses, "integracoes", "whatsapp_numero"),
       whatsapp_provider: getVal(responses, "integracoes", "whatsapp_provider"),
+      notification_recipient_whatsapp: getVal(responses, "integracoes", "notification_recipient_whatsapp"),
+      notification_events: splitLines(getVal(responses, "integracoes", "notification_events")),
+      notification_quiet_hours: getVal(responses, "integracoes", "notification_quiet_hours"),
+      notification_consent: getVal(responses, "integracoes", "notification_consent"),
       calendar_email: getVal(responses, "integracoes", "calendar_email"),
       email_dominio: getVal(responses, "integracoes", "email_dominio"),
     },
@@ -869,6 +910,15 @@ export function buildImplementationPackageMarkdown(
     "```json",
     JSON.stringify(profile, null, 2),
     "```",
+  ]));
+
+  out.push(...block("Notificações internas por WhatsApp", [
+    `- **Destinatário:** ${profile.integracoes.notification_recipient_whatsapp || "não informado"}`,
+    `- **Eventos:** ${profile.integracoes.notification_events.length ? profile.integracoes.notification_events.join(" · ") : "não definidos"}`,
+    `- **Horário silencioso:** ${profile.integracoes.notification_quiet_hours || "não definido"}`,
+    `- **Consentimento:** ${profile.integracoes.notification_consent || "não informado"}`,
+    "- **Origem prevista:** instância WhatsApp/Z-API do próprio tenant.",
+    "- **Aplicação:** configurar `orbit_ai_config.notification_recipient_whatsapp` somente após validar o número, o consentimento e executar teste no canário; nunca usar `canary_phone_numbers` como destinatário.",
   ]));
 
   // Body de captação recomendado
@@ -1561,5 +1611,4 @@ export function buildClientStatusMarkdown(
 
   return out.join("\n");
 }
-
 

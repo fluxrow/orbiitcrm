@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
 import { CheckCircle2, ChevronLeft, ChevronRight, HelpCircle, Lightbulb, Plus, Save, Send, Sparkles, Target, Trash2, Upload, FileCheck2, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -359,6 +360,25 @@ function FieldInput({
             ))}
           </SelectContent>
         </Select>
+      ) : field.type === "multiselect" ? (
+        <div className={`space-y-2 rounded-md border p-3 ${invalidCls}`}>
+          {field.options?.map((option) => {
+            const selected = Array.isArray(value) ? value : [];
+            const id = `${sectionKey}-${field.key}-${option}`.replace(/[^a-zA-Z0-9_-]/g, "-");
+            return (
+              <label key={option} htmlFor={id} className="flex cursor-pointer items-start gap-2 text-sm">
+                <Checkbox
+                  id={id}
+                  checked={selected.includes(option)}
+                  onCheckedChange={(checked) => onChange(checked
+                    ? [...selected, option]
+                    : selected.filter((item: string) => item !== option))}
+                />
+                <span>{option}</span>
+              </label>
+            );
+          })}
+        </div>
       ) : field.type === "asset_list" ? (
         <AssetListInput
           value={Array.isArray(value) ? value : []}
@@ -695,4 +715,3 @@ function AssetListInput({
     </div>
   );
 }
-

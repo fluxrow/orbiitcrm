@@ -91,6 +91,8 @@ Esta pendência deve ser tratada antes de ampliar a autonomia de onboarding:
 5. Validar se materiais, insights e rascunhos foram processados e quais itens realmente alimentam prompt, conhecimento e fluxos ativos.
 6. Implementar e homologar qualquer correção somente em `fluxrow`; tenants clientes permanecem read-only até promoção individual com rollback.
 
+O onboarding atual também coleta separadamente o número comercial conectado ao provedor e o destinatário de notificações internas. O pacote de implantação deve registrar número destinatário, eventos escolhidos, horário silencioso e consentimento. A origem prevista é a instância WhatsApp do próprio tenant; o preenchimento do formulário nunca ativa o envio automaticamente. A configuração operacional correspondente é `orbit_ai_config.notification_recipient_whatsapp`, validada e homologada antes do go-live.
+
 O funcionamento atual de IA, filas, prompts, fluxos e integrações dos tenants ativos não deve depender de uma alteração retroativa do status ou das respostas do onboarding.
 
 ## Operação segura
