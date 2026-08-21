@@ -9,15 +9,13 @@ import logo from "@/assets/orbit-logo.png";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { ForgotPasswordDialog } from "@/components/auth/ForgotPasswordDialog";
+import { isSafeInternalRedirect } from "@/lib/safe-navigation";
 
 export default function AuthPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const nextParam = searchParams.get("next");
-  const safeNext =
-    nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
-      ? nextParam
-      : null;
+  const safeNext = isSafeInternalRedirect(nextParam) ? nextParam : null;
   const { user, loading, signIn, signUp } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
