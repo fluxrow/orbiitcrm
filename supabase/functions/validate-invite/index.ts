@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
 
     const { data: invite, error } = await supabase
       .from("saas_invites")
-      .select("id, email, responsible_name, expires_at, used_at, empresa_id")
+      .select("id, email, responsible_name, expires_at, used_at, empresa_id, metadata")
       .eq("token_hash", tokenHash)
       .maybeSingle();
 
@@ -71,6 +71,7 @@ Deno.serve(async (req) => {
       plan_code: plan?.code || "demo",
       plan_name: plan?.name || "Demo",
       expires_at: invite.expires_at,
+      invite_kind: (invite.metadata as any)?.access?.kind || "tenant_admin",
     }, undefined, req);
   } catch (err: unknown) {
     console.error("Unexpected error:", err);

@@ -8,7 +8,15 @@ interface InviteRequest {
   responsible_email: string;
   plan_code?: "demo" | "basic" | "professional" | "plus" | "orbit";
   empresa_id?: string; // when provided, reuse existing empresa
+  invite_kind?: "tenant_admin" | "tenant_operator";
+  membership_role?: "admin" | "member";
+  campaign_permissions?: string[];
 }
+
+const CAMPAIGN_PERMISSION_KEYS = new Set([
+  "campaign_create", "campaign_edit", "campaign_submit_review",
+  "campaign_approve", "campaign_dispatch",
+]);
 
 
 async function hashToken(plaintext: string): Promise<string> {
@@ -87,12 +95,12 @@ Deno.serve(async (req) => {
       return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios: responsible_name, responsible_email", 400, undefined, req);
     }
 
-    let empresa: { id: string; nome: string };
+    let empresa: { id: string; nome: string; slug?: string | null };
     let plan: { id: string; name: string } | null = null;
     const reuseExisting = !!body.empresa_id;
 
     if (reuseExisting) {
-      const { data: existing, error: exErr } = await supabase.from("orbit_empresas").select("id, nome").eq("id", body.empresa_id!).single();
+      const { data: existing, error: exErr } = await supabase.from("orbit_empresas").select("id, nome, slug").eq("id", body.empresa_id!).single();
       if (exErr || !existing) return fail(ErrorCodes.NOT_FOUND, "Empresa não encontrada", 404, undefined, req);
       empresa = existing;
       // optional plan lookup for email body
@@ -112,6 +120,24 @@ Deno.serve(async (req) => {
       const { data: created, error: empErr } = await supabase.from("orbit_empresas").insert({ nome: body.empresa_nome.trim(), ativo: false }).select("id, nome").single();
       if (empErr) return fail(ErrorCodes.INTERNAL_ERROR, `Erro ao criar empresa: ${empErr.message}`, 500, undefined, req);
       empresa = created;
+    }
+
+    const inviteKind = body.invite_kind || "tenant_admin";
+    const membershipRole = inviteKind === "tenant_admin" ? "admin" : "member";
+    const campaignPermissions = [...new Set(body.campaign_permissions || [])];
+    if (inviteKind === "tenant_operator") {
+      if (!reuseExisting || empresa.slug !== "fluxrow") {
+        return fail(ErrorCodes.FORBIDDEN, "Convites operacionais estão liberados somente no tenant canário fluxrow", 403, undefined, req);
+      }
+      if (campaignPermissions.some((permission) => !CAMPAIGN_PERMISSION_KEYS.has(permission))) {
+        return fail(ErrorCodes.VALIDATION_ERROR, "Permissão de campanha inválida", 400, undefined, req);
+      }
+      const { data: flag } = await supabase.from("orbit_feature_flags")
+        .select("enabled").eq("empresa_id", empresa.id)
+        .eq("flag_key", "tenant_operations_center_v1").maybeSingle();
+      if (!flag?.enabled) {
+        return fail(ErrorCodes.FORBIDDEN, "Centro de Operações não habilitado para este tenant", 403, undefined, req);
+      }
     }
 
     try {
@@ -136,6 +162,13 @@ Deno.serve(async (req) => {
         empresa_id: empresa.id, email: body.responsible_email.trim().toLowerCase(),
         responsible_name: body.responsible_name.trim(), token_hash: tokenHash,
         expires_at: expiresAt, created_by_user_id: user.id,
+        metadata: {
+          access: {
+            kind: inviteKind,
+            membership_role: membershipRole,
+            campaign_permissions: inviteKind === "tenant_operator" ? campaignPermissions : [],
+          },
+        },
       }).select("id, expires_at, metadata").single();
       if (invErr) throw new Error(`saas_invites: ${invErr.message}`);
 
@@ -196,6 +229,9 @@ Deno.serve(async (req) => {
             ? invite.metadata
             : {}),
           email_delivery: emailDelivery,
+          invite_kind: inviteKind,
+          membership_role: membershipRole,
+          campaign_permissions: inviteKind === "tenant_operator" ? campaignPermissions : [],
         },
       }).eq("id", invite.id);
       if (deliveryMetaErr) {

@@ -88,13 +88,26 @@ Deno.serve(async (req) => {
 
     const { data: invite, error: invErr } = await supabase
       .from("saas_invites")
-      .select("id, email, responsible_name, expires_at, used_at, empresa_id")
+      .select("id, email, responsible_name, expires_at, used_at, empresa_id, metadata, created_by_user_id")
       .eq("token_hash", tokenHash)
       .maybeSingle();
 
     if (invErr || !invite) return fail(ErrorCodes.INVITE_INVALID, "Convite não encontrado ou token inválido", 200, undefined, req);
     if (invite.used_at) return fail(ErrorCodes.INVITE_USED, "Este convite já foi utilizado", 200, undefined, req);
     if (new Date(invite.expires_at) < new Date()) return fail(ErrorCodes.INVITE_EXPIRED, "Este convite expirou", 200, undefined, req);
+
+    const access = (invite.metadata as any)?.access;
+    const isOperatorInvite = access?.kind === "tenant_operator";
+    const membershipRole = isOperatorInvite ? "member" : "admin";
+    const campaignPermissions = Array.isArray(access?.campaign_permissions) ? access.campaign_permissions : [];
+    if (isOperatorInvite) {
+      const { data: empresaScope } = await supabase.from("orbit_empresas").select("slug").eq("id", invite.empresa_id).single();
+      const { data: flag } = await supabase.from("orbit_feature_flags").select("enabled")
+        .eq("empresa_id", invite.empresa_id).eq("flag_key", "tenant_operations_center_v1").maybeSingle();
+      if (empresaScope?.slug !== "fluxrow" || !flag?.enabled) {
+        return fail(ErrorCodes.FORBIDDEN, "Convite operacional indisponível para este tenant", 403, undefined, req);
+      }
+    }
 
     const { data: saasEmpresa } = await supabase
       .from("saas_empresa")
@@ -112,7 +125,7 @@ Deno.serve(async (req) => {
     let cnpjNormalized: string | null = null;
     let cpfNormalized: string | null = null;
     let tipoPessoa: "PF" | "PJ" | null = null;
-    if (!isDemo) {
+    if (!isDemo && !isOperatorInvite) {
       const raw = (body.documento ?? body.cnpj ?? "").replace(/[^0-9]/g, "");
       if (!raw) return fail(ErrorCodes.VALIDATION_ERROR, "Documento (CPF ou CNPJ) é obrigatório", 200, undefined, req);
 
@@ -184,18 +197,43 @@ Deno.serve(async (req) => {
     // exclusively via user_empresa_memberships and resolved at runtime by TenantContext
     // (which calls switch_active_empresa based on the URL slug).
     if (!isExistingUser) {
-      await supabase.from("profiles").update({ empresa_id: invite.empresa_id, nome: body.full_name.trim(), cargo: "Admin" }).eq("id", userId);
+      await supabase.from("profiles").update({ empresa_id: invite.empresa_id, nome: body.full_name.trim(), cargo: isOperatorInvite ? "Usuário" : "Admin" }).eq("id", userId);
     }
 
-    // Idempotent: avoid duplicate (user_id, role) violations when relinking an existing user.
-    const { data: hasRole } = await supabase.from("user_roles").select("user_id").eq("user_id", userId).eq("role", "admin").maybeSingle();
-    if (!hasRole) {
-      await supabase.from("user_roles").insert({ user_id: userId, role: "admin" });
+    // Convites operacionais nunca concedem papel global. O papel global admin fica
+    // reservado ao fluxo legado de onboarding do responsável pelo tenant.
+    if (!isOperatorInvite) {
+      const { data: hasRole } = await supabase.from("user_roles").select("user_id").eq("user_id", userId).eq("role", "admin").maybeSingle();
+      if (!hasRole) await supabase.from("user_roles").insert({ user_id: userId, role: "admin" });
     }
     await supabase.from("user_empresa_memberships").upsert(
-      { user_id: userId, empresa_id: invite.empresa_id, role: "admin" },
+      { user_id: userId, empresa_id: invite.empresa_id, role: isOperatorInvite ? membershipRole : "admin" },
       { onConflict: "user_id,empresa_id" },
     );
+
+    if (isOperatorInvite && campaignPermissions.length) {
+      const allowed = new Set(["campaign_create", "campaign_edit", "campaign_submit_review", "campaign_approve", "campaign_dispatch"]);
+      const rows = campaignPermissions.filter((key: string) => allowed.has(key)).map((permission_key: string) => ({
+        empresa_id: invite.empresa_id, user_id: userId, permission_key,
+        granted_by: invite.created_by_user_id || userId, revoked_at: null,
+      }));
+      if (rows.length) {
+        const { error: permissionError } = await supabase.from("orbit_tenant_user_permissions")
+          .upsert(rows, { onConflict: "empresa_id,user_id,permission_key" });
+        if (permissionError) return fail(ErrorCodes.INTERNAL_ERROR, `Falha ao aplicar permissões: ${permissionError.message}`, 500, undefined, req);
+      }
+    }
+
+    if (isOperatorInvite) {
+      await supabase.from("saas_invites").update({ used_at: new Date().toISOString(), used_by_user_id: userId }).eq("id", invite.id);
+      await supabase.from("pe_audit_log").insert({
+        actor_user_id: userId, action: "TENANT_OPERATOR_INVITE_ACCEPTED",
+        entity_type: "saas_invites", entity_id: invite.id,
+        metadata: { empresa_id: invite.empresa_id, membership_role: membershipRole, campaign_permissions: campaignPermissions },
+      });
+      const { data: empresaScope } = await supabase.from("orbit_empresas").select("slug").eq("id", invite.empresa_id).single();
+      return ok({ empresa_id: invite.empresa_id, user_id: userId, status: "active", slug: empresaScope?.slug, redirect_url: `/${empresaScope?.slug || "fluxrow"}/dashboard` }, undefined, req);
+    }
 
     const empresaUpdate: Record<string, unknown> = { ativo: true };
     if (cnpjNormalized) empresaUpdate.cnpj = cnpjNormalized;

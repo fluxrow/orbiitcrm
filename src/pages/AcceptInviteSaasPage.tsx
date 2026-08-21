@@ -18,6 +18,7 @@ interface InviteData {
   plan_code: string;
   plan_name: string;
   expires_at: string;
+  invite_kind?: "tenant_admin" | "tenant_operator";
 }
 
 interface CnpjData {
@@ -56,7 +57,8 @@ export default function AcceptInviteSaasPage() {
   const [cnpjLoading, setCnpjLoading] = useState(false);
 
   const isDemo = invite?.plan_code === "demo";
-  const totalSteps = isDemo ? 2 : 3;
+  const isOperatorInvite = invite?.invite_kind === "tenant_operator";
+  const totalSteps = isDemo || isOperatorInvite ? 2 : 3;
 
   // Step 0: Validate token
   useEffect(() => {
@@ -138,7 +140,7 @@ export default function AcceptInviteSaasPage() {
         password,
         full_name: fullName.trim(),
       };
-      if (!isDemo) {
+      if (!isDemo && !isOperatorInvite) {
         payload.documento = normalizeDocumento(documento);
         if (docTipo === "PJ" && cnpjData) {
           payload.dados_receita = cnpjData;
@@ -159,7 +161,7 @@ export default function AcceptInviteSaasPage() {
       setStep(5);
     } catch (e: any) {
       toast({ title: "Erro", description: e.message || "Erro ao finalizar.", variant: "destructive" });
-      setStep(isDemo ? 2 : 3);
+      setStep(isDemo || isOperatorInvite ? 2 : 3);
     } finally {
       setLoading(false);
     }
@@ -264,10 +266,10 @@ export default function AcceptInviteSaasPage() {
                 <Button
                   className="flex-1"
                   disabled={!canProceedAccount()}
-                  onClick={() => isDemo ? handleFinalize() : setStep(3)}
+                  onClick={() => isDemo || isOperatorInvite ? handleFinalize() : setStep(3)}
                 >
-                  {isDemo ? (
-                    <>Entrar na Demo</>
+                  {isDemo || isOperatorInvite ? (
+                    <>{isOperatorInvite ? "Aceitar convite" : "Entrar na Demo"}</>
                   ) : (
                     <>
                       <KeyRound className="mr-2 h-4 w-4" />
@@ -280,7 +282,7 @@ export default function AcceptInviteSaasPage() {
           )}
 
           {/* Step 3: Documento — CPF (pessoa física) ou CNPJ (empresa) */}
-          {step === 3 && !isDemo && (
+          {step === 3 && !isDemo && !isOperatorInvite && (
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>CPF ou CNPJ</Label>

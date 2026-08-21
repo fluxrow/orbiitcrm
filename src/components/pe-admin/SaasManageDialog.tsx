@@ -9,8 +9,10 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Copy, Mail, MessageCircle } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
 import { useUpdateSaasEmpresa, useSaasPlans, type SaasEmpresa } from "@/hooks/useSaasPlans";
+import { campaignPermissionKeys, type CampaignPermissionKey } from "@/hooks/useTenantCampaignPermissions";
 
 interface SaasManageDialogProps {
   open: boolean;
@@ -25,6 +27,14 @@ const STATUS_OPTIONS = [
   { value: "suspended", label: "Suspenso" },
   { value: "canceled", label: "Cancelado" },
 ];
+
+const CAMPAIGN_PERMISSION_LABELS: Record<CampaignPermissionKey, string> = {
+  campaign_create: "Criar campanhas",
+  campaign_edit: "Editar campanhas",
+  campaign_submit_review: "Enviar para revisão",
+  campaign_approve: "Aprovar campanhas",
+  campaign_dispatch: "Executar disparo",
+};
 
 export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasManageDialogProps) {
   const updateSaas = useUpdateSaasEmpresa();
@@ -47,6 +57,8 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
   // Invite form
   const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteKind, setInviteKind] = useState<"tenant_admin" | "tenant_operator">("tenant_admin");
+  const [invitePermissions, setInvitePermissions] = useState<CampaignPermissionKey[]>([]);
   const [inviting, setInviting] = useState(false);
   const [generatedInvite, setGeneratedInvite] = useState<{ email: string; url: string } | null>(null);
 
@@ -68,6 +80,8 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
     setInviteName(empresa?.responsible_name || "");
     setInviteEmail(empresa?.responsible_email || "");
     setGeneratedInvite(null);
+    setInviteKind("tenant_admin");
+    setInvitePermissions([]);
 
     (async () => {
       setLoadingCadastro(true);
@@ -171,6 +185,9 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
           empresa_id: empresa.empresa_id,
           responsible_name: inviteName.trim(),
           responsible_email: inviteEmail.trim().toLowerCase(),
+          invite_kind: inviteKind,
+          membership_role: inviteKind === "tenant_operator" ? "member" : "admin",
+          campaign_permissions: inviteKind === "tenant_operator" ? invitePermissions : [],
         },
       });
       if (error) throw error;
@@ -195,6 +212,7 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
       }
       setInviteName("");
       setInviteEmail("");
+      setInvitePermissions([]);
       if (currentEmpresaId) await loadInvites(currentEmpresaId);
     } catch (err: any) {
       toast.error(err.message || "Erro ao enviar convite");
@@ -385,6 +403,42 @@ export default function SaasManageDialog({ open, onOpenChange, empresa }: SaasMa
                 <Input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Nome completo" />
                 <Input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="email@empresa.com" />
               </div>
+              {empresa.empresa_slug === "fluxrow" && (
+                <div className="space-y-3 rounded-md border p-3">
+                  <div className="space-y-1">
+                    <Label>Tipo de acesso</Label>
+                    <Select value={inviteKind} onValueChange={(value: "tenant_admin" | "tenant_operator") => setInviteKind(value)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="tenant_admin">Administrador do tenant</SelectItem>
+                        <SelectItem value="tenant_operator">Usuário operacional</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {inviteKind === "tenant_operator" && (
+                    <>
+                      <div className="rounded bg-muted p-2 text-xs text-muted-foreground">
+                        Papel: membro operacional. Para acesso administrativo completo, use o tipo “Administrador do tenant”.
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Permissões de campanhas</Label>
+                        {campaignPermissionKeys.map((permission) => (
+                          <div key={permission} className="flex items-center justify-between gap-3 rounded border p-2">
+                            <span className="text-sm">{CAMPAIGN_PERMISSION_LABELS[permission]}</span>
+                            <Switch
+                              checked={invitePermissions.includes(permission)}
+                              onCheckedChange={(checked) => setInvitePermissions((current) => checked
+                                ? [...current, permission]
+                                : current.filter((item) => item !== permission))}
+                            />
+                          </div>
+                        ))}
+                        <p className="text-xs text-muted-foreground">As permissões só entram em vigor após a aceitação. “Executar disparo” não libera envio real sozinho.</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
               <Button onClick={handleInvite} disabled={inviting} className="w-full" variant="secondary">
                 <Mail className="w-4 h-4 mr-2" />
                 {inviting ? "Enviando..." : "Enviar convite"}
