@@ -10,6 +10,7 @@ const dispatchEnforcement = read("../../supabase/migrations/20260821190307_tenan
 const sendCampaign = read("../../supabase/functions/send-orbit-campaign/index.ts");
 const campaignScheduler = read("../../supabase/functions/orbit-campaign-scheduler-tick/index.ts");
 const dispatchHelper = read("../../supabase/functions/_shared/campaign-dispatch-authorization.ts");
+const conversationPolicyFix = read("../../supabase/migrations/20260821190925_fix_conversas_update_policy_membership_check.sql");
 const helper = read("../lib/tenant-campaign-mutations.ts");
 const campaigns = read("../hooks/useOrbitCampaigns.ts");
 const wizard = read("../components/orbit/CampaignWizardContent.tsx");
@@ -85,5 +86,13 @@ describe("tenant campaign mutations wave 4.3b", () => {
     expect(sendCampaign.indexOf("claimCampaignDispatchAuthorization(supabase, campaign_id)"))
       .toBeLessThan(sendCampaign.indexOf('update({ status: "enviando" })'));
     expect(campaignScheduler).toContain('update({ status: "agendada" })');
+  });
+
+  it("does not authorize conversation reassignment from a JWT tenant claim", () => {
+    expect(conversationPolicyFix).toContain('DROP POLICY IF EXISTS "Users can update own empresa conversas"');
+    expect(conversationPolicyFix).toContain("USING (public.user_has_empresa_access(empresa_id))");
+    expect(conversationPolicyFix).toContain("WITH CHECK (public.user_has_empresa_access(empresa_id))");
+    expect(conversationPolicyFix).not.toContain("auth.jwt()");
+    expect(conversationPolicyFix).not.toContain("app_metadata");
   });
 });
