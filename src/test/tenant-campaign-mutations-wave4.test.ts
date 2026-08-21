@@ -11,6 +11,7 @@ const sendCampaign = read("../../supabase/functions/send-orbit-campaign/index.ts
 const campaignScheduler = read("../../supabase/functions/orbit-campaign-scheduler-tick/index.ts");
 const dispatchHelper = read("../../supabase/functions/_shared/campaign-dispatch-authorization.ts");
 const conversationPolicyFix = read("../../supabase/migrations/20260821190925_fix_conversas_update_policy_membership_check.sql");
+const directWriteGate = read("../../supabase/migrations/20260821191858_tenant_campaign_direct_write_gate_wave4_part3d.sql");
 const helper = read("../lib/tenant-campaign-mutations.ts");
 const campaigns = read("../hooks/useOrbitCampaigns.ts");
 const wizard = read("../components/orbit/CampaignWizardContent.tsx");
@@ -94,5 +95,18 @@ describe("tenant campaign mutations wave 4.3b", () => {
     expect(conversationPolicyFix).toContain("WITH CHECK (public.user_has_empresa_access(empresa_id))");
     expect(conversationPolicyFix).not.toContain("auth.jwt()");
     expect(conversationPolicyFix).not.toContain("app_metadata");
+  });
+
+  it("closes direct campaign DML only after the tenant enters the scoped RPC rollout", () => {
+    expect(directWriteGate).toContain("orbit_campaign_direct_write_allowed");
+    expect(directWriteGate).toContain("tenant_campaign_mutations_wave4_v1");
+    expect(directWriteGate).toContain("AND f.enabled = true");
+    expect(directWriteGate).toContain('DROP POLICY IF EXISTS "PE members can insert own empresa campaigns"');
+    expect(directWriteGate).toContain('DROP POLICY IF EXISTS "Users can manage own empresa recipients"');
+    expect(directWriteGate).toContain('DROP POLICY IF EXISTS "Users can insert own empresa approvals"');
+    expect(directWriteGate).toContain("FOR INSERT TO authenticated");
+    expect(directWriteGate).toContain("WITH CHECK (");
+    expect(directWriteGate).toContain("FROM PUBLIC, anon");
+    expect(directWriteGate).toContain("TO authenticated");
   });
 });
