@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 import { orbitCampaignKeys } from "@/lib/query-keys";
 import { useTenant } from "@/contexts/TenantContext";
+import { runTenantCampaignAction } from "@/lib/tenant-campaign-mutations";
 
 
 type Campaign = Tables<"orbit_campaigns">;
@@ -73,9 +74,16 @@ export function useOrbitCampaigns(filters?: CampaignFilters) {
 
 export function useCreateCampaign() {
   const queryClient = useQueryClient();
+  const { empresaId, slug: tenantSlug } = useTenant();
 
   return useMutation({
     mutationFn: async (campaign: CampaignInsert) => {
+      if (empresaId && tenantSlug) {
+        const scoped = await runTenantCampaignAction({
+          empresaId, tenantSlug, action: "save_draft", payload: campaign as Record<string, unknown>,
+        });
+        if (scoped) return scoped.campaign as Campaign;
+      }
       const { data, error } = await supabase
         .from("orbit_campaigns")
         .insert(campaign)
@@ -92,9 +100,25 @@ export function useCreateCampaign() {
 
 export function useUpdateCampaign() {
   const queryClient = useQueryClient();
+  const { empresaId, slug: tenantSlug } = useTenant();
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: CampaignUpdate & { id: string }) => {
+      if (empresaId && tenantSlug) {
+        const action = updates.status === "em_revisao" ? "mark_in_review"
+          : updates.status === "pausada" ? "pause_campaign"
+          : updates.status === "cancelada" ? "cancel_campaign"
+          : updates.status === "aprovada_para_envio" || updates.aprovacao_status === "aprovada" ? "approve_campaign"
+          : "save_draft";
+        const scoped = await runTenantCampaignAction({
+          empresaId, tenantSlug, action,
+          campaignId: id,
+          payload: action === "approve_campaign"
+            ? { dispatch_approval_only: updates.status !== "aprovada_para_envio" }
+            : updates as Record<string, unknown>,
+        });
+        if (scoped) return scoped.campaign as Campaign;
+      }
       const { data, error } = await supabase
         .from("orbit_campaigns")
         .update(updates)
@@ -112,9 +136,16 @@ export function useUpdateCampaign() {
 
 export function useDeleteCampaign() {
   const queryClient = useQueryClient();
+  const { empresaId, slug: tenantSlug } = useTenant();
 
   return useMutation({
     mutationFn: async (id: string) => {
+      if (empresaId && tenantSlug) {
+        const scoped = await runTenantCampaignAction({
+          empresaId, tenantSlug, action: "cancel_campaign", campaignId: id,
+        });
+        if (scoped) return;
+      }
       const { error } = await supabase
         .from("orbit_campaigns")
         .delete()

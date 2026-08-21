@@ -11,6 +11,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { orbitCampaignKeys } from "@/lib/query-keys";
+import { useTenant } from "@/contexts/TenantContext";
+import { runTenantCampaignAction } from "@/lib/tenant-campaign-mutations";
 
 interface RecipientCounts {
   total: number;
@@ -36,6 +38,7 @@ export function CampaignReviewDialog({
 }: CampaignReviewDialogProps) {
   const { user } = useAuth();
   const { peUser } = usePeAuth();
+  const { empresaId, slug: tenantSlug } = useTenant();
 
   const queryClient = useQueryClient();
   const [reloading, setReloading] = useState(false);
@@ -49,13 +52,17 @@ export function CampaignReviewDialog({
   const handleReloadRecipients = async () => {
     try {
       setReloading(true);
-      const { data, error } = await supabase.rpc(
-        "pe_populate_campaign_recipients" as any,
-        { p_campaign_id: campaign.id },
-      );
-      if (error) throw error;
-      const inserted = (data as any)?.inserted ?? 0;
-      const total = (data as any)?.total ?? 0;
+      const scoped = empresaId && tenantSlug ? await runTenantCampaignAction({
+        empresaId, tenantSlug, action: "populate_recipients", campaignId: campaign.id,
+      }) : null;
+      let result = scoped?.recipient_result;
+      if (!scoped) {
+        const legacy = await supabase.rpc("pe_populate_campaign_recipients" as any, { p_campaign_id: campaign.id });
+        if (legacy.error) throw legacy.error;
+        result = legacy.data;
+      }
+      const inserted = (result as any)?.inserted ?? 0;
+      const total = (result as any)?.total ?? 0;
       await queryClient.invalidateQueries({ queryKey: orbitCampaignKeys.all });
       if (total === 0) {
         toast.warning("Nenhum destinatário elegível encontrado para os filtros desta campanha.");

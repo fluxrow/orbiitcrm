@@ -20,6 +20,7 @@ import { usePeAuth } from "@/hooks/usePeAuth";
 import { CheckCircle2 } from "lucide-react";
 import { useTenant } from "@/contexts/TenantContext";
 import { isTenantFeatureEnabled } from "@/lib/tenant-explicit-mutations";
+import { TENANT_CAMPAIGN_MUTATIONS_WAVE4_FLAG } from "@/lib/tenant-campaign-mutations";
 
 const TENANT_CAMPAIGN_ANALYTICS_WAVE4_FLAG = "tenant_campaign_analytics_context_wave4_v1";
 
@@ -119,14 +120,18 @@ export default function CampanhasPage() {
         .from("orbit_campaigns")
         .select("empresa_id")
         .eq("id", campaignId)
+        .eq("empresa_id", empresaId!)
         .single();
       if (campaign) {
-        await supabase.from("orbit_campaign_approvals").insert({
-          campaign_id: campaignId,
-          empresa_id: campaign.empresa_id,
-          acao: "aprovada_para_envio",
-          user_id: user?.id,
-        });
+        const scopedApproval = await isTenantFeatureEnabled(campaign.empresa_id, TENANT_CAMPAIGN_MUTATIONS_WAVE4_FLAG);
+        if (!scopedApproval) {
+          await supabase.from("orbit_campaign_approvals").insert({
+            campaign_id: campaignId,
+            empresa_id: campaign.empresa_id,
+            acao: "aprovada_para_envio",
+            user_id: user?.id,
+          });
+        }
       }
       toast.success("Campanha aprovada para envio!");
       setReviewCampaignId(null);
@@ -230,14 +235,18 @@ export default function CampanhasPage() {
         .from("orbit_campaigns")
         .select("empresa_id")
         .eq("id", campaignId)
+        .eq("empresa_id", empresaId!)
         .single();
       if (campaign) {
-        await supabase.from("orbit_campaign_approvals").insert({
-          campaign_id: campaignId,
-          empresa_id: campaign.empresa_id,
-          acao: "aprovada_para_envio",
-          user_id: user?.id,
-        });
+        const scopedApproval = await isTenantFeatureEnabled(campaign.empresa_id, TENANT_CAMPAIGN_MUTATIONS_WAVE4_FLAG);
+        if (!scopedApproval) {
+          await supabase.from("orbit_campaign_approvals").insert({
+            campaign_id: campaignId,
+            empresa_id: campaign.empresa_id,
+            acao: "aprovada_para_envio",
+            user_id: user?.id,
+          });
+        }
       }
       toast.success("Disparo aprovado. O scheduler cuidará do envio no próximo tick, se o envio real estiver liberado.");
       setApproveDialog({ open: false, id: null });

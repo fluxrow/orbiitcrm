@@ -195,6 +195,18 @@ população de destinatários, aprovação, alteração de status, exclusão e d
 permanecem fora desta parte por serem mutações operacionais; nenhuma delas deve
 ser exercitada durante a homologação read-only da Parte 4.3a.
 
+#### Parte 4.3b — administração de campanhas
+
+`tenant_campaign_mutations_wave4_v1` move, somente no `fluxrow`, criação e
+edição de rascunho, materialização de destinatários, revisão, aprovação, pausa e
+cancelamento para `orbit_tenant_campaign_mutate_scoped`. A função resolve o
+tenant pelo slug, exige Admin/Super Admin, revalida campanha e template, limita
+transições de estado e grava auditoria sanitizada.
+
+O contrato rejeita explicitamente `dispatch_campaign`; envio real permanece em
+uma etapa isolada, com confirmação reforçada e gate próprio. Tenants protegidos
+continuam no caminho legado enquanto a flag estiver desligada.
+
 ## Gates de promoção
 
 - CI verde: instalação limpa, TypeScript, testes e build.

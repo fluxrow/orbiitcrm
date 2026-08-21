@@ -24,6 +24,7 @@ import { uploadCampaignImage } from "@/lib/campaignImages";
 import { extractTemplateVariables, renderTemplateVariables } from "@/lib/templateVariables";
 import { toast } from "sonner";
 import { orbitCampaignKeys } from "@/lib/query-keys";
+import { runTenantCampaignAction } from "@/lib/tenant-campaign-mutations";
 import { buildCampaignAudienceFilters, isManualOnlyCampaignAudience } from "@/lib/orbit/campaign-audience";
 
 interface CampaignWizardContentProps {
@@ -73,7 +74,7 @@ const steps = [
 ];
 
 export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardContentProps) {
-  const { empresaId: tenantEmpresaId } = useTenant();
+  const { empresaId: tenantEmpresaId, slug: tenantSlug } = useTenant();
   const [currentStep, setCurrentStep] = useState(1);
   const [data, setData] = useState<CampaignData>({
     nome: "",
@@ -340,11 +341,19 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
         whatsapp_cta_posicao: data.whatsapp_cta_override ? data.whatsapp_cta_posicao || null : null,
       } as any);
       if (campaign) {
-        const { data: popResult, error: popError } = await supabase.rpc(
-          "pe_populate_campaign_recipients" as any,
-          { p_campaign_id: campaign.id },
-        );
-        if (popError) throw popError;
+        const scoped = tenantSlug ? await runTenantCampaignAction({
+          empresaId: tenantEmpresaId,
+          tenantSlug,
+          action: "populate_recipients",
+          campaignId: campaign.id,
+          payload: manualOnlyAudience ? { expected_recipient_count: recipientIds.length } : {},
+        }) : null;
+        let popResult = scoped?.recipient_result;
+        if (!scoped) {
+          const legacy = await supabase.rpc("pe_populate_campaign_recipients" as any, { p_campaign_id: campaign.id });
+          if (legacy.error) throw legacy.error;
+          popResult = legacy.data;
+        }
         const inserted = (popResult as any)?.inserted ?? 0;
         const total = (popResult as any)?.total ?? 0;
 
