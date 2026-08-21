@@ -203,6 +203,11 @@ cancelamento para `orbit_tenant_campaign_mutate_scoped`. A função resolve o
 tenant pelo slug, exige Admin/Super Admin, revalida campanha e template, limita
 transições de estado e grava auditoria sanitizada.
 
+A criação pelo assistente usa `orbit_tenant_campaign_create_atomic_scoped`,
+que cria o rascunho e materializa os destinatários na mesma transação. Falha de
+seleção ou divergência da contagem revisada desfaz integralmente campanha,
+destinatários e auditoria intermediária, sem deixar rascunho parcial.
+
 O contrato rejeita explicitamente `dispatch_campaign`; envio real permanece em
 uma etapa isolada, com confirmação reforçada e gate próprio. Tenants protegidos
 continuam no caminho legado enquanto a flag estiver desligada.

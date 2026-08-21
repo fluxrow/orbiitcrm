@@ -24,7 +24,7 @@ import { uploadCampaignImage } from "@/lib/campaignImages";
 import { extractTemplateVariables, renderTemplateVariables } from "@/lib/templateVariables";
 import { toast } from "sonner";
 import { orbitCampaignKeys } from "@/lib/query-keys";
-import { runTenantCampaignAction } from "@/lib/tenant-campaign-mutations";
+import { runTenantCampaignCreateAtomic } from "@/lib/tenant-campaign-mutations";
 import { buildCampaignAudienceFilters, isManualOnlyCampaignAudience } from "@/lib/orbit/campaign-audience";
 
 interface CampaignWizardContentProps {
@@ -315,13 +315,12 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
       if (!tenantEmpresaId) throw new Error("Empresa não encontrada");
       const profile = { empresa_id: tenantEmpresaId };
       const recipientIds = calculateAllRecipientIds();
-      const recipientProspects = prospects?.filter(p => recipientIds.includes(p.id)) || [];
       const manualOnlyAudience = isManualOnlyCampaignAudience(
         data.filtros,
         data.selected_prospect_ids,
         data.selected_group_ids,
       );
-      const campaign = await createCampaign.mutateAsync({
+      const campaignPayload = {
         nome: data.nome, canal: data.canal, publico_origem: data.publico_origem,
         template_id: data.template_id || null,
         filtros_json: buildCampaignAudienceFilters(
@@ -339,17 +338,17 @@ export function CampaignWizardContent({ onComplete, onCancel }: CampaignWizardCo
         whatsapp_cta_texto_botao: data.whatsapp_cta_override ? data.whatsapp_cta_texto_botao || null : null,
         whatsapp_cta_mensagem_inicial: data.whatsapp_cta_override ? data.whatsapp_cta_mensagem_inicial || null : null,
         whatsapp_cta_posicao: data.whatsapp_cta_override ? data.whatsapp_cta_posicao || null : null,
-      } as any);
+      } as any;
+      const atomic = tenantSlug ? await runTenantCampaignCreateAtomic({
+        empresaId: tenantEmpresaId,
+        tenantSlug,
+        payload: campaignPayload,
+        expectedRecipientCount: manualOnlyAudience ? recipientIds.length : null,
+      }) : null;
+      const campaign = atomic?.campaign ?? await createCampaign.mutateAsync(campaignPayload);
       if (campaign) {
-        const scoped = tenantSlug ? await runTenantCampaignAction({
-          empresaId: tenantEmpresaId,
-          tenantSlug,
-          action: "populate_recipients",
-          campaignId: campaign.id,
-          payload: manualOnlyAudience ? { expected_recipient_count: recipientIds.length } : {},
-        }) : null;
-        let popResult = scoped?.recipient_result;
-        if (!scoped) {
+        let popResult = atomic?.recipient_result;
+        if (!atomic) {
           const legacy = await supabase.rpc("pe_populate_campaign_recipients" as any, { p_campaign_id: campaign.id });
           if (legacy.error) throw legacy.error;
           popResult = legacy.data;

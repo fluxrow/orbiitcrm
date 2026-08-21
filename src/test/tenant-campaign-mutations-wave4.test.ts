@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const read = (path: string) => readFileSync(resolve(__dirname, path), "utf8");
 const migration = read("../../supabase/migrations/20260821183043_tenant_campaign_mutations_wave4_part3b.sql");
+const atomicMigration = read("../../supabase/migrations/20260821184552_tenant_campaign_atomic_draft_wave4_part3b.sql");
 const helper = read("../lib/tenant-campaign-mutations.ts");
 const campaigns = read("../hooks/useOrbitCampaigns.ts");
 const wizard = read("../components/orbit/CampaignWizardContent.tsx");
@@ -28,11 +29,23 @@ describe("tenant campaign mutations wave 4.3b", () => {
 
   it("routes canary writes and recipient population through the scoped RPC", () => {
     expect(helper).toContain('"orbit_tenant_campaign_mutate_scoped"');
+    expect(helper).toContain('"orbit_tenant_campaign_create_atomic_scoped"');
     expect(campaigns).toContain("runTenantCampaignAction");
-    expect(wizard).toContain('action: "populate_recipients"');
+    expect(wizard).toContain("runTenantCampaignCreateAtomic");
     expect(review).toContain('action: "populate_recipients"');
     expect(migration).not.toContain("public.pe_populate_campaign_recipients(p_campaign_id)");
     expect(migration).toContain("public.preview_campaign_recipients(v_empresa_id");
+  });
+
+  it("rolls draft creation and recipient population into one database transaction", () => {
+    expect(atomicMigration).toContain("orbit_tenant_campaign_create_atomic_scoped");
+    expect(atomicMigration).toContain("'save_draft'");
+    expect(atomicMigration).toContain("'populate_recipients'");
+    expect(atomicMigration).toContain("'campaign', v_populated #> '{data,campaign}'");
+    expect(atomicMigration).not.toContain("CAMPAIGN_RECIPIENT_COUNT_MISMATCH");
+    expect(atomicMigration).toContain("FROM PUBLIC, anon");
+    expect(atomicMigration).toContain("TO authenticated");
+    expect(atomicMigration).not.toContain("dispatch_campaign");
   });
 
   it("records sanitized audit metadata for every accepted action", () => {
