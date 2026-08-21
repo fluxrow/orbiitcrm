@@ -34,6 +34,7 @@ import {
 import {
   ALL_KNOWN_SECTIONS,
   calculateProgress,
+  getOnboardingCompatibilitySummary,
   DEFAULT_CHECKLIST,
   buildImplementationPackageMarkdown,
   buildClientStatusMarkdown,
@@ -102,6 +103,7 @@ export default function OnboardingPage() {
 function OnboardingRow({ onboarding, onOpen }: { onboarding: ClientOnboarding; onOpen: () => void }) {
   const archive = useArchiveOnboarding();
   const progress = calculateProgress(onboarding.responses);
+  const compatibility = getOnboardingCompatibilitySummary(onboarding.responses);
   const link = `${window.location.origin}/onboarding-cliente/${onboarding.public_token}`;
   const st = STATUS_LABEL[onboarding.status] || STATUS_LABEL.rascunho;
 
@@ -111,6 +113,7 @@ function OnboardingRow({ onboarding, onOpen }: { onboarding: ClientOnboarding; o
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           <h4 className="font-semibold truncate">{onboarding.cliente_nome || "Sem nome"}</h4>
           <Badge variant={st.variant}>{st.label}</Badge>
+          <Badge variant="outline" className="text-[10px]">{compatibility.schemaLabel}</Badge>
           {onboarding.empresa?.nome && (
             <Badge variant="outline" className="text-[10px]">
               {onboarding.empresa.nome}
@@ -123,8 +126,15 @@ function OnboardingRow({ onboarding, onOpen }: { onboarding: ClientOnboarding; o
         </p>
         <div className="flex items-center gap-3 mt-2">
           <Progress value={progress} className="h-1.5 flex-1 max-w-[200px]" />
-          <span className="text-xs text-muted-foreground">{progress}% preenchido</span>
+          <span className="text-xs text-muted-foreground">
+            {compatibility.isHistorical ? `${progress}% compatível com o formulário atual` : `${progress}% preenchido`}
+          </span>
         </div>
+        {compatibility.isHistorical && compatibility.missingRequiredCount > 0 && (
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {compatibility.missingRequiredCount} {compatibility.missingRequiredCount === 1 ? "requisito atual sem equivalente histórico" : "requisitos atuais sem equivalente histórico"}. Isso não reabre o onboarding.
+          </p>
+        )}
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <Button
@@ -1255,5 +1265,3 @@ function MaterialsReviewDrawer({
     </Sheet>
   );
 }
-
-

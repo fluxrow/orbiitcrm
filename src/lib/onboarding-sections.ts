@@ -278,6 +278,49 @@ export const ALL_KNOWN_SECTIONS: OnboardingSection[] = [
 // Progresso e checklist
 // ============================================================
 
+export type OnboardingSchemaVersion = "current_v2" | "legacy_high_ticket_v1" | "legacy_mvp" | "unknown";
+
+export interface OnboardingCompatibilitySummary {
+  schemaVersion: OnboardingSchemaVersion;
+  schemaLabel: string;
+  coverage: number;
+  isHistorical: boolean;
+  missingRequiredCount: number;
+}
+
+/**
+ * Deriva a geração do formulário sem alterar respostas históricas. A versão
+ * explícita em metadata poderá substituir esta heurística quando for adicionada
+ * aos novos registros.
+ */
+export function detectOnboardingSchemaVersion(responses: Record<string, any>): OnboardingSchemaVersion {
+  const keys = new Set(Object.keys(responses ?? {}));
+  if (["caminho_lead", "midias"].some((key) => keys.has(key))) return "current_v2";
+  if (["ativos", "jornada", "lead_form", "qualificacao"].some((key) => keys.has(key))) return "legacy_high_ticket_v1";
+  if (["equipe", "formulario"].some((key) => keys.has(key))) return "legacy_mvp";
+  return keys.size > 0 ? "legacy_mvp" : "unknown";
+}
+
+export function getOnboardingCompatibilitySummary(
+  responses: Record<string, any>,
+): OnboardingCompatibilitySummary {
+  const schemaVersion = detectOnboardingSchemaVersion(responses);
+  const labels: Record<OnboardingSchemaVersion, string> = {
+    current_v2: "Formulário atual",
+    legacy_high_ticket_v1: "Formulário histórico v1",
+    legacy_mvp: "Formulário legado",
+    unknown: "Versão não identificada",
+  };
+  const missingRequiredCount = getMissingRequiredFields(responses).length;
+  return {
+    schemaVersion,
+    schemaLabel: labels[schemaVersion],
+    coverage: calculateProgress(responses),
+    isHistorical: schemaVersion !== "current_v2" && schemaVersion !== "unknown",
+    missingRequiredCount,
+  };
+}
+
 export function calculateProgress(responses: Record<string, any>): number {
   const requiredFields = ONBOARDING_SECTIONS.flatMap((s) =>
     s.fields.filter((f) => f.required).map((f) => ({ section: s.key, key: f.key }))
@@ -1518,6 +1561,5 @@ export function buildClientStatusMarkdown(
 
   return out.join("\n");
 }
-
 
 
