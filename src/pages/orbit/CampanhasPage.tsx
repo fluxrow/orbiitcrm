@@ -44,7 +44,7 @@ export default function CampanhasPage() {
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [approveDialog, setApproveDialog] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [reviewCampaignId, setReviewCampaignId] = useState<string | null>(null);
-  const [analyticsCampaign, setAnalyticsCampaign] = useState<{ id: string; nome: string } | null>(null);
+  const [analyticsCampaign, setAnalyticsCampaign] = useState<{ id: string; nome: string; canal: string } | null>(null);
   const { isSuperAdmin } = usePeAuth();
   const { empresaId, slug: tenantSlug } = useTenant();
 
@@ -401,7 +401,7 @@ export default function CampanhasPage() {
                   onPause={handlePause}
                   onCancel={handleCancel}
                   onDelete={(id) => setDeleteDialog({ open: true, id })}
-                  onAnalytics={() => setAnalyticsCampaign({ id: c.id, nome: c.nome })}
+                  onAnalytics={() => setAnalyticsCampaign({ id: c.id, nome: c.nome, canal: c.canal })}
                   onApproveDispatch={(id) => setApproveDialog({ open: true, id })}
                 />
               </div>
@@ -426,6 +426,7 @@ export default function CampanhasPage() {
         onOpenChange={(open) => !open && setAnalyticsCampaign(null)}
         campaignId={analyticsCampaign?.id || null}
         campaignName={analyticsCampaign?.nome}
+        campaignCanal={analyticsCampaign?.canal}
         onCreateFollowUp={(sourceId, audience, name) => {
           navigate("nova", {
             state: {

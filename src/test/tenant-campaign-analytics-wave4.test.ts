@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(resolve(__dirname, path), "utf8");
 const page = read("../pages/orbit/CampanhasPage.tsx");
 const analytics = read("../hooks/useOrbitEmailAnalytics.ts");
+const dialog = read("../components/orbit/CampaignAnalyticsDialog.tsx");
 const keys = read("../lib/query-keys.ts");
 const migration = read("../../supabase/migrations/20260821180706_tenant_campaign_analytics_context_wave4_part3a.sql");
 
@@ -17,6 +18,17 @@ describe("tenant campaign analytics wave 4.3a", () => {
     expect(analytics).toContain('section: "whatsapp_summary"');
     expect(analytics).toContain('section: "timeline"');
     expect(keys).toContain("empresaId ?? null");
+  });
+
+  it("renders channel-specific analytics without inventing WhatsApp telemetry", () => {
+    expect(page).toContain("canal: c.canal");
+    expect(page).toContain("campaignCanal={analyticsCampaign?.canal}");
+    expect(dialog).toContain('campaignCanal?: string');
+    expect(dialog).toContain('campaignCanal === "whatsapp"');
+    expect(dialog).toContain('label="Pendentes"');
+    expect(dialog).toContain("Leituras e respostas ainda não possuem telemetria persistida por campanha");
+    expect(dialog).not.toContain('label="Lidos"');
+    expect(dialog).not.toContain('label="Respostas"');
   });
 
   it("validates campaign ownership and filters every recipient aggregate", () => {

@@ -12,7 +12,10 @@ import {
 import {
   useOrbitCampaignSummary,
   useOrbitCampaignRecipients,
+  useWhatsAppCampaignSummary,
+  useWhatsAppCampaignRecipients,
   type EngagementFilter,
+  type WhatsAppEngagementFilter,
 } from "@/hooks/useOrbitEmailAnalytics";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,6 +32,7 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   campaignId: string | null;
   campaignName?: string;
+  campaignCanal?: string;
   onCreateFollowUp?: (campaignId: string, audience: FollowUpAudience, campaignName: string) => void;
 }
 
@@ -56,6 +60,13 @@ const followUpOptions: { value: FollowUpAudience; label: string; desc: string }[
   { value: "nao_abriu", label: "🙈 Quem NÃO abriu", desc: "Reimpactar com nova abordagem" },
 ];
 
+const whatsappFilterOptions: { value: WhatsAppEngagementFilter; label: string }[] = [
+  { value: "todos", label: "Todos" },
+  { value: "enviado", label: "Enviados" },
+  { value: "entregue", label: "Entregues" },
+  { value: "falhou", label: "Falhas" },
+];
+
 function MetricCard({
   icon, label, value, sub, trend,
 }: {
@@ -80,17 +91,27 @@ function MetricCard({
   );
 }
 
-export function CampaignAnalyticsDialog({ open, onOpenChange, campaignId, campaignName, onCreateFollowUp }: Props) {
+export function CampaignAnalyticsDialog({ open, onOpenChange, campaignId, campaignName, campaignCanal, onCreateFollowUp }: Props) {
   const { empresaId } = useTenant();
+  const isWhatsApp = campaignCanal === "whatsapp";
   const [page, setPage] = useState(0);
   const [engagementFilter, setEngagementFilter] = useState<EngagementFilter>("todos");
+  const [whatsappFilter, setWhatsappFilter] = useState<WhatsAppEngagementFilter>("todos");
   const [followUpAudience, setFollowUpAudience] = useState<FollowUpAudience>("abriu");
   const [exporting, setExporting] = useState(false);
   const activeId = open ? campaignId : null;
-  const { data: summary, isLoading: loadingSummary } = useOrbitCampaignSummary(activeId);
-  const { data: recipientsData, isLoading: loadingRecipients } = useOrbitCampaignRecipients(
-    activeId, page, PAGE_SIZE, engagementFilter
+  const { data: emailSummary, isLoading: loadingEmailSummary } = useOrbitCampaignSummary(isWhatsApp ? null : activeId);
+  const { data: emailRecipients, isLoading: loadingEmailRecipients } = useOrbitCampaignRecipients(
+    isWhatsApp ? null : activeId, page, PAGE_SIZE, engagementFilter
   );
+  const { data: whatsappSummary, isLoading: loadingWhatsappSummary } = useWhatsAppCampaignSummary(isWhatsApp ? activeId : null);
+  const { data: whatsappRecipients, isLoading: loadingWhatsappRecipients } = useWhatsAppCampaignRecipients(
+    isWhatsApp ? activeId : null, page, PAGE_SIZE, whatsappFilter
+  );
+  const summary = isWhatsApp ? whatsappSummary : emailSummary;
+  const recipientsData = isWhatsApp ? whatsappRecipients : emailRecipients;
+  const loadingSummary = isWhatsApp ? loadingWhatsappSummary : loadingEmailSummary;
+  const loadingRecipients = isWhatsApp ? loadingWhatsappRecipients : loadingEmailRecipients;
 
   const totalCount = recipientsData?.totalCount || 0;
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
@@ -98,7 +119,7 @@ export function CampaignAnalyticsDialog({ open, onOpenChange, campaignId, campai
   const to = Math.min((page + 1) * PAGE_SIZE, totalCount);
 
   const handleOpenChange = (v: boolean) => {
-    if (!v) { setPage(0); setEngagementFilter("todos"); setFollowUpAudience("abriu"); }
+    if (!v) { setPage(0); setEngagementFilter("todos"); setWhatsappFilter("todos"); setFollowUpAudience("abriu"); }
     onOpenChange(v);
   };
 
@@ -201,41 +222,39 @@ export function CampaignAnalyticsDialog({ open, onOpenChange, campaignId, campai
         ) : summary ? (
           <div className="space-y-5 overflow-hidden flex flex-col">
             {/* Metric Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <MetricCard icon={<Send className="h-4 w-4" />} label="Enviados" value={summary.total} />
-              <MetricCard
-                icon={<MailOpen className="h-4 w-4" />} label="Aberturas" value={summary.opened}
-                sub={`${summary.openRate.toFixed(1)}%`}
-                trend={summary.openRate > 20 ? "up" : summary.openRate < 10 && summary.openRate > 0 ? "down" : null}
-              />
-              <MetricCard
-                icon={<MousePointerClick className="h-4 w-4" />} label="Cliques" value={summary.clicked}
-                sub={`${summary.clickRate.toFixed(1)}%`}
-              />
-              <MetricCard
-                icon={<AlertTriangle className="h-4 w-4" />} label="Bounces" value={summary.bounced}
-                sub={`${summary.bounceRate.toFixed(1)}%`}
-                trend={summary.bounceRate > 5 ? "down" : null}
-              />
-            </div>
+            {isWhatsApp ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <MetricCard icon={<Send className="h-4 w-4" />} label="Enviados" value={whatsappSummary?.total || 0} />
+                <MetricCard icon={<MailOpen className="h-4 w-4" />} label="Entregues" value={whatsappSummary?.delivered || 0} />
+                <MetricCard icon={<AlertTriangle className="h-4 w-4" />} label="Falhas" value={whatsappSummary?.failed || 0} />
+                <MetricCard icon={<Users className="h-4 w-4" />} label="Pendentes" value={whatsappSummary?.pending || 0} />
+              </div>
+            ) : emailSummary ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <MetricCard icon={<Send className="h-4 w-4" />} label="Enviados" value={emailSummary.total} />
+                <MetricCard icon={<MailOpen className="h-4 w-4" />} label="Aberturas" value={emailSummary.opened} sub={`${emailSummary.openRate.toFixed(1)}%`} />
+                <MetricCard icon={<MousePointerClick className="h-4 w-4" />} label="Cliques" value={emailSummary.clicked} sub={`${emailSummary.clickRate.toFixed(1)}%`} />
+                <MetricCard icon={<AlertTriangle className="h-4 w-4" />} label="Bounces" value={emailSummary.bounced} sub={`${emailSummary.bounceRate.toFixed(1)}%`} />
+              </div>
+            ) : null}
 
             {/* Funnel mini */}
-            <div className="grid grid-cols-4 gap-2">
+            {!isWhatsApp && emailSummary && <div className="grid grid-cols-4 gap-2">
               {[
-                { label: "Entregues", value: summary.delivered },
-                { label: "Spam", value: summary.complained },
-                { label: "Sem Interação", value: summary.noInteraction },
-                { label: "Destinatários", value: summary.totalRecipients },
+                { label: "Entregues", value: emailSummary.delivered },
+                { label: "Spam", value: emailSummary.complained },
+                { label: "Sem Interação", value: emailSummary.noInteraction },
+                { label: "Destinatários", value: emailSummary.totalRecipients },
               ].map((s) => (
                 <div key={s.label} className="p-3 bg-muted/50 rounded-lg">
                   <p className="text-xs text-muted-foreground">{s.label}</p>
                   <p className="text-lg font-semibold">{s.value}</p>
                 </div>
               ))}
-            </div>
+            </div>}
 
             {/* Follow-up action bar */}
-            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+            {!isWhatsApp && <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
               <div className="flex items-center gap-2">
                 <Rocket className="h-4 w-4 text-primary" />
                 <h4 className="text-sm font-semibold">Reaproveitar audiência</h4>
@@ -268,25 +287,30 @@ export function CampaignAnalyticsDialog({ open, onOpenChange, campaignId, campai
                   Baixar CSV
                 </Button>
               </div>
-            </div>
+            </div>}
 
             <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
               <Info className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
               <p className="text-xs text-amber-500">
-                Taxas de abertura podem ser imprecisas — alguns clientes de email bloqueiam imagens de tracking.
+                {isWhatsApp
+                  ? "Leituras e respostas ainda não possuem telemetria persistida por campanha; esses indicadores não são exibidos para evitar números imprecisos."
+                  : "Taxas de abertura podem ser imprecisas — alguns clientes de email bloqueiam imagens de tracking."}
               </p>
             </div>
 
             {/* Table with filter */}
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-semibold">Destinatários</h4>
-              <Select value={engagementFilter} onValueChange={handleFilterChange}>
+              <Select
+                value={isWhatsApp ? whatsappFilter : engagementFilter}
+                onValueChange={isWhatsApp ? (v) => { setWhatsappFilter(v as WhatsAppEngagementFilter); setPage(0); } : handleFilterChange}
+              >
                 <SelectTrigger className="w-[160px] h-8 text-xs">
                   <Filter className="h-3.5 w-3.5 mr-1" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {filterOptions.map((o) => (
+                  {(isWhatsApp ? whatsappFilterOptions : filterOptions).map((o) => (
                     <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                   ))}
                 </SelectContent>
@@ -305,34 +329,36 @@ export function CampaignAnalyticsDialog({ open, onOpenChange, campaignId, campai
                       <TableHead>Destinatário</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Entregue</TableHead>
-                      <TableHead>Aberto</TableHead>
-                      <TableHead>Clicado</TableHead>
+                      <TableHead>{isWhatsApp ? "Enviado" : "Aberto"}</TableHead>
+                      <TableHead>{isWhatsApp ? "Erro" : "Clicado"}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(recipientsData?.recipients || []).map((r) => {
+                    {(recipientsData?.recipients || []).map((r: any) => {
                       const badge = engagementBadge[r.engagement_status || "pending"] || engagementBadge.pending;
                       return (
                         <TableRow key={r.id}>
                           <TableCell>
                             <div>
-                              <p className="text-sm font-medium">{r.prospect_name || r.email || "-"}</p>
-                              {r.email && r.prospect_name && (
-                                <p className="text-xs text-muted-foreground">{r.email}</p>
+                              <p className="text-sm font-medium">{r.prospect_name || r.email || r.telefone || "-"}</p>
+                              {(r.email || r.telefone) && r.prospect_name && (
+                                <p className="text-xs text-muted-foreground">{isWhatsApp ? r.telefone : r.email}</p>
                               )}
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge className={badge.className}>{badge.label}</Badge>
+                            <Badge className={badge.className}>{isWhatsApp ? (r.status || "Pendente") : badge.label}</Badge>
                           </TableCell>
                           <TableCell className="text-xs">
                             {r.delivered_at ? format(new Date(r.delivered_at), "dd/MM HH:mm") : "-"}
                           </TableCell>
                           <TableCell className="text-xs">
-                            {r.opened_at ? format(new Date(r.opened_at), "dd/MM HH:mm") : "-"}
+                            {isWhatsApp
+                              ? (r.enviado_em ? format(new Date(r.enviado_em), "dd/MM HH:mm") : "-")
+                              : (r.opened_at ? format(new Date(r.opened_at), "dd/MM HH:mm") : "-")}
                           </TableCell>
                           <TableCell className="text-xs">
-                            {r.clicked_at ? format(new Date(r.clicked_at), "dd/MM HH:mm") : "-"}
+                            {isWhatsApp ? (r.erro || "-") : (r.clicked_at ? format(new Date(r.clicked_at), "dd/MM HH:mm") : "-")}
                           </TableCell>
                         </TableRow>
                       );
