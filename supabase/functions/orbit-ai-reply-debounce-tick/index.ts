@@ -10,6 +10,7 @@ import { getCorsHeaders } from "../_shared/cors.ts";
 import {
   isRecoverable,
   readDebounceConfig,
+  readLockBusyRetryFlag,
   DEBOUNCE_RECOVERY_GRACE_MS,
 } from "../_shared/ai-reply-debounce.ts";
 
@@ -58,6 +59,7 @@ serve(async (req) => {
         .eq("empresa_id", row.empresa_id)
         .maybeSingle();
       const cfg = readDebounceConfig(cfgRow);
+      const lockBusyDoesNotConsumeAttempt = readLockBusyRetryFlag(cfgRow as any);
       if (!cfg || !cfgRow?.modo_automatico) {
         await supabase.from("orbit_ai_reply_debounce")
           .update({ status: "canceled", last_error: "debounce_disabled", updated_at: now.toISOString() })
@@ -86,7 +88,11 @@ serve(async (req) => {
       // Claim atômico: pending -> generating no mesmo token.
       const { data: claimed } = await supabase
         .from("orbit_ai_reply_debounce")
-        .update({ status: "generating", attempts: (row.attempts ?? 0) + 1, updated_at: now.toISOString() })
+        .update({
+          status: "generating",
+          attempts: lockBusyDoesNotConsumeAttempt ? (row.attempts ?? 0) : (row.attempts ?? 0) + 1,
+          updated_at: now.toISOString(),
+        })
         .eq("conversa_id", row.conversa_id)
         .eq("claim_token", row.claim_token)
         .eq("status", "pending")
@@ -159,6 +165,14 @@ serve(async (req) => {
           .update({ status: "pending", last_error: "lock_busy", updated_at: now.toISOString() })
           .eq("conversa_id", row.conversa_id).eq("claim_token", row.claim_token);
         continue;
+      }
+
+      // No modo seguro do Bullink, só uma chamada efetiva ao provider consome
+      // tentativa. Lock ocupado é contenção normal, não falha do agente.
+      if (lockBusyDoesNotConsumeAttempt) {
+        await supabase.from("orbit_ai_reply_debounce")
+          .update({ attempts: (row.attempts ?? 0) + 1, updated_at: now.toISOString() })
+          .eq("conversa_id", row.conversa_id).eq("claim_token", row.claim_token);
       }
 
       const correlationId = `debounce-recovery:${row.empresa_id}:${row.conversa_id}:${row.claim_token}`;

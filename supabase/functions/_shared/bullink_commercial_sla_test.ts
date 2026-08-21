@@ -27,6 +27,8 @@ import {
   decideDebounce,
   isRecoverable,
   evaluateReplySla,
+  readFreshClaimResetFlag,
+  readLockBusyRetryFlag,
   type DebounceRow,
 } from "./ai-reply-debounce.ts";
 
@@ -43,6 +45,7 @@ const CFG = readPrimaryOfferLockConfig({
     secondary_label: "Curso Gravado",
     primary_price_line: PRIMARY_LINE,
     secondary_price_line: SECONDARY_LINE,
+    anti_repetition_enabled: true,
   },
 })!;
 
@@ -59,7 +62,12 @@ const PRICED = state({
 
 function perms(inbound: string, st: CommercialStateV2 = state()) {
   const extracted = extractCommercialSignals(inbound);
-  return { extracted, perms: computeCommercialPermissions(extracted, st) };
+  return {
+    extracted,
+    perms: computeCommercialPermissions(extracted, st, {
+      suppressRepeatedPrice: CFG.antiRepetitionEnabled,
+    }),
+  };
 }
 
 function offer(inbound: string, st: CommercialStateV2 = state()) {
@@ -146,6 +154,8 @@ const OBJECOES: Array<[string, string]> = [
   ["G", "Esse investimento pesa"],
   ["H", "Vou tentar levantar esse valor"],
   ["H2", "Está fora do meu alcance agora"],
+  ["H3", "Esse valor pra mim hoje não é possível"],
+  ["H4", "Falta de dinheiro"],
 ];
 for (const [id, frase] of OBJECOES) {
   Deno.test(`${id}: "${frase}" → Curso Gravado imediato, respeitoso`, () => {
@@ -206,8 +216,8 @@ Deno.test("J: 'mesmo assim quero a mentoria' respeita a Mentoria", () => {
   const ok = `Fechado, seguimos com a Mentoria: ${PRIMARY_LINE}. Quer que eu te mostre o próximo passo?`;
   assertFalse(evaluateSecondaryOfferV2(ok, CFG, op).violates);
   const { perms: p } = perms("mesmo assim quero a mentoria", st);
-  assert(p.mayMentionPrice, "pode reafirmar o investimento da Mentoria");
-  assertFalse(evaluateCommercialV2(ok, p).violates);
+  assertFalse(p.mayMentionPrice, "não repete preço já informado sem novo pedido");
+  assert(evaluateCommercialV2(ok, p).reasons.includes("price_without_context"));
 
   // recusa explícita do curso também respeita a Mentoria
   const recusa = offer("não quero o curso, quero a mentoria", st);
@@ -384,4 +394,32 @@ Deno.test("P6: bloco do downsell aparece somente quando obrigatório", () => {
   assert(/997/.test(comObjecao));
   const comDesconto = buildPrimaryOfferPromptBlock(CFG, offer("tem desconto?", PRICED));
   assert(/valores são fixos/i.test(comDesconto));
+});
+
+Deno.test("P7: preço informado não se repete, mas pedido novo e escolha de cartão permitem", () => {
+  const objecao = perms("Falta de dinheiro", PRICED);
+  assert(objecao.extracted.signals.has("budget_objection"));
+  assertFalse(objecao.perms.mayMentionPrice);
+  assert(evaluateCommercialV2(`A Mentoria custa ${PRIMARY_LINE}.`, objecao.perms).violates);
+
+  const pergunta = perms("Pode repetir o valor?", PRICED);
+  assert(pergunta.perms.mayMentionPrice);
+
+  const aguardando = state({ ...PRICED, awaiting_payment_method: true, closing_intent_at: "2026-08-13T19:00:00.000Z" });
+  const cartao = perms("no cartão", aguardando);
+  assert(cartao.perms.mayMentionPrice);
+});
+
+Deno.test("P8: nova inbound Bullink habilita claim limpo e lock ocupado não consome tentativa", () => {
+  const config = {
+    ai_reply_debounce: {
+      enabled: true,
+      fresh_claim_reset: true,
+      lock_busy_does_not_consume_attempt: true,
+    },
+  };
+  assert(readFreshClaimResetFlag(config));
+  assert(readLockBusyRetryFlag(config));
+  assertFalse(readFreshClaimResetFlag({ ai_reply_debounce: { enabled: true } }));
+  assertFalse(readLockBusyRetryFlag({ ai_reply_debounce: { enabled: true } }));
 });
