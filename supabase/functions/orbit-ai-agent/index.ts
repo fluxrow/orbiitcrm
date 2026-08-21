@@ -109,6 +109,12 @@ import {
   MIXED_PAYMENT_CONFIRMATION_SOURCE,
   MIXED_PAYMENT_NOTIFICATION_SUMMARY,
 } from "../_shared/mixed-payment-handoff.ts";
+import {
+  readPaymentReceiptHandoffConfig,
+  detectPaymentReceipt,
+  buildPaymentReceiptClaim,
+  PAYMENT_RECEIPT_NOTIFICATION_SUMMARY,
+} from "../_shared/payment-receipt-handoff.ts";
 
 import {
   readSelfIntroductionGuardConfig,
@@ -376,6 +382,7 @@ async function notifyCommercialHumanDetected(
   const motivo = (classification || "").toString();
   const titulo =
     motivo === "venda_fechada" ? "Venda confirmada"
+    : motivo === "pagamento_recebido" ? "Comprovante de pagamento recebido"
     : motivo === "agendar_call" ? "Call agendada"
     : motivo === "falar_humano" ? "Lead pediu atendimento humano"
     : motivo === "pagamento_misto" ? "Lead pediu pagamento misto (PIX + cartão)"
@@ -966,21 +973,6 @@ serve(async (req) => {
       .eq("id", conversa_id)
       .single();
 
-    // ── CHATBOT FLOWS: verificar fluxo ativo ou novo trigger (prioridade sobre IA) ──
-    const flowHandled = await processChatbotFlow(supabase, {
-      conversa,
-      conversa_id,
-      mensagem,
-      telefone,
-      empresaId,
-      isDemo,
-    });
-    if (flowHandled) {
-      return new Response(JSON.stringify({ ok: true, flow_handled: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     // ── AGREGAR: buscar todas as mensagens IN pendentes desde o último OUT ──
     const { data: lastOutMsg } = await supabase
       .from("orbit_mensagens")
@@ -993,7 +985,7 @@ serve(async (req) => {
 
     let pendingQuery = supabase
       .from("orbit_mensagens")
-      .select("mensagem, media_extracted_text, tipo_midia")
+      .select("id, mensagem, media_extracted_text, tipo_midia")
       .eq("conversa_id", conversa_id)
       .eq("direcao", "IN")
       .order("timestamp", { ascending: true });
@@ -1008,6 +1000,50 @@ serve(async (req) => {
       : mensagem;
 
     console.log("[orbit-ai-agent] Mensagens agregadas:", pendingMsgs?.length || 1, "msgs →", mensagemAgregada.substring(0, 100));
+
+    // ── COMPROVANTE DE PAGAMENTO (tenant-scoped, determinístico, sem resposta) ──
+    // É executado antes de classificação/LLM. Recibo confirmado transfere a posse
+    // ao humano, garante o deal, cancela automações pendentes e notifica Fernando.
+    const paymentReceiptCfg = readPaymentReceiptHandoffConfig(aiConfig as Record<string, unknown>);
+    const paymentReceiptEvidence = paymentReceiptCfg
+      ? detectPaymentReceipt(((pendingMsgs && pendingMsgs.length > 0)
+        ? pendingMsgs
+        : [{ mensagem }]) as any[])
+      : { detected: false, inbound_id: null, kind: null };
+    if (paymentReceiptCfg && paymentReceiptEvidence.detected) {
+      const outcome = await runPaymentReceiptHandoff(supabase, {
+        conversa_id,
+        empresaId: empresaId ?? null,
+        prospect,
+        prospect_id: prospect_id ?? null,
+        telefone,
+        isDemo,
+        targetStageName: paymentReceiptCfg.target_stage_name,
+        inboundId: paymentReceiptEvidence.inbound_id,
+        evidenceKind: paymentReceiptEvidence.kind,
+      });
+      console.log("[orbit-ai-agent] Comprovante recebido — handoff concluído:", { conversa_id, ...outcome });
+      return new Response(
+        JSON.stringify({ ok: true, payment_receipt_handoff: true, simulated: isDemo, ...outcome }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // ── CHATBOT FLOWS: comprovante tem prioridade absoluta; os demais eventos
+    // preservam a prioridade anterior do fluxo sobre a IA generativa.
+    const flowHandled = await processChatbotFlow(supabase, {
+      conversa,
+      conversa_id,
+      mensagem,
+      telefone,
+      empresaId,
+      isDemo,
+    });
+    if (flowHandled) {
+      return new Response(JSON.stringify({ ok: true, flow_handled: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // ── CLASSIFICAR MENSAGEM: humana, automática ou incerta ──
     const { classification: msgClassification, confidence: msgConfidence } = await classifyMessage(mensagemAgregada);
@@ -2642,6 +2678,164 @@ async function generateTTS(texto: string, ttsVoiceId: string, ttsApiKey: string)
   }
 
   return res.arrayBuffer();
+}
+
+// ── COMPROVANTE: deal + posse humana + notificação, sem mensagem ao lead ──
+async function runPaymentReceiptHandoff(
+  supabase: any,
+  args: {
+    conversa_id: string;
+    empresaId: string | null;
+    prospect: any;
+    prospect_id: string | null;
+    telefone: string;
+    isDemo: boolean;
+    targetStageName: string;
+    inboundId: string | null;
+    evidenceKind: string | null;
+  },
+): Promise<Record<string, unknown>> {
+  const {
+    conversa_id, empresaId, prospect, prospect_id, telefone, isDemo,
+    targetStageName, inboundId, evidenceKind,
+  } = args;
+  if (!empresaId || !prospect_id) return { ok: false, reason: "missing_tenant_or_prospect" };
+
+  const now = new Date().toISOString();
+  const { data: current } = await supabase
+    .from("orbit_conversas")
+    .select("id, ai_contexto, human_talk")
+    .eq("id", conversa_id).eq("empresa_id", empresaId).eq("prospect_id", prospect_id)
+    .maybeSingle();
+  if (!current) return { ok: false, reason: "conversation_not_found" };
+
+  let context: Record<string, any> = (current as any).ai_contexto || {};
+  let receiptState: Record<string, any> | null = context.payment_receipt_handoff || null;
+  if (receiptState?.notification_sent_at) {
+    return { ok: true, skipped: true, reason: "payment_receipt_already_handled", deal_id: receiptState.deal_id ?? null };
+  }
+
+  // Claim e pausa são atômicos: depois da evidência forte, nenhuma resposta da IA
+  // pode escapar enquanto deal/notificação são concluídos.
+  if (!receiptState) {
+    const claim = buildPaymentReceiptClaim(inboundId, evidenceKind);
+    const { data: claimed, error: claimError } = await supabase
+      .from("orbit_conversas")
+      .update({
+        human_talk: true,
+        human_user_id: null,
+        ai_processing: false,
+        handoff_sent_at: now,
+        ai_contexto: { ...context, estado: "handoff", payment_receipt_handoff: claim },
+      })
+      .eq("id", conversa_id).eq("empresa_id", empresaId)
+      .filter("ai_contexto->payment_receipt_handoff", "is", null)
+      .select("ai_contexto");
+    if (claimError) throw new Error(`payment_receipt_claim_failed:${claimError.message}`);
+    if (!claimed || claimed.length === 0) {
+      return { ok: true, skipped: true, reason: "payment_receipt_claim_lost" };
+    }
+    context = (claimed[0] as any).ai_contexto || context;
+    receiptState = context.payment_receipt_handoff || claim;
+  } else if ((current as any).human_talk !== true) {
+    await supabase.from("orbit_conversas")
+      .update({ human_talk: true, human_user_id: null, ai_processing: false, handoff_sent_at: now })
+      .eq("id", conversa_id).eq("empresa_id", empresaId);
+  }
+
+  // Cancela somente automações desta conversa. Nunca altera mensagens já enviadas.
+  try {
+    await supabase.rpc("cancel_cadence_on_reply", {
+      _empresa_id: empresaId,
+      _prospect_id: prospect_id,
+      _reason: "payment_receipt_handoff",
+    });
+  } catch (error) {
+    console.warn("[orbit-ai-agent] Falha ao cancelar cadência após comprovante:", error);
+  }
+  await supabase.from("orbit_ai_reply_debounce")
+    .update({ status: "canceled", last_error: "payment_receipt_handoff", updated_at: now })
+    .eq("empresa_id", empresaId).eq("conversa_id", conversa_id)
+    .in("status", ["pending", "generating"]);
+  await supabase.from("orbit_whatsapp_outbox")
+    .update({ status: "canceled", canceled_at: now, canceled_reason: "payment_receipt_handoff", updated_at: now })
+    .eq("empresa_id", empresaId).eq("conversa_id", conversa_id)
+    .in("status", ["queued", "pending", "deferred"])
+    .in("source_type", ["ai_reply", "flow_initial", "flow_followup", "campaign"]);
+
+  // Garante um deal e posiciona em Negociação (ou etapa configurada), sem marcar
+  // como ganho: Fernando ainda precisa validar o comprovante e o valor.
+  const { data: targetStage } = await supabase.from("orbit_pipeline_stages")
+    .select("id").eq("empresa_id", empresaId).eq("nome", targetStageName)
+    .eq("is_archived", false).limit(1).maybeSingle();
+  const { data: existingDeal } = await supabase.from("orbit_deals")
+    .select("id, etapa_id, status, deleted_at")
+    .eq("empresa_id", empresaId).eq("prospect_id", prospect_id)
+    .is("deleted_at", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
+
+  let dealId = existingDeal?.id ?? null;
+  if (existingDeal) {
+    const status = String(existingDeal.status || "").toLowerCase();
+    const terminal = ["won", "lost", "ganho", "perdido", "deleted"].includes(status);
+    if (!terminal) {
+      await supabase.from("orbit_deals").update({
+        ...(targetStage?.id ? { etapa_id: targetStage.id, moved_at: now } : {}),
+        ultima_interacao_at: now,
+        updated_at: now,
+      }).eq("id", existingDeal.id).eq("empresa_id", empresaId);
+    }
+  } else {
+    const { data: created, error: dealError } = await supabase.from("orbit_deals").insert({
+      empresa_id: empresaId,
+      prospect_id,
+      etapa_id: targetStage?.id ?? null,
+      titulo: prospect?.nome_razao || prospect?.nome_fantasia || "Pagamento recebido",
+      status: "open",
+      origem: "payment_receipt_handoff",
+      ultima_interacao_at: now,
+      moved_at: now,
+    }).select("id").single();
+    if (dealError) throw new Error(`payment_receipt_deal_failed:${dealError.message}`);
+    dealId = created?.id ?? null;
+  }
+
+  const persistReceiptState = async (patch: Record<string, unknown>) => {
+    const { data: fresh } = await supabase.from("orbit_conversas")
+      .select("ai_contexto").eq("id", conversa_id).eq("empresa_id", empresaId).maybeSingle();
+    const freshContext = (fresh as any)?.ai_contexto || context;
+    const freshState = freshContext.payment_receipt_handoff || receiptState || {};
+    await supabase.from("orbit_conversas").update({
+      ai_contexto: {
+        ...freshContext,
+        estado: "handoff",
+        payment_receipt_handoff: { ...freshState, ...patch },
+      },
+    }).eq("id", conversa_id).eq("empresa_id", empresaId);
+  };
+  await persistReceiptState({ deal_id: dealId, human_talk_set_at: now });
+
+  const notified = await notifyCommercialHumanDetected(supabase, {
+    prospect,
+    telefone_lead: telefone,
+    mensagem: PAYMENT_RECEIPT_NOTIFICATION_SUMMARY,
+    classification: "pagamento_recebido",
+    empresa_id: empresaId,
+    isDemo,
+  });
+  if (notified.sent) {
+    await persistReceiptState({ notification_sent_at: new Date().toISOString() });
+  } else {
+    await persistReceiptState({ notification_error: notified.reason || "notify_failed" });
+  }
+
+  return {
+    ok: true,
+    deal_id: dealId,
+    human_talk: true,
+    notified: notified.sent,
+    notification_reason: notified.reason ?? null,
+    lead_reply_sent: false,
+  };
 }
 
 // ── PAGAMENTO MISTO: orquestrador por etapas, recuperável e idempotente ──
