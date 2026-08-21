@@ -1224,6 +1224,7 @@ serve(async (req) => {
 
     // ── CONDUÇÃO COMERCIAL v2 (tenant-scoped por commercial_stage_v2_enabled) ──
     const commercialV2Enabled = (aiConfig as any).commercial_stage_v2_enabled === true;
+    const primaryOfferCfg = readPrimaryOfferLockConfig(aiConfig as Record<string, unknown>);
     const commercialState = commercialV2Enabled
       ? readCommercialState(aiContexto as Record<string, unknown>)
       : { ...EMPTY_COMMERCIAL_STATE };
@@ -1231,7 +1232,9 @@ serve(async (req) => {
       ? extractCommercialSignals(mensagemAgregada)
       : { signals: new Set<never>(), paymentMethod: null, productMentioned: null } as any;
     const commercialPerms = commercialV2Enabled
-      ? computeCommercialPermissions(commercialExtracted, commercialState)
+      ? computeCommercialPermissions(commercialExtracted, commercialState, {
+          suppressRepeatedPrice: primaryOfferCfg?.antiRepetitionEnabled === true,
+        })
       : null;
     const commercialV2Block = commercialV2Enabled && commercialPerms
       ? buildCommercialV2PromptBlock(commercialState, commercialPerms, commercialExtracted)
@@ -1239,7 +1242,6 @@ serve(async (req) => {
 
     // ── TRAVA DE OFERTA PRINCIPAL (tenant-scoped por orbit_ai_config.primary_offer_lock) ──
     // Pergunta genérica de preço não pode virar cardápio com a oferta secundária.
-    const primaryOfferCfg = readPrimaryOfferLockConfig(aiConfig as Record<string, unknown>);
     const primaryOfferPerm = primaryOfferCfg
       ? computePrimaryOfferPermission({
           cfg: primaryOfferCfg,

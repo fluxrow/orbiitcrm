@@ -41,6 +41,8 @@ export interface PrimaryOfferLockConfig {
   secondaryLabel: string;
   /** Linha oficial de preço/condições da oferta secundária. */
   secondaryPriceLine: string;
+  /** Não repetir preço já informado sem o lead pedi-lo novamente. */
+  antiRepetitionEnabled: boolean;
 }
 
 const DEFAULT_SECONDARY_MENTION = [
@@ -80,6 +82,9 @@ const RE_BUDGET_OBJECTION: RegExp[] = [
   /\bacima\s+do\s+que\s+(?:eu\s+)?(?:posso|consigo)\b/,
   /\bta\s+salgado\b/,
   /\bmuito\s+dinheiro\b/,
+  /\bfalta\s+(?:de\s+)?(?:dinheiro|grana|verba|orcamento)\b/,
+  /\b(?:esse|o)\s+valor\b[^.?!]{0,45}\b(?:nao\s+e\s+possivel|nao\s+da|nao\s+consigo|impossivel)\b/,
+  /\b(?:hoje|agora)\b[^.?!]{0,35}\bnao\s+(?:e\s+possivel|da|consigo)\b/,
 ];
 
 /** Pedido de desconto/negociação: valores são FIXOS, mas abre a alternativa. */
@@ -133,6 +138,7 @@ export function readPrimaryOfferLockConfig(
     secondaryPriceLine: typeof raw.secondary_price_line === "string" && raw.secondary_price_line.trim()
       ? raw.secondary_price_line
       : "R$ 997 à vista no PIX",
+    antiRepetitionEnabled: raw.anti_repetition_enabled === true,
   };
 }
 

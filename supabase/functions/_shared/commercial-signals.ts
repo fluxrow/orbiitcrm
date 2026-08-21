@@ -97,6 +97,9 @@ const RE_BUDGET_OBJECTION: RegExp[] = [
   /\bpouco\s+(?:dinheiro|orcamento)\b/,
   /\balgo\s+mais\s+(?:barato|acessivel|em\s+conta)\b/,
   /\bdesempregad\w+\b/,
+  /\bfalta\s+(?:de\s+)?(?:dinheiro|grana|verba|orcamento)\b/,
+  /\b(?:esse|o)\s+valor\b[^.?!]{0,45}\b(?:nao\s+e\s+possivel|nao\s+da|nao\s+consigo|impossivel)\b/,
+  /\b(?:hoje|agora)\b[^.?!]{0,35}\bnao\s+(?:e\s+possivel|da|consigo)\b/,
 ];
 
 const RE_PURCHASE_INTEREST: RegExp[] = [
@@ -312,9 +315,15 @@ export interface CommercialPermissions {
   closingRecognized: boolean;
 }
 
+export interface CommercialPermissionOptions {
+  /** Impede repetir preço já informado sem novo pedido explícito. */
+  suppressRepeatedPrice?: boolean;
+}
+
 export function computeCommercialPermissions(
   extracted: CommercialSignalsResult,
   state: CommercialStateV2,
+  opts?: CommercialPermissionOptions,
 ): CommercialPermissions {
   const s = extracted.signals;
   const contactOnly = s.has("contact_data_only");
@@ -339,7 +348,11 @@ export function computeCommercialPermissions(
     (s.has("explicit_closing_intent") ||
       (s.has("closing_affirmative_contextual") && hasPriceContext && !!state.product_focus));
 
-  const mayMentionPrice = !contactOnly && (priceAsked || hasCommercialContext);
+  const mayMentionPrice = !contactOnly && (
+    opts?.suppressRepeatedPrice === true && hasPriceContext
+      ? priceAsked || s.has("payment_method_choice")
+      : priceAsked || hasCommercialContext
+  );
   // Intenção comercial explícita ("quero entrar", "como faço pra começar") com a
   // oferta ainda sem preço informado exige o investimento no mesmo turno —
   // sem abrir pagamento (isso continua dependendo de hasPriceContext).

@@ -41,6 +41,15 @@ export function readDebounceConfig(
   };
 }
 
+/** Flags opt-in separadas para preservar o shape legado de DebounceConfig. */
+export function readFreshClaimResetFlag(aiConfig: Record<string, unknown> | null | undefined): boolean {
+  return (aiConfig as any)?.ai_reply_debounce?.fresh_claim_reset === true;
+}
+
+export function readLockBusyRetryFlag(aiConfig: Record<string, unknown> | null | undefined): boolean {
+  return (aiConfig as any)?.ai_reply_debounce?.lock_busy_does_not_consume_attempt === true;
+}
+
 /** Instante em que o lote pode ser gerado (janela reinicia a cada inbound). */
 export function computeFireAfter(lastInboundAt: string | Date, waitMs: number): string {
   const base = lastInboundAt instanceof Date ? lastInboundAt.getTime() : Date.parse(String(lastInboundAt));

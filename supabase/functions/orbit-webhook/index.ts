@@ -16,6 +16,7 @@ import {
   computeFireAfter,
   msUntil,
   decideDebounce,
+  readFreshClaimResetFlag,
   type DebounceConfig,
 } from "../_shared/ai-reply-debounce.ts";
 
@@ -1110,6 +1111,9 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
             last_inbound_message_id: savedMessage?.id ?? null,
             fire_after: fireAfter,
             status: "pending",
+            ...(readFreshClaimResetFlag(aiConfig)
+              ? { attempts: 0, last_error: null, batch_size: 1 }
+              : {}),
             updated_at: new Date().toISOString(),
           }, { onConflict: "conversa_id" })
           .select("conversa_id");
