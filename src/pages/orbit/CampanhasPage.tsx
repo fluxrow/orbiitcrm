@@ -18,6 +18,10 @@ import { toast } from "sonner";
 import { orbitCampaignKeys } from "@/lib/query-keys";
 import { usePeAuth } from "@/hooks/usePeAuth";
 import { CheckCircle2 } from "lucide-react";
+import { useTenant } from "@/contexts/TenantContext";
+import { isTenantFeatureEnabled } from "@/lib/tenant-explicit-mutations";
+
+const TENANT_CAMPAIGN_ANALYTICS_WAVE4_FLAG = "tenant_campaign_analytics_context_wave4_v1";
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   rascunho: { label: "Rascunho", className: "bg-muted text-muted-foreground" },
@@ -42,6 +46,7 @@ export default function CampanhasPage() {
   const [reviewCampaignId, setReviewCampaignId] = useState<string | null>(null);
   const [analyticsCampaign, setAnalyticsCampaign] = useState<{ id: string; nome: string } | null>(null);
   const { isSuperAdmin } = usePeAuth();
+  const { empresaId, slug: tenantSlug } = useTenant();
 
   const { data: campaigns, isLoading, refetch } = useOrbitCampaigns({ status: statusFilter, canal: canalFilter });
   const updateCampaign = useUpdateCampaign();
@@ -49,15 +54,28 @@ export default function CampanhasPage() {
 
   const campaignIds = campaigns?.map(c => c.id) || [];
   const { data: recipientCounts } = useQuery({
-    queryKey: orbitCampaignKeys.countsByIds(campaignIds),
+    queryKey: orbitCampaignKeys.countsByIds(campaignIds, empresaId),
     queryFn: async () => {
       if (!campaignIds.length) return {};
-      const { data, error } = await supabase.rpc("get_campaign_recipient_counts" as any, {
-        p_campaign_ids: campaignIds,
-      });
+      const useScopedContract = !!empresaId && !!tenantSlug && await isTenantFeatureEnabled(
+        empresaId,
+        TENANT_CAMPAIGN_ANALYTICS_WAVE4_FLAG,
+      );
+      const { data, error } = useScopedContract
+        ? await (supabase.rpc as any)("orbit_tenant_campaign_analytics_read", {
+            p_tenant_slug: tenantSlug,
+            p_section: "recipient_counts",
+            p_campaign_id: null,
+            p_campaign_ids: campaignIds,
+            p_interval: "1 day",
+          })
+        : await supabase.rpc("get_campaign_recipient_counts" as any, {
+            p_campaign_ids: campaignIds,
+          });
       if (error) throw error;
+      const rows = useScopedContract ? ((data as any)?.data?.rows || []) : ((data as any[]) || []);
       const counts: Record<string, { total: number; pendente: number; enviado: number; falhou: number; ignorado: number }> = {};
-      ((data as any[]) || []).forEach((r: any) => {
+      rows.forEach((r: any) => {
         counts[r.campaign_id] = {
           total: Number(r.total) || 0,
           pendente: Number(r.pendente) || 0,
@@ -68,7 +86,7 @@ export default function CampanhasPage() {
       });
       return counts;
     },
-    enabled: campaignIds.length > 0,
+    enabled: !!empresaId && !!tenantSlug && campaignIds.length > 0,
   });
 
   const reviewCampaign = campaigns?.find(c => c.id === reviewCampaignId) || null;

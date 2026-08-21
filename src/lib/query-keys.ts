@@ -13,8 +13,8 @@ export const orbitCampaignKeys = {
   list: (filters?: Record<string, unknown> | object, empresaId?: string | null) =>
     [...orbitCampaignKeys.lists(), empresaId ?? null, filters ?? {}] as const,
   counts: () => [...orbitCampaignKeys.all, "recipient_counts"] as const,
-  countsByIds: (ids: string[]) =>
-    [...orbitCampaignKeys.counts(), [...ids].sort()] as const,
+  countsByIds: (ids: string[], empresaId?: string | null) =>
+    [...orbitCampaignKeys.counts(), empresaId ?? null, [...ids].sort()] as const,
 };
 
 /**

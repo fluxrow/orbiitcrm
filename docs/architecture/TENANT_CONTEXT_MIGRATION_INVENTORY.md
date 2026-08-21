@@ -182,6 +182,19 @@ React Query. As assinaturas Realtime de campanhas e destinatários também usam
 canal e filtro tenant-scoped. RPCs analíticas e mutações de campanha continuam
 fora deste lote e impedem a remoção do contexto persistido.
 
+#### Parte 4.3a — analytics de campanhas
+
+`tenant_campaign_analytics_context_wave4_v1` substitui, somente no canário, as
+RPCs analíticas que aceitavam apenas UUID de campanha por um contrato de leitura
+que resolve o slug no servidor. Contagens, resumos de e-mail/WhatsApp e timeline
+revalidam a campanha e filtram destinatários pelo `empresa_id` resolvido. As
+chaves de cache também incluem o tenant da rota.
+
+As RPCs legadas continuam disponíveis para os tenants com flag desligada. A
+população de destinatários, aprovação, alteração de status, exclusão e disparo
+permanecem fora desta parte por serem mutações operacionais; nenhuma delas deve
+ser exercitada durante a homologação read-only da Parte 4.3a.
+
 ## Gates de promoção
 
 - CI verde: instalação limpa, TypeScript, testes e build.

@@ -1,6 +1,33 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/contexts/TenantContext";
+import { isTenantFeatureEnabled } from "@/lib/tenant-explicit-mutations";
+
+const TENANT_CAMPAIGN_ANALYTICS_WAVE4_FLAG = "tenant_campaign_analytics_context_wave4_v1";
+
+async function readCampaignAnalytics(params: {
+  empresaId: string;
+  tenantSlug: string;
+  campaignId: string;
+  section: "email_summary" | "whatsapp_summary" | "timeline";
+  interval?: string;
+}) {
+  const useScopedContract = await isTenantFeatureEnabled(
+    params.empresaId,
+    TENANT_CAMPAIGN_ANALYTICS_WAVE4_FLAG,
+  );
+  if (!useScopedContract) return null;
+
+  const { data, error } = await (supabase.rpc as any)("orbit_tenant_campaign_analytics_read", {
+    p_tenant_slug: params.tenantSlug,
+    p_section: params.section,
+    p_campaign_id: params.campaignId,
+    p_campaign_ids: null,
+    p_interval: params.interval ?? "1 day",
+  });
+  if (error) throw error;
+  return (data as any)?.data?.rows || [];
+}
 
 /* ─── Email Campaign Types ─── */
 
@@ -91,16 +118,21 @@ export interface WhatsAppRecipientDetail {
 
 /** Aggregated metrics via server-side RPC — no row limit */
 export function useOrbitCampaignSummary(campaignId: string | null) {
+  const { empresaId, slug: tenantSlug } = useTenant();
   return useQuery({
-    queryKey: ["orbit_campaign_summary", campaignId],
+    queryKey: ["orbit_campaign_summary", empresaId, campaignId],
     queryFn: async (): Promise<CampaignSummary> => {
       if (!campaignId) throw new Error("No campaign");
 
-      const { data, error } = await supabase.rpc("get_campaign_analytics_summary", {
-        p_campaign_id: campaignId,
+      const scopedRows = await readCampaignAnalytics({
+        empresaId: empresaId!, tenantSlug: tenantSlug!, campaignId, section: "email_summary",
       });
-
-      if (error) throw error;
+      let data: any = scopedRows;
+      if (scopedRows === null) {
+        const legacy = await supabase.rpc("get_campaign_analytics_summary", { p_campaign_id: campaignId });
+        if (legacy.error) throw legacy.error;
+        data = legacy.data;
+      }
 
       const row = (data as any[])?.[0] || {};
       const totalRecipients = Number(row.total_recipients || 0);
@@ -126,7 +158,7 @@ export function useOrbitCampaignSummary(campaignId: string | null) {
         bounceRate: total > 0 ? (bounced / total) * 100 : 0,
       };
     },
-    enabled: !!campaignId,
+    enabled: !!empresaId && !!tenantSlug && !!campaignId,
   });
 }
 
@@ -135,17 +167,23 @@ export function useOrbitCampaignTimeline(
   campaignId: string | null,
   interval: string = "1 day"
 ) {
+  const { empresaId, slug: tenantSlug } = useTenant();
   return useQuery({
-    queryKey: ["orbit_campaign_timeline", campaignId, interval],
+    queryKey: ["orbit_campaign_timeline", empresaId, campaignId, interval],
     queryFn: async (): Promise<TimelinePoint[]> => {
       if (!campaignId) throw new Error("No campaign");
 
-      const { data, error } = await supabase.rpc("get_campaign_events_timeline", {
-        p_campaign_id: campaignId,
-        p_interval: interval,
+      const scopedRows = await readCampaignAnalytics({
+        empresaId: empresaId!, tenantSlug: tenantSlug!, campaignId, section: "timeline", interval,
       });
-
-      if (error) throw error;
+      let data: any = scopedRows;
+      if (scopedRows === null) {
+        const legacy = await supabase.rpc("get_campaign_events_timeline", {
+          p_campaign_id: campaignId, p_interval: interval,
+        });
+        if (legacy.error) throw legacy.error;
+        data = legacy.data;
+      }
 
       return ((data as any[]) || []).map((r) => ({
         bucket: r.bucket,
@@ -157,7 +195,7 @@ export function useOrbitCampaignTimeline(
         respostas: Number(r.respostas || 0),
       }));
     },
-    enabled: !!campaignId,
+    enabled: !!empresaId && !!tenantSlug && !!campaignId,
   });
 }
 
@@ -233,16 +271,21 @@ export function useOrbitCampaignRecipients(
 
 /** WhatsApp campaign summary via RPC */
 export function useWhatsAppCampaignSummary(campaignId: string | null) {
+  const { empresaId, slug: tenantSlug } = useTenant();
   return useQuery({
-    queryKey: ["whatsapp_campaign_summary", campaignId],
+    queryKey: ["whatsapp_campaign_summary", empresaId, campaignId],
     queryFn: async (): Promise<WhatsAppCampaignSummary> => {
       if (!campaignId) throw new Error("No campaign");
 
-      const { data, error } = await (supabase.rpc as any)("get_whatsapp_campaign_summary", {
-        p_campaign_id: campaignId,
+      const scopedRows = await readCampaignAnalytics({
+        empresaId: empresaId!, tenantSlug: tenantSlug!, campaignId, section: "whatsapp_summary",
       });
-
-      if (error) throw error;
+      let data: any = scopedRows;
+      if (scopedRows === null) {
+        const legacy = await (supabase.rpc as any)("get_whatsapp_campaign_summary", { p_campaign_id: campaignId });
+        if (legacy.error) throw legacy.error;
+        data = legacy.data;
+      }
 
       const row = (data as any[])?.[0] || {};
       const totalRecipients = Number(row.total_recipients || 0);
@@ -265,7 +308,7 @@ export function useWhatsAppCampaignSummary(campaignId: string | null) {
         replyRate: total > 0 ? (replied / total) * 100 : 0,
       };
     },
-    enabled: !!campaignId,
+    enabled: !!empresaId && !!tenantSlug && !!campaignId,
   });
 }
 
@@ -288,7 +331,7 @@ export function useWhatsAppCampaignRecipients(
       let query = supabase
         .from("orbit_campaign_recipients")
         .select(
-          "id, telefone, email, status, enviado_em, delivered_at, read_at, replied_at, erro, prospect:orbit_prospects(nome_razao, nome_fantasia)",
+          "id, telefone, email, status, enviado_em, delivered_at, erro, prospect:orbit_prospects(nome_razao, nome_fantasia)",
           { count: "exact" }
         )
         .eq("empresa_id", empresaId!)
@@ -303,16 +346,16 @@ export function useWhatsAppCampaignRecipients(
           query = query.not("delivered_at", "is", null);
           break;
         case "lido":
-          query = query.not("read_at", "is", null);
+          query = query.eq("engagement_status", "read");
           break;
         case "respondeu":
-          query = query.not("replied_at", "is", null);
+          query = query.eq("engagement_status", "replied");
           break;
         case "falhou":
           query = query.eq("status", "falhou");
           break;
         case "sem_resposta":
-          query = query.is("replied_at", null).not("delivered_at", "is", null);
+          query = query.neq("engagement_status", "replied").not("delivered_at", "is", null);
           break;
       }
 
@@ -329,8 +372,8 @@ export function useWhatsAppCampaignRecipients(
         status: r.status,
         enviado_em: r.enviado_em,
         delivered_at: r.delivered_at,
-        read_at: r.read_at,
-        replied_at: r.replied_at,
+        read_at: null,
+        replied_at: null,
         erro: r.erro,
       }));
 
