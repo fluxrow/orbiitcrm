@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(resolve(__dirname, path), "utf8");
 const migration = read("../../supabase/migrations/20260821183043_tenant_campaign_mutations_wave4_part3b.sql");
 const atomicMigration = read("../../supabase/migrations/20260821184552_tenant_campaign_atomic_draft_wave4_part3b.sql");
+const dispatchPreflight = read("../../supabase/migrations/20260821185359_tenant_campaign_dispatch_preflight_wave4_part3c.sql");
 const helper = read("../lib/tenant-campaign-mutations.ts");
 const campaigns = read("../hooks/useOrbitCampaigns.ts");
 const wizard = read("../components/orbit/CampaignWizardContent.tsx");
@@ -52,5 +53,18 @@ describe("tenant campaign mutations wave 4.3b", () => {
     expect(migration).toContain("INSERT INTO public.orbit_audit_log");
     expect(migration).toContain("'payload_keys'");
     expect(migration).not.toContain("'payload',p_payload");
+  });
+
+  it("keeps the dispatch authorization foundation inactive and private", () => {
+    expect(dispatchPreflight).toContain("tenant_campaign_dispatch_gate_wave4_v1");
+    expect(dispatchPreflight).toContain("'fluxrow','bullink-negocios','fabrica-de-pesquisadores','viver-semijoias'");
+    expect(dispatchPreflight).toContain("AND f.enabled");
+    expect(dispatchPreflight).toContain("CAMPAIGN_DISPATCH_GATE_MUST_START_DISABLED");
+    expect(dispatchPreflight).toContain("orbit_campaign_dispatch_authorizations");
+    expect(dispatchPreflight).toContain("ENABLE ROW LEVEL SECURITY");
+    expect(dispatchPreflight).toContain("FROM PUBLIC,anon,authenticated");
+    expect(dispatchPreflight).toContain("orbit_tenant_campaign_dispatch_preflight_scoped");
+    expect(dispatchPreflight).toContain("'dispatch_gate_active',false");
+    expect(dispatchPreflight).not.toContain("send-orbit-campaign");
   });
 });

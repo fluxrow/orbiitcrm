@@ -212,6 +212,19 @@ O contrato rejeita explicitamente `dispatch_campaign`; envio real permanece em
 uma etapa isolada, com confirmação reforçada e gate próprio. Tenants protegidos
 continuam no caminho legado enquanto a flag estiver desligada.
 
+#### Parte 4.3c0 — baseline de disparo e preflight inativo
+
+`tenant_campaign_dispatch_gate_wave4_v1` nasce desligada inclusive no
+`fluxrow`. A tabela privada `orbit_campaign_dispatch_authorizations` reserva o
+contrato de nonce, snapshot, expiração, idempotência e consumo único, sem grants
+ao navegador. `orbit_tenant_campaign_dispatch_preflight_scoped` calcula apenas
+a prontidão, bloqueadores, volume, necessidade de confirmação digitada e hash
+do snapshot; não aprova, agenda nem envia.
+
+O gate só poderá ser ativado no canário depois que `send-orbit-campaign` e o
+scheduler exigirem uma autorização aprovada, não expirada, não consumida e
+compatível com o snapshot atual. Até lá, esta fundação permanece inerte.
+
 ## Gates de promoção
 
 - CI verde: instalação limpa, TypeScript, testes e build.
