@@ -1,7 +1,7 @@
 # ADR 0002 — Integração StackDocs → Orbit por inbox assíncrona
 
 - **Data:** 2026-08-21
-- **Status:** Proposto — arquitetura pronta para validação; implementação bloqueada até aprovação
+- **Status:** Aceito para concluir a Fase S0 documental; implementação condicionada aos gates abaixo
 - **Decisores:** Produto Orbit, Arquitetura e Super Admin Master
 - **Canário inicial:** `fluxrow`
 - **Relacionado:** [ADR 0001 — Autonomia Operacional Supervisionada V2](./0001-autonomia-operacional-supervisionada-v2.md)
@@ -93,6 +93,9 @@ somente recebe eventos por uma conexão já provisionada. Desativar uma conexão
 interrompe novas entregas e processamentos sem excluir recibos históricos.
 
 ## Contrato externo V1
+
+Os artefatos normativos estão versionados em
+[`docs/integrations/stackdocs`](../integrations/stackdocs/README.md).
 
 ### Endpoint conceitual
 

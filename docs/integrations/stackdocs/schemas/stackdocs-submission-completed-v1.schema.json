@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orbit.fluxrow.com.br/schemas/stackdocs/submission-completed/1.0",
+  "title": "StackDocs submission completed event V1",
+  "description": "Evento factual de submissão concluída entregue pelo StackDocs ao Orbit.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "schema_version",
+    "occurred_at",
+    "source",
+    "connection_id",
+    "correlation_id",
+    "subject",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "event_type": {
+      "const": "stackdocs.submission.completed"
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "const": "stackdocs"
+    },
+    "connection_id": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["organization_id", "form_id", "response_id"],
+      "properties": {
+        "organization_id": { "$ref": "#/$defs/externalId" },
+        "form_id": { "$ref": "#/$defs/externalId" },
+        "response_id": { "$ref": "#/$defs/externalId" }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "lead", "answers", "attribution", "attachments"],
+      "properties": {
+        "status": { "const": "completed" },
+        "lead": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": ["string", "null"], "maxLength": 200 },
+            "phone": { "type": ["string", "null"], "maxLength": 32 },
+            "email": { "type": ["string", "null"], "format": "email", "maxLength": 320 },
+            "document": { "type": ["string", "null"], "maxLength": 32 },
+            "consent": {
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "required": ["status", "captured_at", "purpose"],
+              "properties": {
+                "status": { "enum": ["granted", "denied", "not_requested"] },
+                "captured_at": { "type": ["string", "null"], "format": "date-time" },
+                "purpose": { "type": "string", "minLength": 1, "maxLength": 200 }
+              }
+            }
+          },
+          "anyOf": [
+            {
+              "required": ["phone"],
+              "properties": { "phone": { "type": "string", "minLength": 8, "maxLength": 32 } }
+            },
+            {
+              "required": ["email"],
+              "properties": { "email": { "type": "string", "format": "email", "maxLength": 320 } }
+            },
+            {
+              "required": ["document"],
+              "properties": { "document": { "type": "string", "minLength": 5, "maxLength": 32 } }
+            }
+          ]
+        },
+        "answers": {
+          "type": "object",
+          "maxProperties": 200,
+          "propertyNames": { "minLength": 1, "maxLength": 128 },
+          "additionalProperties": { "$ref": "#/$defs/answerValue" }
+        },
+        "attribution": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "source": { "type": ["string", "null"], "maxLength": 200 },
+            "medium": { "type": ["string", "null"], "maxLength": 200 },
+            "campaign": { "type": ["string", "null"], "maxLength": 200 },
+            "content": { "type": ["string", "null"], "maxLength": 200 },
+            "term": { "type": ["string", "null"], "maxLength": 200 },
+            "referrer": { "type": ["string", "null"], "format": "uri", "maxLength": 2048 }
+          }
+        },
+        "attachments": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["attachment_id", "filename", "content_type", "size_bytes", "download_url", "expires_at", "sha256"],
+            "properties": {
+              "attachment_id": { "$ref": "#/$defs/externalId" },
+              "filename": { "type": "string", "minLength": 1, "maxLength": 255 },
+              "content_type": {
+                "enum": [
+                  "application/pdf",
+                  "text/plain",
+                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                  "image/jpeg",
+                  "image/png",
+                  "audio/mpeg",
+                  "audio/mp4",
+                  "audio/ogg"
+                ]
+              },
+              "size_bytes": { "type": "integer", "minimum": 1, "maximum": 26214400 },
+              "download_url": { "type": "string", "format": "uri", "maxLength": 4096 },
+              "expires_at": { "type": "string", "format": "date-time" },
+              "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "externalId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "answerValue": {
+      "oneOf": [
+        { "type": "string", "maxLength": 10000 },
+        { "type": "number" },
+        { "type": "boolean" },
+        { "type": "null" },
+        {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "oneOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "number" },
+              { "type": "boolean" },
+              { "type": "null" }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
