@@ -116,6 +116,15 @@ tokens nunca retornam nem entram na auditoria, e grants anônimos históricos da
 configuração de envio são revogados. Os tenants protegidos continuam no caminho
 legado enquanto a flag permanecer `false`.
 
+#### Parte 3.4 — Agenda Google
+
+`tenant_google_context_wave3_v1` troca o UUID confiado ao navegador por
+resolução server-side do slug nas funções de autenticação, status, calendário e
+desconexão. O `fluxrow` envia slug e UUID para detecção explícita de divergência;
+os demais tenants preservam o payload legado enquanto a flag estiver desligada.
+O callback OAuth continua confiando apenas no state persistido pelo servidor, e
+o redirecionamento pós-consentimento fica limitado à origem configurada do app.
+
 ### Onda 4 — remoção do contexto persistido
 
 Somente após todas as ondas:

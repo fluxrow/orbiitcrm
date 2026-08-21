@@ -1,6 +1,7 @@
 // Retorna status da conexão Google Calendar para uma empresa
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { optionsResponse, ok, fail, ErrorCodes } from "../_shared/responses.ts";
+import { resolveAuthorizedTenant, TenantContextError } from "../_shared/tenant-context.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse(req);
@@ -19,23 +20,12 @@ Deno.serve(async (req) => {
     if (error || !claims?.claims) return fail(ErrorCodes.UNAUTHORIZED, "invalid token", 401, undefined, req);
 
     const url = new URL(req.url);
-    const empresaId = url.searchParams.get("empresa_id");
-    if (!empresaId) return fail(ErrorCodes.VALIDATION_ERROR, "empresa_id obrigatório", 400, undefined, req);
-
     const userId = claims.claims.sub as string;
     const svc = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-
-    // Tenant access: super_admin OR profiles.empresa_id OR active membership.
-    const [{ data: roles }, { data: peSuper }, { data: profile }, { data: membership }] = await Promise.all([
-      svc.from("user_roles").select("role").eq("user_id", userId),
-      svc.rpc("pe_is_super_admin", { p_user_id: userId }),
-      svc.from("profiles").select("empresa_id").eq("id", userId).maybeSingle(),
-      svc.from("user_empresa_memberships").select("empresa_id").eq("user_id", userId).eq("empresa_id", empresaId).maybeSingle(),
-    ]);
-    const isSuper = !!peSuper || (roles ?? []).some((r: any) => r.role === "super_admin");
-    if (!isSuper && profile?.empresa_id !== empresaId && !membership) {
-      return fail(ErrorCodes.FORBIDDEN, "usuário não pertence à empresa", 403, undefined, req);
-    }
+    const { empresaId } = await resolveAuthorizedTenant(svc, userId, {
+      tenant_slug: url.searchParams.get("tenant_slug"),
+      empresa_id: url.searchParams.get("empresa_id"),
+    });
 
     const { data, error: dbErr } = await svc
       .from("orbit_google_tokens")
@@ -57,6 +47,9 @@ Deno.serve(async (req) => {
       provider_configured: !!Deno.env.get("GOOGLE_CLIENT_ID") && !!Deno.env.get("GOOGLE_CLIENT_SECRET"),
     }, undefined, req);
   } catch (e) {
+    if (e instanceof TenantContextError) {
+      return fail(e.status === 403 ? ErrorCodes.FORBIDDEN : ErrorCodes.VALIDATION_ERROR, e.message, e.status, undefined, req);
+    }
     return fail(ErrorCodes.INTERNAL_ERROR, (e as Error).message, 500, undefined, req);
   }
 });

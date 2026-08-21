@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { useGoogleCalendarStatus } from "@/hooks/useOrbitGoogleCalendar";
+import { getGoogleTenantPayload, useGoogleCalendarStatus } from "@/hooks/useOrbitGoogleCalendar";
+import { useTenant } from "@/contexts/TenantContext";
 
 interface Props {
   open: boolean;
@@ -39,6 +40,7 @@ function addMinutesIso(iso: string, mins: number): string {
 }
 
 export function ScheduleMeetingDialog({ open, onOpenChange, prospect, empresaId }: Props) {
+  const { slug } = useTenant();
   const { data: status } = useGoogleCalendarStatus(empresaId);
 
   const today = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
@@ -73,10 +75,11 @@ export function ScheduleMeetingDialog({ open, onOpenChange, prospect, empresaId 
     if (!startIso || !endIso) return;
     setAvail({ kind: "checking" });
     try {
+      const tenant = await getGoogleTenantPayload(empresaId, slug);
       const { data, error } = await supabase.functions.invoke("orbit-google-calendar", {
         body: {
           action: "check_availability",
-          empresa_id: empresaId,
+          ...tenant,
           time_min: startIso,
           time_max: endIso,
         },
@@ -94,13 +97,14 @@ export function ScheduleMeetingDialog({ open, onOpenChange, prospect, empresaId 
     if (!startIso || !endIso) return;
     setCreating(true);
     try {
+      const tenant = await getGoogleTenantPayload(empresaId, slug);
       const attendees: string[] = [];
       if (inviteProspect && prospect?.email_principal) attendees.push(prospect.email_principal);
 
       const { data, error } = await supabase.functions.invoke("orbit-google-calendar", {
         body: {
           action: "create_event",
-          empresa_id: empresaId,
+          ...tenant,
           summary,
           description,
           location,

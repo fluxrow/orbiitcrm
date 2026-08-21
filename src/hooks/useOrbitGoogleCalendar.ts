@@ -1,6 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useTenant } from "@/contexts/TenantContext";
+import { isTenantFeatureEnabled } from "@/lib/tenant-explicit-mutations";
+
+export const TENANT_GOOGLE_CONTEXT_WAVE3_FLAG = "tenant_google_context_wave3_v1" as const;
+
+export async function getGoogleTenantPayload(empresaId: string, tenantSlug?: string | null) {
+  if (tenantSlug && await isTenantFeatureEnabled(empresaId, TENANT_GOOGLE_CONTEXT_WAVE3_FLAG)) {
+    return { tenant_slug: tenantSlug, empresa_id: empresaId };
+  }
+  return { empresa_id: empresaId };
+}
 
 export interface GoogleStatus {
   connected: boolean;
@@ -16,12 +27,14 @@ export interface GoogleStatus {
 }
 
 export function useGoogleCalendarStatus(empresaId: string | null | undefined) {
+  const { slug } = useTenant();
   return useQuery({
-    queryKey: ["google-calendar-status", empresaId],
+    queryKey: ["google-calendar-status", empresaId, slug],
     enabled: !!empresaId,
     queryFn: async (): Promise<GoogleStatus> => {
       // GET com query string via fetch direto (functions.invoke não suporta GET nativo)
-      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/orbit-google-status?empresa_id=${empresaId}`;
+      const query = new URLSearchParams(await getGoogleTenantPayload(empresaId!, slug)).toString();
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/orbit-google-status?${query}`;
       const { data: sess } = await supabase.auth.getSession();
       const r = await fetch(url, {
         headers: {
@@ -37,14 +50,16 @@ export function useGoogleCalendarStatus(empresaId: string | null | undefined) {
 }
 
 export function useConnectGoogleCalendar() {
+  const { slug } = useTenant();
   return useMutation({
     mutationFn: async (empresaId: string) => {
       const redirectAfter =
         typeof window !== "undefined"
           ? `${window.location.origin}${window.location.pathname}${window.location.search || ""}`
           : undefined;
+      const tenant = await getGoogleTenantPayload(empresaId, slug);
       const { data, error } = await supabase.functions.invoke("orbit-google-auth", {
-        body: { empresa_id: empresaId, redirect_after: redirectAfter },
+        body: { ...tenant, redirect_after: redirectAfter },
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error?.message ?? "Falha ao iniciar conexão");
@@ -56,10 +71,12 @@ export function useConnectGoogleCalendar() {
 
 export function useDisconnectGoogleCalendar() {
   const qc = useQueryClient();
+  const { slug } = useTenant();
   return useMutation({
     mutationFn: async (empresaId: string) => {
+      const tenant = await getGoogleTenantPayload(empresaId, slug);
       const { data, error } = await supabase.functions.invoke("orbit-google-disconnect", {
-        body: { empresa_id: empresaId },
+        body: tenant,
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error?.message ?? "Falha ao desconectar");
@@ -75,12 +92,14 @@ export function useDisconnectGoogleCalendar() {
 
 export function useUpdateGoogleCalendarConfig() {
   const qc = useQueryClient();
+  const { slug } = useTenant();
   return useMutation({
     mutationFn: async (params: { empresaId: string; calendar_id?: string; timezone?: string; availability_start?: string; availability_end?: string; booking_min_notice_minutes?: number; booking_max_horizon_days?: number }) => {
+      const tenant = await getGoogleTenantPayload(params.empresaId, slug);
       const { data, error } = await supabase.functions.invoke("orbit-google-calendar", {
         body: {
           action: "update_config",
-          empresa_id: params.empresaId,
+          ...tenant,
           calendar_id: params.calendar_id,
           timezone: params.timezone,
           availability_start: params.availability_start,
@@ -102,12 +121,14 @@ export function useUpdateGoogleCalendarConfig() {
 }
 
 export function useUpcomingCalendarEvents(empresaId: string | null | undefined, enabled: boolean) {
+  const { slug } = useTenant();
   return useQuery({
-    queryKey: ["google-calendar-upcoming", empresaId],
+    queryKey: ["google-calendar-upcoming", empresaId, slug],
     enabled: !!empresaId && enabled,
     queryFn: async () => {
+      const tenant = await getGoogleTenantPayload(empresaId!, slug);
       const { data, error } = await supabase.functions.invoke("orbit-google-calendar", {
-        body: { action: "list_events", empresa_id: empresaId, max: 10 },
+        body: { action: "list_events", ...tenant, max: 10 },
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error?.message ?? "Falha ao listar eventos");
@@ -123,17 +144,19 @@ export function useCalendarEventsRange(
   enabled: boolean,
   refetchIntervalMs?: number | false,
 ) {
+  const { slug } = useTenant();
   return useQuery({
-    queryKey: ["google-calendar-range", empresaId, startISO, endISO],
+    queryKey: ["google-calendar-range", empresaId, slug, startISO, endISO],
     enabled: !!empresaId && enabled && !!startISO && !!endISO,
     staleTime: 60_000,
     refetchInterval: refetchIntervalMs && refetchIntervalMs > 0 ? refetchIntervalMs : false,
     refetchIntervalInBackground: true,
     queryFn: async () => {
+      const tenant = await getGoogleTenantPayload(empresaId!, slug);
       const { data, error } = await supabase.functions.invoke("orbit-google-calendar", {
         body: {
           action: "list_events",
-          empresa_id: empresaId,
+          ...tenant,
           time_min: startISO,
           time_max: endISO,
           max: 250,

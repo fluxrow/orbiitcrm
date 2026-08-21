@@ -5,6 +5,7 @@ import {
   getTokenForEmpresa, ensureFreshAccessToken,
   checkAvailability, createCalendarEvent, listUpcomingEvents,
 } from "../_shared/google-calendar.ts";
+import { resolveAuthorizedTenant, TenantContextError } from "../_shared/tenant-context.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse(req);
@@ -24,21 +25,8 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const action = (body.action ?? "").toString();
-    const empresaId = (body.empresa_id ?? "").toString();
-    if (!empresaId) return fail(ErrorCodes.VALIDATION_ERROR, "empresa_id obrigatório", 400, undefined, req);
-
-    // Autorização: super_admin OR profile.empresa_id OR active membership
     const svc = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const [{ data: profile }, { data: roles }, { data: peSuper }, { data: membership }] = await Promise.all([
-      svc.from("profiles").select("empresa_id").eq("id", userId).maybeSingle(),
-      svc.from("user_roles").select("role").eq("user_id", userId),
-      svc.rpc("pe_is_super_admin", { p_user_id: userId }),
-      svc.from("user_empresa_memberships").select("empresa_id").eq("user_id", userId).eq("empresa_id", empresaId).maybeSingle(),
-    ]);
-    const isSuper = !!peSuper || (roles ?? []).some((r: any) => r.role === "super_admin");
-    if (!isSuper && profile?.empresa_id !== empresaId && !membership) {
-      return fail(ErrorCodes.FORBIDDEN, "usuário não pertence à empresa", 403, undefined, req);
-    }
+    const { empresaId } = await resolveAuthorizedTenant(svc, userId, body);
 
     const row = await getTokenForEmpresa(empresaId);
     if (!row && action !== "update_config") {
@@ -124,6 +112,9 @@ Deno.serve(async (req) => {
     }
   } catch (e) {
     console.error("[orbit-google-calendar]", e);
+    if (e instanceof TenantContextError) {
+      return fail(e.status === 403 ? ErrorCodes.FORBIDDEN : ErrorCodes.VALIDATION_ERROR, e.message, e.status, undefined, req);
+    }
     return fail(ErrorCodes.INTERNAL_ERROR, (e as Error).message, 500, undefined, req);
   }
 });
