@@ -142,6 +142,8 @@ describe("tenant campaign mutations wave 4.3b", () => {
     expect(permissionsDialog).toContain("Não libera envio real sozinho");
     expect(configUsers).toContain('slug === "fluxrow"');
     expect(configUsers).toContain("CampaignPermissionsDialog");
+    expect(configUsers).toContain("tenant-profiles-for-permissions");
+    expect(configUsers).toContain('.eq("empresa_id", empresaId!)');
     expect(configPage).toContain("isOrgAdmin || isSuperAdmin");
     expect(campaignsPage).toContain("useTenantCampaignCapabilities");
     expect(campaignsPage).toContain("canDispatch={canDispatchCampaign}");

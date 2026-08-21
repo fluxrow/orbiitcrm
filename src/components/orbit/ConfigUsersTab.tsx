@@ -39,6 +39,15 @@ export default function ConfigUsersTab() {
   });
 
   const { data: users, isLoading } = useOrgUsers(orgId);
+  const { data: tenantProfiles, isLoading: profilesLoading } = useQuery({
+    queryKey: ["tenant-profiles-for-permissions", empresaId],
+    enabled: !!empresaId && orgId === null,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("profiles").select("id,nome,email,ativo").eq("empresa_id", empresaId!);
+      if (error) throw error;
+      return (data || []).map((profile) => ({ id: profile.id, full_name: profile.nome, email: profile.email, is_active: profile.ativo, pe_roles: null, profile_fallback: true }));
+    },
+  });
   const { data: invitations } = useOrgInvitations(orgId);
   const { data: roles } = usePeRoles();
   const inviteUser = useInviteUser();
@@ -55,6 +64,7 @@ export default function ConfigUsersTab() {
   const [addForm, setAddForm] = useState({ email: "", password: "", role_code: "", full_name: "" });
 
   const pendingInvitations = invitations?.filter((i: any) => i.status === "pending") || [];
+  const displayUsers = orgId ? users : tenantProfiles;
 
   const handleInvite = async () => {
     if (!orgId) return;
@@ -83,10 +93,10 @@ export default function ConfigUsersTab() {
           <p className="text-sm text-muted-foreground">Gerencie os membros da sua equipe</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setAddOpen(true)}>
+          <Button variant="outline" onClick={() => setAddOpen(true)} disabled={!orgId}>
             <UserPlus className="w-4 h-4 mr-2" /> Adicionar
           </Button>
-          <Button onClick={() => setInviteOpen(true)}>
+          <Button onClick={() => setInviteOpen(true)} disabled={!orgId}>
             <Plus className="w-4 h-4 mr-2" /> Convidar
           </Button>
         </div>
@@ -106,14 +116,12 @@ export default function ConfigUsersTab() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {orgIdLoading || isLoading ? (
+            {orgIdLoading || isLoading || profilesLoading ? (
               <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
-            ) : !orgId ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Esta empresa ainda não está provisionada. Contate o administrador.</TableCell></TableRow>
-            ) : !users?.length ? (
+            ) : !displayUsers?.length ? (
               <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhum usuário</TableCell></TableRow>
             ) : (
-              users.map((u: any) => (
+              displayUsers.map((u: any) => (
                 <TableRow key={u.id}>
                   <TableCell className="font-medium text-foreground">{u.full_name}</TableCell>
                   <TableCell className="text-muted-foreground">{u.email}</TableCell>
@@ -128,7 +136,7 @@ export default function ConfigUsersTab() {
                   <TableCell>
                     <div className="flex">
                       {slug === "fluxrow" && <Button variant="ghost" size="icon" title="Permissões de campanhas" onClick={() => setPermissionUser(u)}><ShieldCheck className="w-4 h-4" /></Button>}
-                      <Button variant="ghost" size="icon" onClick={() => handleEditUser(u)}><Pencil className="w-4 h-4" /></Button>
+                      {!u.profile_fallback && <Button variant="ghost" size="icon" onClick={() => handleEditUser(u)}><Pencil className="w-4 h-4" /></Button>}
                     </div>
                   </TableCell>
                 </TableRow>
