@@ -76,6 +76,23 @@ Prompts e fluxos mantêm rascunho separado da versão publicada. Versões são i
 
 O desacoplamento de contexto usa uma segunda flag, `tenant_explicit_context_v1`. Ela nasce desabilitada e deve ser promovida tenant a tenant somente após os testes de duas abas, troca rápida de slug, isolamento de cache e equivalência do envelope com a RPC legada. No canário inicial, apenas `fluxrow` usa a RPC explícita.
 
+## Pendência controlada: conclusão do onboarding
+
+A tela centralizada de onboarding é uma ferramenta do Super Admin exibida a partir do tenant master `fluxrow`. Ela pode listar onboardings de outros tenants para acompanhamento, mas usuários comuns continuam restritos ao próprio `empresa_id`.
+
+O percentual exibido e o status são dimensões diferentes: `concluido`/`revisado` registra o encerramento do processo, enquanto o percentual é recalculado com base nos campos obrigatórios do schema atual. Existem respostas históricas nos formatos legado e atual; por isso um cliente já implantado pode aparecer como concluído com 95% sem que seu runtime esteja incompleto.
+
+Esta pendência deve ser tratada antes de ampliar a autonomia de onboarding:
+
+1. Inventariar, em modo read-only, a versão e a cobertura das respostas de cada onboarding.
+2. Versionar explicitamente o schema usado por cada registro, sem reescrever respostas históricas.
+3. Separar na interface `status do processo`, `cobertura do formulário` e `prontidão operacional`.
+4. Calcular compatibilidade por aliases para registros legados e listar campos faltantes sem reabrir automaticamente onboardings concluídos.
+5. Validar se materiais, insights e rascunhos foram processados e quais itens realmente alimentam prompt, conhecimento e fluxos ativos.
+6. Implementar e homologar qualquer correção somente em `fluxrow`; tenants clientes permanecem read-only até promoção individual com rollback.
+
+O funcionamento atual de IA, filas, prompts, fluxos e integrações dos tenants ativos não deve depender de uma alteração retroativa do status ou das respostas do onboarding.
+
 ## Operação segura
 
 - Nunca conceder tabelas sensíveis a `PUBLIC` ou `anon`.
