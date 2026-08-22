@@ -42,6 +42,9 @@ verify_jwt = false
 [functions.orbit-lead-ingest]
 verify_jwt = false
 
+[functions.orbit-stackdocs-intake]
+verify_jwt = false
+
 [functions.send-orbit-meta-message]
 verify_jwt = false
 

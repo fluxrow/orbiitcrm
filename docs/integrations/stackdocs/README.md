@@ -10,6 +10,7 @@ um endpoint já implantado.
 - `schemas/stackdocs-submission-completed-v1.schema.json`: envelope permitido.
 - `THREAT_MODEL.md`: fronteiras de confiança, ameaças e controles obrigatórios.
 - `STACKDOCS_HANDOFF_COMMAND.md`: comando pronto e limitado ao lado emissor.
+- `S1_IMPLEMENTATION.md`: implementação e gates do intake canário no Orbit.
 
 Em conflito, o JSON Schema governa o corpo, o OpenAPI governa o transporte e a ADR
 governa a arquitetura e o rollout.
