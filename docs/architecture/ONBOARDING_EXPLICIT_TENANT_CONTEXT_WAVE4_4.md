@@ -171,6 +171,14 @@ Desligar `tenant_onboarding_context_wave4_v1` somente no `fluxrow` restaura o
 caminho legado do frontend. As novas RPCs são aditivas e não substituem nem
 removem policies ou RPCs públicas nesta onda.
 
+## Ordem de implantação
+
+1. Publicar primeiro o frontend compatível. Enquanto a RPC de modo não existir,
+   somente os códigos `42883`/`PGRST202` acionam o caminho legado.
+2. Aplicar a migration e reauditar flags, grants, funções e policies.
+3. A flag ativa no `fluxrow` passa a selecionar o contrato scoped.
+4. Erros de autorização, tenant ou banco nunca acionam fallback.
+
 ## Fora de escopo
 
 - Ativar a onda em tenants clientes.
@@ -178,4 +186,3 @@ removem policies ou RPCs públicas nesta onda.
 - Revogar grants públicos antes da regressão completa do wizard.
 - Aplicar automaticamente o rascunho de implementação em prompts ou fluxos.
 - Enviar notificações reais durante homologação.
-

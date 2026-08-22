@@ -3,6 +3,64 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/contexts/TenantContext";
 import { useIsSuperAdmin } from "@/hooks/useUserRole";
 
+export const TENANT_ONBOARDING_CONTEXT_WAVE4_FLAG =
+  "tenant_onboarding_context_wave4_v1" as const;
+
+type OnboardingScopedSection = "list" | "assets" | "insights" | "draft";
+
+async function usesScopedOnboarding(
+  _empresaId?: string | null,
+  tenantSlug?: string | null,
+) {
+  if (!tenantSlug) return false;
+  const { data, error } = await supabase.rpc(
+    "orbit_tenant_onboarding_context_mode" as any,
+    { p_tenant_slug: tenantSlug } as any,
+  );
+  // Deploy order is intentionally code-first. Until the additive migration is
+  // present, PostgREST may report a missing function/schema-cache entry. Only
+  // that condition falls back; authorization and tenant errors fail closed.
+  if (error && ["42883", "PGRST202"].includes(error.code ?? "")) return false;
+  if (error) throw error;
+  return (data as any)?.enabled === true;
+}
+
+async function readTenantOnboardingScoped<T>(
+  tenantSlug: string,
+  section: OnboardingScopedSection,
+  entityId?: string | null,
+) {
+  const { data, error } = await supabase.rpc(
+    "orbit_tenant_onboarding_read_scoped" as any,
+    {
+      p_tenant_slug: tenantSlug,
+      p_section: section,
+      p_entity_id: entityId ?? null,
+    } as any,
+  );
+  if (error) throw error;
+  return ((data as any)?.data ?? (section === "draft" ? null : [])) as T;
+}
+
+async function mutateTenantOnboardingScoped(
+  tenantSlug: string,
+  actionType: string,
+  onboardingId: string,
+  payload: Record<string, unknown> = {},
+) {
+  const { data, error } = await supabase.rpc(
+    "orbit_tenant_onboarding_mutate_scoped" as any,
+    {
+      p_tenant_slug: tenantSlug,
+      p_action_type: actionType,
+      p_onboarding_id: onboardingId,
+      p_payload: payload,
+    } as any,
+  );
+  if (error) throw error;
+  return data;
+}
+
 export type OnboardingStatus =
   | "rascunho" | "enviado" | "em_andamento" | "concluido" | "revisado" | "arquivado";
 
@@ -28,12 +86,15 @@ export interface ClientOnboarding {
 }
 
 export function useClientOnboardings() {
-  const { empresaId } = useTenant();
+  const { empresaId, slug } = useTenant();
   const { hasRole: isSuper } = useIsSuperAdmin();
   return useQuery({
     queryKey: ["client-onboardings", empresaId, isSuper],
     enabled: !!empresaId,
     queryFn: async () => {
+      if (await usesScopedOnboarding(empresaId, slug)) {
+        return readTenantOnboardingScoped<ClientOnboarding[]>(slug!, "list");
+      }
       let q = supabase
         .from("orbit_client_onboardings" as any)
         .select("*")
@@ -105,13 +166,18 @@ export function useCreateOnboarding() {
 
 export function useArchiveOnboarding() {
   const qc = useQueryClient();
-  const { empresaId } = useTenant();
+  const { empresaId, slug } = useTenant();
   return useMutation({
     mutationFn: async (id: string) => {
+      if (await usesScopedOnboarding(empresaId, slug)) {
+        await mutateTenantOnboardingScoped(slug!, "archive_onboarding", id);
+        return;
+      }
       const { error } = await supabase
         .from("orbit_client_onboardings" as any)
         .update({ archived: true, status: "arquivado" })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("empresa_id", empresaId!);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["client-onboardings", empresaId] }),
@@ -120,13 +186,18 @@ export function useArchiveOnboarding() {
 
 export function useUpdateChecklist() {
   const qc = useQueryClient();
-  const { empresaId } = useTenant();
+  const { empresaId, slug } = useTenant();
   return useMutation({
     mutationFn: async ({ id, checklist }: { id: string; checklist: any[] }) => {
+      if (await usesScopedOnboarding(empresaId, slug)) {
+        await mutateTenantOnboardingScoped(slug!, "update_checklist", id, { checklist });
+        return;
+      }
       const { error } = await supabase
         .from("orbit_client_onboardings" as any)
         .update({ implementation_checklist: checklist })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("empresa_id", empresaId!);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["client-onboardings", empresaId] }),
@@ -135,13 +206,18 @@ export function useUpdateChecklist() {
 
 export function useUpdateOnboardingResponses() {
   const qc = useQueryClient();
-  const { empresaId } = useTenant();
+  const { empresaId, slug } = useTenant();
   return useMutation({
     mutationFn: async ({ id, responses }: { id: string; responses: Record<string, any> }) => {
+      if (await usesScopedOnboarding(empresaId, slug)) {
+        await mutateTenantOnboardingScoped(slug!, "update_responses", id, { responses });
+        return;
+      }
       const { error } = await supabase
         .from("orbit_client_onboardings" as any)
         .update({ responses })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("empresa_id", empresaId!);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["client-onboardings", empresaId] }),
@@ -247,14 +323,19 @@ export interface OnboardingAsset {
 }
 
 export function useOnboardingAssets(onboardingId: string | undefined) {
+  const { empresaId, slug } = useTenant();
   return useQuery({
-    queryKey: ["onboarding-assets", onboardingId],
-    enabled: !!onboardingId,
+    queryKey: ["onboarding-assets", empresaId, slug, onboardingId],
+    enabled: !!empresaId && !!onboardingId,
     queryFn: async () => {
+      if (await usesScopedOnboarding(empresaId, slug)) {
+        return readTenantOnboardingScoped<OnboardingAsset[]>(slug!, "assets", onboardingId!);
+      }
       const { data, error } = await supabase
         .from("orbit_onboarding_assets" as any)
         .select("*")
         .eq("onboarding_id", onboardingId!)
+        .eq("empresa_id", empresaId!)
         .order("created_at", { ascending: true });
       if (error) throw error;
       return (data ?? []) as unknown as OnboardingAsset[];
@@ -263,14 +344,19 @@ export function useOnboardingAssets(onboardingId: string | undefined) {
 }
 
 export function useOnboardingInsights(onboardingId: string | undefined) {
+  const { empresaId, slug } = useTenant();
   return useQuery({
-    queryKey: ["onboarding-insights", onboardingId],
-    enabled: !!onboardingId,
+    queryKey: ["onboarding-insights", empresaId, slug, onboardingId],
+    enabled: !!empresaId && !!onboardingId,
     queryFn: async () => {
+      if (await usesScopedOnboarding(empresaId, slug)) {
+        return readTenantOnboardingScoped<OnboardingAssetInsight[]>(slug!, "insights", onboardingId!);
+      }
       const { data, error } = await supabase
         .from("orbit_onboarding_asset_insights" as any)
         .select("*")
         .eq("onboarding_id", onboardingId!)
+        .eq("empresa_id", empresaId!)
         .order("created_at", { ascending: true });
       if (error) throw error;
       return (data ?? []) as unknown as OnboardingAssetInsight[];
@@ -279,14 +365,21 @@ export function useOnboardingInsights(onboardingId: string | undefined) {
 }
 
 export function useOnboardingDraft(onboardingId: string | undefined) {
+  const { empresaId, slug } = useTenant();
   return useQuery({
-    queryKey: ["onboarding-draft", onboardingId],
-    enabled: !!onboardingId,
+    queryKey: ["onboarding-draft", empresaId, slug, onboardingId],
+    enabled: !!empresaId && !!onboardingId,
     queryFn: async () => {
+      if (await usesScopedOnboarding(empresaId, slug)) {
+        return readTenantOnboardingScoped<OnboardingImplementationDraft | null>(
+          slug!, "draft", onboardingId!,
+        );
+      }
       const { data, error } = await supabase
         .from("orbit_onboarding_implementation_drafts" as any)
         .select("*")
         .eq("onboarding_id", onboardingId!)
+        .eq("empresa_id", empresaId!)
         .maybeSingle();
       if (error) throw error;
       return (data ?? null) as unknown as OnboardingImplementationDraft | null;
@@ -318,9 +411,9 @@ export function useProcessOnboardingAssets() {
       };
     },
     onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["onboarding-assets", res.onboarding_id] });
-      qc.invalidateQueries({ queryKey: ["onboarding-insights", res.onboarding_id] });
-      qc.invalidateQueries({ queryKey: ["onboarding-draft", res.onboarding_id] });
+      qc.invalidateQueries({ queryKey: ["onboarding-assets"] });
+      qc.invalidateQueries({ queryKey: ["onboarding-insights"] });
+      qc.invalidateQueries({ queryKey: ["onboarding-draft"] });
       qc.invalidateQueries({ queryKey: ["client-onboardings"] });
     },
   });
@@ -328,6 +421,7 @@ export function useProcessOnboardingAssets() {
 
 export function useReviewInsight() {
   const qc = useQueryClient();
+  const { empresaId, slug } = useTenant();
   return useMutation({
     mutationFn: async ({
       insightId,
@@ -338,6 +432,12 @@ export function useReviewInsight() {
       onboardingId: string;
       status: "pending" | "approved" | "ignored";
     }) => {
+      if (await usesScopedOnboarding(empresaId, slug)) {
+        const data = await mutateTenantOnboardingScoped(
+          slug!, "review_insight", onboardingId, { insight_id: insightId, status },
+        );
+        return { data, onboardingId };
+      }
       const { data: userRes } = await supabase.auth.getUser();
       const { data, error } = await supabase
         .from("orbit_onboarding_asset_insights" as any)
@@ -347,13 +447,14 @@ export function useReviewInsight() {
           reviewed_at: new Date().toISOString(),
         })
         .eq("id", insightId)
+        .eq("empresa_id", empresaId!)
         .select()
         .maybeSingle();
       if (error) throw error;
       return { data, onboardingId };
     },
     onSuccess: ({ onboardingId }) => {
-      qc.invalidateQueries({ queryKey: ["onboarding-insights", onboardingId] });
+      qc.invalidateQueries({ queryKey: ["onboarding-insights"] });
     },
   });
 }
@@ -365,6 +466,7 @@ export function useReviewInsight() {
  */
 export function useReconcileOrphanAsset() {
   const qc = useQueryClient();
+  const { empresaId, slug } = useTenant();
   return useMutation({
     mutationFn: async ({
       onboardingId,
@@ -373,10 +475,17 @@ export function useReconcileOrphanAsset() {
       onboardingId: string;
       asset: OnboardingAsset;
     }) => {
+      if (await usesScopedOnboarding(empresaId, slug)) {
+        await mutateTenantOnboardingScoped(
+          slug!, "reconcile_asset_reference", onboardingId, { asset_id: asset.id },
+        );
+        return { onboardingId };
+      }
       const { data: ob, error: obErr } = await supabase
         .from("orbit_client_onboardings" as any)
         .select("id, responses")
         .eq("id", onboardingId)
+        .eq("empresa_id", empresaId!)
         .maybeSingle();
       if (obErr) throw obErr;
       const responses: any = (ob as any)?.responses ?? {};
@@ -415,13 +524,14 @@ export function useReconcileOrphanAsset() {
       const { error } = await supabase
         .from("orbit_client_onboardings" as any)
         .update({ responses: nextResponses })
-        .eq("id", onboardingId);
+        .eq("id", onboardingId)
+        .eq("empresa_id", empresaId!);
       if (error) throw error;
       return { onboardingId };
     },
     onSuccess: ({ onboardingId }) => {
       qc.invalidateQueries({ queryKey: ["client-onboardings"] });
-      qc.invalidateQueries({ queryKey: ["onboarding-assets", onboardingId] });
+      qc.invalidateQueries({ queryKey: ["onboarding-assets"] });
     },
   });
 }
