@@ -238,6 +238,20 @@ campanha em estado de execução.
 ou chamar provedores. O scheduler restaura `agendada` se qualquer gate downstream
 rejeitar o início, evitando campanhas presas em `aprovada_para_envio`.
 
+#### Parte 4.4 — onboarding explícito por tenant
+
+O painel interno de onboarding ainda consulta tabelas diretamente e, para o
+Super Admin, omite o filtro de tenant para oferecer uma visão centralizada. A
+onda `tenant_onboarding_context_wave4_v1` separará essa visão global da rota
+tenant-scoped e moverá leituras e mutações internas para RPCs que resolvem o slug
+no servidor.
+
+O wizard público por token (`get_onboarding_by_token`,
+`save_onboarding_responses` e `submit_onboarding`) permanece inalterado para não
+interromper clientes com onboarding em andamento. O desenho, os contratos e os
+testes de compatibilidade estão documentados em
+`docs/architecture/ONBOARDING_EXPLICIT_TENANT_CONTEXT_WAVE4_4.md`.
+
 ## Gates de promoção
 
 - CI verde: instalação limpa, TypeScript, testes e build.
