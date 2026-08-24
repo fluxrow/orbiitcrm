@@ -3,6 +3,7 @@ import { GitBranch, History, Plus, RotateCcw, Save, Upload } from "lucide-react"
 import type { ContentVersionRead, PromptsFlowsOpsRead } from "@/lib/tenant-operations-types";
 import { useTenantOpsActions } from "@/hooks/useTenantOpsActions";
 import { useToast } from "@/hooks/use-toast";
+import type { Json } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -66,7 +67,7 @@ export function PromptsFlowsManager({ data }: Props) {
       toast({ title: "JSON inválido", description: "Revise nodes_schema e edges_schema antes de salvar.", variant: "destructive" });
       return;
     }
-    const result=await action.mutateAsync({ action:"save_flow_draft",payload:{ flow_id:flowId||undefined,name:flowName,nodes_schema:nodes,edges_schema:edges,changelog:flowChangelog,source:"tenant_operations_ui" } });
+    const result=await action.mutateAsync({ action:"save_flow_draft",payload:{ flow_id:flowId||undefined,name:flowName,nodes_schema:nodes as Json,edges_schema:edges as Json,changelog:flowChangelog,source:"tenant_operations_ui" } });
     if (!flowId && result.entity_id) setFlowId(result.entity_id);
   };
   const publishFlow = () => action.mutate({ action:"publish_flow_version",payload:{ flow_id:flowId||undefined,changelog:flowChangelog,source:"tenant_operations_ui" } });
