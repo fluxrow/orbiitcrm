@@ -2,12 +2,14 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Upload, Link2, RefreshCw, Trash2, FileText, Loader2, AlertCircle, CheckCircle2, Clock } from "lucide-react";
 import {
   useOrbitAIKnowledge,
   useIngestKnowledgeUrl,
+  useStageKnowledgeText,
   useUploadKnowledgeDoc,
   useReprocessKnowledge,
   useToggleKnowledge,
@@ -19,6 +21,9 @@ import { toast } from "sonner";
 const ACCEPT = ".pdf,.txt,.md,.docx";
 
 function StatusBadge({ row }: { row: AIKnowledgeRow }) {
+  if (row.status === "pending" && row.erro === "STAGED_NOT_PROCESSED") {
+    return <Badge variant="outline" className="gap-1"><Clock className="h-3 w-3" /> Rascunho</Badge>;
+  }
   if (row.status === "ready") return <Badge variant="default" className="gap-1"><CheckCircle2 className="h-3 w-3" /> Pronto</Badge>;
   if (row.status === "processing") return <Badge variant="secondary" className="gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Processando</Badge>;
   if (row.status === "pending") return <Badge variant="outline" className="gap-1"><Clock className="h-3 w-3" /> Aguardando</Badge>;
@@ -32,6 +37,7 @@ interface Props {
 export function KnowledgeBaseManager({ empresaId }: Props) {
   const { data: rows = [], isLoading } = useOrbitAIKnowledge(empresaId);
   const ingestUrl = useIngestKnowledgeUrl();
+  const stageText = useStageKnowledgeText();
   const uploadDoc = useUploadKnowledgeDoc();
   const reprocess = useReprocessKnowledge();
   const toggle = useToggleKnowledge();
@@ -39,6 +45,8 @@ export function KnowledgeBaseManager({ empresaId }: Props) {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [urlValue, setUrlValue] = useState("");
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftContent, setDraftContent] = useState("");
 
   const onFile = async (file: File | null) => {
     if (!file || !empresaId) return;
@@ -81,6 +89,22 @@ export function KnowledgeBaseManager({ empresaId }: Props) {
     }
   };
 
+  const onStageText = async () => {
+    if (!empresaId || !draftTitle.trim() || !draftContent.trim()) return;
+    try {
+      await stageText.mutateAsync({
+        empresa_id: empresaId,
+        titulo: draftTitle.trim(),
+        conteudo_texto: draftContent.trim(),
+      });
+      toast.success("Material salvo como rascunho, sem processamento e sem uso pela IA.");
+      setDraftTitle("");
+      setDraftContent("");
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao salvar rascunho");
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Upload doc */}
@@ -116,6 +140,42 @@ export function KnowledgeBaseManager({ empresaId }: Props) {
             {ingestUrl.isPending ? <Loader2 className="h-4 w-4" /> : "Adicionar"}
           </Button>
         </div>
+      </div>
+
+      {/* Texto controlado — permite preparar conhecimento sem consumir embeddings. */}
+      <div className="rounded-md border p-4 space-y-3">
+        <div>
+          <Label className="text-sm font-medium">Preparar texto como rascunho</Label>
+          <p className="text-xs text-muted-foreground">
+            Salva o material sem processar, sem gerar embeddings e sem disponibilizá-lo para a IA.
+          </p>
+        </div>
+        <Input
+          value={draftTitle}
+          onChange={(e) => setDraftTitle(e.target.value)}
+          placeholder="Título da fonte"
+          maxLength={160}
+        />
+        <Textarea
+          value={draftContent}
+          onChange={(e) => setDraftContent(e.target.value)}
+          placeholder="Cole aqui o conteúdo revisado"
+          rows={8}
+          maxLength={200_000}
+        />
+        <Button
+          variant="outline"
+          onClick={onStageText}
+          disabled={
+            stageText.isPending ||
+            !empresaId ||
+            !draftTitle.trim() ||
+            !draftContent.trim()
+          }
+        >
+          {stageText.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileText className="h-4 w-4 mr-2" />}
+          Salvar rascunho sem processar
+        </Button>
       </div>
 
       {/* Lista */}
