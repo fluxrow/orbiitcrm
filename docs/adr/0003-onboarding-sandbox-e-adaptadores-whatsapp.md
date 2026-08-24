@@ -19,6 +19,8 @@ Adotamos duas decisões independentes:
 
 O sandbox do agente é o primeiro gate da Comunica. Ele continua stateless, não persiste conversa, não enfileira mensagens, não chama WhatsApp e não agenda reuniões. Google Calendar, número de teste e conexão do provedor são gates posteriores.
 
+O aceite do conteúdo pertence ao cliente. Para o canário Comunica, cinco cenários guiados registram somente `approved`/`rejected`, comentário, autor e data. A transcrição continua efêmera. Apenas um administrador do próprio tenant pode decidir; o Super Admin pode acompanhar, mas não aprovar em nome do cliente. Mesmo 5/5 aprovados não alteram o runtime: a homologação apenas produz evidência para o próximo gate.
+
 ## Opções consideradas
 
 ### A. Exigir Z-API para todo tenant
