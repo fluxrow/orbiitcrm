@@ -4,15 +4,24 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bot, Send, Webhook, Trash2, Loader2, ShieldCheck, User } from "lucide-react";
+import { Bot, Send, Webhook, Trash2, Loader2, ShieldCheck, User, CheckCircle2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AGENT_SANDBOX_SCENARIOS,
+  countApprovedAgentSandboxScenarios,
+  type AgentSandboxScenarioKey,
+} from "@/lib/agent-sandbox-review";
+import { useAgentSandboxReview, useSaveAgentSandboxReview } from "@/hooks/useAgentSandboxReview";
 
 interface AgentSandboxProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   empresaId: string | null | undefined;
+  tenantSlug?: string | null;
 }
 
 interface SandboxMsg {
@@ -32,12 +41,21 @@ const MOCK_LEAD = {
   observacoes: "Respondeu ao formulário de captação e deixou os dados de contato.",
 };
 
-export function AgentSandbox({ open, onOpenChange, empresaId }: AgentSandboxProps) {
+export function AgentSandbox({ open, onOpenChange, empresaId, tenantSlug }: AgentSandboxProps) {
   const [messages, setMessages] = useState<SandboxMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [typing, setTyping] = useState(false);
+  const [scenarioKey, setScenarioKey] = useState<AgentSandboxScenarioKey>("initial_approach");
+  const [reviewStatus, setReviewStatus] = useState<"approved" | "rejected" | null>(null);
+  const [reviewComment, setReviewComment] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const reviewQuery = useAgentSandboxReview(open ? tenantSlug : null);
+  const saveReview = useSaveAgentSandboxReview(tenantSlug);
+  const reviewState = reviewQuery.data;
+  const selectedScenario = AGENT_SANDBOX_SCENARIOS.find((scenario) => scenario.key === scenarioKey)!;
+  const approvedCount = countApprovedAgentSandboxScenarios(reviewState?.reviews ?? []);
+  const selectedReview = reviewState?.reviews.find((review) => review.scenario_key === scenarioKey);
 
   // Auto scroll
   useEffect(() => {
@@ -102,6 +120,37 @@ export function AgentSandbox({ open, onOpenChange, empresaId }: AgentSandboxProp
     toast.success("Histórico limpo");
   };
 
+  const selectScenario = (key: AgentSandboxScenarioKey) => {
+    const scenario = AGENT_SANDBOX_SCENARIOS.find((item) => item.key === key)!;
+    setScenarioKey(key);
+    setMessages([]);
+    setInput(scenario.starter ?? "");
+  };
+
+  const openReview = (status: "approved" | "rejected") => {
+    setReviewStatus(status);
+    setReviewComment(selectedReview?.comment ?? "");
+  };
+
+  const submitReview = () => {
+    if (!reviewStatus) return;
+    if (reviewStatus === "rejected" && !reviewComment.trim()) {
+      toast.error("Explique o que precisa ser ajustado.");
+      return;
+    }
+    saveReview.mutate(
+      { scenarioKey, status: reviewStatus, comment: reviewComment },
+      {
+        onSuccess: () => {
+          toast.success(reviewStatus === "approved" ? "Cenário aprovado" : "Ajuste registrado");
+          setReviewStatus(null);
+          setReviewComment("");
+        },
+        onError: (error: any) => toast.error(error?.message || "Não foi possível salvar a avaliação"),
+      },
+    );
+  };
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -133,7 +182,44 @@ export function AgentSandbox({ open, onOpenChange, empresaId }: AgentSandboxProp
             <ShieldCheck className="h-3 w-3" />
             Ambiente de Teste Seguro · sem persistência
           </Badge>
+          {reviewState?.enabled && (
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground">Homologação do cliente</span>
+                <span className="font-medium">{approvedCount}/{AGENT_SANDBOX_SCENARIOS.length} aprovados</span>
+              </div>
+              <Progress value={(approvedCount / AGENT_SANDBOX_SCENARIOS.length) * 100} className="h-1.5" />
+            </div>
+          )}
         </SheetHeader>
+
+        {reviewState?.enabled && (
+          <div className="border-b px-4 py-3 space-y-2 bg-muted/20">
+            <div className="flex gap-1.5 overflow-x-auto pb-1">
+              {AGENT_SANDBOX_SCENARIOS.map((scenario) => {
+                const review = reviewState.reviews.find((item) => item.scenario_key === scenario.key);
+                return (
+                  <Button
+                    key={scenario.key}
+                    type="button"
+                    size="sm"
+                    variant={scenario.key === scenarioKey ? "default" : "outline"}
+                    className="h-7 shrink-0 text-[11px] gap-1"
+                    onClick={() => selectScenario(scenario.key)}
+                  >
+                    {review?.status === "approved" && <CheckCircle2 className="h-3 w-3" />}
+                    {review?.status === "rejected" && <XCircle className="h-3 w-3" />}
+                    {scenario.title}
+                  </Button>
+                );
+              })}
+            </div>
+            <div className="text-xs">
+              <p className="font-medium">{selectedScenario.goal}</p>
+              <p className="text-muted-foreground mt-0.5">{selectedScenario.instruction}</p>
+            </div>
+          </div>
+        )}
 
         {/* Chat area */}
         <ScrollArea ref={scrollRef} className="flex-1 px-4 py-4">
@@ -201,6 +287,25 @@ export function AgentSandbox({ open, onOpenChange, empresaId }: AgentSandboxProp
 
         {/* Footer / Composer */}
         <div className="border-t p-3 space-y-2 bg-background/60">
+          {reviewState?.enabled && messages.length > 0 && (
+            <div className="rounded-md border p-2 space-y-2">
+              <p className="text-[11px] text-muted-foreground">
+                A conversa não será salva. Registre apenas sua decisão sobre este cenário.
+              </p>
+              {reviewState.can_review ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <Button type="button" size="sm" variant="outline" className="gap-1 text-xs" onClick={() => openReview("rejected")}>
+                    <XCircle className="h-3.5 w-3.5" /> Precisa de ajuste
+                  </Button>
+                  <Button type="button" size="sm" className="gap-1 text-xs" onClick={() => openReview("approved")}>
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Aprovar cenário
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-xs font-medium">A aprovação deve ser feita por um administrador deste cliente.</p>
+              )}
+            </div>
+          )}
           {messages.length > 0 && (
             <Button
               variant="outline"
@@ -233,6 +338,29 @@ export function AgentSandbox({ open, onOpenChange, empresaId }: AgentSandboxProp
           </div>
         </div>
       </SheetContent>
+      <Dialog open={reviewStatus !== null} onOpenChange={(value) => !value && setReviewStatus(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{reviewStatus === "approved" ? "Aprovar cenário" : "Registrar ajuste"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">{selectedScenario.title}</p>
+            <Textarea
+              value={reviewComment}
+              onChange={(event) => setReviewComment(event.target.value.slice(0, 2000))}
+              placeholder={reviewStatus === "approved" ? "Comentário opcional" : "Descreva o que o agente deve corrigir"}
+              rows={4}
+            />
+            <p className="text-[11px] text-muted-foreground text-right">{reviewComment.length}/2000</p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setReviewStatus(null)}>Cancelar</Button>
+            <Button onClick={submitReview} disabled={saveReview.isPending}>
+              {saveReview.isPending ? "Salvando…" : "Confirmar avaliação"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Sheet>
   );
 }

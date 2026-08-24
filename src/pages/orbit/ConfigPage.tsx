@@ -63,7 +63,7 @@ interface ParsedProspect {
 
 export default function ConfigPage() {
   const { roleCode } = usePeAuth();
-  const { empresaId } = useTenant();
+  const { empresaId, slug } = useTenant();
   const [searchParams] = useSearchParams();
   const isOrgAdmin = roleCode === "ORG_ADMIN";
   const { hasRole: isSuperAdmin } = useIsSuperAdmin();
@@ -1947,6 +1947,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
         open={sandboxOpen}
         onOpenChange={setSandboxOpen}
         empresaId={empresaId}
+        tenantSlug={slug}
       />
     </OrbitLayout>
   );
