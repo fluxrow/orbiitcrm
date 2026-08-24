@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 
 export const TENANT_EXPLICIT_MUTATIONS_WAVE2_FLAG =
   "tenant_explicit_mutations_wave2_v1" as const;
@@ -46,7 +47,7 @@ export async function runTenantMutation<T>({
     p_tenant_slug: tenantSlug,
     p_action_type: actionType,
     p_entity_id: entityId,
-    p_payload: payload,
+    p_payload: payload as Json,
   });
   if (error) throw error;
   return (data as any)?.data?.entity as T;

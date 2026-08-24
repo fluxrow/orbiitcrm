@@ -1574,6 +1574,95 @@ export type Database = {
           },
         ]
       }
+      orbit_campaign_dispatch_authorizations: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          campaign_id: string
+          consumed_at: string | null
+          created_at: string
+          empresa_id: string
+          expires_at: string
+          id: string
+          idempotency_key: string
+          metadata: Json
+          nonce_hash: string | null
+          recipient_count: number
+          requested_by: string
+          revoked_at: string | null
+          snapshot_hash: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          campaign_id: string
+          consumed_at?: string | null
+          created_at?: string
+          empresa_id: string
+          expires_at: string
+          id?: string
+          idempotency_key: string
+          metadata?: Json
+          nonce_hash?: string | null
+          recipient_count: number
+          requested_by: string
+          revoked_at?: string | null
+          snapshot_hash: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          campaign_id?: string
+          consumed_at?: string | null
+          created_at?: string
+          empresa_id?: string
+          expires_at?: string
+          id?: string
+          idempotency_key?: string
+          metadata?: Json
+          nonce_hash?: string | null
+          recipient_count?: number
+          requested_by?: string
+          revoked_at?: string | null
+          snapshot_hash?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_campaign_dispatch_authorizations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_campaign_dispatch_authorizations_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_campaign_dispatch_authorizations_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_campaign_dispatch_authorizations_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+        ]
+      }
       orbit_campaign_recipients: {
         Row: {
           bounced_at: string | null
@@ -2419,6 +2508,73 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      orbit_external_connections: {
+        Row: {
+          active_secret_version: number
+          created_at: string
+          empresa_id: string
+          entitlement_key: string
+          id: string
+          previous_secret_env_key: string | null
+          previous_secret_valid_until: string | null
+          provider: string
+          public_connection_id: string
+          secret_env_key: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          active_secret_version?: number
+          created_at?: string
+          empresa_id: string
+          entitlement_key?: string
+          id?: string
+          previous_secret_env_key?: string | null
+          previous_secret_valid_until?: string | null
+          provider: string
+          public_connection_id: string
+          secret_env_key: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          active_secret_version?: number
+          created_at?: string
+          empresa_id?: string
+          entitlement_key?: string
+          id?: string
+          previous_secret_env_key?: string | null
+          previous_secret_valid_until?: string | null
+          provider?: string
+          public_connection_id?: string
+          secret_env_key?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_external_connections_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_external_connections_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_external_connections_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+        ]
       }
       orbit_feature_flags: {
         Row: {
@@ -3359,6 +3515,157 @@ export type Database = {
             columns: ["importado_por"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_integration_inbox: {
+        Row: {
+          attempt_count: number
+          connection_id: string
+          correlation_id: string
+          empresa_id: string
+          event_id: string
+          event_type: string
+          id: string
+          last_error_code: string | null
+          occurred_at: string
+          payload_hash: string
+          processed_at: string | null
+          received_at: string
+          sanitized_payload: Json
+          schema_version: string
+          status: string
+        }
+        Insert: {
+          attempt_count?: number
+          connection_id: string
+          correlation_id: string
+          empresa_id: string
+          event_id: string
+          event_type: string
+          id?: string
+          last_error_code?: string | null
+          occurred_at: string
+          payload_hash: string
+          processed_at?: string | null
+          received_at?: string
+          sanitized_payload: Json
+          schema_version: string
+          status?: string
+        }
+        Update: {
+          attempt_count?: number
+          connection_id?: string
+          correlation_id?: string
+          empresa_id?: string
+          event_id?: string
+          event_type?: string
+          id?: string
+          last_error_code?: string | null
+          occurred_at?: string
+          payload_hash?: string
+          processed_at?: string | null
+          received_at?: string
+          sanitized_payload?: Json
+          schema_version?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_integration_inbox_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_external_connections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_integration_inbox_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_integration_inbox_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_integration_inbox_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+        ]
+      }
+      orbit_integration_projections: {
+        Row: {
+          apply_status: string
+          created_at: string
+          empresa_id: string
+          id: string
+          inbox_id: string
+          mapping_version_id: string | null
+          normalized_payload: Json
+          proposed_operations: Json
+          updated_at: string
+          validation_evidence: Json
+        }
+        Insert: {
+          apply_status?: string
+          created_at?: string
+          empresa_id: string
+          id?: string
+          inbox_id: string
+          mapping_version_id?: string | null
+          normalized_payload: Json
+          proposed_operations?: Json
+          updated_at?: string
+          validation_evidence?: Json
+        }
+        Update: {
+          apply_status?: string
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          inbox_id?: string
+          mapping_version_id?: string | null
+          normalized_payload?: Json
+          proposed_operations?: Json
+          updated_at?: string
+          validation_evidence?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_integration_projections_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_integration_projections_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_integration_projections_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_integration_projections_inbox_id_fkey"
+            columns: ["inbox_id"]
+            isOneToOne: true
+            referencedRelation: "orbit_integration_inbox"
             referencedColumns: ["id"]
           },
         ]
@@ -5142,6 +5449,58 @@ export type Database = {
             foreignKeyName: "orbit_tenant_alert_config_empresa_id_fkey"
             columns: ["empresa_id"]
             isOneToOne: true
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+        ]
+      }
+      orbit_tenant_user_permissions: {
+        Row: {
+          empresa_id: string
+          granted_at: string
+          granted_by: string
+          metadata: Json
+          permission_key: string
+          revoked_at: string | null
+          user_id: string
+        }
+        Insert: {
+          empresa_id: string
+          granted_at?: string
+          granted_by: string
+          metadata?: Json
+          permission_key: string
+          revoked_at?: string | null
+          user_id: string
+        }
+        Update: {
+          empresa_id?: string
+          granted_at?: string
+          granted_by?: string
+          metadata?: Json
+          permission_key?: string
+          revoked_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_tenant_user_permissions_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_tenant_user_permissions_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_tenant_user_permissions_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
             referencedRelation: "orbit_tenant_ops_queue_v"
             referencedColumns: ["empresa_id"]
           },
@@ -7249,6 +7608,14 @@ export type Database = {
         Returns: number
       }
       orbit_apply_log_retention: { Args: never; Returns: Json }
+      orbit_campaign_direct_write_allowed: {
+        Args: { p_empresa_id: string }
+        Returns: boolean
+      }
+      orbit_campaign_dispatch_claim: {
+        Args: { p_campaign_id: string }
+        Returns: Json
+      }
       orbit_end_jit_support_session: {
         Args: { p_session_id: string }
         Returns: Json
@@ -7293,6 +7660,10 @@ export type Database = {
           p_offset?: number
           p_tenant_slug: string
         }
+        Returns: Json
+      }
+      orbit_get_tenant_campaign_capabilities: {
+        Args: { p_tenant_slug: string }
         Returns: Json
       }
       orbit_global_search: {
@@ -7357,11 +7728,72 @@ export type Database = {
         Args: { _empresa_id: string }
         Returns: undefined
       }
+      orbit_set_tenant_campaign_permission: {
+        Args: {
+          p_granted: boolean
+          p_permission_key: string
+          p_tenant_slug: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      orbit_stackdocs_accept_event: {
+        Args: {
+          p_connection_id: string
+          p_payload: Json
+          p_payload_hash: string
+          p_rate_limit?: number
+        }
+        Returns: Json
+      }
       orbit_start_jit_support_session: {
         Args: { p_reason: string; p_tenant_slug: string }
         Returns: Json
       }
       orbit_take_conversa: { Args: { p_conversa_id: string }; Returns: Json }
+      orbit_tenant_campaign_analytics_read: {
+        Args: {
+          p_campaign_id?: string
+          p_campaign_ids?: string[]
+          p_interval?: string
+          p_section: string
+          p_tenant_slug: string
+        }
+        Returns: Json
+      }
+      orbit_tenant_campaign_authorize: {
+        Args: {
+          p_action_type: string
+          p_campaign_id?: string
+          p_tenant_slug: string
+        }
+        Returns: string
+      }
+      orbit_tenant_campaign_create_atomic_scoped: {
+        Args: {
+          p_expected_recipient_count?: number
+          p_payload?: Json
+          p_tenant_slug: string
+        }
+        Returns: Json
+      }
+      orbit_tenant_campaign_dispatch_preflight_scoped: {
+        Args: { p_campaign_id: string; p_tenant_slug: string }
+        Returns: Json
+      }
+      orbit_tenant_campaign_mutate_scoped: {
+        Args: {
+          p_action_type: string
+          p_campaign_id?: string
+          p_payload?: Json
+          p_tenant_slug: string
+        }
+        Returns: Json
+      }
+      orbit_tenant_campaign_whatsapp_summary_read: {
+        Args: { p_campaign_id: string; p_tenant_slug: string }
+        Returns: Json
+      }
       orbit_tenant_config_direct_dml_allowed: {
         Args: { p_empresa_id: string }
         Returns: boolean
@@ -7390,6 +7822,10 @@ export type Database = {
           p_tenant_slug: string
         }
         Returns: Json
+      }
+      orbit_tenant_explicit_config_campaign_read_allowed: {
+        Args: { p_empresa_id: string }
+        Returns: boolean
       }
       orbit_tenant_explicit_core_read_allowed: {
         Args: { p_empresa_id: string }
@@ -7479,6 +7915,14 @@ export type Database = {
       orbit_tenant_prospect_read_scoped: {
         Args: { p_prospect_id: string; p_tenant_slug: string }
         Returns: Json
+      }
+      orbit_user_has_campaign_permission: {
+        Args: {
+          p_empresa_id: string
+          p_permission_key: string
+          p_user_id: string
+        }
+        Returns: boolean
       }
       orbit_validate_flow_schemas: {
         Args: { p_edges: Json; p_nodes: Json }
@@ -7632,6 +8076,27 @@ export type Database = {
         Returns: boolean
       }
       pe_user_is_sales_or_sdr: { Args: { p_user_id: string }; Returns: boolean }
+      preview_campaign_recipients: {
+        Args: {
+          p_canal: string
+          p_empresa_id: string
+          p_filtros?: Json
+          p_page?: number
+          p_page_size?: number
+        }
+        Returns: {
+          cidade: string
+          email_principal: string
+          nome_fantasia: string
+          nome_razao: string
+          prospect_id: string
+          segmento: string
+          status_qualificacao: string
+          telefone: string
+          total_count: number
+          whatsapp: string
+        }[]
+      }
       recalculate_lead_score: {
         Args: { p_empresa_id: string; p_prospect_id: string }
         Returns: Json
