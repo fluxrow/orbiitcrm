@@ -1,6 +1,6 @@
 # Onda 4.4 — contexto explícito no onboarding
 
-**Versão:** 1.0  
+**Versão:** 1.1
 **Data:** 22/08/2026  
 **Status:** aprovado para implementação canário  
 **Rollout:** somente `fluxrow`
@@ -126,7 +126,26 @@ o contrato normativo e não contém segredo ou identificador mutável de tenant.
 | Upload público de materiais | Preservado |
 | Processamento assistido de ativos | Preservado |
 | Checklist e revisão interna | Migrados para RPC por slug no canário |
-| Visão central global | Mantida fora da rota tenant; não será simulada dentro de `/fluxrow` |
+| Visão central global | Disponível somente ao Super Admin em `/fluxrow/onboarding`; tenant-alvo derivado do onboarding |
+
+### Adendo 1.1 — console central do Super Admin
+
+A homologação do canário mostrou que não existe outra rota para a fila central
+de onboardings. Restringir a seção `list` ao `empresa_id` da Fluxrow produzia
+um estado vazio falso e impedia o Super Admin de acompanhar clientes já
+implantados.
+
+Por isso, a rota `/fluxrow/onboarding` é também o contexto explícito do console
+central, exclusivamente quando o banco comprova `super_admin`. Para usuários
+comuns, todas as leituras e mutações continuam limitadas ao tenant resolvido pelo
+slug. No escopo central:
+
+- a listagem pode retornar onboardings de todos os tenants;
+- assets, insights, drafts e mutações recebem somente o `onboarding_id`;
+- o `empresa_id` alvo é derivado da linha do onboarding no banco;
+- nenhum `empresa_id` arbitrário é aceito do navegador;
+- a auditoria é gravada no tenant-alvo e registra a Fluxrow apenas como contexto;
+- respostas, tokens, nomes, e-mails e conteúdo de materiais não entram no log.
 
 ## Segurança
 
