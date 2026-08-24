@@ -32,6 +32,7 @@ interface IngestPayload {
   storage_path?: string;
   conteudo_texto?: string;
   reprocess_source_id?: string;
+  defer_processing?: boolean;
 }
 
 function chunkText(text: string, size = CHUNK_SIZE, overlap = CHUNK_OVERLAP): string[] {
@@ -346,6 +347,13 @@ Deno.serve(async (req) => {
     if (!["documento", "url", "texto"].includes(payload.tipo)) {
       return json({ error: "invalid_tipo" }, 400);
     }
+    if (payload.defer_processing === true) {
+      if (payload.tipo !== "texto") return json({ error: "deferred_text_only" }, 400);
+      const stagedText = (payload.conteudo_texto || "").trim();
+      const stagedTitle = (payload.titulo || "").trim();
+      if (!stagedTitle || stagedTitle.length > 160) return json({ error: "invalid_title" }, 400);
+      if (!stagedText || stagedText.length > 200_000) return json({ error: "invalid_staged_content" }, 400);
+    }
 
     // Admin client (service role) para gravar bypassando RLS internamente
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
@@ -400,6 +408,7 @@ Deno.serve(async (req) => {
     } else {
       // Cria placeholder chunk 0 (status pending)
       source_id = crypto.randomUUID();
+      const isDeferred = payload.defer_processing === true;
       const { error: insErr } = await admin.from("orbit_ai_knowledge").insert({
         empresa_id: payload.empresa_id,
         source_id,
@@ -410,6 +419,8 @@ Deno.serve(async (req) => {
         conteudo_texto: payload.tipo === "texto" ? (payload.conteudo_texto || "") : null,
         chunk_index: 0,
         status: "pending",
+        ativo: !isDeferred,
+        erro: isDeferred ? "STAGED_NOT_PROCESSED" : null,
       });
       if (insErr) return json({ error: `insert_failed: ${insErr.message}` }, 500);
     }
@@ -422,6 +433,10 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (!row) return json({ error: "row_not_found_after_insert" }, 500);
+
+    if (payload.defer_processing === true && !payload.reprocess_source_id) {
+      return json({ ok: true, source_id, status: "staged" });
+    }
 
     // Background job — não trava a resposta HTTP
     // @ts-ignore: EdgeRuntime existe em Supabase Edge Runtime

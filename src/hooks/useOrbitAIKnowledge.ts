@@ -38,7 +38,13 @@ export function useOrbitAIKnowledge(empresaId?: string | null) {
     enabled: !!empresaId,
     refetchInterval: (q) => {
       const rows = (q.state.data as AIKnowledgeRow[] | undefined) || [];
-      return rows.some((r) => r.status === "pending" || r.status === "processing") ? 3000 : false;
+      return rows.some(
+        (r) =>
+          r.status === "processing" ||
+          (r.status === "pending" && r.erro !== "STAGED_NOT_PROCESSED"),
+      )
+        ? 3000
+        : false;
     },
   });
 }
@@ -55,6 +61,21 @@ export function useIngestKnowledgeText() {
   return useMutation({
     mutationFn: async (input: { empresa_id: string; titulo?: string; conteudo_texto: string }) =>
       callIngest({ empresa_id: input.empresa_id, tipo: "texto", titulo: input.titulo, conteudo_texto: input.conteudo_texto }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["orbit_ai_knowledge"] }),
+  });
+}
+
+export function useStageKnowledgeText() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { empresa_id: string; titulo: string; conteudo_texto: string }) =>
+      callIngest({
+        empresa_id: input.empresa_id,
+        tipo: "texto",
+        titulo: input.titulo,
+        conteudo_texto: input.conteudo_texto,
+        defer_processing: true,
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["orbit_ai_knowledge"] }),
   });
 }
