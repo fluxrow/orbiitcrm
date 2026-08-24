@@ -135,3 +135,22 @@ Deno.test("prompt block reflete a permissão do turno", () => {
   const open = computePrimaryOfferPermission({ cfg, inbound: "achei caro", tags: LEONARDO_TAGS });
   assertStringIncludes(buildPrimaryOfferPromptBlock(cfg, open), "PODE apresentar");
 });
+
+Deno.test("Bullink: linguagem natural de preço alto exige downsell imediato", () => {
+  for (const inbound of [
+    "MUITO ALTO PRA MIM",
+    "Ser muito caro",
+    "Esse investimento ficou alto para mim",
+    "Esse valor pesou",
+  ]) {
+    const perm = computePrimaryOfferPermission({
+      cfg,
+      inbound,
+      tags: LEONARDO_TAGS,
+      stateFocus: "mentoria",
+      stateBudgetObjection: false,
+    });
+    assert(perm.budgetObjectionNow, `não detectou: ${inbound}`);
+    assert(perm.mustSecondary, `não obrigou downsell: ${inbound}`);
+  }
+});
