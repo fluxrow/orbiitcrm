@@ -13,6 +13,13 @@ const migrationSource = readFileSync(
   ),
   "utf8",
 );
+const centralScopeMigrationSource = readFileSync(
+  resolve(
+    process.cwd(),
+    "supabase/migrations/20260824214359_onboarding_central_superadmin_scope.sql",
+  ),
+  "utf8",
+);
 
 describe("tenant-scoped onboarding contract", () => {
   it("uses a canary flag and resolves internal reads by tenant slug", () => {
@@ -55,5 +62,31 @@ describe("tenant-scoped onboarding contract", () => {
     expect(migrationSource).toContain("'changed_fields', to_jsonb(v_changed_fields)");
     expect(migrationSource).not.toContain("'payload', p_payload");
     expect(migrationSource).not.toContain("'responses', p_payload->'responses'");
+  });
+
+  it("restores the centralized console only for a Super Admin in Fluxrow", () => {
+    expect(centralScopeMigrationSource).toContain(
+      "btrim(p_tenant_slug) = 'fluxrow'",
+    );
+    expect(centralScopeMigrationSource).toContain(
+      "public.has_role(v_uid, 'super_admin'::public.app_role)",
+    );
+    expect(centralScopeMigrationSource).toContain(
+      "public.pe_is_super_admin(v_uid)",
+    );
+    expect(centralScopeMigrationSource).toContain(
+      "v_is_central_super_admin OR o.empresa_id = v_context_empresa_id",
+    );
+  });
+
+  it("derives the mutation target from the onboarding instead of client input", () => {
+    expect(centralScopeMigrationSource).toContain(
+      "v_target_empresa_id := v_onboarding.empresa_id",
+    );
+    expect(centralScopeMigrationSource).toContain(
+      "'context_tenant_id', v_context_empresa_id",
+    );
+    expect(centralScopeMigrationSource).not.toContain("p_empresa_id");
+    expect(centralScopeMigrationSource).not.toContain("'payload', p_payload");
   });
 });
