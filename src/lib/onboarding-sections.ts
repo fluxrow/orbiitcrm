@@ -370,7 +370,7 @@ export function calculateProgress(responses: Record<string, any>): number {
 }
 
 export const DEFAULT_CHECKLIST = [
-  { key: "zapi", label: "Conectar Z-API e validar número WhatsApp", done: false },
+  { key: "zapi", label: "Conectar provedor e validar número WhatsApp", done: false },
   { key: "resend", label: "Configurar Resend e domínio de envio", done: false },
   { key: "leads", label: "Importar base inicial de leads", done: false },
   { key: "funil", label: "Configurar funil e etapas", done: false },
@@ -379,6 +379,75 @@ export const DEFAULT_CHECKLIST = [
   { key: "calendar", label: "Validar calendário Google", done: false },
   { key: "kickoff", label: "Agendar call de kick-off", done: false },
 ];
+
+export interface OnboardingOperationalReadiness {
+  formComplete: boolean;
+  implementationDone: number;
+  implementationTotal: number;
+  implementationProgress: number;
+  sandboxEligible: boolean;
+  realGoLiveEligible: boolean;
+  whatsappProvider: string | null;
+  pendingLabels: string[];
+}
+
+type ImplementationChecklistItem = { key?: string; label?: string; done?: boolean };
+
+/**
+ * Mantém a chave histórica `zapi`, mas apresenta o provedor realmente escolhido
+ * pelo cliente. A seleção do onboarding nunca configura ou ativa o canal.
+ */
+export function resolveOnboardingChecklist(
+  checklist: ImplementationChecklistItem[] | null | undefined,
+  responses: Record<string, any>,
+): ImplementationChecklistItem[] {
+  const source = checklist?.length ? checklist : DEFAULT_CHECKLIST;
+  const provider = getVal(responses, "integracoes", "whatsapp_provider").trim();
+  return source.map((item) => {
+    if (item.key !== "zapi") return { ...item };
+    return {
+      ...item,
+      label: provider
+        ? `Conectar WhatsApp (${provider}) e validar número`
+        : "Conectar provedor e validar número WhatsApp",
+    };
+  });
+}
+
+/**
+ * Deriva prontidão sem confundir formulário concluído com autorização de
+ * operação. Não consulta nem altera integrações, flags, filas ou runtime.
+ */
+export function getOnboardingOperationalReadiness(input: {
+  status: string;
+  responses: Record<string, any>;
+  checklist?: ImplementationChecklistItem[] | null;
+}): OnboardingOperationalReadiness {
+  const checklist = resolveOnboardingChecklist(input.checklist, input.responses);
+  const implementationDone = checklist.filter((item) => item.done === true).length;
+  const implementationTotal = checklist.length;
+  const formComplete = ["concluido", "revisado"].includes(input.status);
+  const persona = getVal(input.responses, "ia", "persona_ia");
+  const objective = getVal(input.responses, "ia", "objetivo_ia");
+  const tone = getVal(input.responses, "ia", "tom_voz");
+  const qualification = getVal(input.responses, "caminho_lead", "qualificacao_inicial") ||
+    getVal(input.responses, "funil", "criterios_qualificacao");
+  const handoff = getVal(input.responses, "ia", "regras_handoff") ||
+    getVal(input.responses, "caminho_lead", "handoff_humano");
+
+  return {
+    formComplete,
+    implementationDone,
+    implementationTotal,
+    implementationProgress: implementationTotal
+      ? Math.round((implementationDone / implementationTotal) * 100)
+      : 0,
+    sandboxEligible: formComplete && Boolean(persona && objective && tone && qualification && handoff),
+    realGoLiveEligible: formComplete && implementationTotal > 0 && implementationDone === implementationTotal,
+    whatsappProvider: getVal(input.responses, "integracoes", "whatsapp_provider").trim() || null,
+    pendingLabels: checklist.filter((item) => item.done !== true).map((item) => item.label || item.key || "Pendência"),
+  };
+}
 
 // ============================================================
 // Helpers de leitura
@@ -1611,4 +1680,3 @@ export function buildClientStatusMarkdown(
 
   return out.join("\n");
 }
-

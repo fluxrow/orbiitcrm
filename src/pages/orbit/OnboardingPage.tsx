@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
-import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList, Download, Loader2, Trash2, Sparkles, FileSearch, LayoutList, Check, X, RotateCcw, AlertCircle } from "lucide-react";
+import { Copy, Mail, ExternalLink, Archive, Plus, Eye, ClipboardList, Download, Loader2, Trash2, Sparkles, FileSearch, LayoutList, Check, X, RotateCcw, AlertCircle, ShieldCheck } from "lucide-react";
 import { useSignedOrbitMedia } from "@/lib/orbit-media";
 import { toast } from "sonner";
 import {
@@ -38,8 +38,11 @@ import {
   DEFAULT_CHECKLIST,
   buildImplementationPackageMarkdown,
   buildClientStatusMarkdown,
+  getOnboardingOperationalReadiness,
+  resolveOnboardingChecklist,
 } from "@/lib/onboarding-sections";
 import { Switch } from "@/components/ui/switch";
+import { AgentSandbox } from "@/components/orbit/AgentSandbox";
 
 
 const STATUS_LABEL: Record<string, { label: string; variant: any }> = {
@@ -281,6 +284,7 @@ function OnboardingDetailSheet({
   const draftQuery = useOnboardingDraft(onboarding?.id);
   const insightsQuery = useOnboardingInsights(onboarding?.id);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [sandboxOpen, setSandboxOpen] = useState(false);
 
 
   const removeMaterial = (sectionKey: string, fieldKey: string, index: number) => {
@@ -304,10 +308,17 @@ function OnboardingDetailSheet({
   };
 
   if (!onboarding) return null;
-  const checklist =
+  const checklist = resolveOnboardingChecklist(
     onboarding.implementation_checklist?.length > 0
       ? onboarding.implementation_checklist
-      : DEFAULT_CHECKLIST;
+      : DEFAULT_CHECKLIST,
+    onboarding.responses ?? {},
+  );
+  const readiness = getOnboardingOperationalReadiness({
+    status: onboarding.status,
+    responses: onboarding.responses ?? {},
+    checklist,
+  });
 
   const toggle = (idx: number) => {
     const next = checklist.map((c: any, i: number) => (i === idx ? { ...c, done: !c.done } : c));
@@ -325,6 +336,52 @@ function OnboardingDetailSheet({
         </SheetHeader>
 
         <div className="mt-6 space-y-6">
+          <Card className="glass-card p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <h3 className="font-semibold flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-primary" /> Prontidão operacional
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Formulário concluído não ativa IA, WhatsApp, agenda ou fluxos automaticamente.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                className="gap-2"
+                onClick={() => setSandboxOpen(true)}
+                disabled={!readiness.sandboxEligible}
+                title={readiness.sandboxEligible ? "Testar sem persistência ou envio real" : "Complete o treinamento mínimo do agente"}
+              >
+                <Sparkles className="w-4 h-4" /> Testar agente no sandbox
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+              <div className="rounded-md border p-2">
+                <div className="text-muted-foreground">Formulário</div>
+                <div className="font-medium">{readiness.formComplete ? "Concluído" : "Em preenchimento"}</div>
+              </div>
+              <div className="rounded-md border p-2">
+                <div className="text-muted-foreground">Implantação</div>
+                <div className="font-medium">{readiness.implementationDone}/{readiness.implementationTotal} itens</div>
+              </div>
+              <div className="rounded-md border p-2">
+                <div className="text-muted-foreground">Sandbox</div>
+                <div className="font-medium">{readiness.sandboxEligible ? "Disponível" : "Treinamento pendente"}</div>
+              </div>
+              <div className="rounded-md border p-2">
+                <div className="text-muted-foreground">Operação real</div>
+                <div className="font-medium">{readiness.realGoLiveEligible ? "Elegível" : "Bloqueada"}</div>
+              </div>
+            </div>
+            {readiness.whatsappProvider && (
+              <p className="text-xs text-muted-foreground">
+                Provedor informado: <strong className="text-foreground">{readiness.whatsappProvider}</strong>. A informação não conecta nem libera o canal.
+              </p>
+            )}
+          </Card>
+
           <div className="flex items-center gap-2 flex-wrap">
             <Button variant="outline" size="sm" className="gap-1.5" asChild>
               <a href={link} target="_blank" rel="noreferrer">
@@ -498,6 +555,11 @@ function OnboardingDetailSheet({
         onboarding={onboarding}
         insights={insightsQuery.data ?? []}
         draft={draftQuery.data ?? null}
+      />
+      <AgentSandbox
+        open={sandboxOpen}
+        onOpenChange={setSandboxOpen}
+        empresaId={onboarding.empresa_id}
       />
     </Sheet>
   );
