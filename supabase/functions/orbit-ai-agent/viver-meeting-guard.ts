@@ -73,23 +73,69 @@ export function formatMeetingAuthorityBlock(
 
 const LINK_RE = /https?:\/\/[^\s]*(?:meet\.google\.com|zoom\.us|teams\.microsoft\.com)[^\s]*/iu;
 const FUTURE_MEETING_RE = /(?:at[eé]\s+l[aá]|nos\s+vemos|reuni[aã]o\s+(?:est[aá]|ficou|segue)\s+(?:marcada|agendada)|call\s+(?:est[aá]|ficou)\s+(?:marcada|agendada)|aguardando\s+(?:a\s+)?reuni[aã]o)/iu;
+const AGENDA_CONTENT_RE = /(?:reuni[aã]o|agendamento|hor[aá]rio|\bcall\b|\b(?:[01]?\d|2[0-3])[:h][0-5]\d\b|\b(?:segunda|ter[cç]a|quarta|quinta|sexta|s[aá]bado|domingo)(?:-feira)?\b)/iu;
+
+function normalizedMeetingLinks(text: string): string[] {
+  return (text.match(new RegExp(LINK_RE.source, "giu")) || [])
+    .map((url) => url.replace(/[),.;!?]+$/u, ""));
+}
 
 export function referencesFutureMeetingOrLink(text: string): boolean {
   return LINK_RE.test(text || "") || FUTURE_MEETING_RE.test(text || "");
 }
 
+export function mentionsAgendaContent(text: string): boolean {
+  return referencesFutureMeetingOrLink(text) || AGENDA_CONTENT_RE.test(text || "");
+}
+
 export function enforceFreshMeetingState(
   text: string,
   selected: ReturnType<typeof selectAuthoritativeMeeting>,
+  options: { latestInboundAskedForLink?: boolean; revalidationFailed?: boolean } = {},
 ): { text: string; changed: boolean; reason?: string } {
-  if (!referencesFutureMeetingOrLink(text)) return { text, changed: false };
-  if (selected?.phase === "upcoming") return { text, changed: false };
-  if (selected?.phase === "in_progress" && LINK_RE.test(text)) return { text, changed: false };
+  if (options.revalidationFailed) {
+    if (!mentionsAgendaContent(text)) return { text, changed: false };
+    return {
+      text: "Não consegui confirmar os dados da reunião agora. Você quer que eu peça à equipe para verificar o próximo passo?",
+      changed: true,
+      reason: "meeting_revalidation_failed",
+    };
+  }
+
+  const links = normalizedMeetingLinks(text);
+  const hasLink = links.length > 0;
+  const exactAuthoritativeLink = Boolean(
+    selected?.meeting.meeting_url && links.every((link) => link === selected.meeting.meeting_url),
+  );
+
+  if (selected?.phase === "upcoming") {
+    if (!hasLink || exactAuthoritativeLink) return { text, changed: false };
+  } else if (selected?.phase === "in_progress") {
+    if (hasLink && exactAuthoritativeLink && options.latestInboundAskedForLink === true) {
+      return { text, changed: false };
+    }
+    if (!hasLink && !referencesFutureMeetingOrLink(text)) return { text, changed: false };
+  } else if (!referencesFutureMeetingOrLink(text)) {
+    return { text, changed: false };
+  }
+
   return {
-    text: "Essa reunião já encerrou. Vou encaminhar seu retorno para o atendimento humano verificar o próximo passo com você, sem criar um novo horário automaticamente.",
+    text: selected?.phase === "expired"
+      ? "Essa reunião já encerrou. Você quer que eu peça à equipe para verificar o próximo passo?"
+      : "Não consegui confirmar um link válido para essa reunião. Você quer que eu peça à equipe para verificar o próximo passo?",
     changed: true,
-    reason: selected?.phase === "expired" ? "expired_meeting" : "no_upcoming_meeting",
+    reason: selected?.phase === "expired"
+      ? "expired_meeting"
+      : hasLink && !exactAuthoritativeLink
+      ? "non_authoritative_meeting_link"
+      : selected?.phase === "in_progress"
+      ? "in_progress_link_not_requested"
+      : "no_upcoming_meeting",
   };
+}
+
+export function inboundExplicitlyRequestsMeetingLink(text: string): boolean {
+  return /(?:link|acesso|entrar|meet|reuni[aã]o).{0,35}(?:link|acesso|entrar|meet)|(?:manda|envia|reenvi[ae]|cad[eê]|qual).{0,25}(?:link|acesso)/iu.test(text || "");
 }
 
 export function expiredMeetingIdsForReconciliation(meetings: MeetingRow[], now = new Date()): string[] {

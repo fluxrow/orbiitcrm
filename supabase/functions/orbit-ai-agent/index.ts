@@ -19,6 +19,8 @@ import {
   selectAuthoritativeMeeting,
   formatMeetingAuthorityBlock,
   enforceFreshMeetingState,
+  inboundExplicitlyRequestsMeetingLink,
+  mentionsAgendaContent,
   type MeetingRow,
 } from "./viver-meeting-guard.ts";
 
@@ -2323,18 +2325,21 @@ ${regrasBlock}`;
         .eq("empresa_id", empresaId)
         .eq("conversa_id", conversa_id)
         .order("scheduled_at", { ascending: true });
-      if (freshMeetingError) {
-        console.error("[orbit-ai-agent] Revalidação final da reunião Viver falhou; envio fail-closed:", freshMeetingError);
-        return new Response(JSON.stringify({ ok: true, suppressed: true, reason: "meeting_revalidation_failed" }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const freshAuthority = selectAuthoritativeMeeting((freshMeetingRows || []) as MeetingRow[], new Date());
-      const meetingGuard = enforceFreshMeetingState(resposta, freshAuthority);
+      if (freshMeetingError) console.error("[orbit-ai-agent] Revalidação final da reunião Viver falhou:", freshMeetingError);
+      const freshAuthority = freshMeetingError
+        ? null
+        : selectAuthoritativeMeeting((freshMeetingRows || []) as MeetingRow[], new Date());
+      const meetingGuard = enforceFreshMeetingState(resposta, freshAuthority, {
+        latestInboundAskedForLink: inboundExplicitlyRequestsMeetingLink(mensagemAgregada),
+        revalidationFailed: Boolean(freshMeetingError),
+      });
       if (meetingGuard.changed) {
         console.warn("[orbit-ai-agent] Referência futura/link de reunião bloqueada após revalidação:", meetingGuard.reason);
         resposta = meetingGuard.text;
         parsed.mensagem = resposta;
+      }
+      if (freshMeetingError && !mentionsAgendaContent(resposta)) {
+        console.log("[orbit-ai-agent] Resposta sem conteúdo de agenda preservada apesar da falha transitória.");
       }
     }
     await sendAIResponse(supabase, telefone, resposta, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);

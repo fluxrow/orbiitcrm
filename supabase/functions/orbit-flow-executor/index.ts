@@ -19,8 +19,8 @@ import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbo
 import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
 import {
   VIVER_EMPRESA_ID,
-  classifyMeeting,
   meetingIdFromFlowContext,
+  evaluateViverMeetingReminder,
   type MeetingRow,
 } from "../_shared/viver-meeting-lifecycle.ts";
 
@@ -904,16 +904,21 @@ async function handleSingleAction(scheduledId: string): Promise<Response> {
   if (s.empresa_id === VIVER_EMPRESA_ID) {
     const meetingId = meetingIdFromFlowContext(s.context);
     const reminderKind = String(s.context?.payload?.reminder_kind ?? "");
-    if (meetingId && reminderKind.startsWith("meeting_reminder_")) {
-      const { data: meeting, error: meetingError } = await supabase
+    if (reminderKind.startsWith("meeting_reminder_")) {
+      const meetingLookup = meetingId ? await supabase
         .from("orbit_meetings")
         .select("id, scheduled_at, duration_minutes, status, meeting_url")
         .eq("empresa_id", VIVER_EMPRESA_ID)
         .eq("id", meetingId)
-        .maybeSingle();
-      const phase = meeting ? classifyMeeting(meeting as MeetingRow, new Date()) : "inactive";
-      if (meetingError || phase !== "upcoming") {
-        const reason = meetingError ? "meeting_revalidation_failed" : `meeting_reminder_${phase}`;
+        .maybeSingle() : { data: null, error: null };
+      const reminderGuard = evaluateViverMeetingReminder({
+        reminderKind,
+        meetingId,
+        meeting: (meetingLookup.data as MeetingRow | null) ?? null,
+        queryFailed: Boolean(meetingLookup.error),
+      }, new Date());
+      if (!reminderGuard.allowed) {
+        const reason = reminderGuard.reason || "meeting_reminder_blocked";
         await supabase.from("orbit_flow_scheduled_actions")
           .update({ status: "canceled", canceled_reason: reason, updated_at: new Date().toISOString() })
           .eq("empresa_id", VIVER_EMPRESA_ID)

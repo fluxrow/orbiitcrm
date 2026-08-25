@@ -58,8 +58,35 @@ Deno.test("bloqueia reenvio de link e linguagem futura após término", () => {
 
 Deno.test("durante reunião permite link pedido, mas bloqueia despedida futura", () => {
   const selected = selectAuthoritativeMeeting([meeting()], new Date("2026-08-25T15:30:00Z"));
-  assertEquals(enforceFreshMeetingState("Link: https://meet.google.com/example", selected).changed, false);
+  assertEquals(enforceFreshMeetingState("Link: https://meet.google.com/example", selected, { latestInboundAskedForLink: true }).changed, false);
   assertEquals(enforceFreshMeetingState("Nos vemos mais tarde, até lá!", selected).changed, true);
+});
+
+Deno.test("reunião futura aceita apenas o link autoritativo exato", () => {
+  const selected = selectAuthoritativeMeeting([meeting()], new Date("2026-08-25T14:00:00Z"));
+  assertEquals(enforceFreshMeetingState("Link: https://meet.google.com/example", selected).changed, false);
+  const historical = enforceFreshMeetingState("Link: https://meet.google.com/historico", selected);
+  assertEquals(historical.changed, true);
+  assertEquals(historical.reason, "non_authoritative_meeting_link");
+});
+
+Deno.test("reunião em andamento exige pedido inbound explícito para liberar link", () => {
+  const selected = selectAuthoritativeMeeting([meeting()], new Date("2026-08-25T15:30:00Z"));
+  assertEquals(enforceFreshMeetingState("Link: https://meet.google.com/example", selected).changed, true);
+  assertEquals(enforceFreshMeetingState("Link: https://meet.google.com/example", selected, { latestInboundAskedForLink: true }).changed, false);
+});
+
+Deno.test("falha de consulta preserva resposta sem agenda e bloqueia somente agenda", () => {
+  assertEquals(enforceFreshMeetingState("Claro, posso ajudar com isso.", null, { revalidationFailed: true }).changed, false);
+  assertEquals(enforceFreshMeetingState("Nossa reunião é às 15:00.", null, { revalidationFailed: true }).changed, true);
+});
+
+Deno.test("fallback não promete handoff ou encaminhamento não persistido", () => {
+  const selected = selectAuthoritativeMeeting([meeting()], new Date("2026-08-25T20:00:00Z"));
+  const guarded = enforceFreshMeetingState("Nos vemos às 12h, até lá!", selected);
+  assertEquals(guarded.changed, true);
+  assert(!/(?:vou\s+encaminhar|encaminhei|j[aá]\s+encaminhei|passei\s+para)/iu.test(guarded.text));
+  assert(guarded.text.includes("Você quer"));
 });
 
 Deno.test("reconciliação inclui só vencidas e lembrete passado é cancelável", () => {
