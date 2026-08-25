@@ -23,6 +23,13 @@ import {
   mentionsAgendaContent,
   type MeetingRow,
 } from "./viver-meeting-guard.ts";
+import {
+  VIVER_CLASS_TEMPLATE_NAME,
+  buildCanonicalClassDelivery,
+  enforceCanonicalClassLink,
+  extractCanonicalClassUrl,
+  previousAssistantOfferedClassAccess,
+} from "./viver-class-guard.ts";
 
 import {
   decideImmediateKick,
@@ -904,7 +911,7 @@ serve(async (req) => {
 
     let inboundQuery = supabase
       .from("orbit_mensagens")
-      .select("id")
+      .select("id, mensagem")
       .eq("empresa_id", empresaId)
       .eq("conversa_id", conversa_id)
       .eq("direcao", "IN");
@@ -1170,6 +1177,62 @@ serve(async (req) => {
     const isFromCampaign = aiContexto.origin === "outbound_campaign";
     // Uma conversa só é nova quando nunca houve saída. Áudio/imagem não reinicia a persona.
     const primeiraInteracao = !introAlreadySent && mensagensOUT === 0;
+
+    // ── VIVER: aceite da aula entrega o link por caminho determinístico ──
+    // A IA não escolhe URL nem promete um envio posterior. A autoridade é o
+    // template tenant-scoped e ativo "Aula Grupo - Envio Link".
+    let viverClassTemplateBody: string | null = null;
+    if (empresaId === VIVER_EMPRESA_ID) {
+      const { data: classTemplate, error: classTemplateError } = await supabase
+        .from("orbit_message_templates")
+        .select("id, corpo_texto, ativo")
+        .eq("empresa_id", empresaId)
+        .eq("nome", VIVER_CLASS_TEMPLATE_NAME)
+        .eq("ativo", true)
+        .maybeSingle();
+      if (classTemplateError) {
+        console.error("[orbit-ai-agent] Falha ao carregar autoridade da aula Viver:", classTemplateError);
+      } else {
+        viverClassTemplateBody = typeof classTemplate?.corpo_texto === "string"
+          ? classTemplate.corpo_texto
+          : null;
+      }
+
+      const normativeInboundText = typeof normativeInbound.mensagem === "string"
+        ? normativeInbound.mensagem
+        : mensagemAgregada;
+      if (previousAssistantOfferedClassAccess(mensagens || [], normativeInboundText)) {
+        const canonicalUrl = extractCanonicalClassUrl(viverClassTemplateBody);
+        if (!canonicalUrl || !viverClassTemplateBody) {
+          console.error("[orbit-ai-agent] Aceite da aula bloqueado: autoridade ausente ou inválida", {
+            empresa_id: empresaId,
+            conversa_id,
+          });
+          const fallback = "Não consegui confirmar o acesso da aula agora. Você quer que eu verifique isso antes de te enviar?";
+          await sendAIResponse(supabase, telefone, fallback, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
+          return new Response(JSON.stringify({ ok: true, class_link_guarded: true, resposta: fallback, simulated: isDemo }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        if (!await renewExecutionLease()) return leaseLostResponse();
+        const deterministicReply = buildCanonicalClassDelivery(
+          viverClassTemplateBody,
+          prospect?.nome_contato || prospect?.nome_razao,
+        );
+        await sendAIResponse(supabase, telefone, deterministicReply, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
+        console.log("[orbit-ai-agent] Link canônico da aula Viver enfileirado após aceite explícito", {
+          empresa_id: empresaId,
+          conversa_id,
+          template_id: classTemplate?.id,
+        });
+        return new Response(JSON.stringify({
+          ok: true,
+          class_link_delivered: true,
+          resposta: deterministicReply,
+          simulated: isDemo,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
 
     // ── SEM AUTOAPRESENTAÇÃO (tenant-scoped) ──
     const selfIntroCfg = readSelfIntroductionGuardConfig(aiConfig as Record<string, unknown>);
@@ -2319,6 +2382,16 @@ ${regrasBlock}`;
     // Última barreira, imediatamente antes do enqueue/envio: reconsulta o banco
     // para cobrir corrida de relógio, cancelamento ou alteração enquanto o LLM rodava.
     if (empresaId === VIVER_EMPRESA_ID) {
+      const classGuard = enforceCanonicalClassLink(
+        resposta,
+        viverClassTemplateBody,
+        prospect?.nome_contato || prospect?.nome_razao,
+      );
+      if (classGuard.changed) {
+        console.warn("[orbit-ai-agent] Link não autoritativo da aula Viver bloqueado:", classGuard.reason);
+        resposta = classGuard.text;
+        parsed.mensagem = resposta;
+      }
       const { data: freshMeetingRows, error: freshMeetingError } = await supabase
         .from("orbit_meetings")
         .select("id, scheduled_at, duration_minutes, status, meeting_url")
