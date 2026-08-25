@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
-import { getSystemEmailConfig } from "../_shared/system-email.ts";
+import { getSystemEmailCandidates } from "../_shared/system-email.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsResponse();
@@ -52,23 +52,24 @@ Deno.serve(async (req) => {
     let emailError: string | null = null;
 
     try {
-      const { apiKey: resendApiKey, fromEmail } = await getSystemEmailConfig(supabaseAdmin);
+      const candidates = await getSystemEmailCandidates(supabaseAdmin);
 
-      if (resendApiKey) {
+      if (candidates.length > 0) {
         const appUrl = Deno.env.get("APP_URL") || "https://orbit.fluxrow.pro";
         const inviteLink = `${appUrl}/accept-invite-pe/${token}`;
 
-        const emailResponse = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${resendApiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            from: fromEmail,
-            to: [email.toLowerCase().trim()],
-            subject: `Convite para ${orgName}`,
-            html: `
+        for (const { apiKey: resendApiKey, fromEmail } of candidates) {
+          const emailResponse = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${resendApiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: fromEmail,
+              to: [email.toLowerCase().trim()],
+              subject: `Convite para ${orgName}`,
+              html: `
               <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; padding: 40px 20px;">
                 <h1 style="color: #333; font-size: 24px; margin-bottom: 16px;">Você foi convidado!</h1>
                 <p style="color: #555; font-size: 16px; line-height: 1.6;">
@@ -93,16 +94,19 @@ Deno.serve(async (req) => {
                 </p>
               </div>
             `,
-          }),
-        });
+            }),
+          });
 
-        if (emailResponse.ok) {
-          emailSent = true;
-          console.log("[invite-org-user] Email sent to", email);
-        } else {
-          const errBody = await emailResponse.json();
-          emailError = errBody.message || "Resend error";
-          console.error("[invite-org-user] Resend error:", errBody);
+          if (emailResponse.ok) {
+            emailSent = true;
+            emailError = null;
+            console.log("[invite-org-user] Email sent to", email);
+            break;
+          }
+
+          const errBody = await emailResponse.text().catch(() => "");
+          emailError = `Resend HTTP ${emailResponse.status}`;
+          console.error("[invite-org-user] Resend candidate failed:", emailResponse.status, errBody);
         }
       } else {
         emailError = "Resend API key not configured";
