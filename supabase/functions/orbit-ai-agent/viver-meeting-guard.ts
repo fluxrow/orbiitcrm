@@ -80,6 +80,66 @@ function normalizedMeetingLinks(text: string): string[] {
     .map((url) => url.replace(/[),.;!?]+$/u, ""));
 }
 
+const WEEKDAYS = ["domingo", "segunda", "terca", "quarta", "quinta", "sexta", "sabado"] as const;
+const MONTHS: Record<string, number> = {
+  janeiro: 1, fevereiro: 2, marco: 3, abril: 4, maio: 5, junho: 6,
+  julho: 7, agosto: 8, setembro: 9, outubro: 10, novembro: 11, dezembro: 12,
+};
+
+function normalizedWord(text: string): string {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function localMeetingParts(meeting: MeetingRow): { day: number; month: number; year: number; hour: number; minute: number; weekday: string } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: VIVER_TIME_ZONE,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23", weekday: "short",
+  }).formatToParts(new Date(meeting.scheduled_at));
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || "";
+  const weekdayIndex = new Date(`${value("year")}-${value("month")}-${value("day")}T12:00:00Z`).getUTCDay();
+  return {
+    day: Number(value("day")), month: Number(value("month")), year: Number(value("year")),
+    hour: Number(value("hour")), minute: Number(value("minute")), weekday: WEEKDAYS[weekdayIndex],
+  };
+}
+
+export function buildCanonicalMeetingConfirmation(meeting: MeetingRow): string {
+  const p = localMeetingParts(meeting);
+  const weekdayBase = p.weekday === "terca" ? "terça" : p.weekday === "sabado" ? "sábado" : p.weekday;
+  const weekday = ["domingo", "sábado"].includes(weekdayBase) ? weekdayBase : `${weekdayBase}-feira`;
+  const date = `${String(p.day).padStart(2, "0")}/${String(p.month).padStart(2, "0")}/${p.year}`;
+  const time = `${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`;
+  const duration = Number(meeting.duration_minutes) > 0 ? Number(meeting.duration_minutes) : 60;
+  const link = meeting.meeting_url ? ` Link: ${meeting.meeting_url}` : "";
+  return `Sua reunião está agendada para ${weekday}, ${date}, às ${time}, com duração de ${duration} minutos.${link}`;
+}
+
+export function temporalReferenceMatchesMeeting(text: string, meeting: MeetingRow): boolean {
+  const p = localMeetingParts(meeting);
+  const normalized = normalizedWord(text);
+  const weekdays = normalized.match(/\b(?:domingo|segunda(?:-feira)?|terca(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|sabado)\b/g) || [];
+  if (weekdays.some((value) => value.split("-")[0] !== p.weekday)) return false;
+
+  const times = [...normalized.matchAll(/\b([01]?\d|2[0-3])(?::|h)([0-5]\d)?\b/g)];
+  if (times.some((match) => Number(match[1]) !== p.hour || Number(match[2] || 0) !== p.minute)) return false;
+  const plainTimes = [...normalized.matchAll(/\bas\s+([01]?\d|2[0-3])(?:\s*horas?)?\b/g)];
+  if (plainTimes.some((match) => Number(match[1]) !== p.hour)) return false;
+
+  const dates = [...normalized.matchAll(/\b(0?[1-9]|[12]\d|3[01])\/(0?[1-9]|1[0-2])(?:\/(\d{4}))?\b/g)];
+  if (dates.some((match) => Number(match[1]) !== p.day || Number(match[2]) !== p.month || (match[3] && Number(match[3]) !== p.year))) return false;
+  const isoDates = [...normalized.matchAll(/\b(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\b/g)];
+  if (isoDates.some((match) => Number(match[1]) !== p.year || Number(match[2]) !== p.month || Number(match[3]) !== p.day)) return false;
+  const writtenDates = [...normalized.matchAll(/\b(0?[1-9]|[12]\d|3[01])\s+de\s+(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)(?:\s+de\s+(\d{4}))?\b/g)];
+  if (writtenDates.some((match) => Number(match[1]) !== p.day || MONTHS[match[2]] !== p.month || (match[3] && Number(match[3]) !== p.year))) return false;
+  return weekdays.length + times.length + plainTimes.length + dates.length + isoDates.length + writtenDates.length > 0;
+}
+
+function containsTemporalReference(text: string): boolean {
+  const normalized = normalizedWord(text);
+  return /\b(?:domingo|segunda(?:-feira)?|terca(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|sabado)\b|\b(?:[01]?\d|2[0-3])(?::|h)(?:[0-5]\d)?\b|\bas\s+(?:[01]?\d|2[0-3])(?:\s*horas?)?\b|\b(?:0?[1-9]|[12]\d|3[01])\/(?:0?[1-9]|1[0-2])(?:\/\d{4})?\b|\b\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])\b|\b(?:0?[1-9]|[12]\d|3[01])\s+de\s+(?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)(?:\s+de\s+\d{4})?\b/u.test(normalized);
+}
+
 export function referencesFutureMeetingOrLink(text: string): boolean {
   return LINK_RE.test(text || "") || FUTURE_MEETING_RE.test(text || "");
 }
@@ -109,7 +169,13 @@ export function enforceFreshMeetingState(
   );
 
   if (selected?.phase === "upcoming") {
-    if (!hasLink || exactAuthoritativeLink) return { text, changed: false };
+    if (hasLink && !exactAuthoritativeLink) {
+      return { text: buildCanonicalMeetingConfirmation(selected.meeting), changed: true, reason: "non_authoritative_meeting_link" };
+    }
+    if (containsTemporalReference(text) && !temporalReferenceMatchesMeeting(text, selected.meeting)) {
+      return { text: buildCanonicalMeetingConfirmation(selected.meeting), changed: true, reason: "non_authoritative_meeting_time" };
+    }
+    return { text, changed: false };
   } else if (selected?.phase === "in_progress") {
     if (hasLink && exactAuthoritativeLink && options.latestInboundAskedForLink === true) {
       return { text, changed: false };
@@ -135,7 +201,7 @@ export function enforceFreshMeetingState(
 }
 
 export function inboundExplicitlyRequestsMeetingLink(text: string): boolean {
-  return /(?:link|acesso|entrar|meet|reuni[aã]o).{0,35}(?:link|acesso|entrar|meet)|(?:manda|envia|reenvi[ae]|cad[eê]|qual).{0,25}(?:link|acesso)/iu.test(text || "");
+  return /(?:aguardando|esperando).{0,25}(?:o\s+)?link|onde.{0,20}(?:est[aá]|fica).{0,15}(?:o\s+)?link|(?:me\s+)?(?:passa|manda|envia|reenvia).{0,20}(?:o\s+)?link|n[aã]o\s+(?:recebi|chegou).{0,20}(?:o\s+)?link|como\s+(?:eu\s+)?(?:entro|acesso).{0,25}(?:reuni[aã]o|meet|call)|(?:link|acesso).{0,35}(?:reuni[aã]o|meet|call)|(?:cad[eê]|qual).{0,20}(?:o\s+)?link/iu.test(text || "");
 }
 
 export function expiredMeetingIdsForReconciliation(meetings: MeetingRow[], now = new Date()): string[] {

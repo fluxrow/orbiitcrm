@@ -1,7 +1,8 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
-  classifyMeeting, enforceFreshMeetingState, expiredMeetingIdsForReconciliation,
-  formatMeetingAuthorityBlock, selectAuthoritativeMeeting, shouldCancelPastReminder,
+  buildCanonicalMeetingConfirmation, classifyMeeting, enforceFreshMeetingState,
+  expiredMeetingIdsForReconciliation, formatMeetingAuthorityBlock,
+  inboundExplicitlyRequestsMeetingLink, selectAuthoritativeMeeting, shouldCancelPastReminder,
 } from "./viver-meeting-guard.ts";
 
 const meeting = (overrides: Record<string, unknown> = {}) => ({
@@ -68,6 +69,35 @@ Deno.test("reunião futura aceita apenas o link autoritativo exato", () => {
   const historical = enforceFreshMeetingState("Link: https://meet.google.com/historico", selected);
   assertEquals(historical.changed, true);
   assertEquals(historical.reason, "non_authoritative_meeting_link");
+});
+
+Deno.test("quinta às 15h substitui resposta divergente terça às 12h por confirmação canônica", () => {
+  const future = meeting({ scheduled_at: "2026-08-27T18:00:00Z", meeting_url: "https://meet.google.com/quinta-correto" });
+  const selected = selectAuthoritativeMeeting([future], new Date("2026-08-26T12:00:00Z"));
+  const guarded = enforceFreshMeetingState("Nos vemos terça às 12h. Link: https://meet.google.com/historico", selected);
+  assertEquals(guarded.changed, true);
+  assertEquals(guarded.reason, "non_authoritative_meeting_link");
+  assertEquals(guarded.text, buildCanonicalMeetingConfirmation(future));
+  assert(guarded.text.includes("quinta-feira, 27/08/2026, às 15:00"));
+  assert(guarded.text.includes("https://meet.google.com/quinta-correto"));
+  assert(!guarded.text.includes("historico"));
+});
+
+Deno.test("data, dia e horário autoritativos são preservados", () => {
+  const future = meeting({ scheduled_at: "2026-08-27T18:00:00Z", meeting_url: "https://meet.google.com/quinta-correto" });
+  const selected = selectAuthoritativeMeeting([future], new Date("2026-08-26T12:00:00Z"));
+  const correct = "Sua reunião está marcada para quinta-feira, 27/08/2026, às 15h. Link: https://meet.google.com/quinta-correto";
+  assertEquals(enforceFreshMeetingState(correct, selected), { text: correct, changed: false });
+});
+
+Deno.test("reconhece frases explícitas de solicitação de link", () => {
+  for (const phrase of [
+    "aguardando o link",
+    "onde está o link?",
+    "me passa o link",
+    "não recebi o link",
+    "como entro na reunião?",
+  ]) assertEquals(inboundExplicitlyRequestsMeetingLink(phrase), true, phrase);
 });
 
 Deno.test("reunião em andamento exige pedido inbound explícito para liberar link", () => {
