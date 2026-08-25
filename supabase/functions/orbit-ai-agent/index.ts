@@ -2317,7 +2317,7 @@ ${regrasBlock}`;
           });
           const finishResult = Array.isArray(finishRows) ? finishRows[0] : finishRows;
           if (finishResult?.finished && finishResult?.next_inbound_message_id && drainContext) {
-            const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-ai-agent`, {
+            const drainPromise = fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-ai-agent`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -2329,8 +2329,13 @@ ${regrasBlock}`;
                 mensagem: "",
                 inbound_message_id: finishResult.next_inbound_message_id,
               }),
-            });
-            if (!response.ok) console.warn("[orbit-ai-agent] queued inbound drain deferred", { status: response.status });
+            }).then((response) => {
+              if (!response.ok) console.warn("[orbit-ai-agent] queued inbound drain deferred", { status: response.status });
+            }).catch(() => console.warn("[orbit-ai-agent] queued inbound drain deferred", { reason: "invoke_failed" }));
+            // A resposta de A não aguarda B. Em runtime Supabase, waitUntil mantém
+            // apenas o trabalho de background vivo; o tick persistente cobre falhas.
+            // @ts-ignore EdgeRuntime é fornecido pelo Supabase Edge Runtime.
+            if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(drainPromise);
           }
         } catch { /* best effort */ }
       }

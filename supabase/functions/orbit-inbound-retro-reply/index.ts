@@ -283,6 +283,7 @@ serve(async (req) => {
               prospect_id: cand.prospect_id,
               mensagem: cand.last_in_text,
               telefone: cand.telefone,
+              inbound_message_id: cand.last_in_id,
               ...(recoveryTag ? { recovery_tag: recoveryTag } : {}),
               ...(holdUntil ? { outbox_hold_until: holdUntil } : {}),
             }),

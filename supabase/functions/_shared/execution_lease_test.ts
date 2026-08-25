@@ -43,3 +43,24 @@ Deno.test("correlation ids diferentes não mudam a chave normativa do mesmo inbo
   assertEquals(decideConversationLease(normativeInboundId, rows, NOW), "event_already_finished");
   assertEquals(decideConversationLease(normativeInboundId, rows, NOW), "event_already_finished");
 });
+
+Deno.test("fila A/B/C drena em ordem sem executar dois eventos juntos", () => {
+  const whileA = [{ eventId: "A", status: "running" as const, expiresAt: NOW + 60_000 }];
+  assertEquals(decideConversationLease("B", whileA, NOW), "event_queued");
+  assertEquals(decideConversationLease("C", whileA, NOW), "event_queued");
+
+  const afterA = [
+    { eventId: "A", status: "finished" as const, expiresAt: NOW - 1 },
+    { eventId: "B", status: "queued" as const, expiresAt: NOW - 1 },
+    { eventId: "C", status: "queued" as const, expiresAt: NOW - 1 },
+  ];
+  assertEquals(decideConversationLease("B", afterA, NOW), "acquire_queued");
+  const whileB = afterA.map((row) => row.eventId === "B"
+    ? { ...row, status: "running" as const, expiresAt: NOW + 60_000 }
+    : row);
+  assertEquals(decideConversationLease("C", whileB, NOW), "event_queued");
+  const afterB = whileB.map((row) => row.eventId === "B"
+    ? { ...row, status: "finished" as const, expiresAt: NOW - 1 }
+    : row);
+  assertEquals(decideConversationLease("C", afterB, NOW), "acquire_queued");
+});
