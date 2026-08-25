@@ -56,6 +56,10 @@ Deno.serve(async (req) => {
     });
     if (orphanError) console.warn(JSON.stringify({ scope: "orphan_flow_run_review_error", reason: "rpc_failed" }));
     for (const row of orphanRows ?? []) console.warn(JSON.stringify(sanitizedOrphanAlert(row)));
+    const { error: retentionError } = await supabase.rpc("cleanup_orbit_execution_history", {
+      _empresa_id: VIVER_EMPRESA_ID, _claim_days: 30, _review_days: 90,
+    });
+    if (retentionError) console.warn(JSON.stringify({ scope: "orbit_execution_retention_error", reason: "rpc_failed" }));
 
     const { data: rows, error: claimErr } = await supabase.rpc("claim_scheduled_actions", { _batch: batch });
     if (claimErr) throw new Error(claimErr.message);

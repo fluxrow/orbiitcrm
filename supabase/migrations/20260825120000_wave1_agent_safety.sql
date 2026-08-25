@@ -9,7 +9,11 @@ create table if not exists public.orbit_ai_execution_claims (
   empresa_id uuid not null references public.orbit_empresas(id) on delete cascade,
   conversa_id uuid not null references public.orbit_conversas(id) on delete cascade,
   correlation_id text not null check (length(correlation_id) between 1 and 300),
-  status text not null default 'running' check (status in ('running','finished','error')),
+  lease_token uuid not null default gen_random_uuid(),
+  lease_expires_at timestamptz not null default (now() + interval '5 minutes'),
+  heartbeat_at timestamptz not null default now(),
+  attempts integer not null default 1,
+  status text not null default 'running' check (status in ('running','finished','error','expired')),
   started_at timestamptz not null default now(),
   finished_at timestamptz,
   result text,
@@ -17,24 +21,82 @@ create table if not exists public.orbit_ai_execution_claims (
 );
 
 alter table public.orbit_ai_execution_claims enable row level security;
+create unique index if not exists orbit_ai_execution_one_active_conversation
+  on public.orbit_ai_execution_claims(empresa_id, conversa_id)
+  where status = 'running';
 
+drop function if exists public.claim_orbit_ai_execution(uuid,uuid,text);
 create or replace function public.claim_orbit_ai_execution(
-  _empresa_id uuid, _conversa_id uuid, _correlation_id text
-) returns uuid language plpgsql security definer set search_path = public as $$
-declare _id uuid;
+  _empresa_id uuid, _conversa_id uuid, _event_id text, _lease_seconds integer default 300
+) returns table(claim_id uuid, lease_token uuid, acquired boolean, reason text, lease_expires_at timestamptz)
+language plpgsql security definer set search_path = public as $$
+declare
+  _existing public.orbit_ai_execution_claims%rowtype;
+  _token uuid := gen_random_uuid();
+  _expires timestamptz := now() + make_interval(secs => least(greatest(_lease_seconds, 60), 900));
 begin
+  perform pg_advisory_xact_lock(hashtextextended(_empresa_id::text || ':' || _conversa_id::text, 0));
   if not exists (
     select 1 from public.orbit_conversas
     where id = _conversa_id and empresa_id = _empresa_id
-  ) then return null; end if;
-  insert into public.orbit_ai_execution_claims(empresa_id, conversa_id, correlation_id)
-  values (_empresa_id, _conversa_id, left(_correlation_id, 300))
-  on conflict (empresa_id, conversa_id, correlation_id) do nothing
-  returning id into _id;
-  return _id;
+  ) then return query select null::uuid, null::uuid, false, 'tenant_mismatch', null::timestamptz; return; end if;
+
+  select * into _existing from public.orbit_ai_execution_claims
+   where empresa_id = _empresa_id and conversa_id = _conversa_id and correlation_id = left(_event_id, 300);
+  if found and _existing.status = 'finished' then
+    return query select _existing.id, _existing.lease_token, false, 'event_already_finished', _existing.lease_expires_at; return;
+  end if;
+  if found and _existing.status = 'running' and _existing.lease_expires_at > now() then
+    return query select _existing.id, _existing.lease_token, false, 'event_already_active', _existing.lease_expires_at; return;
+  end if;
+  if exists (select 1 from public.orbit_ai_execution_claims
+    where empresa_id = _empresa_id and conversa_id = _conversa_id
+      and status = 'running' and lease_expires_at > now()) then
+    return query select null::uuid, null::uuid, false, 'conversation_busy', null::timestamptz; return;
+  end if;
+
+  update public.orbit_ai_execution_claims set status = 'expired', finished_at = coalesce(finished_at, now()), result = 'lease_expired'
+   where empresa_id = _empresa_id and conversa_id = _conversa_id and status = 'running' and lease_expires_at <= now();
+
+  if _existing.id is not null then
+    update public.orbit_ai_execution_claims set status = 'running', lease_token = _token,
+      lease_expires_at = _expires, heartbeat_at = now(), started_at = now(), finished_at = null,
+      result = null, attempts = attempts + 1
+     where id = _existing.id
+     returning id into claim_id;
+  else
+    insert into public.orbit_ai_execution_claims(empresa_id, conversa_id, correlation_id, lease_token, lease_expires_at)
+    values (_empresa_id, _conversa_id, left(_event_id, 300), _token, _expires)
+    returning id into claim_id;
+  end if;
+  return query select claim_id, _token, true, case when _existing.id is null then 'acquired' else 'recovered_expired' end, _expires;
 end $$;
-revoke all on function public.claim_orbit_ai_execution(uuid,uuid,text) from public, anon, authenticated;
-grant execute on function public.claim_orbit_ai_execution(uuid,uuid,text) to service_role;
+revoke all on function public.claim_orbit_ai_execution(uuid,uuid,text,integer) from public, anon, authenticated;
+grant execute on function public.claim_orbit_ai_execution(uuid,uuid,text,integer) to service_role;
+
+create or replace function public.renew_orbit_ai_execution_lease(_claim_id uuid, _lease_token uuid, _lease_seconds integer default 300)
+returns boolean language sql security definer set search_path = public as $$
+  with renewed as (
+    update public.orbit_ai_execution_claims set heartbeat_at = now(),
+      lease_expires_at = now() + make_interval(secs => least(greatest(_lease_seconds, 60), 900))
+     where id = _claim_id and lease_token = _lease_token and status = 'running' and lease_expires_at > now()
+    returning 1
+  ) select exists(select 1 from renewed)
+$$;
+revoke all on function public.renew_orbit_ai_execution_lease(uuid,uuid,integer) from public, anon, authenticated;
+grant execute on function public.renew_orbit_ai_execution_lease(uuid,uuid,integer) to service_role;
+
+create or replace function public.finish_orbit_ai_execution(_claim_id uuid, _lease_token uuid, _status text, _result text)
+returns boolean language sql security definer set search_path = public as $$
+  with finished as (
+    update public.orbit_ai_execution_claims set status = case when _status = 'error' then 'error' else 'finished' end,
+      finished_at = now(), heartbeat_at = now(), result = left(coalesce(_result, ''), 100)
+     where id = _claim_id and lease_token = _lease_token and status = 'running'
+    returning 1
+  ) select exists(select 1 from finished)
+$$;
+revoke all on function public.finish_orbit_ai_execution(uuid,uuid,text,text) from public, anon, authenticated;
+grant execute on function public.finish_orbit_ai_execution(uuid,uuid,text,text) to service_role;
 
 create table if not exists public.orbit_flow_run_review_queue (
   id uuid primary key default gen_random_uuid(),
@@ -79,3 +141,18 @@ begin
 end $$;
 revoke all on function public.queue_orphan_flow_runs_for_review(uuid,integer,integer) from public, anon, authenticated;
 grant execute on function public.queue_orphan_flow_runs_for_review(uuid,integer,integer) to service_role;
+
+create or replace function public.cleanup_orbit_execution_history(_empresa_id uuid, _claim_days integer default 30, _review_days integer default 90)
+returns table(deleted_claims bigint, deleted_reviews bigint)
+language plpgsql security definer set search_path = public as $$
+begin
+  with d as (delete from public.orbit_ai_execution_claims where empresa_id = _empresa_id
+    and status in ('finished','error','expired') and finished_at < now() - make_interval(days => greatest(_claim_days, 7)) returning 1)
+  select count(*) into deleted_claims from d;
+  with d as (delete from public.orbit_flow_run_review_queue where empresa_id = _empresa_id
+    and status in ('resolved','dismissed') and last_seen_at < now() - make_interval(days => greatest(_review_days, 30)) returning 1)
+  select count(*) into deleted_reviews from d;
+  return next;
+end $$;
+revoke all on function public.cleanup_orbit_execution_history(uuid,integer,integer) from public, anon, authenticated;
+grant execute on function public.cleanup_orbit_execution_history(uuid,integer,integer) to service_role;

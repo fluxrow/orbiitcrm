@@ -12,6 +12,7 @@ import {
   normalizeMoneyValue,
   sanitizeFactValue,
   canonicalFactsToCollectedFields,
+  normalizeFactForField,
 } from "./agent-memory.ts";
 import { normalizeAgentText } from "./pt-br-normalizer.ts";
 
@@ -96,6 +97,30 @@ Deno.test("resposta recente preenche entidade perguntada e impede repetição", 
   const facts = hydrateCanonicalFacts({ mensagens });
   assertEquals(facts.renda_capital.value, "R$ 20.000");
   assert(detectRepetition("Qual é o capital disponível?", facts, recentAgentQuestions(mensagens)).violates);
+});
+
+Deno.test("não persiste confirmação vaga, negação ou resposta sem conteúdo", () => {
+  for (const answer of ["ok", "sim", "pode ser", "não sei", "não tenho", "x"]) {
+    const facts = hydrateCanonicalFacts({ mensagens: [
+      { direcao: "OUT", mensagem: "Qual é o momento do seu negócio?" },
+      { direcao: "IN", mensagem: answer },
+    ] });
+    assertEquals(facts.momento_negocio, undefined, answer);
+  }
+});
+
+Deno.test("capital só é atualizado quando existe valor monetário reconhecível", () => {
+  for (const answer of ["depende", "tenho algum", "prefiro não dizer", "sim"]) {
+    assertEquals(normalizeFactForField("renda_capital", answer), null, answer);
+  }
+  assertEquals(normalizeFactForField("renda_capital", "R$ 20.000,00"), "R$ 20.000");
+});
+
+Deno.test("respostas incompatíveis com o tipo do campo são rejeitadas", () => {
+  assertEquals(normalizeFactForField("email", "pode ser"), null);
+  assertEquals(normalizeFactForField("email", "ana@example.com"), "ana@example.com");
+  assertEquals(normalizeFactForField("telefone", "amanhã"), null);
+  assertEquals(normalizeFactForField("telefone", "+55 11 99999-9999"), "+55 11 99999-9999");
 });
 
 Deno.test("hidrata fatos aninhados no raw do Typebot", () => {

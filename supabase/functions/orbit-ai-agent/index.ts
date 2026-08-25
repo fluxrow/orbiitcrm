@@ -859,8 +859,9 @@ serve(async (req) => {
 
   let conversaIdForCleanup: string | null = null;
   let supabaseForCleanup: any = null;
-  let executionClaimForCleanup: { id: string; empresa_id: string } | null = null;
+  let executionClaimForCleanup: { id: string; empresa_id: string; lease_token: string } | null = null;
   let empresaIdForCleanup: string | null = null;
+  let executionOutcomeForCleanup: "finished" | "error" = "finished";
   try {
     const { conversa_id, prospect_id, mensagem, telefone, recovery_tag, outbox_hold_until, correlation_id } = await req.json();
     conversaIdForCleanup = conversa_id ?? null;
@@ -901,18 +902,30 @@ serve(async (req) => {
       .maybeSingle();
     const executionCorrelation = String(correlation_id || req.headers.get("Idempotency-Key") || latestInbound?.id || "").slice(0, 300);
     if (!executionCorrelation) throw new Error("execution_correlation_not_resolved");
-    const { data: claimId, error: claimError } = await supabase.rpc("claim_orbit_ai_execution", {
+    const { data: claimRows, error: claimError } = await supabase.rpc("claim_orbit_ai_execution", {
       _empresa_id: empresaId,
       _conversa_id: conversa_id,
-      _correlation_id: executionCorrelation,
+      _event_id: executionCorrelation,
+      _lease_seconds: 300,
     });
     if (claimError) throw new Error(`execution_claim_failed:${claimError.message}`);
-    if (!claimId) {
-      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "duplicate_execution" }), {
+    const claim = Array.isArray(claimRows) ? claimRows[0] : claimRows;
+    if (!claim?.acquired || !claim?.claim_id || !claim?.lease_token) {
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: claim?.reason || "conversation_busy" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    executionClaimForCleanup = { id: claimId, empresa_id: empresaId };
+    executionClaimForCleanup = { id: claim.claim_id, empresa_id: empresaId, lease_token: claim.lease_token };
+    const renewExecutionLease = async () => {
+      const { data, error } = await supabase.rpc("renew_orbit_ai_execution_lease", {
+        _claim_id: claim.claim_id, _lease_token: claim.lease_token, _lease_seconds: 300,
+      });
+      return !error && data === true;
+    };
+    const leaseLostResponse = () => new Response(
+      JSON.stringify({ ok: true, skipped: true, reason: "lease_lost" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
     await supabase.from("orbit_conversas")
       .update({ ai_processing: true })
       .eq("id", conversa_id)
@@ -921,6 +934,9 @@ serve(async (req) => {
     // ── DEBOUNCE: claim persistente já protege execuções concorrentes ──
     console.log("[orbit-ai-agent] Aguardando 10s para agregar mensagens...");
     await new Promise(r => setTimeout(r, 10000));
+    if (!await renewExecutionLease()) {
+      return leaseLostResponse();
+    }
 
     // ── Corte de automação do tenant: prospect anterior ao corte nunca é atendido
     // pela IA (mesmo se alguém invocar o agente diretamente). Atendimento fica humano.
@@ -987,6 +1003,7 @@ serve(async (req) => {
 
     if (hoursDecision.halt) {
       if (hoursDecision.fallbackMessage) {
+        if (!await renewExecutionLease()) return leaseLostResponse();
         await sendWhatsAppMessage(supabase, telefone, hoursDecision.fallbackMessage, conversa_id, isDemo, empresaId);
       }
       return new Response(JSON.stringify({ ok: true, outside_hours: true }), {
@@ -1040,6 +1057,7 @@ serve(async (req) => {
         : [{ mensagem }]) as any[])
       : { detected: false, inbound_id: null, kind: null };
     if (paymentReceiptCfg && paymentReceiptEvidence.detected) {
+      if (!await renewExecutionLease()) return leaseLostResponse();
       const outcome = await runPaymentReceiptHandoff(supabase, {
         conversa_id,
         empresaId: empresaId ?? null,
@@ -1060,6 +1078,7 @@ serve(async (req) => {
 
     // ── CHATBOT FLOWS: comprovante tem prioridade absoluta; os demais eventos
     // preservam a prioridade anterior do fluxo sobre a IA generativa.
+    if (!await renewExecutionLease()) return leaseLostResponse();
     const flowHandled = await processChatbotFlow(supabase, {
       conversa,
       conversa_id,
@@ -1136,6 +1155,7 @@ serve(async (req) => {
     // Nunca define entrada, parcelas, desconto, link ou chave.
     const mixedPaymentCfg = readMixedPaymentHandoffConfig(aiConfig as Record<string, unknown>);
     if (mixedPaymentCfg && detectMixedPaymentRequest(mensagemAgregada)) {
+      if (!await renewExecutionLease()) return leaseLostResponse();
       const outcome = await runMixedPaymentHandoff(supabase, {
         conversa_id,
         empresaId: empresaId ?? null,
@@ -1825,6 +1845,7 @@ ${regrasBlock}`;
         scheduleOutcome = schedulingDecision;
       } else {
         try {
+          if (!await renewExecutionLease()) return leaseLostResponse();
           scheduleOutcome = await tryAutoScheduleMeeting(supabase, {
             empresaId,
             prospect,
@@ -1864,6 +1885,7 @@ ${regrasBlock}`;
     const alreadyNotified = aiContexto.commercial_notified === true;
     const shouldNotifyCommercial = isCommercialSignal && !alreadyNotified && !suppressHandoff && !scheduleOutcome.handoff_ready;
     if (shouldNotifyCommercial) {
+      if (!await renewExecutionLease()) return leaseLostResponse();
       console.log("[orbit-ai-agent] Sinal comercial detectado:", intencaoNormalizada, "— notificando responsável...");
       await notifyCommercialHumanDetected(supabase, {
         prospect,
@@ -2260,12 +2282,18 @@ ${regrasBlock}`;
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+    if (!await renewExecutionLease()) {
+      return leaseLostResponse();
+    }
     await sendAIResponse(supabase, telefone, resposta, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
 
 
     return new Response(JSON.stringify({ ok: true, resposta, parsed, state: novoContexto.estado, simulated: isDemo }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+    } catch (innerError) {
+      executionOutcomeForCleanup = "error";
+      throw innerError;
     } finally {
       // ── UNLOCK: sempre resetar ai_processing (best effort) ──
       try {
@@ -2280,9 +2308,12 @@ ${regrasBlock}`;
       }
       if (executionClaimForCleanup) {
         try {
-          await supabase.from("orbit_ai_execution_claims").update({
-            status: "finished", finished_at: new Date().toISOString(), result: "released",
-          }).eq("id", executionClaimForCleanup.id).eq("empresa_id", executionClaimForCleanup.empresa_id);
+          await supabase.rpc("finish_orbit_ai_execution", {
+            _claim_id: executionClaimForCleanup.id,
+            _lease_token: executionClaimForCleanup.lease_token,
+            _status: executionOutcomeForCleanup,
+            _result: executionOutcomeForCleanup === "error" ? "runtime_error" : "released",
+          });
         } catch { /* best effort */ }
       }
     }
@@ -2305,14 +2336,6 @@ ${regrasBlock}`;
       } catch (cleanupErr) {
         console.error("[orbit-ai-agent] Falha no cleanup do lock:", cleanupErr);
       }
-    }
-    if (executionClaimForCleanup) {
-      try {
-        const cleanupClient = supabaseForCleanup;
-        await cleanupClient.from("orbit_ai_execution_claims").update({
-          status: "error", finished_at: new Date().toISOString(), result: "runtime_error",
-        }).eq("id", executionClaimForCleanup.id).eq("empresa_id", executionClaimForCleanup.empresa_id);
-      } catch { /* best effort, sanitized */ }
     }
     return new Response(JSON.stringify({ error: "internal_error" }), {
       status: 500,

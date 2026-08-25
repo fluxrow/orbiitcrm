@@ -173,11 +173,12 @@ export function resolveCanonicalKey(rawKey: string, tenantAliases?: unknown): st
 }
 
 const INJECTION_RE = /\b(ignore|desconsidere|esque[cç]a|substitua).{0,30}(instru[cç][oõ]es|prompt|sistema|system|developer)|<\/?system>|\bsystem\s*prompt\b|\bdeveloper\s*message\b/i;
+const VAGUE_OR_NEGATIVE_RE = /^(ok|okay|sim|nao|não|talvez|pode ser|beleza|isso|isso mesmo|correto|certo|aham|uhum|sei la|sei lá|nao sei|não sei|nao tenho|não tenho|prefiro nao dizer|prefiro não dizer|nenhum|nenhuma)[.! ]*$/i;
 
 export function sanitizeFactValue(value: unknown): string | null {
   if (!isMeaningful(value)) return null;
   const clean = String(value).replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim().slice(0, 300);
-  return !clean || INJECTION_RE.test(clean) ? null : clean;
+  return !clean || INJECTION_RE.test(clean) || VAGUE_OR_NEGATIVE_RE.test(clean) ? null : clean;
 }
 
 const PT_TENS: Record<string, number> = { dez: 10, vinte: 20, trinta: 30, quarenta: 40, cinquenta: 50, sessenta: 60, setenta: 70, oitenta: 80, noventa: 90 };
@@ -186,17 +187,33 @@ export function normalizeMoneyValue(value: unknown): string | null {
   if (!sanitized) return null;
   const normalized = normalizeKey(sanitized);
   let amount: number | null = null;
-  const numeric = normalized.match(/(\d[\d .]*)\s*(mil|k)?\b/);
-  if (numeric) {
-    const digits = numeric[1].replace(/\D/g, "");
-    amount = Number(digits);
-    if ((numeric[2] === "mil" || numeric[2] === "k") && amount < 1000) amount *= 1000;
+  const multiplierMatch = sanitized.toLowerCase().match(/(\d+(?:[.,]\d+)?)\s*(mil|k)\b/);
+  if (multiplierMatch) {
+    amount = Number(multiplierMatch[1].replace(",", ".")) * 1000;
   } else {
-    const tens = Object.entries(PT_TENS).find(([word]) => normalized.includes(`${word} mil`));
-    if (tens) amount = tens[1] * 1000;
+    const originalNumeric = sanitized.match(/\d[\d.,\s]*/)?.[0]?.trim();
+    if (originalNumeric) {
+      const withoutDecimals = /,\d{2}$/.test(originalNumeric) ? originalNumeric.replace(/,\d{2}$/, "") : originalNumeric;
+      amount = Number(withoutDecimals.replace(/\D/g, ""));
+    } else {
+      const tens = Object.entries(PT_TENS).find(([word]) => normalized.includes(`${word} mil`));
+      if (tens) amount = tens[1] * 1000;
+    }
   }
-  if (amount === null || !Number.isFinite(amount)) return sanitized;
+  if (amount === null || !Number.isFinite(amount) || amount <= 0) return null;
   return `R$ ${Math.round(amount).toLocaleString("pt-BR")}`;
+}
+
+export function normalizeFactForField(key: string, value: unknown): string | null {
+  if (key === "renda_capital") return normalizeMoneyValue(value);
+  const clean = sanitizeFactValue(value);
+  if (!clean) return null;
+  if (key === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) return null;
+  if (key === "telefone" && clean.replace(/\D/g, "").length < 10) return null;
+  if (key === "estado" && !/^[A-Za-zÀ-ÿ ]{2,30}$/.test(clean)) return null;
+  if (["dificuldade", "momento_negocio", "etapa_atual", "objetivo_nivel"].includes(key) &&
+      (clean.length < 4 || !/[A-Za-zÀ-ÿ]/.test(clean))) return null;
+  return clean;
 }
 
 function isMeaningful(value: unknown): boolean {
@@ -217,7 +234,7 @@ function put(
   seen: Record<string, number>,
 ) {
   if (!key || !isMeaningful(value)) return;
-  const clean = key === "renda_capital" ? normalizeMoneyValue(value) : sanitizeFactValue(value);
+  const clean = normalizeFactForField(key, value);
   if (!clean) return;
   const current = seen[key];
   if (current !== undefined && current >= priority) return;
