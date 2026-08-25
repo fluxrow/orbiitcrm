@@ -78,6 +78,18 @@ Deno.test("R3 prospecção e notificações nunca entram na reserva", () => {
   }
 });
 
+Deno.test("Viver: resposta engajada fica fora da cota 10, mas novo contato consome a cota comum", () => {
+  const engaged = item({ empresa_id: VIVER, source_type: "ai_reply" });
+  const engagedInbound = inbound({ empresa_id: VIVER });
+  const engagedConversation = conversa({ empresa_id: VIVER });
+  assertEquals(validateEngagedInbound({ item: engaged, inbound: engagedInbound, cutoff: CUTOFF, conversa: engagedConversation }).eligible, true);
+  assertEquals(engagedReplyUncapped(VIVER), true);
+
+  const newContact = item({ empresa_id: VIVER, source_type: "flow_initial", metadata: {} });
+  assertEquals(isEngagedReserveCandidate(newContact), false);
+  assertEquals(engagedReplyUncapped(OTHER), false);
+});
+
 Deno.test("R4 sem inbound_message_id bloqueia", () => {
   const it = item({ metadata: {} });
   assertEquals(isEngagedReserveCandidate(it), false);

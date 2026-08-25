@@ -4,6 +4,8 @@
 // Para cada linha reclamada, delega ao orbit-flow-executor no modo single_action.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { sanitizedOrphanAlert } from "../_shared/orphan-flow-run.ts";
+import { VIVER_EMPRESA_ID } from "../_shared/tenant-scheduling-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -46,6 +48,14 @@ Deno.serve(async (req) => {
     let body: any = {};
     try { body = await req.json(); } catch { /* empty */ }
     const batch = Math.max(1, Math.min(100, Number(body?.batch ?? 25)));
+
+    // Fail-closed: somente registra runs órfãos numa fila de revisão idempotente.
+    // Nunca os reprocessa automaticamente.
+    const { data: orphanRows, error: orphanError } = await supabase.rpc("queue_orphan_flow_runs_for_review", {
+      _empresa_id: VIVER_EMPRESA_ID, _sla_seconds: 300, _limit: batch,
+    });
+    if (orphanError) console.warn(JSON.stringify({ scope: "orphan_flow_run_review_error", reason: "rpc_failed" }));
+    for (const row of orphanRows ?? []) console.warn(JSON.stringify(sanitizedOrphanAlert(row)));
 
     const { data: rows, error: claimErr } = await supabase.rpc("claim_scheduled_actions", { _batch: batch });
     if (claimErr) throw new Error(claimErr.message);

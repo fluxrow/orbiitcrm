@@ -8,6 +8,7 @@ import {
   resolveTenantSchedulingDecision,
   tryAutoScheduleMeeting,
 } from "./index.ts";
+import { VIVER_EMPRESA_ID } from "../_shared/tenant-scheduling-policy.ts";
 
 type Row = Record<string, any>;
 
@@ -216,6 +217,61 @@ Deno.test("sem data consulta freeBusy e oferece os 2 horários úteis mais próx
   assert(String(res.response_override).includes("Qual deles você prefere?"));
   assert(!state.order.includes("orbit_meetings.insert"));
 });
+
+Deno.test("Viver: aceite ambíguo de dois horários exige escolha e não toca calendário", async () => {
+  const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
+  const params = baseParams() as any;
+  params.empresaId = VIVER_EMPRESA_ID;
+  params.mensagem_cliente = "pode ser";
+  params.sugestoes_anteriores = [{ label: "13:00", start: "2026-07-30T16:00:00Z" }, { label: "15:00", start: "2026-07-30T18:00:00Z" }];
+  let calendarCalls = 0;
+  const res = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, params, {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => { calendarCalls++; return "at"; },
+    createCalendarEvent: async () => { calendarCalls++; return {}; },
+  });
+  assertEquals(res.created, false);
+  assert(String(res.response_override).includes("opção 1 ou a opção 2"));
+  assertEquals(calendarCalls, 0);
+});
+
+Deno.test("Viver: escolha explícita é revalidada e cria somente dentro de 13h-17h", async () => {
+  const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
+  const params = baseParams() as any;
+  params.empresaId = VIVER_EMPRESA_ID;
+  params.mensagem_cliente = "opção 2";
+  params.sugestoes_anteriores = [{ label: "13:00", start: "2026-07-30T16:00:00Z" }, { label: "15:00", start: "2026-07-30T18:00:00Z" }];
+  let availabilityCalls = 0;
+  const res = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, params, {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => "at",
+    checkAvailability: async () => { availabilityCalls++; return { busy: [] }; },
+    createCalendarEvent: async () => ({ id: "g1", htmlLink: "https://meet.invalid/test" }),
+    now: () => new Date("2026-07-20T15:00:00Z"),
+  });
+  assertEquals(res.created, true);
+  assert(availabilityCalls >= 1);
+});
+
+for (const [label, start] of [["antes das 13h", "2026-07-30T15:59:00Z"], ["depois das 17h", "2026-07-30T20:01:00Z"]] as const) {
+  Deno.test(`Viver bloqueia ${label} no backend`, async () => {
+    const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
+    const params = baseParams() as any;
+    params.empresaId = VIVER_EMPRESA_ID;
+    params.mensagem_cliente = "confirmo esse horário";
+    params.agendamento = { data_iso: start, tem_horario: true, duracao_min: 60 };
+    let creates = 0;
+    const res = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, params, {
+      getTokenForEmpresa: async () => TOKEN,
+      ensureFreshAccessToken: async () => "at",
+      checkAvailability: async () => ({ busy: [] }),
+      createCalendarEvent: async () => { creates++; return {}; },
+      now: () => new Date("2026-07-20T15:00:00Z"),
+    });
+    assertEquals(res.created, false);
+    assertEquals(creates, 0);
+  });
+}
 
 Deno.test("faixa horária explícita prevalece sobre período genérico", () => {
   assertEquals(explicitTimeBounds("Durante a semana no horário da tarde entre 15 e 17 h"), {

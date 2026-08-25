@@ -132,7 +132,10 @@ import {
   buildCorrectiveInstruction,
   buildDeterministicFallback,
   stripPersonaReintroduction,
+  canonicalFactsToCollectedFields,
+  resolveCanonicalKey,
 } from "../_shared/agent-memory.ts";
+import { schedulingPolicy, isAmbiguousSlotAcceptance, selectExplicitSuggestion } from "../_shared/tenant-scheduling-policy.ts";
 
 /**
  * Normalização final aplicada em TODOS os caminhos de saída do agente.
@@ -856,8 +859,10 @@ serve(async (req) => {
 
   let conversaIdForCleanup: string | null = null;
   let supabaseForCleanup: any = null;
+  let executionClaimForCleanup: { id: string; empresa_id: string } | null = null;
+  let empresaIdForCleanup: string | null = null;
   try {
-    const { conversa_id, prospect_id, mensagem, telefone, recovery_tag, outbox_hold_until } = await req.json();
+    const { conversa_id, prospect_id, mensagem, telefone, recovery_tag, outbox_hold_until, correlation_id } = await req.json();
     conversaIdForCleanup = conversa_id ?? null;
     const recoveryTag = sanitizeRecoveryTag(recovery_tag);
     if (conversa_id && recoveryTag) RECOVERY_TAGS.set(conversa_id, recoveryTag);
@@ -871,17 +876,7 @@ serve(async (req) => {
     );
     supabaseForCleanup = supabase;
 
-    // ── LOCK: marcar conversa como em processamento ──
-    await supabase
-      .from("orbit_conversas")
-      .update({ ai_processing: true })
-      .eq("id", conversa_id);
-
     try {
-    // ── DEBOUNCE: aguardar 10 segundos para agregar mensagens quebradas ──
-    console.log("[orbit-ai-agent] Aguardando 10s para agregar mensagens...");
-    await new Promise(r => setTimeout(r, 10000));
-
     // Buscar prospect first to get empresa_id
     const { data: prospect } = await supabase
       .from("orbit_prospects")
@@ -892,6 +887,40 @@ serve(async (req) => {
     // Determine if demo
     let isDemo = false;
     const empresaId = prospect?.empresa_id;
+    if (!empresaId || !conversa_id) throw new Error("tenant_or_conversation_not_resolved");
+    empresaIdForCleanup = empresaId;
+
+    const { data: latestInbound } = await supabase
+      .from("orbit_mensagens")
+      .select("id")
+      .eq("empresa_id", empresaId)
+      .eq("conversa_id", conversa_id)
+      .eq("direcao", "IN")
+      .order("timestamp", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const executionCorrelation = String(correlation_id || req.headers.get("Idempotency-Key") || latestInbound?.id || "").slice(0, 300);
+    if (!executionCorrelation) throw new Error("execution_correlation_not_resolved");
+    const { data: claimId, error: claimError } = await supabase.rpc("claim_orbit_ai_execution", {
+      _empresa_id: empresaId,
+      _conversa_id: conversa_id,
+      _correlation_id: executionCorrelation,
+    });
+    if (claimError) throw new Error(`execution_claim_failed:${claimError.message}`);
+    if (!claimId) {
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: "duplicate_execution" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    executionClaimForCleanup = { id: claimId, empresa_id: empresaId };
+    await supabase.from("orbit_conversas")
+      .update({ ai_processing: true })
+      .eq("id", conversa_id)
+      .eq("empresa_id", empresaId);
+
+    // ── DEBOUNCE: claim persistente já protege execuções concorrentes ──
+    console.log("[orbit-ai-agent] Aguardando 10s para agregar mensagens...");
+    await new Promise(r => setTimeout(r, 10000));
 
     // ── Corte de automação do tenant: prospect anterior ao corte nunca é atendido
     // pela IA (mesmo se alguém invocar o agente diretamente). Atendimento fica humano.
@@ -1147,17 +1176,18 @@ serve(async (req) => {
     const maxTokens = aiConfig.max_tokens || 500;
     const idioma = aiConfig.idioma || "pt-BR";
 
-    const camposFaltantes = camposCadastroEffective.filter(
-      (campo: string) => !camposColetados[campo] && !prospect?.[campo]
-    );
-    const cadastroCompleto = camposFaltantes.length === 0;
-
     // ── MEMÓRIA CANÔNICA: hidratar fatos já conhecidos do lead ──
     const canonicalFacts = hydrateCanonicalFacts({
       prospect,
       aiContexto,
       mensagens: mensagens || [],
+      tenantAliases: (aiConfig as any).canonical_field_aliases,
     });
+    const camposFaltantes = camposCadastroEffective.filter((campo: string) => {
+      const canonical = resolveCanonicalKey(campo, (aiConfig as any).canonical_field_aliases);
+      return !camposColetados[campo] && !prospect?.[campo] && !(canonical && canonicalFacts[canonical]);
+    });
+    const cadastroCompleto = camposFaltantes.length === 0;
     const canonicalFactsBlock = buildCanonicalFactsBlock(canonicalFacts);
     const previousAgentQuestions = recentAgentQuestions(mensagens || []);
     console.log(
@@ -1846,12 +1876,22 @@ ${regrasBlock}`;
     }
 
 
+    const canonicalValidatedFields = canonicalFactsToCollectedFields(hydrateCanonicalFacts({
+      aiContexto: { campos_coletados: dadosValidados },
+      tenantAliases: (aiConfig as any).canonical_field_aliases,
+    }));
+
     // Atualizar contexto da conversa com estado e classificação
     const novoContexto = {
       ...aiContexto,
       estado: isHandoff ? "handoff" : (scheduleOutcome.created ? "qualificado" : nextState),
       em_coleta_orcamento: parsed.iniciar_coleta_orcamento || emColetaOrcamento,
-      campos_coletados: { ...camposColetados, ...dadosValidados },
+      campos_coletados: {
+        ...camposColetados,
+        ...dadosValidados,
+        ...canonicalFactsToCollectedFields(canonicalFacts),
+        ...canonicalValidatedFields,
+      },
       cadastro_completo: parsed.cadastro_completo,
       ultima_intencao: parsed.intencao,
       intro_already_sent: introAlreadySent || primeiraInteracao,
@@ -2232,10 +2272,18 @@ ${regrasBlock}`;
         await supabase
           .from("orbit_conversas")
           .update({ ai_processing: false })
-          .eq("id", conversa_id);
+          .eq("id", conversa_id)
+          .eq("empresa_id", empresaIdForCleanup);
         console.log("[orbit-ai-agent] Lock liberado para conversa:", conversa_id);
       } catch (unlockErr) {
         console.error("[orbit-ai-agent] Falha ao liberar lock no finally:", unlockErr);
+      }
+      if (executionClaimForCleanup) {
+        try {
+          await supabase.from("orbit_ai_execution_claims").update({
+            status: "finished", finished_at: new Date().toISOString(), result: "released",
+          }).eq("id", executionClaimForCleanup.id).eq("empresa_id", executionClaimForCleanup.empresa_id);
+        } catch { /* best effort */ }
       }
     }
   } catch (error: unknown) {
@@ -2251,11 +2299,20 @@ ${regrasBlock}`;
         await (cleanupClient as any)
           .from("orbit_conversas")
           .update({ ai_processing: false })
-          .eq("id", conversaIdForCleanup);
+          .eq("id", conversaIdForCleanup)
+          .eq("empresa_id", empresaIdForCleanup);
         console.log("[orbit-ai-agent] Lock liberado no catch para:", conversaIdForCleanup);
       } catch (cleanupErr) {
         console.error("[orbit-ai-agent] Falha no cleanup do lock:", cleanupErr);
       }
+    }
+    if (executionClaimForCleanup) {
+      try {
+        const cleanupClient = supabaseForCleanup;
+        await cleanupClient.from("orbit_ai_execution_claims").update({
+          status: "error", finished_at: new Date().toISOString(), result: "runtime_error",
+        }).eq("id", executionClaimForCleanup.id).eq("empresa_id", executionClaimForCleanup.empresa_id);
+      } catch { /* best effort, sanitized */ }
     }
     return new Response(JSON.stringify({ error: "internal_error" }), {
       status: 500,
@@ -3559,20 +3616,24 @@ export async function tryAutoScheduleMeeting(
   };
 
   const ag = params.agendamento || {};
-  const token = await deps.getTokenForEmpresa(params.empresaId).catch(() => null);
-  if (!token) {
+  const rawToken = await deps.getTokenForEmpresa(params.empresaId).catch(() => null);
+  if (!rawToken) {
     console.log("[orbit-ai-agent] Google Calendar não conectado — fallback para handoff manual", { empresaId: params.empresaId });
     return { handled: false, not_connected: true };
   }
+  const token = schedulingPolicy(params.empresaId, rawToken);
 
   const tz = token.timezone || "America/Sao_Paulo";
   const previousSuggestions = Array.isArray(params.sugestoes_anteriores) ? params.sugestoes_anteriores : [];
-  const selectionText = normalizePt(params.mensagem_cliente || "");
-  let selectedSuggestion = /\b(primeir[oa]|opcao 1|1\s*[ªa])\b/.test(selectionText)
-    ? previousSuggestions[0]
-    : /\b(segund[oa]|opcao 2|2\s*[ªa])\b/.test(selectionText)
-    ? previousSuggestions[1]
-    : previousSuggestions.find((s) => s.label && selectionText.includes(normalizePt(s.label)));
+  if (isAmbiguousSlotAcceptance(params.mensagem_cliente || "", previousSuggestions.length)) {
+    return {
+      handled: true,
+      created: false,
+      response_override: "Para eu agendar corretamente, escolha explicitamente a opção 1 ou a opção 2, por favor.",
+      suggestions: previousSuggestions,
+    };
+  }
+  let selectedSuggestion = selectExplicitSuggestion(params.mensagem_cliente || "", previousSuggestions);
 
   const calId = token.calendar_id;
   const duracaoMin = Math.max(15, Math.min(240, Number(ag.duracao_min) || 60));
