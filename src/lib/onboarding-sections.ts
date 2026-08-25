@@ -984,7 +984,7 @@ export interface ImplementationPackageParams {
     empresa?: { nome?: string | null; slug?: string | null } | null;
     sent_at?: string | null;
   };
-  checklist: { key: string; label: string; done?: boolean }[];
+  checklist: ImplementationChecklistItem[];
   publicLink: string;
   /** Fase 4: rascunho inteligente consolidado (opcional). */
   draft?: ImplementationPackageDraft | null;
@@ -1040,7 +1040,7 @@ export function buildImplementationPackageMarkdown(
   if (checklistPending.length) {
     opsLines.push("");
     opsLines.push("**Checklist pendente:**");
-    for (const c of checklistPending) opsLines.push(`- [ ] ${c.label}`);
+    for (const c of checklistPending) opsLines.push(`- [ ] ${c.label || c.key || "Item pendente"}`);
   }
   const materialsAll = profile.assets.structured_materials;
   const materialsPendingUpload = materialsAll.filter(
@@ -1295,7 +1295,7 @@ export function buildImplementationPackageMarkdown(
 
   // Checklist
   out.push(...block("Checklist de implementação", checklist.map(
-    (c) => `- [${c.done ? "x" : " "}] ${c.label}`,
+    (c) => `- [${c.done ? "x" : " "}] ${c.label || c.key || "Item"}`,
   )));
 
   // Guardrails
