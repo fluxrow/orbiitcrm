@@ -31,6 +31,23 @@ interface SandboxMsg {
   ts: number;
 }
 
+interface SandboxFunctionError {
+  error?: string;
+  code?: string;
+  retryable?: boolean;
+  retry_after_seconds?: number;
+}
+
+async function readSandboxFunctionError(error: unknown): Promise<SandboxFunctionError | null> {
+  const context = (error as { context?: Response } | null)?.context;
+  if (!context || typeof context.clone !== "function") return null;
+  try {
+    return (await context.clone().json()) as SandboxFunctionError;
+  } catch {
+    return null;
+  }
+}
+
 const MOCK_LEAD = {
   nome: "Mariana",
   origem: "Formulário de captação",
@@ -80,7 +97,17 @@ export function AgentSandbox({ open, onOpenChange, empresaId, tenantSlug }: Agen
             messages: history.map((m) => ({ role: m.role, content: m.content })),
           },
         });
-        if (error) throw error;
+        if (error) {
+          const detail = await readSandboxFunctionError(error);
+          if (detail?.code === "AI_PROVIDER_RATE_LIMIT") {
+            const wait = Math.max(1, Math.ceil(detail.retry_after_seconds ?? 30));
+            throw new Error(`A IA atingiu o limite temporário. Tente novamente em ${wait} segundos.`);
+          }
+          if (detail?.code === "AI_PROVIDER_CREDITS_EXHAUSTED") {
+            throw new Error("O saldo da IA está indisponível. Avise o administrador da plataforma.");
+          }
+          throw new Error(detail?.error || error.message || "Falha ao chamar a IA");
+        }
         if (!data?.ok) throw new Error(data?.error || "Falha ao chamar a IA");
         const reply: string = data.data?.message || "(sem resposta)";
         setMessages((prev) => [

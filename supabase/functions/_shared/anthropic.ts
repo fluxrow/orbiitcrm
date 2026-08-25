@@ -51,6 +51,19 @@ export interface AnthropicCallError {
   status: number;
   error: string;
   code: "missing_key" | "rate_limit" | "credits" | "auth" | "server" | "unknown";
+  retry_after_seconds?: number;
+}
+
+function parseRetryAfterSeconds(response: Response): number | undefined {
+  const raw = response.headers.get("retry-after");
+  if (!raw) return undefined;
+
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds);
+
+  const retryAt = Date.parse(raw);
+  if (Number.isNaN(retryAt)) return undefined;
+  return Math.max(0, Math.ceil((retryAt - Date.now()) / 1000));
 }
 
 function classifyAnthropicError(status: number): AnthropicCallError["code"] {
@@ -212,6 +225,7 @@ export async function callAnthropic(
       status: resp.status,
       error: `Anthropic ${resp.status}: ${errText.slice(0, 500)}`,
       code,
+      retry_after_seconds: code === "rate_limit" ? parseRetryAfterSeconds(resp) : undefined,
     };
   }
 

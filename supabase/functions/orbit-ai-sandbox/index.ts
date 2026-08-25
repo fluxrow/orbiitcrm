@@ -211,10 +211,21 @@ serve(async (req) => {
 
     if (!result.ok) {
       if (result.code === "rate_limit") {
-        return json(429, { ok: false, error: "Limite de taxa excedido. Tente novamente em instantes." });
+        return json(429, {
+          ok: false,
+          code: "AI_PROVIDER_RATE_LIMIT",
+          error: "A IA atingiu o limite temporário de uso. Aguarde e tente novamente.",
+          retryable: true,
+          retry_after_seconds: result.retry_after_seconds ?? 30,
+        });
       }
       if (result.code === "credits") {
-        return json(402, { ok: false, error: "Saldo/uso da conta Anthropic insuficiente." });
+        return json(402, {
+          ok: false,
+          code: "AI_PROVIDER_CREDITS_EXHAUSTED",
+          error: "O saldo da IA está indisponível. Avise o administrador da plataforma.",
+          retryable: false,
+        });
       }
       return json(result.code === "missing_key" || result.code === "auth" ? 500 : 502, {
         ok: false,
