@@ -17,6 +17,12 @@ import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { getTokenForEmpresa, ensureFreshAccessToken, checkAvailability } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
+import {
+  VIVER_EMPRESA_ID,
+  classifyMeeting,
+  meetingIdFromFlowContext,
+  type MeetingRow,
+} from "../_shared/viver-meeting-lifecycle.ts";
 
 import { resolveEventId, buildScheduledActionContext, restoreRunFromScheduled } from "./flow-run-events.ts";
 import { computeCadenceKey } from "./cadence-key.ts";
@@ -891,6 +897,35 @@ async function handleSingleAction(scheduledId: string): Promise<Response> {
   // Restaura o run consumível pelo runner, garantindo que event_id do dispatcher original
   // seja propagado para o path de flow_stage (evita colisão futura no stableKey).
   const run: Json = restoreRunFromScheduled(s);
+
+  // Viver: lembrete atrasado nunca pode atravessar o executor. Revalida a
+  // reunião autoritativa depois do claim e cancela deterministicamente antes
+  // de criar step/outbox. Outros tenants não passam por este bloco.
+  if (s.empresa_id === VIVER_EMPRESA_ID) {
+    const meetingId = meetingIdFromFlowContext(s.context);
+    const reminderKind = String(s.context?.payload?.reminder_kind ?? "");
+    if (meetingId && reminderKind.startsWith("meeting_reminder_")) {
+      const { data: meeting, error: meetingError } = await supabase
+        .from("orbit_meetings")
+        .select("id, scheduled_at, duration_minutes, status, meeting_url")
+        .eq("empresa_id", VIVER_EMPRESA_ID)
+        .eq("id", meetingId)
+        .maybeSingle();
+      const phase = meeting ? classifyMeeting(meeting as MeetingRow, new Date()) : "inactive";
+      if (meetingError || phase !== "upcoming") {
+        const reason = meetingError ? "meeting_revalidation_failed" : `meeting_reminder_${phase}`;
+        await supabase.from("orbit_flow_scheduled_actions")
+          .update({ status: "canceled", canceled_reason: reason, updated_at: new Date().toISOString() })
+          .eq("empresa_id", VIVER_EMPRESA_ID)
+          .eq("id", s.id)
+          .eq("status", "running");
+        return new Response(
+          JSON.stringify({ ok: true, data: { skipped: true, reason }, error: null }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+  }
 
   // ── Corte de automação: ação agendada de prospect anterior ao corte é cancelada,
   // nunca executada (nenhuma cadência antiga ressuscita após o corte).

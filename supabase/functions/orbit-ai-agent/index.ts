@@ -14,6 +14,13 @@ import {
 } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 import { extractPublicMessage, looksLikeInternalPayload, sanitizedLeakSummary } from "../_shared/ai-output-guard.ts";
+import {
+  VIVER_EMPRESA_ID,
+  selectAuthoritativeMeeting,
+  formatMeetingAuthorityBlock,
+  enforceFreshMeetingState,
+  type MeetingRow,
+} from "./viver-meeting-guard.ts";
 
 import {
   decideImmediateKick,
@@ -1127,6 +1134,23 @@ serve(async (req) => {
       .map((m) => `${authorLabel(m as any)}: ${messageTextForAgent(m)}`)
       .join("\n");
 
+    // Viver: o histórico textual nunca é fonte autoritativa para saber se uma
+    // reunião ainda é futura. O estado é lido diretamente do banco.
+    let viverMeetingAuthority: ReturnType<typeof selectAuthoritativeMeeting> = null;
+    if (empresaId === VIVER_EMPRESA_ID) {
+      const { data: meetingRows, error: meetingStateError } = await supabase
+        .from("orbit_meetings")
+        .select("id, scheduled_at, duration_minutes, status, meeting_url")
+        .eq("empresa_id", empresaId)
+        .eq("conversa_id", conversa_id)
+        .order("scheduled_at", { ascending: true });
+      if (meetingStateError) {
+        console.error("[orbit-ai-agent] Falha ao carregar estado autoritativo da reunião Viver:", meetingStateError);
+      } else {
+        viverMeetingAuthority = selectAuthoritativeMeeting((meetingRows || []) as MeetingRow[], new Date());
+      }
+    }
+
 
     // A janela de contexto tem só 20 mensagens. A primeira interação precisa usar
     // o histórico total para áudio/imagem ou conversas longas nunca reiniciarem a persona.
@@ -1379,6 +1403,10 @@ serve(async (req) => {
       : "";
 
 
+    const viverMeetingBlock = empresaId === VIVER_EMPRESA_ID
+      ? formatMeetingAuthorityBlock(viverMeetingAuthority, new Date())
+      : "";
+
     const systemPrompt = `${promptIdentidade}
 
 ESTILO DE ESCRITA (PT-BR, INVIOLÁVEL):
@@ -1388,7 +1416,7 @@ ${PT_BR_STYLE_GUARDRAILS}
 Tom de voz: ${aiConfig.tom_conversa || "profissional e amigável"}
 Idioma: ${idioma === "pt-BR" ? "Português do Brasil" : idioma === "en" ? "Inglês" : "Espanhol"}
 ${campaignContinuity}${stateInstruction}${classificationInstruction}
-${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${dataHoraAtualBlock}${schedulingModeBlock}
+${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${dataHoraAtualBlock}${schedulingModeBlock}${viverMeetingBlock}
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
 ${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}${commercialV2Block}${primaryOfferBlock}${identityBlock}${selfIntroBlock}${falseBenefitsBlock}${noCollectBlock}
@@ -2285,6 +2313,29 @@ ${regrasBlock}`;
     }
     if (!await renewExecutionLease()) {
       return leaseLostResponse();
+    }
+    // Última barreira, imediatamente antes do enqueue/envio: reconsulta o banco
+    // para cobrir corrida de relógio, cancelamento ou alteração enquanto o LLM rodava.
+    if (empresaId === VIVER_EMPRESA_ID) {
+      const { data: freshMeetingRows, error: freshMeetingError } = await supabase
+        .from("orbit_meetings")
+        .select("id, scheduled_at, duration_minutes, status, meeting_url")
+        .eq("empresa_id", empresaId)
+        .eq("conversa_id", conversa_id)
+        .order("scheduled_at", { ascending: true });
+      if (freshMeetingError) {
+        console.error("[orbit-ai-agent] Revalidação final da reunião Viver falhou; envio fail-closed:", freshMeetingError);
+        return new Response(JSON.stringify({ ok: true, suppressed: true, reason: "meeting_revalidation_failed" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const freshAuthority = selectAuthoritativeMeeting((freshMeetingRows || []) as MeetingRow[], new Date());
+      const meetingGuard = enforceFreshMeetingState(resposta, freshAuthority);
+      if (meetingGuard.changed) {
+        console.warn("[orbit-ai-agent] Referência futura/link de reunião bloqueada após revalidação:", meetingGuard.reason);
+        resposta = meetingGuard.text;
+        parsed.mensagem = resposta;
+      }
     }
     await sendAIResponse(supabase, telefone, resposta, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
 

@@ -1,0 +1,71 @@
+import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  classifyMeeting, enforceFreshMeetingState, expiredMeetingIdsForReconciliation,
+  formatMeetingAuthorityBlock, selectAuthoritativeMeeting, shouldCancelPastReminder,
+} from "./viver-meeting-guard.ts";
+
+const meeting = (overrides: Record<string, unknown> = {}) => ({
+  id: "0010b897-cd5d-43f1-8844-64d64c940015",
+  scheduled_at: "2026-08-25T15:00:00.000Z",
+  duration_minutes: 60,
+  status: "scheduled",
+  meeting_url: "https://meet.google.com/example",
+  ...overrides,
+});
+
+Deno.test("reunião é futura somente antes do início", () => {
+  assertEquals(classifyMeeting(meeting(), new Date("2026-08-25T14:59:59Z")), "upcoming");
+});
+
+Deno.test("reunião fica em andamento do início até antes do término", () => {
+  assertEquals(classifyMeeting(meeting(), new Date("2026-08-25T15:00:00Z")), "in_progress");
+  assertEquals(classifyMeeting(meeting(), new Date("2026-08-25T15:59:59Z")), "in_progress");
+});
+
+Deno.test("scheduled vencida é encerrada exatamente no término", () => {
+  assertEquals(classifyMeeting(meeting(), new Date("2026-08-25T16:00:00Z")), "expired");
+});
+
+Deno.test("seleção prioriza próxima futura e não a histórica mais recente", () => {
+  const selected = selectAuthoritativeMeeting([
+    meeting({ id: "old", scheduled_at: "2026-08-25T15:00:00Z" }),
+    meeting({ id: "future", scheduled_at: "2026-08-27T18:00:00Z" }),
+  ], new Date("2026-08-25T20:00:00Z"));
+  assertEquals(selected?.meeting.id, "future");
+  assertEquals(selected?.phase, "upcoming");
+});
+
+Deno.test("fuso America/Sao_Paulo aparece no contexto autoritativo", () => {
+  const selected = selectAuthoritativeMeeting([meeting()], new Date("2026-08-25T14:00:00Z"));
+  const block = formatMeetingAuthorityBlock(selected, new Date("2026-08-25T14:00:00Z"));
+  assert(block.includes("America/Sao_Paulo"));
+  assert(block.includes("12:00"));
+  assert(block.includes("13:00"));
+});
+
+Deno.test("bloqueia reenvio de link e linguagem futura após término", () => {
+  const selected = selectAuthoritativeMeeting([meeting()], new Date("2026-08-25T19:23:00Z"));
+  for (const text of [
+    "Nos vemos terça às 12h!",
+    "Qualquer dúvida até lá.",
+    "Segue o link https://meet.google.com/example",
+  ]) {
+    const guarded = enforceFreshMeetingState(text, selected);
+    assertEquals(guarded.changed, true);
+    assert(!guarded.text.includes("meet.google.com"));
+  }
+});
+
+Deno.test("durante reunião permite link pedido, mas bloqueia despedida futura", () => {
+  const selected = selectAuthoritativeMeeting([meeting()], new Date("2026-08-25T15:30:00Z"));
+  assertEquals(enforceFreshMeetingState("Link: https://meet.google.com/example", selected).changed, false);
+  assertEquals(enforceFreshMeetingState("Nos vemos mais tarde, até lá!", selected).changed, true);
+});
+
+Deno.test("reconciliação inclui só vencidas e lembrete passado é cancelável", () => {
+  const now = new Date("2026-08-25T20:00:00Z");
+  const future = meeting({ id: "future", scheduled_at: "2026-08-26T15:00:00Z" });
+  assertEquals(expiredMeetingIdsForReconciliation([meeting(), future], now), [meeting().id]);
+  assertEquals(shouldCancelPastReminder({ scheduledFor: "2026-08-25T14:00:00Z", meeting: future }, now), true);
+  assertEquals(shouldCancelPastReminder({ scheduledFor: "2026-08-26T14:00:00Z", meeting: future }, now), false);
+});
