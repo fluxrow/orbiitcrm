@@ -16,7 +16,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ok, fail, optionsResponse, ErrorCodes } from "../_shared/responses.ts";
-import { getSystemEmailConfig } from "../_shared/system-email.ts";
+import { getSystemEmailCandidates } from "../_shared/system-email.ts";
 
 const APP_URL = Deno.env.get("APP_URL") || "https://orbit.fluxrow.pro";
 
@@ -190,35 +190,38 @@ Deno.serve(async (req) => {
 
   // 2) Envia via Resend usando a identidade do sistema.
   try {
-    const { apiKey, fromEmail } = await getSystemEmailConfig(supabase);
-    if (!apiKey) {
+    const candidates = await getSystemEmailCandidates(supabase);
+    if (candidates.length === 0) {
       console.error("[recovery] no Resend API key configured");
       return ok({ sent: true });
     }
 
     const html = buildHtml(actionLink);
 
-    const resendResp = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: [rawEmail],
-        subject: "Recuperação de senha - Orbit",
-        html,
-      }),
-    });
+    for (const { apiKey, fromEmail } of candidates) {
+      const resendResp = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: [rawEmail],
+          subject: "Recuperação de senha - Orbit",
+          html,
+        }),
+      });
 
-    if (!resendResp.ok) {
+      if (resendResp.ok) {
+        console.log(`[recovery] sent OK to ${maskEmail(rawEmail)}`);
+        break;
+      }
+
       const errBody = await resendResp.text().catch(() => "");
       console.error(
-        `[recovery] resend send failed (${resendResp.status}) for ${maskEmail(rawEmail)}: ${errBody}`,
+        `[recovery] resend candidate failed (${resendResp.status}) for ${maskEmail(rawEmail)}: ${errBody}`,
       );
-    } else {
-      console.log(`[recovery] sent OK to ${maskEmail(rawEmail)}`);
     }
   } catch (e) {
     console.error("[recovery] resend threw:", (e as Error).message);
