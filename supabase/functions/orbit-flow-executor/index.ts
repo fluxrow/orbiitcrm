@@ -17,6 +17,12 @@ import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { getTokenForEmpresa, ensureFreshAccessToken, checkAvailability } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
+import {
+  VIVER_EMPRESA_ID,
+  meetingIdFromFlowContext,
+  evaluateViverMeetingReminder,
+  type MeetingRow,
+} from "../_shared/viver-meeting-lifecycle.ts";
 
 import { resolveEventId, buildScheduledActionContext, restoreRunFromScheduled } from "./flow-run-events.ts";
 import { computeCadenceKey } from "./cadence-key.ts";
@@ -891,6 +897,40 @@ async function handleSingleAction(scheduledId: string): Promise<Response> {
   // Restaura o run consumível pelo runner, garantindo que event_id do dispatcher original
   // seja propagado para o path de flow_stage (evita colisão futura no stableKey).
   const run: Json = restoreRunFromScheduled(s);
+
+  // Viver: lembrete atrasado nunca pode atravessar o executor. Revalida a
+  // reunião autoritativa depois do claim e cancela deterministicamente antes
+  // de criar step/outbox. Outros tenants não passam por este bloco.
+  if (s.empresa_id === VIVER_EMPRESA_ID) {
+    const meetingId = meetingIdFromFlowContext(s.context);
+    const reminderKind = String(s.context?.payload?.reminder_kind ?? "");
+    if (reminderKind.startsWith("meeting_reminder_")) {
+      const meetingLookup = meetingId ? await supabase
+        .from("orbit_meetings")
+        .select("id, scheduled_at, duration_minutes, status, meeting_url")
+        .eq("empresa_id", VIVER_EMPRESA_ID)
+        .eq("id", meetingId)
+        .maybeSingle() : { data: null, error: null };
+      const reminderGuard = evaluateViverMeetingReminder({
+        reminderKind,
+        meetingId,
+        meeting: (meetingLookup.data as MeetingRow | null) ?? null,
+        queryFailed: Boolean(meetingLookup.error),
+      }, new Date());
+      if (!reminderGuard.allowed) {
+        const reason = reminderGuard.reason || "meeting_reminder_blocked";
+        await supabase.from("orbit_flow_scheduled_actions")
+          .update({ status: "canceled", canceled_reason: reason, updated_at: new Date().toISOString() })
+          .eq("empresa_id", VIVER_EMPRESA_ID)
+          .eq("id", s.id)
+          .eq("status", "running");
+        return new Response(
+          JSON.stringify({ ok: true, data: { skipped: true, reason }, error: null }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+  }
 
   // ── Corte de automação: ação agendada de prospect anterior ao corte é cancelada,
   // nunca executada (nenhuma cadência antiga ressuscita após o corte).
