@@ -862,8 +862,9 @@ serve(async (req) => {
   let executionClaimForCleanup: { id: string; empresa_id: string; lease_token: string } | null = null;
   let empresaIdForCleanup: string | null = null;
   let executionOutcomeForCleanup: "finished" | "error" = "finished";
+  let drainContext: { conversa_id: string; prospect_id: string; telefone: string | null } | null = null;
   try {
-    const { conversa_id, prospect_id, mensagem, telefone, recovery_tag, outbox_hold_until, correlation_id } = await req.json();
+    const { conversa_id, prospect_id, mensagem, telefone, recovery_tag, outbox_hold_until, inbound_message_id } = await req.json();
     conversaIdForCleanup = conversa_id ?? null;
     const recoveryTag = sanitizeRecoveryTag(recovery_tag);
     if (conversa_id && recoveryTag) RECOVERY_TAGS.set(conversa_id, recoveryTag);
@@ -890,22 +891,22 @@ serve(async (req) => {
     const empresaId = prospect?.empresa_id;
     if (!empresaId || !conversa_id) throw new Error("tenant_or_conversation_not_resolved");
     empresaIdForCleanup = empresaId;
+    drainContext = { conversa_id, prospect_id, telefone: telefone ?? null };
 
-    const { data: latestInbound } = await supabase
+    let inboundQuery = supabase
       .from("orbit_mensagens")
       .select("id")
       .eq("empresa_id", empresaId)
       .eq("conversa_id", conversa_id)
-      .eq("direcao", "IN")
-      .order("timestamp", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const executionCorrelation = String(correlation_id || req.headers.get("Idempotency-Key") || latestInbound?.id || "").slice(0, 300);
-    if (!executionCorrelation) throw new Error("execution_correlation_not_resolved");
+      .eq("direcao", "IN");
+    if (inbound_message_id) inboundQuery = inboundQuery.eq("id", inbound_message_id);
+    else inboundQuery = inboundQuery.order("timestamp", { ascending: false }).limit(1);
+    const { data: normativeInbound } = await inboundQuery.maybeSingle();
+    if (!normativeInbound?.id) throw new Error("inbound_message_not_resolved");
     const { data: claimRows, error: claimError } = await supabase.rpc("claim_orbit_ai_execution", {
       _empresa_id: empresaId,
       _conversa_id: conversa_id,
-      _event_id: executionCorrelation,
+      _inbound_message_id: normativeInbound.id,
       _lease_seconds: 300,
     });
     if (claimError) throw new Error(`execution_claim_failed:${claimError.message}`);
@@ -2308,12 +2309,29 @@ ${regrasBlock}`;
       }
       if (executionClaimForCleanup) {
         try {
-          await supabase.rpc("finish_orbit_ai_execution", {
+          const { data: finishRows } = await supabase.rpc("finish_orbit_ai_execution", {
             _claim_id: executionClaimForCleanup.id,
             _lease_token: executionClaimForCleanup.lease_token,
             _status: executionOutcomeForCleanup,
             _result: executionOutcomeForCleanup === "error" ? "runtime_error" : "released",
           });
+          const finishResult = Array.isArray(finishRows) ? finishRows[0] : finishRows;
+          if (finishResult?.finished && finishResult?.next_inbound_message_id && drainContext) {
+            const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-ai-agent`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                "x-orbit-internal-secret": Deno.env.get("ORBIT_AI_AGENT_SECRET") ?? "",
+              },
+              body: JSON.stringify({
+                ...drainContext,
+                mensagem: "",
+                inbound_message_id: finishResult.next_inbound_message_id,
+              }),
+            });
+            if (!response.ok) console.warn("[orbit-ai-agent] queued inbound drain deferred", { status: response.status });
+          }
         } catch { /* best effort */ }
       }
     }

@@ -3,7 +3,8 @@ import { assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.t
 const sql = await Deno.readTextFile(new URL("../../migrations/20260825120000_wave1_agent_safety.sql", import.meta.url));
 
 Deno.test("claim IA é persistente, tenant-scoped e único por evento", () => {
-  assertStringIncludes(sql, "unique (empresa_id, conversa_id, correlation_id)");
+  assertStringIncludes(sql, "inbound_message_id uuid not null references public.orbit_mensagens");
+  assertStringIncludes(sql, "unique (empresa_id, conversa_id, inbound_message_id)");
   assertStringIncludes(sql, "where id = _conversa_id and empresa_id = _empresa_id");
   assertStringIncludes(sql, "orbit_ai_execution_one_active_conversation");
   assertStringIncludes(sql, "where status = 'running'");
@@ -12,8 +13,22 @@ Deno.test("claim IA é persistente, tenant-scoped e único por evento", () => {
 Deno.test("duas execuções concorrentes só obtêm um claim efetivo", () => {
   assertStringIncludes(sql, "claim_orbit_ai_execution");
   assertStringIncludes(sql, "pg_advisory_xact_lock");
-  assertStringIncludes(sql, "conversation_busy");
+  assertStringIncludes(sql, "event_queued");
   assertStringIncludes(sql, "event_already_active");
+});
+
+Deno.test("inbound novo durante lease é persistido e drenado depois", () => {
+  assertStringIncludes(sql, "status in ('queued','running','finished','error','expired')");
+  assertStringIncludes(sql, "on conflict (empresa_id, conversa_id, inbound_message_id) do nothing");
+  assertStringIncludes(sql, "next_inbound_message_id");
+  assertStringIncludes(sql, "list_ready_orbit_ai_execution_events");
+});
+
+Deno.test("correlation id não participa da chave normativa", () => {
+  if (/unique \(empresa_id, conversa_id, correlation_id\)/i.test(sql)) {
+    throw new Error("correlation_id não pode definir idempotência de inbound");
+  }
+  assertStringIncludes(sql, "and conversa_id = _conversa_id and direcao = 'IN'");
 });
 
 Deno.test("lease tem fencing token, expiração, renovação e retomada segura", () => {

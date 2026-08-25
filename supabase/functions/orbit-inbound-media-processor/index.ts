@@ -208,7 +208,7 @@ serve(async (req) => {
         const invokeAgent = fetch(`${supabaseUrl}/functions/v1/orbit-ai-agent`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, "x-orbit-internal-secret": Deno.env.get("ORBIT_AI_AGENT_SECRET") || "" },
-          body: JSON.stringify({ conversa_id: conversation.id, prospect_id: prospect.id, mensagem: agentText, telefone: prospect.telefone }),
+          body: JSON.stringify({ conversa_id: conversation.id, prospect_id: prospect.id, mensagem: agentText, telefone: prospect.telefone, inbound_message_id: message_id }),
         }).catch((error) => console.error("[media-processor] agent invoke failed", error));
         // Keep the worker alive until the downstream agent accepts the request.
         // @ts-ignore EdgeRuntime is provided by Supabase Edge Runtime.

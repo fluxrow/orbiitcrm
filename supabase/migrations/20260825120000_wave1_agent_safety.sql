@@ -8,16 +8,17 @@ create table if not exists public.orbit_ai_execution_claims (
   id uuid primary key default gen_random_uuid(),
   empresa_id uuid not null references public.orbit_empresas(id) on delete cascade,
   conversa_id uuid not null references public.orbit_conversas(id) on delete cascade,
-  correlation_id text not null check (length(correlation_id) between 1 and 300),
+  inbound_message_id uuid not null references public.orbit_mensagens(id) on delete cascade,
   lease_token uuid not null default gen_random_uuid(),
   lease_expires_at timestamptz not null default (now() + interval '5 minutes'),
   heartbeat_at timestamptz not null default now(),
   attempts integer not null default 1,
-  status text not null default 'running' check (status in ('running','finished','error','expired')),
+  status text not null default 'running' check (status in ('queued','running','finished','error','expired')),
+  created_at timestamptz not null default now(),
   started_at timestamptz not null default now(),
   finished_at timestamptz,
   result text,
-  unique (empresa_id, conversa_id, correlation_id)
+  unique (empresa_id, conversa_id, inbound_message_id)
 );
 
 alter table public.orbit_ai_execution_claims enable row level security;
@@ -26,8 +27,10 @@ create unique index if not exists orbit_ai_execution_one_active_conversation
   where status = 'running';
 
 drop function if exists public.claim_orbit_ai_execution(uuid,uuid,text);
+drop function if exists public.claim_orbit_ai_execution(uuid,uuid,text,integer);
+drop function if exists public.claim_orbit_ai_execution(uuid,uuid,uuid,integer);
 create or replace function public.claim_orbit_ai_execution(
-  _empresa_id uuid, _conversa_id uuid, _event_id text, _lease_seconds integer default 300
+  _empresa_id uuid, _conversa_id uuid, _inbound_message_id uuid, _lease_seconds integer default 300
 ) returns table(claim_id uuid, lease_token uuid, acquired boolean, reason text, lease_expires_at timestamptz)
 language plpgsql security definer set search_path = public as $$
 declare
@@ -40,23 +43,34 @@ begin
     select 1 from public.orbit_conversas
     where id = _conversa_id and empresa_id = _empresa_id
   ) then return query select null::uuid, null::uuid, false, 'tenant_mismatch', null::timestamptz; return; end if;
+  if not exists (
+    select 1 from public.orbit_mensagens
+    where id = _inbound_message_id and empresa_id = _empresa_id
+      and conversa_id = _conversa_id and direcao = 'IN'
+  ) then return query select null::uuid, null::uuid, false, 'invalid_inbound_message', null::timestamptz; return; end if;
 
   select * into _existing from public.orbit_ai_execution_claims
-   where empresa_id = _empresa_id and conversa_id = _conversa_id and correlation_id = left(_event_id, 300);
+   where empresa_id = _empresa_id and conversa_id = _conversa_id and inbound_message_id = _inbound_message_id;
   if found and _existing.status = 'finished' then
     return query select _existing.id, _existing.lease_token, false, 'event_already_finished', _existing.lease_expires_at; return;
   end if;
   if found and _existing.status = 'running' and _existing.lease_expires_at > now() then
     return query select _existing.id, _existing.lease_token, false, 'event_already_active', _existing.lease_expires_at; return;
   end if;
+  update public.orbit_ai_execution_claims set status = 'expired', finished_at = coalesce(finished_at, now()), result = 'lease_expired'
+   where empresa_id = _empresa_id and conversa_id = _conversa_id and status = 'running' and lease_expires_at <= now();
+
   if exists (select 1 from public.orbit_ai_execution_claims
     where empresa_id = _empresa_id and conversa_id = _conversa_id
       and status = 'running' and lease_expires_at > now()) then
-    return query select null::uuid, null::uuid, false, 'conversation_busy', null::timestamptz; return;
+    insert into public.orbit_ai_execution_claims(
+      empresa_id, conversa_id, inbound_message_id, status, lease_token, lease_expires_at
+    ) values (_empresa_id, _conversa_id, _inbound_message_id, 'queued', _token, now())
+    on conflict (empresa_id, conversa_id, inbound_message_id) do nothing;
+    select * into _existing from public.orbit_ai_execution_claims
+     where empresa_id = _empresa_id and conversa_id = _conversa_id and inbound_message_id = _inbound_message_id;
+    return query select _existing.id, null::uuid, false, 'event_queued', _existing.lease_expires_at; return;
   end if;
-
-  update public.orbit_ai_execution_claims set status = 'expired', finished_at = coalesce(finished_at, now()), result = 'lease_expired'
-   where empresa_id = _empresa_id and conversa_id = _conversa_id and status = 'running' and lease_expires_at <= now();
 
   if _existing.id is not null then
     update public.orbit_ai_execution_claims set status = 'running', lease_token = _token,
@@ -65,14 +79,14 @@ begin
      where id = _existing.id
      returning id into claim_id;
   else
-    insert into public.orbit_ai_execution_claims(empresa_id, conversa_id, correlation_id, lease_token, lease_expires_at)
-    values (_empresa_id, _conversa_id, left(_event_id, 300), _token, _expires)
+    insert into public.orbit_ai_execution_claims(empresa_id, conversa_id, inbound_message_id, lease_token, lease_expires_at)
+    values (_empresa_id, _conversa_id, _inbound_message_id, _token, _expires)
     returning id into claim_id;
   end if;
   return query select claim_id, _token, true, case when _existing.id is null then 'acquired' else 'recovered_expired' end, _expires;
 end $$;
-revoke all on function public.claim_orbit_ai_execution(uuid,uuid,text,integer) from public, anon, authenticated;
-grant execute on function public.claim_orbit_ai_execution(uuid,uuid,text,integer) to service_role;
+revoke all on function public.claim_orbit_ai_execution(uuid,uuid,uuid,integer) from public, anon, authenticated;
+grant execute on function public.claim_orbit_ai_execution(uuid,uuid,uuid,integer) to service_role;
 
 create or replace function public.renew_orbit_ai_execution_lease(_claim_id uuid, _lease_token uuid, _lease_seconds integer default 300)
 returns boolean language sql security definer set search_path = public as $$
@@ -86,17 +100,39 @@ $$;
 revoke all on function public.renew_orbit_ai_execution_lease(uuid,uuid,integer) from public, anon, authenticated;
 grant execute on function public.renew_orbit_ai_execution_lease(uuid,uuid,integer) to service_role;
 
+drop function if exists public.finish_orbit_ai_execution(uuid,uuid,text,text);
 create or replace function public.finish_orbit_ai_execution(_claim_id uuid, _lease_token uuid, _status text, _result text)
-returns boolean language sql security definer set search_path = public as $$
+returns table(finished boolean, next_inbound_message_id uuid) language sql security definer set search_path = public as $$
   with finished as (
     update public.orbit_ai_execution_claims set status = case when _status = 'error' then 'error' else 'finished' end,
       finished_at = now(), heartbeat_at = now(), result = left(coalesce(_result, ''), 100)
      where id = _claim_id and lease_token = _lease_token and status = 'running'
-    returning 1
-  ) select exists(select 1 from finished)
+    returning empresa_id, conversa_id
+  ) select exists(select 1 from finished), (
+    select q.inbound_message_id from public.orbit_ai_execution_claims q, finished f
+     where q.empresa_id = f.empresa_id and q.conversa_id = f.conversa_id and q.status = 'queued'
+     order by q.created_at asc, q.id asc limit 1
+  )
 $$;
 revoke all on function public.finish_orbit_ai_execution(uuid,uuid,text,text) from public, anon, authenticated;
 grant execute on function public.finish_orbit_ai_execution(uuid,uuid,text,text) to service_role;
+
+create or replace function public.list_ready_orbit_ai_execution_events(_limit integer default 25)
+returns table(empresa_id uuid, conversa_id uuid, inbound_message_id uuid)
+language sql security definer set search_path = public as $$
+  select q.empresa_id, q.conversa_id, q.inbound_message_id
+    from public.orbit_ai_execution_claims q
+   where q.status = 'queued'
+     and not exists (
+       select 1 from public.orbit_ai_execution_claims a
+        where a.empresa_id = q.empresa_id and a.conversa_id = q.conversa_id
+          and a.status = 'running' and a.lease_expires_at > now()
+     )
+   order by q.created_at asc, q.id asc
+   limit least(greatest(_limit, 1), 100)
+$$;
+revoke all on function public.list_ready_orbit_ai_execution_events(integer) from public, anon, authenticated;
+grant execute on function public.list_ready_orbit_ai_execution_events(integer) to service_role;
 
 create table if not exists public.orbit_flow_run_review_queue (
   id uuid primary key default gen_random_uuid(),

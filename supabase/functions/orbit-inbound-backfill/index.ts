@@ -245,6 +245,7 @@ Deno.serve(async (req) => {
               prospect_id: target.prospect_id,
               mensagem: target.mensagem,
               telefone: target.telefone,
+              inbound_message_id: target.id,
               correlation_id: `backfill:${empresaId}:${target.provider_message_id}`,
             }),
           });
