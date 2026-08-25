@@ -71,4 +71,42 @@ describe("onboarding operational readiness", () => {
 
     expect(result.realGoLiveEligible).toBe(true);
   });
+
+  it("does not let unused email and calendar integrations block go-live", () => {
+    const result = getOnboardingOperationalReadiness({
+      status: "concluido",
+      responses: trainedResponses,
+      checklist: [
+        { key: "ia", label: "Treinar IA", done: true },
+        { key: "zapi", label: "Conectar WhatsApp", done: true },
+        { key: "resend", label: "Configurar Resend", done: false },
+        { key: "calendar", label: "Validar calendário", done: false },
+        { key: "kickoff", label: "Realizar kickoff", done: false },
+      ],
+    });
+
+    expect(result.realGoLiveEligible).toBe(true);
+    expect(result.requiredTotal).toBe(2);
+    expect(result.optionalPendingLabels).toEqual(["Realizar kickoff"]);
+    expect(result.notApplicableLabels).toEqual(["Configurar Resend", "Validar calendário"]);
+    expect(result.pendingLabels).toEqual([]);
+  });
+
+  it("makes calendar a blocker when automated scheduling is part of the scope", () => {
+    const result = getOnboardingOperationalReadiness({
+      status: "concluido",
+      responses: {
+        ...trainedResponses,
+        ia: { ...trainedResponses.ia, objetivo_ia: "Qualificar e agendar uma reunião" },
+      },
+      checklist: [
+        { key: "ia", label: "Treinar IA", done: true },
+        { key: "calendar", label: "Validar calendário", done: false },
+      ],
+    });
+
+    expect(result.realGoLiveEligible).toBe(false);
+    expect(result.pendingLabels).toEqual(["Validar calendário"]);
+    expect(result.items.find((item) => item.key === "calendar")?.requirement).toBe("required");
+  });
 });
