@@ -14,7 +14,7 @@
 // antes de qualquer chamada ao LLM nesses casos.
 
 import { assert, assertStringIncludes, assertFalse } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { buildSystemPrompt, renderWelcomeMessage } from "./index.ts";
+import { buildSystemPrompt, normalizeQualificationFields, renderWelcomeMessage } from "./index.ts";
 
 const TYPEBOT_LEAD_SEM_NOME = {
   nome: "",
@@ -77,6 +77,22 @@ Deno.test("renderWelcomeMessage usa a abertura aprovada e personaliza o nome", (
 Deno.test("renderWelcomeMessage não deixa pontuação quebrada quando o nome está vazio", () => {
   const reply = renderWelcomeMessage("Oi, {{nome}}! Tudo bem?", { nome: "" });
   assert(reply === "Oi! Tudo bem?");
+});
+
+Deno.test("normalizeQualificationFields aceita formatos legados sem quebrar a sandbox", () => {
+  const fromObject = normalizeQualificationFields({ produto: "Produto procurado", prazo: { label: "Prazo", required: true } });
+  assert(fromObject.length === 2);
+  assert(fromObject[0].key === "produto");
+  assert(fromObject[0].label === "Produto procurado");
+  assert(fromObject[1].label === "Prazo");
+  assert(fromObject[1].required === true);
+
+  const fromJson = normalizeQualificationFields('[{"key":"cidade","label":"Cidade"}]');
+  assert(fromJson.length === 1);
+  assert(fromJson[0].key === "cidade");
+
+  const fromText = normalizeQualificationFields("Quantidade e medidas");
+  assert(fromText[0].label === "Quantidade e medidas");
 });
 
 Deno.test("assertSandboxReplyIsClean aceita resposta em conformidade", () => {

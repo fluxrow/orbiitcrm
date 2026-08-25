@@ -36,7 +36,13 @@ interface LoadedAIConfig {
   max_tokens?: number | null;
   modelo_ia?: string | null;
   mensagem_boas_vindas?: string | null;
-  campos_qualificacao?: Array<{ label?: string; key?: string; required?: boolean }> | null;
+  campos_qualificacao?: unknown;
+}
+
+interface QualificationField {
+  label?: string;
+  key?: string;
+  required?: boolean;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -62,8 +68,40 @@ export function renderWelcomeMessage(template: string, lead?: MockLead | null): 
     .replace(/\{\{\s*(nome|telefone|email|cidade|segmento|origem)\s*\}\}/gi, (_, key: string) => values[key.toLowerCase()] || "")
     .replace(/\{\s*(nome|telefone|email|cidade|segmento|origem)\s*\}/gi, (_, key: string) => values[key.toLowerCase()] || "")
     .replace(/[ \t]+([,.;!?])/g, "$1")
+    .replace(/,([!?])/g, "$1")
     .replace(/[ \t]{2,}/g, " ")
     .trim();
+}
+
+export function normalizeQualificationFields(value: unknown): QualificationField[] {
+  let parsed = value;
+  if (typeof parsed === "string") {
+    const trimmed = parsed.trim();
+    if (!trimmed) return [];
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      return [{ label: trimmed.slice(0, 200) }];
+    }
+  }
+
+  const candidates = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === "object"
+      ? Object.entries(parsed as Record<string, unknown>).map(([key, item]) =>
+          item && typeof item === "object" ? { key, ...(item as Record<string, unknown>) } : { key, label: item },
+        )
+      : [];
+
+  return candidates.slice(0, 50).flatMap((item): QualificationField[] => {
+    if (typeof item === "string") return [{ label: item.slice(0, 200) }];
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const label = typeof record.label === "string" ? record.label.trim().slice(0, 200) : undefined;
+    const key = typeof record.key === "string" ? record.key.trim().slice(0, 100) : undefined;
+    if (!label && !key) return [];
+    return [{ label, key, required: record.required === true }];
+  });
 }
 
 export function buildSystemPrompt(cfg: LoadedAIConfig, mockLead?: MockLead | null, trigger?: string): string {
@@ -73,7 +111,7 @@ export function buildSystemPrompt(cfg: LoadedAIConfig, mockLead?: MockLead | nul
   const tom = cfg.tom_conversa || "profissional";
   const idioma = cfg.idioma || "pt-BR";
 
-  const camposQ = (cfg.campos_qualificacao || [])
+  const camposQ = normalizeQualificationFields(cfg.campos_qualificacao)
     .map((c) => `- ${c.label || c.key}${c.required ? " (obrigatório)" : ""}`)
     .join("\n");
 
