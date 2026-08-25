@@ -32,6 +32,46 @@ serve(async (req) => {
   const results: Array<Record<string, unknown>> = [];
 
   try {
+    // Recuperação persistente de inbound enfileirado cujo lease anterior terminou
+    // por timeout/crash. O agente refaz o claim atômico usando o ID da mensagem IN;
+    // este tick nunca envia ao WhatsApp diretamente.
+    const { data: queuedEvents, error: queuedError } = await supabase.rpc(
+      "list_ready_orbit_ai_execution_events",
+      { _limit: 25 },
+    );
+    if (queuedError) console.warn("[orbit-ai-reply-debounce-tick] queued drain unavailable");
+    for (const event of queuedEvents ?? []) {
+      const { data: conversa } = await supabase
+        .from("orbit_conversas")
+        .select("prospect_id, human_talk")
+        .eq("id", event.conversa_id)
+        .eq("empresa_id", event.empresa_id)
+        .maybeSingle();
+      if (!conversa?.prospect_id || conversa.human_talk === true) continue;
+      const { data: prospect } = await supabase
+        .from("orbit_prospects")
+        .select("telefone")
+        .eq("id", conversa.prospect_id)
+        .eq("empresa_id", event.empresa_id)
+        .maybeSingle();
+      const resp = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-ai-agent`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          "x-orbit-internal-secret": Deno.env.get("ORBIT_AI_AGENT_SECRET") ?? "",
+        },
+        body: JSON.stringify({
+          conversa_id: event.conversa_id,
+          prospect_id: conversa.prospect_id,
+          telefone: prospect?.telefone ?? null,
+          mensagem: "",
+          inbound_message_id: event.inbound_message_id,
+        }),
+      });
+      results.push({ conversa_id: event.conversa_id, action: resp.ok ? "queued_drained" : "queued_retry" });
+    }
+
     // Busca com carência ZERO e aplica a carência por tenant abaixo:
     // o default (DEBOUNCE_RECOVERY_GRACE_MS) permanece inalterado.
     const { data: rows, error } = await supabase
@@ -111,7 +151,7 @@ serve(async (req) => {
         .maybeSingle();
       let q = supabase
         .from("orbit_mensagens")
-        .select("mensagem, media_extracted_text, timestamp")
+        .select("id, mensagem, media_extracted_text, timestamp")
         .eq("empresa_id", row.empresa_id)
         .eq("conversa_id", row.conversa_id)
         .eq("direcao", "IN")
@@ -189,6 +229,7 @@ serve(async (req) => {
           prospect_id: row.prospect_id,
           mensagem: texts.join("\n"),
           telefone: (ins?.[0] as any)?.telefone ?? null,
+          inbound_message_id: (ins?.at(-1) as any)?.id ?? null,
           correlation_id: correlationId,
           debounced: true,
           batch_size: texts.length,

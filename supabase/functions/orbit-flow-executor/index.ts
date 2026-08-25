@@ -1003,10 +1003,13 @@ Deno.serve(async (req) => {
 
 
 
-    await supabase
-      .from("orbit_flow_runs")
-      .update({ status: "running", started_at: new Date().toISOString() })
-      .eq("id", run_id);
+    const { data: claimedRunId, error: runClaimError } = await supabase.rpc("claim_orbit_flow_run_start", { _run_id: run_id });
+    if (runClaimError) throw new Error(`run claim falhou: ${runClaimError.message}`);
+    if (!claimedRunId) {
+      return new Response(JSON.stringify({ ok: true, data: { run_id, status: "skipped", reason: "already_claimed_or_not_pending" } }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const { data: actions } = await supabase
       .from("orbit_flow_actions")

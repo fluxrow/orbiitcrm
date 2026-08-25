@@ -8,6 +8,7 @@ import {
   resolveTenantSchedulingDecision,
   tryAutoScheduleMeeting,
 } from "./index.ts";
+import { VIVER_EMPRESA_ID } from "../_shared/tenant-scheduling-policy.ts";
 
 type Row = Record<string, any>;
 
@@ -217,6 +218,78 @@ Deno.test("sem data consulta freeBusy e oferece os 2 horários úteis mais próx
   assert(!state.order.includes("orbit_meetings.insert"));
 });
 
+Deno.test("Viver: aceite ambíguo de dois horários exige escolha e não toca calendário", async () => {
+  const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
+  const params = baseParams() as any;
+  params.empresaId = VIVER_EMPRESA_ID;
+  params.mensagem_cliente = "pode ser";
+  params.sugestoes_anteriores = [{ label: "13:00", start: "2026-07-30T16:00:00Z" }, { label: "15:00", start: "2026-07-30T18:00:00Z" }];
+  let calendarCalls = 0;
+  const res = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, params, {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => { calendarCalls++; return "at"; },
+    createCalendarEvent: async () => { calendarCalls++; return {}; },
+  });
+  assertEquals(res.created, false);
+  assert(String(res.response_override).includes("opção 1 ou a opção 2"));
+  assertEquals(calendarCalls, 0);
+});
+
+Deno.test("Viver: escolha explícita é revalidada e cria somente dentro de 13h-17h", async () => {
+  const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
+  const params = baseParams() as any;
+  params.empresaId = VIVER_EMPRESA_ID;
+  params.mensagem_cliente = "opção 2";
+  params.sugestoes_anteriores = [{ label: "13:00", start: "2026-07-30T16:00:00Z" }, { label: "15:00", start: "2026-07-30T18:00:00Z" }];
+  let availabilityCalls = 0;
+  const res = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, params, {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => "at",
+    checkAvailability: async () => { availabilityCalls++; return { busy: [] }; },
+    createCalendarEvent: async () => ({ id: "g1", htmlLink: "https://meet.invalid/test" }),
+    now: () => new Date("2026-07-20T15:00:00Z"),
+  });
+  assertEquals(res.created, true);
+  assert(availabilityCalls >= 1);
+});
+
+for (const [label, start] of [["antes das 13h", "2026-07-30T15:59:00Z"], ["depois das 17h", "2026-07-30T20:01:00Z"]] as const) {
+  Deno.test(`Viver bloqueia ${label} no backend`, async () => {
+    const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
+    const params = baseParams() as any;
+    params.empresaId = VIVER_EMPRESA_ID;
+    params.mensagem_cliente = "confirmo esse horário";
+    params.agendamento = { data_iso: start, tem_horario: true, duracao_min: 60 };
+    let creates = 0;
+    const res = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, params, {
+      getTokenForEmpresa: async () => TOKEN,
+      ensureFreshAccessToken: async () => "at",
+      checkAvailability: async () => ({ busy: [] }),
+      createCalendarEvent: async () => { creates++; return {}; },
+      now: () => new Date("2026-07-20T15:00:00Z"),
+    });
+    assertEquals(res.created, false);
+    assertEquals(creates, 0);
+  });
+}
+
+Deno.test("Viver bloqueia reunião que começa antes mas termina depois das 17h", async () => {
+  const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
+  const params = baseParams() as any;
+  params.empresaId = VIVER_EMPRESA_ID;
+  params.agendamento = { data_iso: "2026-07-30T19:30:00Z", tem_horario: true, duracao_min: 60 }; // 16:30-17:30 BRT
+  let creates = 0;
+  const res = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, params, {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => "at",
+    checkAvailability: async () => ({ busy: [] }),
+    createCalendarEvent: async () => { creates++; return {}; },
+    now: () => new Date("2026-07-20T15:00:00Z"),
+  });
+  assertEquals(res.created, false);
+  assertEquals(creates, 0);
+});
+
 Deno.test("faixa horária explícita prevalece sobre período genérico", () => {
   assertEquals(explicitTimeBounds("Durante a semana no horário da tarde entre 15 e 17 h"), {
     start: 15 * 60,
@@ -317,6 +390,7 @@ Deno.test("dia sem horário usa janela e fuso configurados no tenant", async () 
     },
     createCalendarEvent: async () => ({ id: "unused" }),
     deleteCalendarEvent: async () => {},
+    now: () => FROZEN_NOW,
   });
   assertEquals(res.handled, true);
   assertEquals(res.created, false);
@@ -328,6 +402,7 @@ Deno.test("dia sem horário usa janela e fuso configurados no tenant", async () 
   assertEquals(res.suggestions?.[0]?.label, "10:30");
 });
 
+const FROZEN_NOW = new Date("2026-07-20T15:00:00.000Z");
 const START = "2026-07-30T18:00:00.000Z"; // 15:00 BRT
 const END = "2026-07-30T19:00:00.000Z";
 
@@ -352,6 +427,7 @@ Deno.test("order: meeting lookup → ensure_deal → freeBusy exato → createEv
     checkAvailability: async (_at, _cal, tmin, tmax) => { state.order.push(`freeBusy:${tmin}:${tmax}`); return { busy: [] }; },
     createCalendarEvent: async () => { state.order.push("createEvent"); return created; },
     deleteCalendarEvent: async () => { state.order.push("delete"); },
+    now: () => FROZEN_NOW,
   });
   assertEquals(res.handled, true);
   assertEquals(res.created, true);
@@ -380,6 +456,7 @@ Deno.test("rollback: se insert meeting falhar, DELETE do evento Google é chamad
     checkAvailability: async () => ({ busy: [] }),
     createCalendarEvent: async () => ({ id: "gev-42" }),
     deleteCalendarEvent: async (_at, cal, ev) => { deleted = { cal, ev }; },
+    now: () => FROZEN_NOW,
   });
   assertEquals(res.handled, false);
   assertEquals(res.error, "insert orbit_meetings falhou");
@@ -397,6 +474,7 @@ Deno.test("ensure_deal_for_prospect falhando aborta antes de tocar Google", asyn
     checkAvailability: async () => { touchedGoogle = true; return { busy: [] }; },
     createCalendarEvent: async () => { touchedGoogle = true; return { id: "x" }; },
     deleteCalendarEvent: async () => {},
+    now: () => FROZEN_NOW,
   });
   assertEquals(res.handled, false);
   assertEquals(res.error, "ensure_deal_for_prospect falhou");
@@ -413,6 +491,7 @@ Deno.test("freeBusy exato conflitante NÃO cria evento e NÃO faz handoff", asyn
     checkAvailability: async () => ({ busy: [{ start: START, end: END }] }),
     createCalendarEvent: async () => { created = true; return { id: "x" }; },
     deleteCalendarEvent: async () => {},
+    now: () => FROZEN_NOW,
   });
   assertEquals(created, false);
   assertEquals(res.handled, true); // suprime handoff
@@ -433,6 +512,7 @@ Deno.test("dedupe: meeting pré-existente reutilizado sem tocar Google nem criar
     checkAvailability: async () => { touched++; return { busy: [] }; },
     createCalendarEvent: async () => { touched++; return { id: "x" }; },
     deleteCalendarEvent: async () => { touched++; },
+    now: () => FROZEN_NOW,
   });
   assertEquals(touched, 0);
   assertEquals(res.handled, true);
@@ -455,6 +535,7 @@ Deno.test("movimento para Agendado não insere deal_stage_changed duplicado manu
     checkAvailability: async () => ({ busy: [] }),
     createCalendarEvent: async () => ({ id: "gev-1", hangoutLink: "https://meet/x" }),
     deleteCalendarEvent: async () => {},
+    now: () => FROZEN_NOW,
   });
   assertEquals(res.created, true);
   // Em produção o trigger do UPDATE de orbit_deals emite o evento. O agente não
@@ -472,6 +553,7 @@ Deno.test("Google Calendar não conectado devolve not_connected (handoff manual)
     checkAvailability: async () => ({ busy: [] }),
     createCalendarEvent: async () => ({ id: "x" }),
     deleteCalendarEvent: async () => {},
+    now: () => FROZEN_NOW,
   });
   assertEquals(res.handled, false);
   assertEquals(res.not_connected, true);
@@ -497,6 +579,7 @@ Deno.test("meeting existente NÃO chama ensureFreshAccessToken/freeBusy/createEv
     checkAvailability: async () => { freeBusyCalls++; return { busy: [] }; },
     createCalendarEvent: async () => { createCalls++; return { id: "x" }; },
     deleteCalendarEvent: async () => {},
+    now: () => FROZEN_NOW,
   });
   assertEquals(ensureCalls, 0, "ensureFreshAccessToken não pode ser chamado se já existe meeting");
   assertEquals(freeBusyCalls, 0, "freeBusy não pode ser chamado se já existe meeting");
@@ -530,6 +613,7 @@ Deno.test("corrida 23505: deleta o Google event perdedor e reutiliza a meeting v
     checkAvailability: async () => ({ busy: [] }),
     createCalendarEvent: async () => ({ id: "gev-loser", hangoutLink: "https://meet/loser" }),
     deleteCalendarEvent: async (_at, cal, ev) => { deleted = { cal, ev }; },
+    now: () => FROZEN_NOW,
   });
   assert(deleted, "deleteCalendarEvent deve ser chamado no evento perdedor");
   assertEquals(deleted.ev, "gev-loser");
@@ -552,6 +636,7 @@ Deno.test("ramo somente-dia (tem_horario=false) continua chamando ensureFreshAcc
     checkAvailability: async () => { freeBusyCalls++; return { busy: [] }; },
     createCalendarEvent: async () => ({ id: "should-not-be-created" }),
     deleteCalendarEvent: async () => {},
+    now: () => FROZEN_NOW,
   });
   assertEquals(ensureCalls, 1, "ensureFreshAccessToken deve ser chamado no ramo somente-dia");
   assertEquals(freeBusyCalls, 1, "freeBusy deve ser chamado no ramo somente-dia");

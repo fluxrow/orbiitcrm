@@ -1074,6 +1074,7 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
               prospect_id: prospect.id,
               mensagem,
               telefone: normalizedPhone,
+              inbound_message_id: savedMessage.id,
               correlation_id: correlationId,
               ...extra,
             }),

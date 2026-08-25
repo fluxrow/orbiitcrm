@@ -132,7 +132,10 @@ import {
   buildCorrectiveInstruction,
   buildDeterministicFallback,
   stripPersonaReintroduction,
+  canonicalFactsToCollectedFields,
+  resolveCanonicalKey,
 } from "../_shared/agent-memory.ts";
+import { schedulingPolicy, isAmbiguousSlotAcceptance, selectExplicitSuggestion } from "../_shared/tenant-scheduling-policy.ts";
 
 /**
  * Normalização final aplicada em TODOS os caminhos de saída do agente.
@@ -856,8 +859,12 @@ serve(async (req) => {
 
   let conversaIdForCleanup: string | null = null;
   let supabaseForCleanup: any = null;
+  let executionClaimForCleanup: { id: string; empresa_id: string; lease_token: string } | null = null;
+  let empresaIdForCleanup: string | null = null;
+  let executionOutcomeForCleanup: "finished" | "error" = "finished";
+  let drainContext: { conversa_id: string; prospect_id: string; telefone: string | null } | null = null;
   try {
-    const { conversa_id, prospect_id, mensagem, telefone, recovery_tag, outbox_hold_until } = await req.json();
+    const { conversa_id, prospect_id, mensagem, telefone, recovery_tag, outbox_hold_until, inbound_message_id } = await req.json();
     conversaIdForCleanup = conversa_id ?? null;
     const recoveryTag = sanitizeRecoveryTag(recovery_tag);
     if (conversa_id && recoveryTag) RECOVERY_TAGS.set(conversa_id, recoveryTag);
@@ -871,17 +878,7 @@ serve(async (req) => {
     );
     supabaseForCleanup = supabase;
 
-    // ── LOCK: marcar conversa como em processamento ──
-    await supabase
-      .from("orbit_conversas")
-      .update({ ai_processing: true })
-      .eq("id", conversa_id);
-
     try {
-    // ── DEBOUNCE: aguardar 10 segundos para agregar mensagens quebradas ──
-    console.log("[orbit-ai-agent] Aguardando 10s para agregar mensagens...");
-    await new Promise(r => setTimeout(r, 10000));
-
     // Buscar prospect first to get empresa_id
     const { data: prospect } = await supabase
       .from("orbit_prospects")
@@ -892,6 +889,55 @@ serve(async (req) => {
     // Determine if demo
     let isDemo = false;
     const empresaId = prospect?.empresa_id;
+    if (!empresaId || !conversa_id) throw new Error("tenant_or_conversation_not_resolved");
+    empresaIdForCleanup = empresaId;
+    drainContext = { conversa_id, prospect_id, telefone: telefone ?? null };
+
+    let inboundQuery = supabase
+      .from("orbit_mensagens")
+      .select("id")
+      .eq("empresa_id", empresaId)
+      .eq("conversa_id", conversa_id)
+      .eq("direcao", "IN");
+    if (inbound_message_id) inboundQuery = inboundQuery.eq("id", inbound_message_id);
+    else inboundQuery = inboundQuery.order("timestamp", { ascending: false }).limit(1);
+    const { data: normativeInbound } = await inboundQuery.maybeSingle();
+    if (!normativeInbound?.id) throw new Error("inbound_message_not_resolved");
+    const { data: claimRows, error: claimError } = await supabase.rpc("claim_orbit_ai_execution", {
+      _empresa_id: empresaId,
+      _conversa_id: conversa_id,
+      _inbound_message_id: normativeInbound.id,
+      _lease_seconds: 300,
+    });
+    if (claimError) throw new Error(`execution_claim_failed:${claimError.message}`);
+    const claim = Array.isArray(claimRows) ? claimRows[0] : claimRows;
+    if (!claim?.acquired || !claim?.claim_id || !claim?.lease_token) {
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: claim?.reason || "conversation_busy" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    executionClaimForCleanup = { id: claim.claim_id, empresa_id: empresaId, lease_token: claim.lease_token };
+    const renewExecutionLease = async () => {
+      const { data, error } = await supabase.rpc("renew_orbit_ai_execution_lease", {
+        _claim_id: claim.claim_id, _lease_token: claim.lease_token, _lease_seconds: 300,
+      });
+      return !error && data === true;
+    };
+    const leaseLostResponse = () => new Response(
+      JSON.stringify({ ok: true, skipped: true, reason: "lease_lost" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+    await supabase.from("orbit_conversas")
+      .update({ ai_processing: true })
+      .eq("id", conversa_id)
+      .eq("empresa_id", empresaId);
+
+    // ── DEBOUNCE: claim persistente já protege execuções concorrentes ──
+    console.log("[orbit-ai-agent] Aguardando 10s para agregar mensagens...");
+    await new Promise(r => setTimeout(r, 10000));
+    if (!await renewExecutionLease()) {
+      return leaseLostResponse();
+    }
 
     // ── Corte de automação do tenant: prospect anterior ao corte nunca é atendido
     // pela IA (mesmo se alguém invocar o agente diretamente). Atendimento fica humano.
@@ -958,6 +1004,7 @@ serve(async (req) => {
 
     if (hoursDecision.halt) {
       if (hoursDecision.fallbackMessage) {
+        if (!await renewExecutionLease()) return leaseLostResponse();
         await sendWhatsAppMessage(supabase, telefone, hoursDecision.fallbackMessage, conversa_id, isDemo, empresaId);
       }
       return new Response(JSON.stringify({ ok: true, outside_hours: true }), {
@@ -1011,6 +1058,7 @@ serve(async (req) => {
         : [{ mensagem }]) as any[])
       : { detected: false, inbound_id: null, kind: null };
     if (paymentReceiptCfg && paymentReceiptEvidence.detected) {
+      if (!await renewExecutionLease()) return leaseLostResponse();
       const outcome = await runPaymentReceiptHandoff(supabase, {
         conversa_id,
         empresaId: empresaId ?? null,
@@ -1031,6 +1079,7 @@ serve(async (req) => {
 
     // ── CHATBOT FLOWS: comprovante tem prioridade absoluta; os demais eventos
     // preservam a prioridade anterior do fluxo sobre a IA generativa.
+    if (!await renewExecutionLease()) return leaseLostResponse();
     const flowHandled = await processChatbotFlow(supabase, {
       conversa,
       conversa_id,
@@ -1107,6 +1156,7 @@ serve(async (req) => {
     // Nunca define entrada, parcelas, desconto, link ou chave.
     const mixedPaymentCfg = readMixedPaymentHandoffConfig(aiConfig as Record<string, unknown>);
     if (mixedPaymentCfg && detectMixedPaymentRequest(mensagemAgregada)) {
+      if (!await renewExecutionLease()) return leaseLostResponse();
       const outcome = await runMixedPaymentHandoff(supabase, {
         conversa_id,
         empresaId: empresaId ?? null,
@@ -1147,17 +1197,18 @@ serve(async (req) => {
     const maxTokens = aiConfig.max_tokens || 500;
     const idioma = aiConfig.idioma || "pt-BR";
 
-    const camposFaltantes = camposCadastroEffective.filter(
-      (campo: string) => !camposColetados[campo] && !prospect?.[campo]
-    );
-    const cadastroCompleto = camposFaltantes.length === 0;
-
     // ── MEMÓRIA CANÔNICA: hidratar fatos já conhecidos do lead ──
     const canonicalFacts = hydrateCanonicalFacts({
       prospect,
       aiContexto,
       mensagens: mensagens || [],
+      tenantAliases: (aiConfig as any).canonical_field_aliases,
     });
+    const camposFaltantes = camposCadastroEffective.filter((campo: string) => {
+      const canonical = resolveCanonicalKey(campo, (aiConfig as any).canonical_field_aliases);
+      return !camposColetados[campo] && !prospect?.[campo] && !(canonical && canonicalFacts[canonical]);
+    });
+    const cadastroCompleto = camposFaltantes.length === 0;
     const canonicalFactsBlock = buildCanonicalFactsBlock(canonicalFacts);
     const previousAgentQuestions = recentAgentQuestions(mensagens || []);
     console.log(
@@ -1795,6 +1846,7 @@ ${regrasBlock}`;
         scheduleOutcome = schedulingDecision;
       } else {
         try {
+          if (!await renewExecutionLease()) return leaseLostResponse();
           scheduleOutcome = await tryAutoScheduleMeeting(supabase, {
             empresaId,
             prospect,
@@ -1834,6 +1886,7 @@ ${regrasBlock}`;
     const alreadyNotified = aiContexto.commercial_notified === true;
     const shouldNotifyCommercial = isCommercialSignal && !alreadyNotified && !suppressHandoff && !scheduleOutcome.handoff_ready;
     if (shouldNotifyCommercial) {
+      if (!await renewExecutionLease()) return leaseLostResponse();
       console.log("[orbit-ai-agent] Sinal comercial detectado:", intencaoNormalizada, "— notificando responsável...");
       await notifyCommercialHumanDetected(supabase, {
         prospect,
@@ -1846,12 +1899,22 @@ ${regrasBlock}`;
     }
 
 
+    const canonicalValidatedFields = canonicalFactsToCollectedFields(hydrateCanonicalFacts({
+      aiContexto: { campos_coletados: dadosValidados },
+      tenantAliases: (aiConfig as any).canonical_field_aliases,
+    }));
+
     // Atualizar contexto da conversa com estado e classificação
     const novoContexto = {
       ...aiContexto,
       estado: isHandoff ? "handoff" : (scheduleOutcome.created ? "qualificado" : nextState),
       em_coleta_orcamento: parsed.iniciar_coleta_orcamento || emColetaOrcamento,
-      campos_coletados: { ...camposColetados, ...dadosValidados },
+      campos_coletados: {
+        ...camposColetados,
+        ...dadosValidados,
+        ...canonicalFactsToCollectedFields(canonicalFacts),
+        ...canonicalValidatedFields,
+      },
       cadastro_completo: parsed.cadastro_completo,
       ultima_intencao: parsed.intencao,
       intro_already_sent: introAlreadySent || primeiraInteracao,
@@ -2220,22 +2283,61 @@ ${regrasBlock}`;
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+    if (!await renewExecutionLease()) {
+      return leaseLostResponse();
+    }
     await sendAIResponse(supabase, telefone, resposta, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
 
 
     return new Response(JSON.stringify({ ok: true, resposta, parsed, state: novoContexto.estado, simulated: isDemo }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+    } catch (innerError) {
+      executionOutcomeForCleanup = "error";
+      throw innerError;
     } finally {
       // ── UNLOCK: sempre resetar ai_processing (best effort) ──
       try {
         await supabase
           .from("orbit_conversas")
           .update({ ai_processing: false })
-          .eq("id", conversa_id);
+          .eq("id", conversa_id)
+          .eq("empresa_id", empresaIdForCleanup);
         console.log("[orbit-ai-agent] Lock liberado para conversa:", conversa_id);
       } catch (unlockErr) {
         console.error("[orbit-ai-agent] Falha ao liberar lock no finally:", unlockErr);
+      }
+      if (executionClaimForCleanup) {
+        try {
+          const { data: finishRows } = await supabase.rpc("finish_orbit_ai_execution", {
+            _claim_id: executionClaimForCleanup.id,
+            _lease_token: executionClaimForCleanup.lease_token,
+            _status: executionOutcomeForCleanup,
+            _result: executionOutcomeForCleanup === "error" ? "runtime_error" : "released",
+          });
+          const finishResult = Array.isArray(finishRows) ? finishRows[0] : finishRows;
+          if (finishResult?.finished && finishResult?.next_inbound_message_id && drainContext) {
+            const drainPromise = fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-ai-agent`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                "x-orbit-internal-secret": Deno.env.get("ORBIT_AI_AGENT_SECRET") ?? "",
+              },
+              body: JSON.stringify({
+                ...drainContext,
+                mensagem: "",
+                inbound_message_id: finishResult.next_inbound_message_id,
+              }),
+            }).then((response) => {
+              if (!response.ok) console.warn("[orbit-ai-agent] queued inbound drain deferred", { status: response.status });
+            }).catch(() => console.warn("[orbit-ai-agent] queued inbound drain deferred", { reason: "invoke_failed" }));
+            // A resposta de A não aguarda B. Em runtime Supabase, waitUntil mantém
+            // apenas o trabalho de background vivo; o tick persistente cobre falhas.
+            // @ts-ignore EdgeRuntime é fornecido pelo Supabase Edge Runtime.
+            if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(drainPromise);
+          }
+        } catch { /* best effort */ }
       }
     }
   } catch (error: unknown) {
@@ -2251,7 +2353,8 @@ ${regrasBlock}`;
         await (cleanupClient as any)
           .from("orbit_conversas")
           .update({ ai_processing: false })
-          .eq("id", conversaIdForCleanup);
+          .eq("id", conversaIdForCleanup)
+          .eq("empresa_id", empresaIdForCleanup);
         console.log("[orbit-ai-agent] Lock liberado no catch para:", conversaIdForCleanup);
       } catch (cleanupErr) {
         console.error("[orbit-ai-agent] Falha no cleanup do lock:", cleanupErr);
@@ -3559,20 +3662,24 @@ export async function tryAutoScheduleMeeting(
   };
 
   const ag = params.agendamento || {};
-  const token = await deps.getTokenForEmpresa(params.empresaId).catch(() => null);
-  if (!token) {
+  const rawToken = await deps.getTokenForEmpresa(params.empresaId).catch(() => null);
+  if (!rawToken) {
     console.log("[orbit-ai-agent] Google Calendar não conectado — fallback para handoff manual", { empresaId: params.empresaId });
     return { handled: false, not_connected: true };
   }
+  const token = schedulingPolicy(params.empresaId, rawToken);
 
   const tz = token.timezone || "America/Sao_Paulo";
   const previousSuggestions = Array.isArray(params.sugestoes_anteriores) ? params.sugestoes_anteriores : [];
-  const selectionText = normalizePt(params.mensagem_cliente || "");
-  let selectedSuggestion = /\b(primeir[oa]|opcao 1|1\s*[ªa])\b/.test(selectionText)
-    ? previousSuggestions[0]
-    : /\b(segund[oa]|opcao 2|2\s*[ªa])\b/.test(selectionText)
-    ? previousSuggestions[1]
-    : previousSuggestions.find((s) => s.label && selectionText.includes(normalizePt(s.label)));
+  if (isAmbiguousSlotAcceptance(params.mensagem_cliente || "", previousSuggestions.length)) {
+    return {
+      handled: true,
+      created: false,
+      response_override: "Para eu agendar corretamente, escolha explicitamente a opção 1 ou a opção 2, por favor.",
+      suggestions: previousSuggestions,
+    };
+  }
+  let selectedSuggestion = selectExplicitSuggestion(params.mensagem_cliente || "", previousSuggestions);
 
   const calId = token.calendar_id;
   const duracaoMin = Math.max(15, Math.min(240, Number(ag.duracao_min) || 60));
