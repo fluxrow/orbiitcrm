@@ -385,13 +385,83 @@ export interface OnboardingOperationalReadiness {
   implementationDone: number;
   implementationTotal: number;
   implementationProgress: number;
+  requiredDone: number;
+  requiredTotal: number;
+  optionalDone: number;
+  optionalTotal: number;
   sandboxEligible: boolean;
   realGoLiveEligible: boolean;
   whatsappProvider: string | null;
   pendingLabels: string[];
+  optionalPendingLabels: string[];
+  notApplicableLabels: string[];
+  items: OnboardingReadinessItem[];
 }
 
 type ImplementationChecklistItem = { key?: string; label?: string; done?: boolean };
+
+export type OnboardingRequirement = "required" | "optional" | "not_applicable";
+
+export interface OnboardingReadinessItem extends ImplementationChecklistItem {
+  requirement: OnboardingRequirement;
+  reason: string;
+}
+
+function hasMeaningfulValue(value: string): boolean {
+  return Boolean(value.trim()) && !/^(nenhum|nenhuma|n[aã]o|n\/a|na|não se aplica)$/i.test(value.trim());
+}
+
+function classifyImplementationItem(
+  item: ImplementationChecklistItem,
+  responses: Record<string, any>,
+): OnboardingReadinessItem {
+  const key = item.key || "";
+  const emailSignals = [
+    getVal(responses, "integracoes", "email_dominio"),
+    getVal(responses, "templates", "primeira_abordagem_email"),
+    getVal(responses, "templates", "cadencia_priority"),
+    getVal(responses, "templates", "cadencia_hot"),
+    getVal(responses, "templates", "cadencia_cold"),
+  ].join(" ");
+  const calendarSignals = [
+    getVal(responses, "integracoes", "calendar_email"),
+    getVal(responses, "templates", "link_agenda"),
+    getVal(responses, "ia", "objetivo_ia"),
+    getVal(responses, "caminho_lead", "qualificacao_inicial"),
+  ].join(" ");
+  const initialBase = getVal(responses, "integracoes", "base_inicial") ||
+    getVal(responses, "go_live", "base_inicial");
+
+  if (["zapi", "funil", "ia", "templates"].includes(key)) {
+    return { ...item, requirement: "required", reason: "Necessário para liberar a operação comercial real." };
+  }
+  if (key === "resend") {
+    const applies = /e-?mail/i.test(emailSignals) || hasMeaningfulValue(getVal(responses, "integracoes", "email_dominio"));
+    return {
+      ...item,
+      requirement: applies ? "required" : "not_applicable",
+      reason: applies ? "O onboarding prevê comunicação por e-mail." : "Nenhum uso de e-mail foi informado.",
+    };
+  }
+  if (key === "calendar") {
+    const applies = /agenda|calend[áa]rio|reuni[ãa]o|\bcall\b/i.test(calendarSignals) ||
+      hasMeaningfulValue(getVal(responses, "integracoes", "calendar_email")) ||
+      hasMeaningfulValue(getVal(responses, "templates", "link_agenda"));
+    return {
+      ...item,
+      requirement: applies ? "required" : "not_applicable",
+      reason: applies ? "O agente foi configurado para realizar agendamentos." : "Agendamento automático não faz parte do escopo informado.",
+    };
+  }
+  if (key === "leads") {
+    return {
+      ...item,
+      requirement: hasMeaningfulValue(initialBase) ? "required" : "optional",
+      reason: hasMeaningfulValue(initialBase) ? "O cliente informou uma base inicial para importação." : "Pode ser realizado depois do go-live.",
+    };
+  }
+  return { ...item, requirement: "optional", reason: "Recomendado, mas não bloqueia tecnicamente o go-live." };
+}
 
 /**
  * Mantém a chave histórica `zapi`, mas apresenta o provedor realmente escolhido
@@ -424,8 +494,13 @@ export function getOnboardingOperationalReadiness(input: {
   checklist?: ImplementationChecklistItem[] | null;
 }): OnboardingOperationalReadiness {
   const checklist = resolveOnboardingChecklist(input.checklist, input.responses);
+  const items = checklist.map((item) => classifyImplementationItem(item, input.responses));
   const implementationDone = checklist.filter((item) => item.done === true).length;
   const implementationTotal = checklist.length;
+  const required = items.filter((item) => item.requirement === "required");
+  const optional = items.filter((item) => item.requirement === "optional");
+  const requiredDone = required.filter((item) => item.done === true).length;
+  const optionalDone = optional.filter((item) => item.done === true).length;
   const formComplete = ["concluido", "revisado"].includes(input.status);
   const persona = getVal(input.responses, "ia", "persona_ia");
   const objective = getVal(input.responses, "ia", "objetivo_ia");
@@ -442,10 +517,17 @@ export function getOnboardingOperationalReadiness(input: {
     implementationProgress: implementationTotal
       ? Math.round((implementationDone / implementationTotal) * 100)
       : 0,
+    requiredDone,
+    requiredTotal: required.length,
+    optionalDone,
+    optionalTotal: optional.length,
     sandboxEligible: formComplete && Boolean(persona && objective && tone && qualification && handoff),
-    realGoLiveEligible: formComplete && implementationTotal > 0 && implementationDone === implementationTotal,
+    realGoLiveEligible: formComplete && required.length > 0 && requiredDone === required.length,
     whatsappProvider: getVal(input.responses, "integracoes", "whatsapp_provider").trim() || null,
-    pendingLabels: checklist.filter((item) => item.done !== true).map((item) => item.label || item.key || "Pendência"),
+    pendingLabels: required.filter((item) => item.done !== true).map((item) => item.label || item.key || "Pendência"),
+    optionalPendingLabels: optional.filter((item) => item.done !== true).map((item) => item.label || item.key || "Pendência opcional"),
+    notApplicableLabels: items.filter((item) => item.requirement === "not_applicable").map((item) => item.label || item.key || "Não se aplica"),
+    items,
   };
 }
 

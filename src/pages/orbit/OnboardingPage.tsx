@@ -364,7 +364,10 @@ function OnboardingDetailSheet({
               </div>
               <div className="rounded-md border p-2">
                 <div className="text-muted-foreground">Implantação</div>
-                <div className="font-medium">{readiness.implementationDone}/{readiness.implementationTotal} itens</div>
+                <div className="font-medium">{readiness.requiredDone}/{readiness.requiredTotal} obrigatórios</div>
+                <div className="text-[11px] text-muted-foreground">
+                  {readiness.optionalDone}/{readiness.optionalTotal} opcionais
+                </div>
               </div>
               <div className="rounded-md border p-2">
                 <div className="text-muted-foreground">Sandbox</div>
@@ -379,6 +382,14 @@ function OnboardingDetailSheet({
               <p className="text-xs text-muted-foreground">
                 Provedor informado: <strong className="text-foreground">{readiness.whatsappProvider}</strong>. A informação não conecta nem libera o canal.
               </p>
+            )}
+            {!readiness.realGoLiveEligible && readiness.pendingLabels.length > 0 && (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+                <div className="text-xs font-medium text-amber-700 dark:text-amber-300">Bloqueadores do go-live</div>
+                <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+                  {readiness.pendingLabels.map((label) => <li key={label}>• {label}</li>)}
+                </ul>
+              </div>
             )}
           </Card>
 
@@ -474,10 +485,22 @@ function OnboardingDetailSheet({
               <ClipboardList className="w-4 h-4" /> Checklist de implementação
             </h3>
             <div className="space-y-2">
-              {checklist.map((item: any, idx: number) => (
-                <label key={item.key} className="flex items-center gap-3 p-2 rounded hover:bg-muted/40 cursor-pointer">
-                  <Checkbox checked={!!item.done} onCheckedChange={() => toggle(idx)} />
-                  <span className={item.done ? "line-through text-muted-foreground" : ""}>{item.label}</span>
+              {readiness.items.map((item, idx) => (
+                <label key={item.key} className={`flex items-start gap-3 p-2 rounded hover:bg-muted/40 ${item.requirement === "not_applicable" ? "cursor-default opacity-70" : "cursor-pointer"}`}>
+                  <Checkbox
+                    checked={!!item.done}
+                    disabled={item.requirement === "not_applicable"}
+                    onCheckedChange={() => toggle(idx)}
+                  />
+                  <span className="flex-1 min-w-0">
+                    <span className={`flex items-center gap-2 flex-wrap ${item.done ? "line-through text-muted-foreground" : ""}`}>
+                      {item.label}
+                      <Badge variant={item.requirement === "required" ? "destructive" : "outline"} className="text-[10px] no-underline">
+                        {item.requirement === "required" ? "Obrigatório" : item.requirement === "optional" ? "Opcional" : "Não se aplica"}
+                      </Badge>
+                    </span>
+                    <span className="block text-xs text-muted-foreground mt-0.5">{item.reason}</span>
+                  </span>
                 </label>
               ))}
             </div>
