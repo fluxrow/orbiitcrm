@@ -26,7 +26,10 @@ import {
 import {
   VIVER_CLASS_TEMPLATE_NAME,
   buildCanonicalClassDelivery,
+  buildClassInviteEmailRequest,
+  declinedClassInviteEmail,
   enforceCanonicalClassLink,
+  extractClassInviteEmail,
   extractCanonicalClassUrl,
   previousAssistantOfferedClassAccess,
 } from "./viver-class-guard.ts";
@@ -1206,6 +1209,38 @@ serve(async (req) => {
       const normativeInboundText = typeof normativeInbound.mensagem === "string"
         ? normativeInbound.mensagem
         : mensagemAgregada;
+      const classInviteEmailPending = aiContexto.viver_class_email_pending === true;
+      const suppliedClassEmail = extractClassInviteEmail(normativeInboundText);
+      const declinedClassEmail = declinedClassInviteEmail(normativeInboundText);
+
+      if (classInviteEmailPending && (suppliedClassEmail || declinedClassEmail)) {
+        if (suppliedClassEmail && prospect?.id) {
+          const { error: emailUpdateError } = await supabase
+            .from("orbit_prospects")
+            .update({ email_principal: suppliedClassEmail })
+            .eq("id", prospect.id)
+            .eq("empresa_id", empresaId);
+          if (emailUpdateError) {
+            console.error("[orbit-ai-agent] Falha ao salvar e-mail do convite da aula:", emailUpdateError);
+            const fallback = "Não consegui confirmar seu e-mail agora. Posso enviar o acesso somente por aqui?";
+            await sendAIResponse(supabase, telefone, fallback, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
+            return new Response(JSON.stringify({ ok: true, class_email_guarded: true, resposta: fallback, simulated: isDemo }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+        }
+        await supabase.from("orbit_conversas").update({
+          ai_contexto: {
+            ...aiContexto,
+            viver_class_email_pending: false,
+            viver_class_participation_confirmed: true,
+            viver_class_invite_email_collected: Boolean(suppliedClassEmail),
+          },
+        }).eq("id", conversa_id).eq("empresa_id", empresaId);
+      }
+
+      const shouldDeliverAfterEmailStep = classInviteEmailPending &&
+        (Boolean(suppliedClassEmail) || declinedClassEmail);
       if (previousAssistantOfferedClassAccess(mensagens || [], normativeInboundText)) {
         const canonicalUrl = extractCanonicalClassUrl(viverClassTemplateBody);
         if (!canonicalUrl || !viverClassTemplateBody) {
@@ -1218,6 +1253,20 @@ serve(async (req) => {
           return new Response(JSON.stringify({ ok: true, class_link_guarded: true, resposta: fallback, simulated: isDemo }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
+        }
+        if (!prospect?.email_principal) {
+          const emailRequest = buildClassInviteEmailRequest(prospect?.nome_contato || prospect?.nome_razao);
+          await supabase.from("orbit_conversas").update({
+            ai_contexto: { ...aiContexto, viver_class_email_pending: true },
+          }).eq("id", conversa_id).eq("empresa_id", empresaId);
+          if (!await renewExecutionLease()) return leaseLostResponse();
+          await sendAIResponse(supabase, telefone, emailRequest, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
+          return new Response(JSON.stringify({
+            ok: true,
+            class_email_requested: true,
+            resposta: emailRequest,
+            simulated: isDemo,
+          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
         if (!await renewExecutionLease()) return leaseLostResponse();
         const deterministicReply = buildCanonicalClassDelivery(
@@ -1233,6 +1282,29 @@ serve(async (req) => {
         return new Response(JSON.stringify({
           ok: true,
           class_link_delivered: true,
+          resposta: deterministicReply,
+          simulated: isDemo,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (shouldDeliverAfterEmailStep) {
+        const canonicalUrl = extractCanonicalClassUrl(viverClassTemplateBody);
+        if (!canonicalUrl || !viverClassTemplateBody) {
+          const fallback = "Não consegui confirmar o acesso da aula agora. Você quer que eu verifique isso antes de te enviar?";
+          await sendAIResponse(supabase, telefone, fallback, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
+          return new Response(JSON.stringify({ ok: true, class_link_guarded: true, resposta: fallback, simulated: isDemo }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        if (!await renewExecutionLease()) return leaseLostResponse();
+        const deterministicReply = buildCanonicalClassDelivery(
+          viverClassTemplateBody,
+          prospect?.nome_contato || prospect?.nome_razao,
+        );
+        await sendAIResponse(supabase, telefone, deterministicReply, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
+        return new Response(JSON.stringify({
+          ok: true,
+          class_link_delivered: true,
+          class_invite_email_collected: Boolean(suppliedClassEmail),
           resposta: deterministicReply,
           simulated: isDemo,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -2485,7 +2557,10 @@ ${regrasBlock}`;
             // A resposta de A não aguarda B. Em runtime Supabase, waitUntil mantém
             // apenas o trabalho de background vivo; o tick persistente cobre falhas.
             // @ts-ignore EdgeRuntime é fornecido pelo Supabase Edge Runtime.
-            if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(drainPromise);
+            if (typeof EdgeRuntime !== "undefined") {
+              // @ts-ignore EdgeRuntime é fornecido pelo Supabase Edge Runtime.
+              EdgeRuntime.waitUntil(drainPromise);
+            }
           }
         } catch { /* best effort */ }
       }

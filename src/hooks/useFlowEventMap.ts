@@ -53,6 +53,12 @@ export const TRIGGER_CATALOG: Array<{
     description: "Disparado ~1h antes da reunião agendada. Use para enviar o link da call e instruções finais.",
     entityType: "meeting",
   },
+  {
+    type: "meeting_reminder_5m" as FlowTriggerType,
+    label: "Lembrete 5min antes da reunião",
+    description: "Disparado somente na janela segura imediatamente anterior à reunião. Eventos atrasados são cancelados, nunca compensados.",
+    entityType: "meeting",
+  },
 ];
 
 export type EventMapEntry = {

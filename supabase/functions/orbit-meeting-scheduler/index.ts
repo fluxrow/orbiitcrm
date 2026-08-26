@@ -1,12 +1,17 @@
 // orbit-meeting-scheduler
-// Cron-driven scheduler that emits meeting_reminder_24h / meeting_reminder_1h
+// Cron-driven scheduler that emits meeting_reminder_24h / 1h / 5m
 // events into orbit_flow_events. Idempotent via dedupe_key (meeting_id + kind).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import {
+  MEETING_REMINDER_WINDOWS,
+  type MeetingReminderKind,
+} from "../_shared/meeting-reminder-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -17,21 +22,20 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-type ReminderKind = "meeting_reminder_24h" | "meeting_reminder_1h";
-
-const WINDOWS: Array<{ kind: ReminderKind; offsetMs: number; toleranceMs: number }> = [
-  { kind: "meeting_reminder_24h", offsetMs: 24 * 60 * 60 * 1000, toleranceMs: 10 * 60 * 1000 },
-  { kind: "meeting_reminder_1h", offsetMs: 60 * 60 * 1000, toleranceMs: 10 * 60 * 1000 },
-];
-
-async function emitForWindow(kind: ReminderKind, offsetMs: number, toleranceMs: number) {
+async function emitForWindow(
+  kind: MeetingReminderKind,
+  offsetMs: number,
+  toleranceMs: number,
+) {
   const now = Date.now();
   const lower = new Date(now + offsetMs - toleranceMs).toISOString();
   const upper = new Date(now + offsetMs + toleranceMs).toISOString();
 
   const { data: meetings, error } = await supabase
     .from("orbit_meetings")
-    .select("id, empresa_id, deal_id, prospect_id, conversa_id, scheduled_at, titulo, meeting_url, duration_minutes")
+    .select(
+      "id, empresa_id, deal_id, prospect_id, conversa_id, scheduled_at, titulo, meeting_url, duration_minutes",
+    )
     .eq("status", "scheduled")
     .gte("scheduled_at", lower)
     .lte("scheduled_at", upper)
@@ -70,7 +74,10 @@ async function emitForWindow(kind: ReminderKind, offsetMs: number, toleranceMs: 
 
     if (insErr) {
       // unique violation = already emitted -> idempotent skip
-      if (String(insErr.code) === "23505" || String(insErr.message).includes("duplicate")) {
+      if (
+        String(insErr.code) === "23505" ||
+        String(insErr.message).includes("duplicate")
+      ) {
         skipped++;
         continue;
       }
@@ -84,11 +91,13 @@ async function emitForWindow(kind: ReminderKind, offsetMs: number, toleranceMs: 
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
   try {
     const results = [];
-    for (const w of WINDOWS) {
+    for (const w of MEETING_REMINDER_WINDOWS) {
       results.push(await emitForWindow(w.kind, w.offsetMs, w.toleranceMs));
     }
 
@@ -98,20 +107,37 @@ Deno.serve(async (req) => {
     if (totalEmitted > 0) {
       fetch(`${FUNCTIONS_BASE}/orbit-flow-dispatcher`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SERVICE_KEY}`,
+        },
         body: JSON.stringify({ trigger: "meeting-scheduler" }),
       }).catch((e) => console.error("dispatcher invoke error", e));
     }
 
     return new Response(
-      JSON.stringify({ ok: true, data: { results, totalEmitted }, error: null }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      JSON.stringify({
+        ok: true,
+        data: { results, totalEmitted },
+        error: null,
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   } catch (e) {
     console.error("scheduler error", e);
     return new Response(
-      JSON.stringify({ ok: false, data: null, error: String((e as any)?.message ?? e) }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      JSON.stringify({
+        ok: false,
+        data: null,
+        error: String((e as any)?.message ?? e),
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 });
