@@ -54,3 +54,14 @@ tenants nunca herdam o estado do Fluxrow.
 RAG pode apoiar produtos, preços, objeções, FAQs e provas sociais. Agenda,
 consentimento, campanhas, identidade, links oficiais, posse humana, limites,
 filas e idempotência continuam sob regras determinísticas e dados autoritativos.
+
+## Governança de fontes
+
+Cada fonte passa a possuir classificação, sensibilidade, estado de aprovação e
+versões identificadas por hash SHA-256. O histórico de versões e decisões é
+append-only para o runtime; conflitos guardam apenas hashes e metadados, nunca o
+conteúdo recuperado.
+
+A fonte legada existente do Fluxrow entra como `reference/internal/draft`. Esse
+registro apenas cria a baseline documental: não liga `knowledge_base_enabled`,
+não cria configuração `shadow` e não autoriza o uso da fonte em respostas.
