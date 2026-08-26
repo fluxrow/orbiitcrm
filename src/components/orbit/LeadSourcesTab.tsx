@@ -52,6 +52,7 @@ export function LeadSourcesTab({ empresaId }: { empresaId: string | null | undef
   const { data: sources, isLoading } = useOrbitLeadSources(empresaId);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<OrbitLeadSource | null>(null);
+  const [toggleTarget, setToggleTarget] = useState<OrbitLeadSource | null>(null);
   const [tutorial, setTutorial] = useState<TutorialKind | null>(null);
   const toggle = useUpdateLeadSource();
   const del = useDeleteLeadSource();
@@ -145,6 +146,16 @@ export function LeadSourcesTab({ empresaId }: { empresaId: string | null | undef
                           {s.total_received} recebidos
                         </Badge>
                       )}
+                      <Badge
+                        variant="outline"
+                        className={
+                          s.ativo
+                            ? "text-xs border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                            : "text-xs border-amber-500/30 bg-amber-500/10 text-amber-300"
+                        }
+                      >
+                        {s.ativo ? "Recebimento ativo" : "Recebimento pausado"}
+                      </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {s.last_received_at
@@ -158,15 +169,9 @@ export function LeadSourcesTab({ empresaId }: { empresaId: string | null | undef
                   <div className="flex items-center gap-2">
                     <Switch
                       checked={s.ativo}
-                      onCheckedChange={(v) =>
-                        toggle.mutate(
-                          { id: s.id, patch: { ativo: v } },
-                          {
-                            onSuccess: () =>
-                              toast.success(v ? "Fonte ativada" : "Fonte pausada"),
-                          }
-                        )
-                      }
+                      disabled={toggle.isPending}
+                      aria-label={`${s.ativo ? "Pausar" : "Ativar"} recebimento da fonte ${s.nome}`}
+                      onCheckedChange={() => setToggleTarget(s)}
                     />
                     <Button variant="outline" size="sm" onClick={() => setEditing(s)}>
                       Configurar
@@ -200,6 +205,52 @@ export function LeadSourcesTab({ empresaId }: { empresaId: string | null | undef
       />
       <LeadSourceEditorDialog source={editing} onClose={() => setEditing(null)} />
       <LeadSourceTutorialDialog kind={tutorial} onClose={() => setTutorial(null)} />
+      <Dialog open={!!toggleTarget} onOpenChange={(open) => !open && setToggleTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {toggleTarget?.ativo ? "Pausar recebimento de leads?" : "Retomar recebimento de leads?"}
+            </DialogTitle>
+            <DialogDescription>
+              {toggleTarget?.ativo
+                ? "Novos envios desta fonte serão rejeitados enquanto ela estiver pausada. Os leads e históricos já recebidos não serão alterados."
+                : "A fonte voltará a aceitar novos leads pelo endpoint já configurado. Nenhum lead antigo será reprocessado."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border border-border bg-muted/30 p-3 text-sm">
+            Fonte: <span className="font-medium">{toggleTarget?.nome}</span>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setToggleTarget(null)} disabled={toggle.isPending}>
+              Cancelar
+            </Button>
+            <Button
+              variant={toggleTarget?.ativo ? "destructive" : "default"}
+              disabled={!toggleTarget || toggle.isPending}
+              onClick={() => {
+                if (!toggleTarget) return;
+                const nextActive = !toggleTarget.ativo;
+                toggle.mutate(
+                  { id: toggleTarget.id, patch: { ativo: nextActive } },
+                  {
+                    onSuccess: () => {
+                      toast.success(nextActive ? "Recebimento de leads retomado" : "Recebimento de leads pausado");
+                      setToggleTarget(null);
+                    },
+                    onError: (error: Error) => toast.error(`Não foi possível alterar a fonte: ${error.message}`),
+                  },
+                );
+              }}
+            >
+              {toggle.isPending
+                ? "Salvando..."
+                : toggleTarget?.ativo
+                  ? "Pausar recebimento"
+                  : "Retomar recebimento"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
