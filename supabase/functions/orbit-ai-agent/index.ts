@@ -141,6 +141,11 @@ import {
 } from "../_shared/no-self-introduction.ts";
 
 import {
+  buildBullinkConversationPromptBlock,
+  enforceBullinkConversationGuard,
+} from "../_shared/bullink-conversation-guard.ts";
+
+import {
   hydrateCanonicalFacts,
   buildCanonicalFactsBlock,
   recentAgentQuestions,
@@ -1447,6 +1452,7 @@ serve(async (req) => {
 
     // ── SEM AUTOAPRESENTAÇÃO (tenant-scoped por orbit_ai_config.self_introduction_guard) ──
     const selfIntroBlock = selfIntroCfg ? buildNoSelfIntroPromptBlock(selfIntroCfg) : "";
+    const bullinkConversationBlock = buildBullinkConversationPromptBlock(empresaId);
 
     // ── ENTREGÁVEIS VERDADEIROS (tenant-scoped por orbit_ai_config.false_benefits_guard) ──
     // Proíbe prometer acesso a IA/ferramenta e grupo/comunidade (não existem na oferta).
@@ -1484,7 +1490,7 @@ ${campaignContinuity}${stateInstruction}${classificationInstruction}
 ${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${dataHoraAtualBlock}${schedulingModeBlock}${viverMeetingBlock}
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
-${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}${commercialV2Block}${primaryOfferBlock}${identityBlock}${selfIntroBlock}${falseBenefitsBlock}${noCollectBlock}
+${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}${commercialV2Block}${primaryOfferBlock}${identityBlock}${selfIntroBlock}${bullinkConversationBlock}${falseBenefitsBlock}${noCollectBlock}
 REGRAS CRÍTICAS:
 1. DADOS EXISTENTES: Se um dado do lead já está preenchido no contexto acima ou nos FATOS CANÔNICOS (personName, companyName, city, email, nível pretendido, cidade/estado etc.), NUNCA pergunte novamente. Use naturalmente na conversa.
 2. CAMPOS FALTANTES: Solicite APENAS os campos marcados como "true" em missingFields, e as perguntas dinâmicas ainda não respondidas.
@@ -2367,6 +2373,21 @@ ${regrasBlock}`;
 
     }
 
+
+    // Última barreira comercial/conversacional exclusiva do Bullink.
+    // Para qualquer outro empresa_id, retorna o texto byte-for-byte.
+    const finalBullink = enforceBullinkConversationGuard({
+      empresaId,
+      inbound: mensagemAgregada,
+      response: resposta,
+      previousAgentQuestions,
+    });
+    if (finalBullink.changed) {
+      console.warn("[orbit-ai-agent] Reforço conversacional Bullink acionado.", {
+        reasons: finalBullink.reasons,
+      });
+      resposta = finalBullink.text;
+    }
 
     // Enviar resposta via WhatsApp (fallback: texto)
     if (suppressReply || !resposta.trim() || looksLikeInternalPayload(resposta)) {
