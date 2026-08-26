@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.17"
   }
   public: {
     Tables: {
@@ -1021,6 +1021,64 @@ export type Database = {
           },
         ]
       }
+      orbit_agent_sandbox_reviews: {
+        Row: {
+          comment: string | null
+          created_at: string
+          empresa_id: string
+          id: string
+          reviewed_at: string | null
+          reviewer_id: string | null
+          scenario_key: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          comment?: string | null
+          created_at?: string
+          empresa_id: string
+          id?: string
+          reviewed_at?: string | null
+          reviewer_id?: string | null
+          scenario_key: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          comment?: string | null
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          reviewed_at?: string | null
+          reviewer_id?: string | null
+          scenario_key?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_agent_sandbox_reviews_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_agent_sandbox_reviews_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_agent_sandbox_reviews_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+        ]
+      }
       orbit_ai_config: {
         Row: {
           advisor_locked_paths: Json
@@ -1033,6 +1091,7 @@ export type Database = {
           block_location_collection: boolean
           campos_cadastro_obrigatorios: Json | null
           campos_qualificacao: Json
+          canonical_field_aliases: Json
           commercial_stage_v2_enabled: boolean
           created_at: string | null
           empresa_id: string | null
@@ -1082,6 +1141,7 @@ export type Database = {
           block_location_collection?: boolean
           campos_cadastro_obrigatorios?: Json | null
           campos_qualificacao?: Json
+          canonical_field_aliases?: Json
           commercial_stage_v2_enabled?: boolean
           created_at?: string | null
           empresa_id?: string | null
@@ -1131,6 +1191,7 @@ export type Database = {
           block_location_collection?: boolean
           campos_cadastro_obrigatorios?: Json | null
           campos_qualificacao?: Json
+          canonical_field_aliases?: Json
           commercial_stage_v2_enabled?: boolean
           created_at?: string | null
           empresa_id?: string | null
@@ -1190,6 +1251,90 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "orbit_tenant_ops_queue_v"
             referencedColumns: ["empresa_id"]
+          },
+        ]
+      }
+      orbit_ai_execution_claims: {
+        Row: {
+          attempts: number
+          conversa_id: string
+          created_at: string
+          empresa_id: string
+          finished_at: string | null
+          heartbeat_at: string
+          id: string
+          inbound_message_id: string
+          lease_expires_at: string
+          lease_token: string
+          result: string | null
+          started_at: string
+          status: string
+        }
+        Insert: {
+          attempts?: number
+          conversa_id: string
+          created_at?: string
+          empresa_id: string
+          finished_at?: string | null
+          heartbeat_at?: string
+          id?: string
+          inbound_message_id: string
+          lease_expires_at?: string
+          lease_token?: string
+          result?: string | null
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          attempts?: number
+          conversa_id?: string
+          created_at?: string
+          empresa_id?: string
+          finished_at?: string | null
+          heartbeat_at?: string
+          id?: string
+          inbound_message_id?: string
+          lease_expires_at?: string
+          lease_token?: string
+          result?: string | null
+          started_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_ai_execution_claims_conversa_id_fkey"
+            columns: ["conversa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_conversas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_ai_execution_claims_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_ai_execution_claims_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_ai_execution_claims_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_ai_execution_claims_inbound_message_id_fkey"
+            columns: ["inbound_message_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_mensagens"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -2859,6 +3004,71 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "orbit_tenant_ops_queue_v"
             referencedColumns: ["empresa_id"]
+          },
+        ]
+      }
+      orbit_flow_run_review_queue: {
+        Row: {
+          attempts: number
+          detected_at: string
+          empresa_id: string
+          id: string
+          last_seen_at: string
+          reason: string
+          result: string | null
+          run_id: string
+          status: string
+        }
+        Insert: {
+          attempts?: number
+          detected_at?: string
+          empresa_id: string
+          id?: string
+          last_seen_at?: string
+          reason: string
+          result?: string | null
+          run_id: string
+          status?: string
+        }
+        Update: {
+          attempts?: number
+          detected_at?: string
+          empresa_id?: string
+          id?: string
+          last_seen_at?: string
+          reason?: string
+          result?: string | null
+          run_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_flow_run_review_queue_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_flow_run_review_queue_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_flow_run_review_queue_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_flow_run_review_queue_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: true
+            referencedRelation: "orbit_flow_runs"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -7424,6 +7634,22 @@ export type Database = {
         Args: { _empresa_id: string; _prospect_id: string; _reason?: string }
         Returns: number
       }
+      claim_orbit_ai_execution: {
+        Args: {
+          _conversa_id: string
+          _empresa_id: string
+          _inbound_message_id: string
+          _lease_seconds?: number
+        }
+        Returns: {
+          acquired: boolean
+          claim_id: string
+          lease_expires_at: string
+          lease_token: string
+          reason: string
+        }[]
+      }
+      claim_orbit_flow_run_start: { Args: { _run_id: string }; Returns: string }
       claim_scheduled_actions: {
         Args: { _batch?: number }
         Returns: {
@@ -7456,11 +7682,34 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      cleanup_orbit_execution_history: {
+        Args: {
+          _claim_days?: number
+          _empresa_id: string
+          _review_days?: number
+        }
+        Returns: {
+          deleted_claims: number
+          deleted_reviews: number
+        }[]
+      }
       ensure_deal_for_prospect: {
         Args: { _prospect_id: string }
         Returns: string
       }
       extract_domain: { Args: { p: string }; Returns: string }
+      finish_orbit_ai_execution: {
+        Args: {
+          _claim_id: string
+          _lease_token: string
+          _result: string
+          _status: string
+        }
+        Returns: {
+          finished: boolean
+          next_inbound_message_id: string
+        }[]
+      }
       generate_unique_slug: { Args: { p_nome: string }; Returns: string }
       get_advisor_snapshot: { Args: { p_empresa_id: string }; Returns: Json }
       get_advisor_snapshot_admin: {
@@ -7577,6 +7826,14 @@ export type Database = {
           name: string
         }[]
       }
+      list_ready_orbit_ai_execution_events: {
+        Args: { _limit?: number }
+        Returns: {
+          conversa_id: string
+          empresa_id: string
+          inbound_message_id: string
+        }[]
+      }
       match_orbit_knowledge: {
         Args: {
           match_count?: number
@@ -7646,6 +7903,10 @@ export type Database = {
         Returns: Json
       }
       orbit_get_active_jit_support_session: {
+        Args: { p_tenant_slug: string }
+        Returns: Json
+      }
+      orbit_get_agent_sandbox_review: {
         Args: { p_tenant_slug: string }
         Returns: Json
       }
@@ -7722,6 +7983,15 @@ export type Database = {
         Returns: boolean
       }
       orbit_sanitize_audit_json: { Args: { p_value: Json }; Returns: Json }
+      orbit_save_agent_sandbox_review: {
+        Args: {
+          p_comment?: string
+          p_scenario_key: string
+          p_status: string
+          p_tenant_slug: string
+        }
+        Returns: Json
+      }
       orbit_search_digits: { Args: { _input: string }; Returns: string }
       orbit_search_normalize: { Args: { _input: string }; Returns: string }
       orbit_seed_default_pipeline: {
@@ -7864,6 +8134,31 @@ export type Database = {
       orbit_tenant_mutation_authorize: {
         Args: { p_required_flag: string; p_tenant_slug: string }
         Returns: string
+      }
+      orbit_tenant_onboarding_context_mode: {
+        Args: { p_tenant_slug: string }
+        Returns: Json
+      }
+      orbit_tenant_onboarding_direct_access_allowed: {
+        Args: { p_empresa_id: string }
+        Returns: boolean
+      }
+      orbit_tenant_onboarding_mutate_scoped: {
+        Args: {
+          p_action_type: string
+          p_onboarding_id: string
+          p_payload?: Json
+          p_tenant_slug: string
+        }
+        Returns: Json
+      }
+      orbit_tenant_onboarding_read_scoped: {
+        Args: {
+          p_entity_id?: string
+          p_section?: string
+          p_tenant_slug: string
+        }
+        Returns: Json
       }
       orbit_tenant_ops_action: {
         Args: { p_action_type: string; p_payload?: Json; p_tenant_slug: string }
@@ -8097,6 +8392,14 @@ export type Database = {
           whatsapp: string
         }[]
       }
+      queue_orphan_flow_runs_for_review: {
+        Args: { _empresa_id: string; _limit?: number; _sla_seconds?: number }
+        Returns: {
+          empresa_id: string
+          reason: string
+          run_id: string
+        }[]
+      }
       recalculate_lead_score: {
         Args: { p_empresa_id: string; p_prospect_id: string }
         Returns: Json
@@ -8104,6 +8407,14 @@ export type Database = {
       reconcile_campaign_counters: {
         Args: { _campaign_id: string }
         Returns: Json
+      }
+      renew_orbit_ai_execution_lease: {
+        Args: {
+          _claim_id: string
+          _lease_seconds?: number
+          _lease_token: string
+        }
+        Returns: boolean
       }
       reschedule_scheduled_action: {
         Args: { _delay_seconds: number; _error: string; _id: string }
