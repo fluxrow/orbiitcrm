@@ -8,7 +8,7 @@ const CLASS_CONTEXT_RE = /\b(?:aula|encontro)\b/iu;
 const ACCESS_OFFER_RE =
   /(?:quer|gostaria|posso).{0,50}(?:link|acesso|participar)|(?:link|acesso).{0,40}(?:aula|participar)/iu;
 const AFFIRMATIVE_RE =
-  /^(?:sim|s|quero|gostaria|pode|pode\s+sim|manda|envia|claro|com\s+certeza|tenho\s+(?:sim|interesse)|eu\s+quero|quero\s+sim)[.!?,\s]*$/iu;
+  /^(?:(?:sim|s|quero|gostaria|pode|pode\s+sim|manda|envia|claro|com\s+certeza|tenho\s+(?:sim|interesse)|eu\s+quero|quero\s+sim)[.!?,\s]*|sim\b.{0,50}\b(?:quero|pode|liber\w*|mand\w*|envi\w*)\b.*|(?:eu\s+)?quero\b.{0,50}\b(?:particip\w*|acesso|aula)\b.*|pode\b.{0,50}\b(?:liber\w*|mand\w*|envi\w*)\b.*)$/iu;
 const URL_RE = /https?:\/\/[^\s<>()]+/giu;
 const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu;
 const EMAIL_DECLINE_RE =
