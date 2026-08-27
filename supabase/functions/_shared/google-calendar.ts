@@ -1,5 +1,6 @@
 // Helper compartilhado para Google Calendar (OAuth + Calendar API)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+export { addCalendarEventAttendee } from "./google-calendar-events.ts";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const CAL_BASE = "https://www.googleapis.com/calendar/v3";
@@ -45,7 +46,11 @@ export async function exchangeCode(code: string) {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
-  if (!r.ok) throw new Error(`google token exchange failed: ${r.status} ${await r.text()}`);
+  if (!r.ok) {
+    throw new Error(
+      `google token exchange failed: ${r.status} ${await r.text()}`,
+    );
+  }
   return await r.json() as {
     access_token: string;
     refresh_token?: string;
@@ -68,11 +73,19 @@ export async function refreshAccessToken(refreshToken: string) {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
-  if (!r.ok) throw new Error(`google refresh failed: ${r.status} ${await r.text()}`);
-  return await r.json() as { access_token: string; expires_in: number; scope: string };
+  if (!r.ok) {
+    throw new Error(`google refresh failed: ${r.status} ${await r.text()}`);
+  }
+  return await r.json() as {
+    access_token: string;
+    expires_in: number;
+    scope: string;
+  };
 }
 
-export async function fetchGoogleEmail(accessToken: string): Promise<string | null> {
+export async function fetchGoogleEmail(
+  accessToken: string,
+): Promise<string | null> {
   try {
     const r = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -111,12 +124,15 @@ export function svcClient() {
 }
 
 /** Garante access token vivo. Refresha quando expira em <60s. */
-export async function ensureFreshAccessToken(row: GoogleTokenRow): Promise<string> {
+export async function ensureFreshAccessToken(
+  row: GoogleTokenRow,
+): Promise<string> {
   const expiresAt = new Date(row.expires_at).getTime();
   if (expiresAt - Date.now() > 60_000) return row.access_token;
 
   const refreshed = await refreshAccessToken(row.refresh_token);
-  const newExpiry = new Date(Date.now() + (refreshed.expires_in - 30) * 1000).toISOString();
+  const newExpiry = new Date(Date.now() + (refreshed.expires_in - 30) * 1000)
+    .toISOString();
   const supa = svcClient();
   await supa.from("orbit_google_tokens").update({
     access_token: refreshed.access_token,
@@ -125,7 +141,9 @@ export async function ensureFreshAccessToken(row: GoogleTokenRow): Promise<strin
   return refreshed.access_token;
 }
 
-export async function getTokenForEmpresa(empresaId: string): Promise<GoogleTokenRow | null> {
+export async function getTokenForEmpresa(
+  empresaId: string,
+): Promise<GoogleTokenRow | null> {
   const supa = svcClient();
   const { data, error } = await supa
     .from("orbit_google_tokens")
@@ -138,7 +156,10 @@ export async function getTokenForEmpresa(empresaId: string): Promise<GoogleToken
 
 // ───────── Calendar API ─────────
 
-export interface FreeBusyRange { start: string; end: string }
+export interface FreeBusyRange {
+  start: string;
+  end: string;
+}
 
 export async function checkAvailability(
   accessToken: string,
@@ -154,7 +175,9 @@ export async function checkAvailability(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      timeMin, timeMax, timeZone: timezone,
+      timeMin,
+      timeMax,
+      timeZone: timezone,
       items: [{ id: calendarId }],
     }),
   });
@@ -168,7 +191,7 @@ export interface CreateEventInput {
   summary: string;
   description?: string;
   start: string; // ISO
-  end: string;   // ISO
+  end: string; // ISO
   timezone: string;
   attendees?: string[];
   location?: string;
@@ -195,10 +218,15 @@ export async function createCalendarEvent(
   };
   if (input.addMeet) {
     body.conferenceData = {
-      createRequest: { requestId: crypto.randomUUID(), conferenceSolutionKey: { type: "hangoutsMeet" } },
+      createRequest: {
+        requestId: crypto.randomUUID(),
+        conferenceSolutionKey: { type: "hangoutsMeet" },
+      },
     };
   }
-  const url = `${CAL_BASE}/calendars/${encodeURIComponent(calendarId)}/events?conferenceDataVersion=1&sendUpdates=all`;
+  const url = `${CAL_BASE}/calendars/${
+    encodeURIComponent(calendarId)
+  }/events?conferenceDataVersion=1&sendUpdates=all`;
   const r = await fetch(url, {
     method: "POST",
     headers: {
@@ -207,7 +235,9 @@ export async function createCalendarEvent(
     },
     body: JSON.stringify(body),
   });
-  if (!r.ok) throw new Error(`createEvent failed: ${r.status} ${await r.text()}`);
+  if (!r.ok) {
+    throw new Error(`createEvent failed: ${r.status} ${await r.text()}`);
+  }
   return await r.json();
 }
 
@@ -218,13 +248,19 @@ export async function listUpcomingEvents(
   maxResults = 20,
   timeMax?: string,
 ) {
-  const url = new URL(`${CAL_BASE}/calendars/${encodeURIComponent(calendarId)}/events`);
+  const url = new URL(
+    `${CAL_BASE}/calendars/${encodeURIComponent(calendarId)}/events`,
+  );
   url.searchParams.set("timeMin", timeMin);
   if (timeMax) url.searchParams.set("timeMax", timeMax);
   url.searchParams.set("maxResults", String(maxResults));
   url.searchParams.set("singleEvents", "true");
   url.searchParams.set("orderBy", "startTime");
-  const r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-  if (!r.ok) throw new Error(`listEvents failed: ${r.status} ${await r.text()}`);
+  const r = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!r.ok) {
+    throw new Error(`listEvents failed: ${r.status} ${await r.text()}`);
+  }
   return await r.json();
 }

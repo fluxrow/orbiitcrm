@@ -11,7 +11,13 @@ import {
   ensureFreshAccessToken,
   checkAvailability,
   createCalendarEvent,
+  listUpcomingEvents,
+  addCalendarEventAttendee,
 } from "../_shared/google-calendar.ts";
+import {
+  selectAuthoritativeViverClassEvent,
+  viverClassLookupWindow,
+} from "../_shared/viver-class-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 import { extractPublicMessage, looksLikeInternalPayload, sanitizedLeakSummary } from "../_shared/ai-output-guard.ts";
 import {
@@ -1254,35 +1260,16 @@ serve(async (req) => {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
-        if (!prospect?.email_principal) {
-          const emailRequest = buildClassInviteEmailRequest(prospect?.nome_contato || prospect?.nome_razao);
-          await supabase.from("orbit_conversas").update({
-            ai_contexto: { ...aiContexto, viver_class_email_pending: true },
-          }).eq("id", conversa_id).eq("empresa_id", empresaId);
-          if (!await renewExecutionLease()) return leaseLostResponse();
-          await sendAIResponse(supabase, telefone, emailRequest, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
-          return new Response(JSON.stringify({
-            ok: true,
-            class_email_requested: true,
-            resposta: emailRequest,
-            simulated: isDemo,
-          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        }
+        const emailRequest = buildClassInviteEmailRequest(prospect?.nome_contato || prospect?.nome_razao);
+        await supabase.from("orbit_conversas").update({
+          ai_contexto: { ...aiContexto, viver_class_email_pending: true },
+        }).eq("id", conversa_id).eq("empresa_id", empresaId);
         if (!await renewExecutionLease()) return leaseLostResponse();
-        const deterministicReply = buildCanonicalClassDelivery(
-          viverClassTemplateBody,
-          prospect?.nome_contato || prospect?.nome_razao,
-        );
-        await sendAIResponse(supabase, telefone, deterministicReply, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
-        console.log("[orbit-ai-agent] Link canônico da aula Viver enfileirado após aceite explícito", {
-          empresa_id: empresaId,
-          conversa_id,
-          template_id: classTemplate?.id,
-        });
+        await sendAIResponse(supabase, telefone, emailRequest, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
         return new Response(JSON.stringify({
           ok: true,
-          class_link_delivered: true,
-          resposta: deterministicReply,
+          class_email_requested: true,
+          resposta: emailRequest,
           simulated: isDemo,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
@@ -1295,6 +1282,58 @@ serve(async (req) => {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
+        let calendarInviteStatus = suppliedClassEmail ? "pending" : "not_requested";
+        if (suppliedClassEmail && !isDemo) {
+          try {
+            const googleToken = await getTokenForEmpresa(empresaId);
+            if (!googleToken) throw new Error("class_calendar_not_connected");
+            const accessToken = await ensureFreshAccessToken(googleToken);
+            const lookupWindow = viverClassLookupWindow(new Date());
+            const listed = await listUpcomingEvents(
+              accessToken,
+              googleToken.calendar_id,
+              lookupWindow.timeMin,
+              250,
+              lookupWindow.timeMax,
+            );
+            const selection = selectAuthoritativeViverClassEvent(
+              Array.isArray(listed?.items) ? listed.items : [],
+              canonicalUrl,
+              new Date(),
+            );
+            if (!selection.event?.id) {
+              throw new Error(selection.reason || "class_calendar_event_not_found");
+            }
+            const invitation = await addCalendarEventAttendee(
+              accessToken,
+              googleToken.calendar_id,
+              selection.event.id,
+              suppliedClassEmail,
+            );
+            calendarInviteStatus = invitation.alreadyPresent ? "already_present" : "invited";
+          } catch (calendarInviteError) {
+            calendarInviteStatus = "failed";
+            console.error("[orbit-ai-agent] Convite Google da aula Viver não concluído:", {
+              empresa_id: empresaId,
+              conversa_id,
+              error: calendarInviteError instanceof Error
+                ? calendarInviteError.message
+                : "class_calendar_unknown_error",
+            });
+          }
+        } else if (suppliedClassEmail && isDemo) {
+          calendarInviteStatus = "simulated";
+        }
+        await supabase.from("orbit_conversas").update({
+          ai_contexto: {
+            ...aiContexto,
+            viver_class_email_pending: false,
+            viver_class_participation_confirmed: true,
+            viver_class_invite_email_collected: Boolean(suppliedClassEmail),
+            viver_class_calendar_invite_status: calendarInviteStatus,
+          },
+        }).eq("id", conversa_id).eq("empresa_id", empresaId);
+
         if (!await renewExecutionLease()) return leaseLostResponse();
         const deterministicReply = buildCanonicalClassDelivery(
           viverClassTemplateBody,
@@ -1305,6 +1344,7 @@ serve(async (req) => {
           ok: true,
           class_link_delivered: true,
           class_invite_email_collected: Boolean(suppliedClassEmail),
+          class_calendar_invite_status: calendarInviteStatus,
           resposta: deterministicReply,
           simulated: isDemo,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });

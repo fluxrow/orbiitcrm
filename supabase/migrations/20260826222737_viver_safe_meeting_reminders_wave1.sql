@@ -1,6 +1,7 @@
--- Viver safe reminders wave 1: add the five-minute event contract and run
--- the scheduler frequently enough to hit its narrow, fail-closed window.
--- This migration does not create flows, enqueue messages or reprocess backlog.
+-- Viver safe reminders wave 1: add the five-minute event contract and run the
+-- scheduler frequently enough to hit its narrow fail-closed window.
+-- Flow creation lives in the next migration so the new enum value is committed
+-- before PostgreSQL uses it. This migration never enqueues or reprocesses data.
 
 ALTER TYPE public.orbit_flow_trigger_type
   ADD VALUE IF NOT EXISTS 'meeting_reminder_5m';
