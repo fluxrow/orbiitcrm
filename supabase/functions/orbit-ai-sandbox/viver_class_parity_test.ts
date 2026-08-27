@@ -23,6 +23,14 @@ Deno.test("sandbox Viver reconhece aceite natural com pedido de liberação", ()
   assertEquals(previousAssistantOfferedClassAccess(sandboxConversationMessages(messages), messages[1].content), true);
 });
 
+Deno.test("sandbox Viver reconhece confirmação de participação no horário da aula", () => {
+  const messages = [
+    { role: "assistant" as const, content: "A aula é terça-feira às 19:30. Você consegue participar nesse horário?" },
+    { role: "user" as const, content: "Sim, quero que libere o acesso." },
+  ];
+  assertEquals(previousAssistantOfferedClassAccess(sandboxConversationMessages(messages), messages[1].content), true);
+});
+
 Deno.test("sandbox Viver reconhece a etapa opcional de e-mail", () => {
   assertEquals(sandboxClassEmailStepPending([
     {
