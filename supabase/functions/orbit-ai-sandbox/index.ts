@@ -12,11 +12,9 @@ import {
   extractCanonicalClassUrl,
   extractClassInviteEmail,
   previousAssistantOfferedClassAccess,
-  VIVER_CLASS_TEMPLATE_NAME,
-} from "../orbit-ai-agent/viver-class-guard.ts";
-import {
   sandboxClassEmailStepPending,
   sandboxConversationMessages,
+  VIVER_CLASS_TEMPLATE_NAME,
 } from "./viver-class-parity.ts";
 
 interface SandboxMessage {

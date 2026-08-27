@@ -1,9 +1,11 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  buildCanonicalClassDelivery,
+  extractCanonicalClassUrl,
+  previousAssistantOfferedClassAccess,
   sandboxClassEmailStepPending,
   sandboxConversationMessages,
 } from "./viver-class-parity.ts";
-import { previousAssistantOfferedClassAccess } from "../orbit-ai-agent/viver-class-guard.ts";
 
 Deno.test("sandbox Viver reconhece aceite somente após oferta explícita da aula", () => {
   const messages = [
@@ -27,4 +29,10 @@ Deno.test("sandbox Viver não confunde pergunta genérica com etapa de e-mail", 
   assertEquals(sandboxClassEmailStepPending([
     { role: "assistant", content: "Qual é seu melhor e-mail?" },
   ]), false);
+});
+
+Deno.test("sandbox Viver aceita somente um Meet canônico e substitui o nome", () => {
+  const template = "Oi, {{nome}}. Acesse: https://meet.google.com/abc-defg-hij";
+  assertEquals(extractCanonicalClassUrl(template), "https://meet.google.com/abc-defg-hij");
+  assertEquals(buildCanonicalClassDelivery(template, "Mariana"), "Oi, Mariana. Acesse: https://meet.google.com/abc-defg-hij");
 });
