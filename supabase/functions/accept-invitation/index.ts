@@ -110,6 +110,6 @@ Deno.serve(async (req) => {
 
     return ok({ userId });
   } catch (err) {
-    return fail(ErrorCodes.INTERNAL_ERROR, err.message, 500);
+    return fail(ErrorCodes.INTERNAL_ERROR, (err as Error).message, 500);
   }
 });

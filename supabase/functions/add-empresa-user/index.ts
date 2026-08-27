@@ -64,6 +64,6 @@ Deno.serve(async (req) => {
 
     return ok({ user: { id: userId, nome, email: email.trim().toLowerCase(), cargo, role, empresa_id } });
   } catch (error) {
-    return fail(ErrorCodes.INTERNAL_ERROR, error.message || "Erro interno", 500);
+    return fail(ErrorCodes.INTERNAL_ERROR, (error as Error).message || "Erro interno", 500);
   }
 });

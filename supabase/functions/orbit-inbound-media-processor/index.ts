@@ -102,7 +102,7 @@ async function transcribeAudio(bytes: Uint8Array, mime: string, tenantKey?: stri
   let model: string;
   if (elevenLabsKey) {
     const form = new FormData();
-    form.append("file", new Blob([bytes], { type: mime }), `audio.${safeExtension(mime)}`);
+    form.append("file", new Blob([bytes as unknown as BlobPart], { type: mime }), `audio.${safeExtension(mime)}`);
     form.append("model_id", "scribe_v2");
     form.append("language_code", "por");
     provider = "elevenlabs";

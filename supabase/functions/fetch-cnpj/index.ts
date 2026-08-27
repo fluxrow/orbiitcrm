@@ -33,6 +33,6 @@ serve(async (req) => {
       cnae_fiscal_descricao: data.cnae_fiscal_descricao || "",
     }, undefined, req);
   } catch (e) {
-    return fail(ErrorCodes.INTERNAL_ERROR, e.message || "Erro interno", 500, { manual: true }, req);
+    return fail(ErrorCodes.INTERNAL_ERROR, (e as Error).message || "Erro interno", 500, { manual: true }, req);
   }
 });

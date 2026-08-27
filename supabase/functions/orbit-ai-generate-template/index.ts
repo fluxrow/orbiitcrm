@@ -128,7 +128,7 @@ Responda APENAS com um JSON válido (sem markdown, sem \`\`\`):
 
   } catch (e) {
     console.error("Error:", e);
-    return new Response(JSON.stringify({ ok: false, error: { code: "INTERNAL_ERROR", message: e.message || "Erro interno" } }), {
+    return new Response(JSON.stringify({ ok: false, error: { code: "INTERNAL_ERROR", message: (e as Error).message || "Erro interno" } }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

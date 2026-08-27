@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
         created = true;
       } else if (rotate) {
         password = genPassword();
-        const { error: uErr } = await admin.auth.admin.updateUser(user.id, {
+        const { error: uErr } = await admin.auth.admin.updateUserById(user.id, {
           password,
           email_confirm: true,
         });

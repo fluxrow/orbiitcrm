@@ -609,7 +609,7 @@ Deno.serve(async (req) => {
       try {
         const r = await scanEmpresa(runId, empresaId, metrics);
         results.push(r);
-        if (r.error) errCount += 1;
+        if ((r as { error?: unknown }).error) errCount += 1;
         else okCount += 1;
       } catch (e) {
         slog("error", "tenant_scan_failed", {

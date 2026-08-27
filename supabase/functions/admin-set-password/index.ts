@@ -34,11 +34,11 @@ Deno.serve(async (req) => {
     if (!user_id || !password) return fail(ErrorCodes.VALIDATION_ERROR, "Campos obrigatórios: user_id, password");
     if (password.length < 6) return fail(ErrorCodes.VALIDATION_ERROR, "A senha deve ter pelo menos 6 caracteres");
 
-    const { error: updateError } = await supabaseAdmin.auth.admin.updateUser(user_id, { password });
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(user_id, { password });
     if (updateError) return fail(ErrorCodes.INTERNAL_ERROR, updateError.message, 500);
 
     return ok({ message: "Senha atualizada com sucesso" });
   } catch (error) {
-    return fail(ErrorCodes.INTERNAL_ERROR, error.message || "Erro interno", 500);
+    return fail(ErrorCodes.INTERNAL_ERROR, (error as Error).message || "Erro interno", 500);
   }
 });
