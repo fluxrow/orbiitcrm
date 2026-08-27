@@ -4,6 +4,20 @@ import { getCorsHeaders, corsOptionsResponse } from "../_shared/cors.ts";
 import { callAnthropic, toAnthropicMessages } from "../_shared/anthropic.ts";
 import { normalizeAgentModel } from "../_shared/ai-model.ts";
 import { normalizeAgentText, PT_BR_STYLE_GUARDRAILS } from "../_shared/pt-br-normalizer.ts";
+import { VIVER_EMPRESA_ID } from "../_shared/tenant-scheduling-policy.ts";
+import {
+  buildCanonicalClassDelivery,
+  buildClassInviteEmailRequest,
+  declinedClassInviteEmail,
+  extractCanonicalClassUrl,
+  extractClassInviteEmail,
+  previousAssistantOfferedClassAccess,
+  VIVER_CLASS_TEMPLATE_NAME,
+} from "../orbit-ai-agent/viver-class-guard.ts";
+import {
+  sandboxClassEmailStepPending,
+  sandboxConversationMessages,
+} from "./viver-class-parity.ts";
 
 interface SandboxMessage {
   role: "user" | "assistant" | "system";
@@ -217,6 +231,56 @@ serve(async (req) => {
     const inMessages = Array.isArray(body.messages) ? body.messages : [];
     const mockLead = body.mockLead ?? null;
     const trigger = body.trigger;
+
+    // O sandbox precisa reproduzir os mesmos guardrails determinísticos do
+    // runtime. Sem isso, uma simulação pode aprovar uma resposta que jamais
+    // seria enviada em produção (ou, pior, exibir placeholders antigos).
+    if (empresaId === VIVER_EMPRESA_ID && inMessages.length > 0) {
+      const latestUser = [...inMessages].reverse().find((message) => message.role === "user");
+      const latestText = latestUser?.content || "";
+      const { data: classTemplate, error: classTemplateError } = await service
+        .from("orbit_message_templates")
+        .select("corpo_texto")
+        .eq("empresa_id", empresaId)
+        .eq("nome", VIVER_CLASS_TEMPLATE_NAME)
+        .eq("ativo", true)
+        .maybeSingle();
+      const templateBody = !classTemplateError && typeof classTemplate?.corpo_texto === "string"
+        ? classTemplate.corpo_texto
+        : null;
+      const canonicalUrl = extractCanonicalClassUrl(templateBody);
+
+      if (previousAssistantOfferedClassAccess(sandboxConversationMessages(inMessages), latestText)) {
+        if (!canonicalUrl || !templateBody) {
+          return json(200, {
+            ok: true,
+            data: { message: "Não consegui confirmar o acesso da aula agora. Você quer que eu verifique isso antes de te enviar?", source: "viver_class_guard" },
+          });
+        }
+        return json(200, {
+          ok: true,
+          data: { message: buildClassInviteEmailRequest(mockLead?.nome), source: "viver_class_email_request" },
+        });
+      }
+
+      if (sandboxClassEmailStepPending(inMessages) &&
+        (extractClassInviteEmail(latestText) || declinedClassInviteEmail(latestText))) {
+        if (!canonicalUrl || !templateBody) {
+          return json(200, {
+            ok: true,
+            data: { message: "Não consegui confirmar o acesso da aula agora. Você quer que eu verifique isso antes de te enviar?", source: "viver_class_guard" },
+          });
+        }
+        return json(200, {
+          ok: true,
+          data: {
+            message: buildCanonicalClassDelivery(templateBody, mockLead?.nome),
+            source: "viver_class_delivery_simulated",
+            calendar_invite_status: extractClassInviteEmail(latestText) ? "simulated" : "not_requested",
+          },
+        });
+      }
+    }
 
     if (trigger === "inbound_webhook" && inMessages.length === 0 && cfg.mensagem_boas_vindas?.trim()) {
       return json(200, {
