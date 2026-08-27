@@ -158,3 +158,9 @@ Deno.test("aceite natural após oferta explícita da aula", () => {
   assertEquals(isExplicitClassAcceptance("Quero participar da aula"), true);
   assertEquals(isExplicitClassAcceptance("Pode me enviar o acesso"), true);
 });
+
+Deno.test("confirmação de participação no horário é oferta explícita de aula", () => {
+  assertEquals(previousAssistantOfferedClassAccess([
+    { direcao: "OUT", mensagem: "A aula é terça-feira às 19:30. Você consegue participar nesse horário?", timestamp: "2026-08-27T13:00:00Z" },
+  ], "Sim, quero que libere o acesso."), true);
+});
