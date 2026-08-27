@@ -9,6 +9,7 @@ import {
   enforceCanonicalClassLink,
   extractCanonicalClassUrl,
   extractClassInviteEmail,
+  isExplicitClassAcceptance,
   previousAssistantOfferedClassAccess,
   renderCanonicalClassTemplate,
   viverClassPhase,
@@ -150,4 +151,10 @@ Deno.test("aceite pode coletar e-mail para convite sem torná-lo obrigatório", 
       "Se preferir não informar, tudo bem",
     ),
   );
+});
+
+Deno.test("aceite natural após oferta explícita da aula", () => {
+  assertEquals(isExplicitClassAcceptance("Sim, quero que libere o acesso."), true);
+  assertEquals(isExplicitClassAcceptance("Quero participar da aula"), true);
+  assertEquals(isExplicitClassAcceptance("Pode me enviar o acesso"), true);
 });
