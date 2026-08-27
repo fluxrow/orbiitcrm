@@ -34,6 +34,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   lead_recebido: "Lead recebido (externo)",
   meeting_reminder_24h: "Lembrete 24h reunião",
   meeting_reminder_1h: "Lembrete 1h reunião",
+  meeting_reminder_5m: "Lembrete 5min reunião",
 };
 
 const STATUS_BADGE: Record<string, { label: string; cls: string; icon: any }> = {

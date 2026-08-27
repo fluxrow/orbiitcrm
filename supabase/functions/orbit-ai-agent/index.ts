@@ -11,7 +11,13 @@ import {
   ensureFreshAccessToken,
   checkAvailability,
   createCalendarEvent,
+  listUpcomingEvents,
+  addCalendarEventAttendee,
 } from "../_shared/google-calendar.ts";
+import {
+  selectAuthoritativeViverClassEvent,
+  viverClassLookupWindow,
+} from "../_shared/viver-class-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 import { extractPublicMessage, looksLikeInternalPayload, sanitizedLeakSummary } from "../_shared/ai-output-guard.ts";
 import {
@@ -26,7 +32,10 @@ import {
 import {
   VIVER_CLASS_TEMPLATE_NAME,
   buildCanonicalClassDelivery,
+  buildClassInviteEmailRequest,
+  declinedClassInviteEmail,
   enforceCanonicalClassLink,
+  extractClassInviteEmail,
   extractCanonicalClassUrl,
   previousAssistantOfferedClassAccess,
 } from "./viver-class-guard.ts";
@@ -1206,6 +1215,38 @@ serve(async (req) => {
       const normativeInboundText = typeof normativeInbound.mensagem === "string"
         ? normativeInbound.mensagem
         : mensagemAgregada;
+      const classInviteEmailPending = aiContexto.viver_class_email_pending === true;
+      const suppliedClassEmail = extractClassInviteEmail(normativeInboundText);
+      const declinedClassEmail = declinedClassInviteEmail(normativeInboundText);
+
+      if (classInviteEmailPending && (suppliedClassEmail || declinedClassEmail)) {
+        if (suppliedClassEmail && prospect?.id) {
+          const { error: emailUpdateError } = await supabase
+            .from("orbit_prospects")
+            .update({ email_principal: suppliedClassEmail })
+            .eq("id", prospect.id)
+            .eq("empresa_id", empresaId);
+          if (emailUpdateError) {
+            console.error("[orbit-ai-agent] Falha ao salvar e-mail do convite da aula:", emailUpdateError);
+            const fallback = "Não consegui confirmar seu e-mail agora. Posso enviar o acesso somente por aqui?";
+            await sendAIResponse(supabase, telefone, fallback, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
+            return new Response(JSON.stringify({ ok: true, class_email_guarded: true, resposta: fallback, simulated: isDemo }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+        }
+        await supabase.from("orbit_conversas").update({
+          ai_contexto: {
+            ...aiContexto,
+            viver_class_email_pending: false,
+            viver_class_participation_confirmed: true,
+            viver_class_invite_email_collected: Boolean(suppliedClassEmail),
+          },
+        }).eq("id", conversa_id).eq("empresa_id", empresaId);
+      }
+
+      const shouldDeliverAfterEmailStep = classInviteEmailPending &&
+        (Boolean(suppliedClassEmail) || declinedClassEmail);
       if (previousAssistantOfferedClassAccess(mensagens || [], normativeInboundText)) {
         const canonicalUrl = extractCanonicalClassUrl(viverClassTemplateBody);
         if (!canonicalUrl || !viverClassTemplateBody) {
@@ -1219,20 +1260,91 @@ serve(async (req) => {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
+        const emailRequest = buildClassInviteEmailRequest(prospect?.nome_contato || prospect?.nome_razao);
+        await supabase.from("orbit_conversas").update({
+          ai_contexto: { ...aiContexto, viver_class_email_pending: true },
+        }).eq("id", conversa_id).eq("empresa_id", empresaId);
+        if (!await renewExecutionLease()) return leaseLostResponse();
+        await sendAIResponse(supabase, telefone, emailRequest, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
+        return new Response(JSON.stringify({
+          ok: true,
+          class_email_requested: true,
+          resposta: emailRequest,
+          simulated: isDemo,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (shouldDeliverAfterEmailStep) {
+        const canonicalUrl = extractCanonicalClassUrl(viverClassTemplateBody);
+        if (!canonicalUrl || !viverClassTemplateBody) {
+          const fallback = "Não consegui confirmar o acesso da aula agora. Você quer que eu verifique isso antes de te enviar?";
+          await sendAIResponse(supabase, telefone, fallback, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
+          return new Response(JSON.stringify({ ok: true, class_link_guarded: true, resposta: fallback, simulated: isDemo }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        let calendarInviteStatus = suppliedClassEmail ? "pending" : "not_requested";
+        if (suppliedClassEmail && !isDemo) {
+          try {
+            const googleToken = await getTokenForEmpresa(empresaId);
+            if (!googleToken) throw new Error("class_calendar_not_connected");
+            const accessToken = await ensureFreshAccessToken(googleToken);
+            const lookupWindow = viverClassLookupWindow(new Date());
+            const listed = await listUpcomingEvents(
+              accessToken,
+              googleToken.calendar_id,
+              lookupWindow.timeMin,
+              250,
+              lookupWindow.timeMax,
+            );
+            const selection = selectAuthoritativeViverClassEvent(
+              Array.isArray(listed?.items) ? listed.items : [],
+              canonicalUrl,
+              new Date(),
+            );
+            if (!selection.event?.id) {
+              throw new Error(selection.reason || "class_calendar_event_not_found");
+            }
+            const invitation = await addCalendarEventAttendee(
+              accessToken,
+              googleToken.calendar_id,
+              selection.event.id,
+              suppliedClassEmail,
+            );
+            calendarInviteStatus = invitation.alreadyPresent ? "already_present" : "invited";
+          } catch (calendarInviteError) {
+            calendarInviteStatus = "failed";
+            console.error("[orbit-ai-agent] Convite Google da aula Viver não concluído:", {
+              empresa_id: empresaId,
+              conversa_id,
+              error: calendarInviteError instanceof Error
+                ? calendarInviteError.message
+                : "class_calendar_unknown_error",
+            });
+          }
+        } else if (suppliedClassEmail && isDemo) {
+          calendarInviteStatus = "simulated";
+        }
+        await supabase.from("orbit_conversas").update({
+          ai_contexto: {
+            ...aiContexto,
+            viver_class_email_pending: false,
+            viver_class_participation_confirmed: true,
+            viver_class_invite_email_collected: Boolean(suppliedClassEmail),
+            viver_class_calendar_invite_status: calendarInviteStatus,
+          },
+        }).eq("id", conversa_id).eq("empresa_id", empresaId);
+
         if (!await renewExecutionLease()) return leaseLostResponse();
         const deterministicReply = buildCanonicalClassDelivery(
           viverClassTemplateBody,
           prospect?.nome_contato || prospect?.nome_razao,
         );
         await sendAIResponse(supabase, telefone, deterministicReply, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
-        console.log("[orbit-ai-agent] Link canônico da aula Viver enfileirado após aceite explícito", {
-          empresa_id: empresaId,
-          conversa_id,
-          template_id: classTemplate?.id,
-        });
         return new Response(JSON.stringify({
           ok: true,
           class_link_delivered: true,
+          class_invite_email_collected: Boolean(suppliedClassEmail),
+          class_calendar_invite_status: calendarInviteStatus,
           resposta: deterministicReply,
           simulated: isDemo,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -2485,7 +2597,10 @@ ${regrasBlock}`;
             // A resposta de A não aguarda B. Em runtime Supabase, waitUntil mantém
             // apenas o trabalho de background vivo; o tick persistente cobre falhas.
             // @ts-ignore EdgeRuntime é fornecido pelo Supabase Edge Runtime.
-            if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(drainPromise);
+            if (typeof EdgeRuntime !== "undefined") {
+              // @ts-ignore EdgeRuntime é fornecido pelo Supabase Edge Runtime.
+              EdgeRuntime.waitUntil(drainPromise);
+            }
           }
         } catch { /* best effort */ }
       }
