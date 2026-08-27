@@ -1254,6 +1254,99 @@ export type Database = {
           },
         ]
       }
+      orbit_ai_delivery_incidents: {
+        Row: {
+          artifacts: Json
+          conversa_id: string
+          created_at: string
+          empresa_id: string
+          first_detected_at: string
+          id: string
+          inbound_at: string
+          inbound_message_id: string
+          incident_type: string
+          last_detected_at: string
+          occurrences: number
+          resolution: string | null
+          resolved_at: string | null
+          severity: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          artifacts?: Json
+          conversa_id: string
+          created_at?: string
+          empresa_id: string
+          first_detected_at?: string
+          id?: string
+          inbound_at: string
+          inbound_message_id: string
+          incident_type: string
+          last_detected_at?: string
+          occurrences?: number
+          resolution?: string | null
+          resolved_at?: string | null
+          severity?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          artifacts?: Json
+          conversa_id?: string
+          created_at?: string
+          empresa_id?: string
+          first_detected_at?: string
+          id?: string
+          inbound_at?: string
+          inbound_message_id?: string
+          incident_type?: string
+          last_detected_at?: string
+          occurrences?: number
+          resolution?: string | null
+          resolved_at?: string | null
+          severity?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_ai_delivery_incidents_conversa_id_fkey"
+            columns: ["conversa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_conversas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_ai_delivery_incidents_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_ai_delivery_incidents_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_ai_delivery_incidents_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_ai_delivery_incidents_inbound_message_id_fkey"
+            columns: ["inbound_message_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_mensagens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orbit_ai_execution_claims: {
         Row: {
           attempts: number
@@ -5323,6 +5416,440 @@ export type Database = {
         }
         Relationships: []
       }
+      orbit_rag_approval_events: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          decision: string
+          empresa_id: string
+          id: string
+          reason: string | null
+          source_id: string
+          version_number: number
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          decision: string
+          empresa_id: string
+          id?: string
+          reason?: string | null
+          source_id: string
+          version_number: number
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          decision?: string
+          empresa_id?: string
+          id?: string
+          reason?: string | null
+          source_id?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_rag_approval_events_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_approval_events_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_approval_events_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_approval_events_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_rag_sources"
+            referencedColumns: ["source_id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_approval_events_source_id_version_number_fkey"
+            columns: ["source_id", "version_number"]
+            isOneToOne: false
+            referencedRelation: "orbit_rag_source_versions"
+            referencedColumns: ["source_id", "version_number"]
+          },
+        ]
+      }
+      orbit_rag_conflicts: {
+        Row: {
+          conflict_type: string
+          created_at: string
+          empresa_id: string
+          evidence_hash: string
+          id: string
+          left_source_id: string
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          right_source_id: string
+          status: string
+        }
+        Insert: {
+          conflict_type: string
+          created_at?: string
+          empresa_id: string
+          evidence_hash: string
+          id?: string
+          left_source_id: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          right_source_id: string
+          status?: string
+        }
+        Update: {
+          conflict_type?: string
+          created_at?: string
+          empresa_id?: string
+          evidence_hash?: string
+          id?: string
+          left_source_id?: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          right_source_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_rag_conflicts_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_conflicts_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_conflicts_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_conflicts_empresa_id_left_source_id_fkey"
+            columns: ["empresa_id", "left_source_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_rag_sources"
+            referencedColumns: ["empresa_id", "source_id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_conflicts_empresa_id_right_source_id_fkey"
+            columns: ["empresa_id", "right_source_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_rag_sources"
+            referencedColumns: ["empresa_id", "source_id"]
+          },
+        ]
+      }
+      orbit_rag_retrieval_logs: {
+        Row: {
+          conversa_id: string | null
+          created_at: string
+          empresa_id: string
+          id: string
+          inbound_message_id: string | null
+          latency_ms: number | null
+          mode: string
+          outcome: string
+          query_hash: string
+          retrieved_count: number
+          similarities: number[]
+          source_ids: string[]
+          top_similarity: number | null
+          used_in_response: boolean
+        }
+        Insert: {
+          conversa_id?: string | null
+          created_at?: string
+          empresa_id: string
+          id?: string
+          inbound_message_id?: string | null
+          latency_ms?: number | null
+          mode: string
+          outcome?: string
+          query_hash: string
+          retrieved_count?: number
+          similarities?: number[]
+          source_ids?: string[]
+          top_similarity?: number | null
+          used_in_response?: boolean
+        }
+        Update: {
+          conversa_id?: string | null
+          created_at?: string
+          empresa_id?: string
+          id?: string
+          inbound_message_id?: string | null
+          latency_ms?: number | null
+          mode?: string
+          outcome?: string
+          query_hash?: string
+          retrieved_count?: number
+          similarities?: number[]
+          source_ids?: string[]
+          top_similarity?: number | null
+          used_in_response?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_rag_retrieval_logs_conversa_id_fkey"
+            columns: ["conversa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_conversas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_retrieval_logs_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_retrieval_logs_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_retrieval_logs_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_retrieval_logs_inbound_message_id_fkey"
+            columns: ["inbound_message_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_mensagens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_rag_runtime_config: {
+        Row: {
+          created_at: string
+          empresa_id: string
+          match_count: number
+          min_similarity: number
+          mode: string
+          require_approved_sources: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          empresa_id: string
+          match_count?: number
+          min_similarity?: number
+          mode?: string
+          require_approved_sources?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          empresa_id?: string
+          match_count?: number
+          min_similarity?: number
+          mode?: string
+          require_approved_sources?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_rag_runtime_config_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_runtime_config_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_runtime_config_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+        ]
+      }
+      orbit_rag_source_versions: {
+        Row: {
+          chunk_count: number
+          content_hash: string
+          created_at: string
+          created_by: string | null
+          empresa_id: string
+          id: string
+          model_version: string | null
+          provenance: Json
+          source_id: string
+          version_number: number
+        }
+        Insert: {
+          chunk_count?: number
+          content_hash: string
+          created_at?: string
+          created_by?: string | null
+          empresa_id: string
+          id?: string
+          model_version?: string | null
+          provenance?: Json
+          source_id: string
+          version_number: number
+        }
+        Update: {
+          chunk_count?: number
+          content_hash?: string
+          created_at?: string
+          created_by?: string | null
+          empresa_id?: string
+          id?: string
+          model_version?: string | null
+          provenance?: Json
+          source_id?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_rag_source_versions_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_source_versions_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_source_versions_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_source_versions_empresa_id_source_id_fkey"
+            columns: ["empresa_id", "source_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_rag_sources"
+            referencedColumns: ["empresa_id", "source_id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_source_versions_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_rag_sources"
+            referencedColumns: ["source_id"]
+          },
+        ]
+      }
+      orbit_rag_sources: {
+        Row: {
+          approval_status: string
+          approved_at: string | null
+          approved_by: string | null
+          classification: string
+          created_at: string
+          current_version: number
+          empresa_id: string
+          rejection_reason: string | null
+          sensitivity: string
+          source_id: string
+          updated_at: string
+          valid_from: string | null
+          valid_until: string | null
+        }
+        Insert: {
+          approval_status?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          classification?: string
+          created_at?: string
+          current_version?: number
+          empresa_id: string
+          rejection_reason?: string | null
+          sensitivity?: string
+          source_id: string
+          updated_at?: string
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Update: {
+          approval_status?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          classification?: string
+          created_at?: string
+          current_version?: number
+          empresa_id?: string
+          rejection_reason?: string | null
+          sensitivity?: string
+          source_id?: string
+          updated_at?: string
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_rag_sources_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_sources_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_rag_sources_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+        ]
+      }
       orbit_resend_config: {
         Row: {
           api_key: string | null
@@ -7992,6 +8519,10 @@ export type Database = {
         }
         Returns: Json
       }
+      orbit_scan_unanswered_inbounds: {
+        Args: { p_lookback?: string; p_min_age?: string }
+        Returns: Json
+      }
       orbit_search_digits: { Args: { _input: string }; Returns: string }
       orbit_search_normalize: { Args: { _input: string }; Returns: string }
       orbit_seed_default_pipeline: {
@@ -8489,9 +9020,9 @@ export type Database = {
         | "conversa_no_reply"
         | "meeting_reminder_24h"
         | "meeting_reminder_1h"
-        | "meeting_reminder_5m"
         | "lead_recebido"
         | "lead_replied"
+        | "meeting_reminder_5m"
       orbit_onboarding_status:
         | "rascunho"
         | "enviado"
@@ -8648,9 +9179,9 @@ export const Constants = {
         "conversa_no_reply",
         "meeting_reminder_24h",
         "meeting_reminder_1h",
-        "meeting_reminder_5m",
         "lead_recebido",
         "lead_replied",
+        "meeting_reminder_5m",
       ],
       orbit_onboarding_status: [
         "rascunho",
