@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
         console.warn("[invite-org-user] No Resend API key, skipping email");
       }
     } catch (err) {
-      emailError = err.message;
+      emailError = (err as Error).message;
       console.error("[invite-org-user] Email send error:", err);
     }
 
@@ -126,6 +126,6 @@ Deno.serve(async (req) => {
 
     return ok({ invitation, token, email_sent: emailSent });
   } catch (err) {
-    return fail(ErrorCodes.INTERNAL_ERROR, err.message, 500);
+    return fail(ErrorCodes.INTERNAL_ERROR, (err as Error).message, 500);
   }
 });

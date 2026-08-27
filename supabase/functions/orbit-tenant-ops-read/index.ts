@@ -10,7 +10,7 @@ const RATE_WINDOW_MS = 60_000;
 const RATE_LIMITS: Record<string, number> = { audit: 20, default: 60 };
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
 
-function json(req: Request, body: unknown, status = 200, requestId = crypto.randomUUID()) {
+function json(req: Request, body: unknown, status = 200, requestId: string = crypto.randomUUID()) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
