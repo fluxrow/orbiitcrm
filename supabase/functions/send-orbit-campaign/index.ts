@@ -536,6 +536,15 @@ const handler = async (req: Request): Promise<Response> => {
         // Impede corrida entre direct sender e worker. Sem safety re-check aqui porque
         // já foi feito acima; o worker re-valida no momento do envio Z-API.
         if (adapterEnabled && campaign.canal === "whatsapp" && recipient.status === "pendente") {
+          const controlledReengagement = campaign.filtros_json?.controlled_reengagement;
+          const metadata = controlledReengagement?.source_form === "typebot" &&
+              controlledReengagement?.requires_day_close_review === true
+            ? {
+              viver_controlled_reengagement: true,
+              controlled_reengagement_wave: controlledReengagement.wave ?? null,
+              controlled_reengagement_slot: controlledReengagement.slot ?? null,
+            }
+            : {};
           const routed = await enqueueOutbox(supabase, {
             empresa_id: campaign.empresa_id,
             campaign_id: campaign.id,
@@ -544,6 +553,7 @@ const handler = async (req: Request): Promise<Response> => {
             source_id: recipient.id,
             payload_type: templateImageUrl ? "image" : "text",
             payload: { mensagem, url_midia: templateImageUrl ?? null },
+            metadata,
           });
           if (routed.enqueued) adapterQueued++; else adapterSkipped++;
           continue;

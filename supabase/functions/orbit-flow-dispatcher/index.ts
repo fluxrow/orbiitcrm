@@ -4,6 +4,8 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
+import { isMeetingReminderKind } from "../_shared/meeting-reminder-policy.ts";
+import { isFlowTriggerActiveForEvent } from "../_shared/flow-trigger-activation.ts";
 
 
 const corsHeaders = {
@@ -21,7 +23,8 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
 
 type Json = Record<string, unknown>;
 
-function matchesConditions(condicoes: Json, payload: Json, triggerConfig: Json, eventType: string): boolean {
+function matchesConditions(condicoes: Json, payload: Json, triggerConfig: Json, eventType: string, eventCreatedAt: string): boolean {
+  if (!isFlowTriggerActiveForEvent(triggerConfig, eventCreatedAt)) return false;
   // deal_stage_changed: trigger_config may carry to_stage_id or to_stage_name
   if (eventType === "deal_stage_changed") {
     const toId = triggerConfig?.to_stage_id;
@@ -91,7 +94,7 @@ async function processEvent(event: any) {
   // ── Corte de automação do tenant: nenhuma cadência nova (D0/D+1/D+3) nasce
   // para prospect anterior ao corte. Evento é marcado processado e auditado.
   const evProspectId = await resolveEventProspectId(event);
-  if (evProspectId) {
+  if (evProspectId && !isMeetingReminderKind(event.event_type)) {
     const cutoff = await evaluateAutomationCutoff(supabase, {
       empresa_id: event.empresa_id,
       prospect_id: evProspectId,
@@ -122,7 +125,7 @@ async function processEvent(event: any) {
 
   const matched: string[] = [];
   for (const flow of flows ?? []) {
-    if (!matchesConditions(flow.condicoes, event.payload, flow.trigger_config, event.event_type)) continue;
+    if (!matchesConditions(flow.condicoes, event.payload, flow.trigger_config, event.event_type, event.created_at)) continue;
 
     // ── Fail-safe de transição semanticamente duplicada (fora do dedupe do trigger).
     // Se algum produtor externo emitir OUTRO evento da MESMA transição
@@ -241,7 +244,8 @@ Deno.serve(async (req) => {
     });
   } catch (e) {
     console.error("dispatcher error", e);
-    return new Response(JSON.stringify({ ok: false, data: null, error: String(e?.message ?? e) }), {
+    const message = e instanceof Error ? e.message : String(e);
+    return new Response(JSON.stringify({ ok: false, data: null, error: message }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

@@ -1,6 +1,9 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   PILOT_INBOUND_REQUIRED,
+  PILOT_CAMPAIGN_EVIDENCE_REQUIRED,
+  PILOT_FOLLOWUP_EVIDENCE_REQUIRED,
+  PILOT_MEETING_EVIDENCE_REQUIRED,
   PILOT_SOURCE_BLOCKED,
   PILOT_TYPEBOT_EVIDENCE_REQUIRED,
   pilotStaticBlockReason,
@@ -11,6 +14,27 @@ Deno.test("pilot blocks every proactive source for Viver", () => {
   for (const source_type of ["campaign", "flow_initial", "flow_followup", "flow_stage", "meeting_confirmation", "manual"]) {
     assertEquals(pilotStaticBlockReason({ empresa_id: VIVER_SEMIJOIAS_EMPRESA_ID, source_type, metadata: {} }), PILOT_SOURCE_BLOCKED);
   }
+});
+
+Deno.test("pilot only admits explicitly marked controlled Viver operations to evidence checks", () => {
+  assertEquals(pilotStaticBlockReason({
+    empresa_id: VIVER_SEMIJOIAS_EMPRESA_ID,
+    source_type: "campaign",
+    metadata: { viver_controlled_reengagement: true },
+  }), null);
+  assertEquals(pilotStaticBlockReason({
+    empresa_id: VIVER_SEMIJOIAS_EMPRESA_ID,
+    source_type: "flow_followup",
+    metadata: { viver_controlled_followup: true, pilot_not_before: "2026-08-29T03:00:00Z" },
+  }), null);
+  assertEquals(pilotStaticBlockReason({
+    empresa_id: VIVER_SEMIJOIAS_EMPRESA_ID,
+    source_type: "meeting_confirmation",
+    metadata: { meeting_id: "11111111-1111-4111-8111-111111111111", reminder_kind: "meeting_reminder_5m" },
+  }), null);
+  assertEquals(PILOT_CAMPAIGN_EVIDENCE_REQUIRED, "PILOT_CAMPAIGN_EVIDENCE_REQUIRED");
+  assertEquals(PILOT_FOLLOWUP_EVIDENCE_REQUIRED, "PILOT_FOLLOWUP_EVIDENCE_REQUIRED");
+  assertEquals(PILOT_MEETING_EVIDENCE_REQUIRED, "PILOT_MEETING_EVIDENCE_REQUIRED");
 });
 
 Deno.test("pilot permits only the explicitly marked Viver Typebot D0 action", () => {
