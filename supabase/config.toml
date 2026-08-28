@@ -142,3 +142,8 @@ verify_jwt = false
 
 [functions.orbit-inbound-retro-reply]
 verify_jwt = false
+
+# Aceita JWT de Super Admin, service role ou token dedicado de cron. A função
+# faz a autorização internamente antes de qualquer consulta ou probe externo.
+[functions.orbit-ai-provider-health]
+verify_jwt = false

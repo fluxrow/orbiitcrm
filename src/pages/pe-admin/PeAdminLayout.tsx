@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { usePeAuth } from "@/hooks/usePeAuth";
-import { Building2, Users, FileText, LogOut, Menu, X, Shield, Link2, BookOpen, ClipboardList, CreditCard, Activity, MessageSquare, HeartPulse } from "lucide-react";
+import { Building2, Users, FileText, LogOut, Menu, X, Shield, Link2, BookOpen, ClipboardList, CreditCard, Activity, MessageSquare, HeartPulse, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Navigate } from "react-router-dom";
 
@@ -11,6 +11,7 @@ const navItems = [
   { to: "/pe-admin/users", label: "Usuários Globais", icon: Users },
   { to: "/pe-admin/planos", label: "Planos", icon: CreditCard },
   { to: "/pe-admin/tenant-health", label: "Saúde dos Tenants", icon: HeartPulse },
+  { to: "/pe-admin/ai-providers", label: "Provedores de IA", icon: Bot },
   { to: "/pe-admin/zapi-go-live", label: "Z-API Go-Live", icon: MessageSquare },
   { to: "/pe-admin/audit", label: "Auditoria", icon: FileText },
   { to: "/pe-admin/advisor-scan", label: "Advisor Scan", icon: Activity },
