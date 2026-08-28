@@ -39,6 +39,13 @@ import {
   extractCanonicalClassUrl,
   previousAssistantOfferedClassAccess,
 } from "./viver-class-guard.ts";
+import {
+  COMUNICA_EMPRESA_ID,
+  comunicaQuoteReady,
+  enforceComunicaNotificationTruth,
+  normalizeQualificationFields,
+  type QualificationField,
+} from "./comunica-commercial-handoff.ts";
 
 import {
   decideImmediateKick,
@@ -419,6 +426,7 @@ async function notifyCommercialHumanDetected(
     : motivo === "agendar_call" ? "Call agendada"
     : motivo === "falar_humano" ? "Lead pediu atendimento humano"
     : motivo === "pagamento_misto" ? "Lead pediu pagamento misto (PIX + cartão)"
+    : motivo === "orcamento_pronto" ? "Orçamento pronto para análise"
     : "Novo sinal comercial";
 
   const notificacao = [
@@ -1474,8 +1482,11 @@ serve(async (req) => {
       || "Você é um assistente de vendas.";
     const promptRoteiro = (aiConfig.prompt_roteiro && String(aiConfig.prompt_roteiro).trim()) || "";
     const promptRegras = (aiConfig.prompt_regras && String(aiConfig.prompt_regras).trim()) || "";
-    const camposQualificacao: Array<{ key: string; label: string; pergunta: string; tipo: string; required?: boolean; opcoes?: string[] }> =
-      Array.isArray(aiConfig.campos_qualificacao) ? aiConfig.campos_qualificacao : [];
+    const camposQualificacao: QualificationField[] = empresaId === COMUNICA_EMPRESA_ID
+      ? normalizeQualificationFields(aiConfig.campos_qualificacao)
+      : (Array.isArray(aiConfig.campos_qualificacao)
+        ? aiConfig.campos_qualificacao as QualificationField[]
+        : []);
 
     // RAG: buscar contexto relevante (top-3, se base habilitada)
     let ragChunks: RagChunk[] = [];
@@ -1603,6 +1614,7 @@ ${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${data
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
 ${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}${commercialV2Block}${primaryOfferBlock}${identityBlock}${selfIntroBlock}${bullinkConversationBlock}${falseBenefitsBlock}${noCollectBlock}
+${empresaId === COMUNICA_EMPRESA_ID ? `\nREGRA DE NOTIFICAÇÃO COMERCIAL (COMUNICA): mesmo após concluir a coleta, diga apenas que registrou as informações. NUNCA afirme que encaminhou ou notificou a equipe; o sistema acrescentará essa confirmação somente depois do aceite real do canal interno.\n` : ""}
 REGRAS CRÍTICAS:
 1. DADOS EXISTENTES: Se um dado do lead já está preenchido no contexto acima ou nos FATOS CANÔNICOS (personName, companyName, city, email, nível pretendido, cidade/estado etc.), NUNCA pergunte novamente. Use naturalmente na conversa.
 2. CAMPOS FALTANTES: Solicite APENAS os campos marcados como "true" em missingFields, e as perguntas dinâmicas ainda não respondidas.
@@ -2085,28 +2097,49 @@ ${regrasBlock}`;
     // Só fazer handoff se NÃO houve auto-agendamento resolvido pela IA (sugestão ou evento criado).
     const suppressHandoff = scheduleOutcome.handled === true;
     const isHandoff = isCommercialSignal && !suppressHandoff;
+    const quoteReadiness = comunicaQuoteReady({
+      empresaId,
+      collectingQuote: parsed.iniciar_coleta_orcamento === true || emColetaOrcamento,
+      baseRegistrationComplete: cadastroCompleto,
+      fields: camposQualificacao,
+      existingAnswers: dadosAdicionais,
+      collectedAnswers: camposColetados,
+      extractedAnswers: parsed.dados_adicionais,
+    });
+    const effectiveCadastroCompleto = empresaId === COMUNICA_EMPRESA_ID
+      ? quoteReadiness.ready
+      : (parsed.cadastro_completo || false);
     const nextState = computeNextState(
       leadContext.conversation.state,
       intencaoNormalizada,
-      parsed.cadastro_completo || false,
+      effectiveCadastroCompleto,
       false, // handoff será determinado abaixo
       msgClassification
     );
 
-    // ── Notificação comercial: SOMENTE em sinal comercial real e sem auto-agendamento ──
+    // ── Notificação comercial: sinal explícito ou orçamento completo da Comunica ──
     const alreadyNotified = aiContexto.commercial_notified === true;
-    const shouldNotifyCommercial = isCommercialSignal && !alreadyNotified && !suppressHandoff && !scheduleOutcome.handoff_ready;
+    const quoteReadySignal = empresaId === COMUNICA_EMPRESA_ID && quoteReadiness.ready;
+    const shouldNotifyCommercial = (isCommercialSignal || quoteReadySignal) && !alreadyNotified && !suppressHandoff && !scheduleOutcome.handoff_ready;
+    let notificationAttempted = false;
+    let notificationSent = false;
     if (shouldNotifyCommercial) {
       if (!await renewExecutionLease()) return leaseLostResponse();
-      console.log("[orbit-ai-agent] Sinal comercial detectado:", intencaoNormalizada, "— notificando responsável...");
-      await notifyCommercialHumanDetected(supabase, {
+      notificationAttempted = true;
+      const notificationClassification = quoteReadySignal ? "orcamento_pronto" : intencaoNormalizada;
+      console.log("[orbit-ai-agent] Sinal comercial detectado:", notificationClassification, "— notificando responsável...");
+      const notificationResult = await notifyCommercialHumanDetected(supabase, {
         prospect,
         telefone_lead: telefone,
         mensagem: mensagemAgregada,
-        classification: intencaoNormalizada,
+        classification: notificationClassification,
         empresa_id: empresaId || null,
         isDemo,
       });
+      notificationSent = notificationResult.sent;
+      if (!notificationSent) {
+        console.warn("[orbit-ai-agent] Notificação comercial não confirmada:", notificationResult.reason || "unknown");
+      }
     }
 
 
@@ -2126,14 +2159,14 @@ ${regrasBlock}`;
         ...canonicalFactsToCollectedFields(canonicalFacts),
         ...canonicalValidatedFields,
       },
-      cadastro_completo: parsed.cadastro_completo,
+      cadastro_completo: effectiveCadastroCompleto,
       ultima_intencao: parsed.intencao,
       intro_already_sent: introAlreadySent || primeiraInteracao,
       // Campos de classificação
       message_classification: msgClassification,
       human_detected: aiContexto.human_detected || msgClassification === "human_probable",
       auto_reply_detected: aiContexto.auto_reply_detected || msgClassification === "auto_reply",
-      commercial_notified: alreadyNotified || shouldNotifyCommercial,
+      commercial_notified: alreadyNotified || notificationSent,
       first_human_response_at: (!aiContexto.first_human_response_at && msgClassification === "human_probable")
         ? new Date().toISOString()
         : aiContexto.first_human_response_at || null,
@@ -2499,6 +2532,21 @@ ${regrasBlock}`;
         reasons: finalBullink.reasons,
       });
       resposta = finalBullink.text;
+    }
+
+    const finalComunica = enforceComunicaNotificationTruth({
+      empresaId,
+      response: resposta,
+      quoteReady: quoteReadiness.ready,
+      notificationAttempted,
+      notificationSent,
+      alreadyNotified,
+      nextMissingLabel: quoteReadiness.missing[0]?.label ?? null,
+    });
+    if (finalComunica.changed) {
+      console.warn("[orbit-ai-agent] Barreira de notificação Comunica acionada:", finalComunica.reason);
+      resposta = finalComunica.text;
+      parsed.mensagem = resposta;
     }
 
     // Enviar resposta via WhatsApp (fallback: texto)
