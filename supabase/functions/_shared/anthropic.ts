@@ -66,9 +66,20 @@ function parseRetryAfterSeconds(response: Response): number | undefined {
   return Math.max(0, Math.ceil((retryAt - Date.now()) / 1000));
 }
 
-function classifyAnthropicError(status: number): AnthropicCallError["code"] {
+export function classifyAnthropicError(
+  status: number,
+  errorText = "",
+): AnthropicCallError["code"] {
   if (status === 429) return "rate_limit";
-  if (status === 402) return "credits";
+  // Anthropic pode representar indisponibilidade de crédito como 402 ou como
+  // erro de billing/crédito em outro 4xx. A classificação usa apenas o tipo do
+  // erro para acionar o alerta; o corpo bruto nunca é persistido.
+  if (
+    status === 402 ||
+    /credit balance|insufficient[^\n]{0,40}credit|billing/i.test(errorText)
+  ) {
+    return "credits";
+  }
   if (status === 401 || status === 403) return "auth";
   if (status >= 500) return "server";
   return "unknown";
@@ -214,12 +225,12 @@ export async function callAnthropic(
           ok: false,
           status: retryResp.status,
           error: `Anthropic ${retryResp.status}: ${retryErrText.slice(0, 500)}`,
-          code: classifyAnthropicError(retryResp.status),
+          code: classifyAnthropicError(retryResp.status, retryErrText),
         };
       }
     }
 
-    const code = classifyAnthropicError(resp.status);
+    const code = classifyAnthropicError(resp.status, errText);
     return {
       ok: false,
       status: resp.status,

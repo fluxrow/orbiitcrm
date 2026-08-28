@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw, Webhook, Workflow } from "lucide-react";
 import { useState } from "react";
 import { format } from "date-fns";
+import { AiProviderHealthPanel } from "@/components/pe-admin/AiProviderHealthPanel";
 
 interface HealthKpis {
   window_hours: number;
@@ -65,6 +66,8 @@ export function SystemHealthTab() {
 
   return (
     <div className="space-y-6">
+      <AiProviderHealthPanel compact />
+
       <Card className="glass-card">
         <CardHeader className="flex flex-row items-center justify-between gap-3">
           <div>

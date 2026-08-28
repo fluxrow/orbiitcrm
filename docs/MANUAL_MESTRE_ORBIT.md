@@ -102,3 +102,32 @@ O funcionamento atual de IA, filas, prompts, fluxos e integrações dos tenants 
 - Ações destrutivas usam cancelamento/soft delete quando possível.
 - Ações de grande impacto exigem confirmação reforçada.
 - Alterações fora do escopo devem ser preservadas e não incluídas no commit.
+
+## Saúde dos provedores de IA
+
+O Super Admin possui uma visão global em `/pe-admin/ai-providers` e também na
+aba de saúde das configurações do tenant master. O monitor da Anthropic separa
+três sinais:
+
+1. **Probe operacional:** chamada mínima de 1 token para detectar chave
+   ausente/inválida, rate limit, falha do provedor e crédito esgotado.
+2. **Custo oficial:** consulta à Cost API administrativa, quando o segredo
+   `ANTHROPIC_ADMIN_OAUTH_TOKEN` ou `ANTHROPIC_ADMIN_API_KEY` estiver
+   configurado somente no backend.
+3. **Saldo estimado:** saldo observado manualmente no Console menos os custos
+   oficiais posteriores ao registro do baseline. A Anthropic não publica uma
+   API de saldo pré-pago exato; o Console continua sendo a fonte final.
+
+Os thresholds de saldo e dias restantes, o e-mail e a habilitação do monitor
+são alteráveis apenas pelo Super Admin. Alertas de plataforma são enviados por
+e-mail do sistema e nunca usam a instância Z-API de um cliente. O banco guarda
+somente métricas sanitizadas, status e histórico de alertas; chaves, prompts,
+respostas e PII não são persistidos.
+
+O endpoint aceita JWT de Super Admin, service role ou
+`ORBIT_PROVIDER_HEALTH_CRON_TOKEN`, validando a autorização internamente. O job
+`orbit-ai-provider-health-hourly` executa no minuto 17 de cada hora e consome
+no máximo um token de saída por verificação. Se o monitor estiver desabilitado
+no painel, a função encerra antes do probe. A Cost API administrativa não
+consome tokens de modelo. Após o primeiro deploy, o ciclo saudável → alerta →
+recuperação deve ser homologado antes de considerar a entrega concluída.
