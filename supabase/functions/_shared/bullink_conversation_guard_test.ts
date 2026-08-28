@@ -1,8 +1,10 @@
 import {
   BULLINK_EMPRESA_ID,
   BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY,
+  BULLINK_RECORDED_COURSE_DETAILS_REPLY,
   BULLINK_RECORDED_COURSE_REPLY,
   enforceBullinkConversationGuard,
+  isExplicitRecordedCoursePriceRequest,
   isExplicitRecordedCourseRequest,
   isMentorshipRecordedContentInclusionQuestion,
 } from "./bullink-conversation-guard.ts";
@@ -32,9 +34,10 @@ Deno.test("Bullink: cobre equivalentes de autoconfirmação", () => {
   }
 });
 
-Deno.test("Bullink: pedido direto por formato gravado recebe Curso R$ 997 no mesmo turno", () => {
+Deno.test("Bullink: interesse no formato gravado recebe explicação sem preço", () => {
   for (const inbound of ["E o formato gravado? O que tem nele?", "Como é o curso?", "Você tem aulas gravadas?"]) {
     if (!isExplicitRecordedCourseRequest(inbound)) throw new Error(`intent não detectada: ${inbound}`);
+    if (isExplicitRecordedCoursePriceRequest(inbound)) throw new Error(`falso pedido de preço: ${inbound}`);
     const result = enforceBullinkConversationGuard({
       empresaId: BULLINK_EMPRESA_ID,
       inbound,
@@ -42,7 +45,45 @@ Deno.test("Bullink: pedido direto por formato gravado recebe Curso R$ 997 no mes
       previousAgentQuestions: [],
     });
     if (!result.reasons.includes("explicit_recorded_course_unanswered")) throw new Error(JSON.stringify(result));
+    if (result.text !== BULLINK_RECORDED_COURSE_DETAILS_REPLY) throw new Error(result.text);
+    if (/997|R\$/.test(result.text)) throw new Error(`preço antecipado: ${result.text}`);
+  }
+});
+
+Deno.test("Bullink: preço do Curso só aparece quando o lead pede preço explicitamente", () => {
+  for (const inbound of [
+    "Qual o valor do curso?",
+    "Quanto custa o gravado?",
+    "Tem uma versão só de curso mais barata?",
+    "Qual é o investimento no Curso Gravado?",
+  ]) {
+    if (!isExplicitRecordedCoursePriceRequest(inbound)) throw new Error(`preço não detectado: ${inbound}`);
+    const result = enforceBullinkConversationGuard({
+      empresaId: BULLINK_EMPRESA_ID,
+      inbound,
+      response: "O Curso Gravado tem módulos práticos e você segue no seu ritmo.",
+    });
     if (result.text !== BULLINK_RECORDED_COURSE_REPLY) throw new Error(result.text);
+    if (!/997/.test(result.text)) throw new Error(`preço ausente: ${result.text}`);
+  }
+});
+
+Deno.test("Regressão Bullink 28/08: perguntas gerais reais não recebem R$ 997", () => {
+  for (const inbound of [
+    "E o conteúdo gravado?",
+    "Gostaria de saber mais sobre seu curso.",
+    "Olá, como funciona o curso e a mentoria YouTube?",
+  ]) {
+    const result = enforceBullinkConversationGuard({
+      empresaId: BULLINK_EMPRESA_ID,
+      inbound,
+      response: BULLINK_RECORDED_COURSE_REPLY,
+    });
+    if (result.text !== BULLINK_RECORDED_COURSE_DETAILS_REPLY) throw new Error(result.text);
+    if (!result.reasons.includes("recorded_course_price_not_requested")) {
+      throw new Error(JSON.stringify(result));
+    }
+    if (/997|R\$/.test(result.text)) throw new Error(`preço antecipado: ${result.text}`);
   }
 });
 
@@ -133,7 +174,7 @@ Deno.test("Regressão do diálogo real: duas perguntas sobre gravado não recebe
     response: "Você prefere começar com os 3 meses de mentoria individual?",
     previousAgentQuestions: previous,
   });
-  if (result.text !== BULLINK_RECORDED_COURSE_REPLY) throw new Error(result.text);
+  if (result.text !== BULLINK_RECORDED_COURSE_DETAILS_REPLY) throw new Error(result.text);
   if (!result.reasons.includes("explicit_recorded_course_unanswered")) throw new Error(JSON.stringify(result));
 });
 

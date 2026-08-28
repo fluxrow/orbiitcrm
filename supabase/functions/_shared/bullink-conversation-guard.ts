@@ -11,6 +11,7 @@ export type BullinkGuardReason =
   | "persona_self_confirmation"
   | "mentorship_recorded_content_inclusion"
   | "explicit_recorded_course_unanswered"
+  | "recorded_course_price_not_requested"
   | "budget_objection_without_downsell"
   | "repeated_question";
 
@@ -50,6 +51,15 @@ const EXPLICIT_COURSE_REQUEST = [
   /\baulas?\s+gravad[ao]s?\b/,
   /\bconteudo\s+gravad[oa]\b/,
   /^(?:e\s+)?(?:o\s+)?gravad[oa]\??$/,
+];
+
+const EXPLICIT_COURSE_PRICE_REQUEST = [
+  /\b(?:qual|quanto|quanto\s+e|me\s+diz|informa|informar)\b.{0,45}\b(?:valor|preco|investimento)\b.{0,45}\b(?:curso|gravado)\b/,
+  /\b(?:valor|preco|investimento)\b.{0,45}\b(?:curso|gravado)\b/,
+  /\b(?:curso|gravado)\b.{0,45}\b(?:valor|preco|custa|custaria|investimento)\b/,
+  /\bquanto\b.{0,25}\b(?:custa|fica|sai)\b.{0,35}\b(?:curso|gravado)?\b/,
+  /\b(?:curso|versao|opcao|formato)\b.{0,40}\bmais\s+barat[oa]\b/,
+  /\bmais\s+barat[oa]\b.{0,40}\b(?:curso|versao|opcao|formato|gravado)\b/,
 ];
 
 const BUDGET_OBJECTION = [
@@ -105,6 +115,14 @@ export function isExplicitRecordedCourseRequest(inbound: string | null | undefin
     ).test(n);
   if (!n || rejectsCourse || isMentorshipRecordedContentInclusionQuestion(n)) return false;
   return EXPLICIT_COURSE_REQUEST.some((pattern) => pattern.test(n));
+}
+
+export function isExplicitRecordedCoursePriceRequest(
+  inbound: string | null | undefined,
+): boolean {
+  const n = norm(inbound);
+  if (!n || isMentorshipRecordedContentInclusionQuestion(n)) return false;
+  return EXPLICIT_COURSE_PRICE_REQUEST.some((pattern) => pattern.test(n));
 }
 
 export function isMentorshipRecordedContentInclusionQuestion(
@@ -166,6 +184,9 @@ function removeRepeatedQuestions(response: string, repeated: string[]): string {
 export const BULLINK_RECORDED_COURSE_REPLY =
   "Sim. Tenho o Curso Gravado por R$ 997 à vista no PIX, com o mesmo método da Mentoria, mas sem acompanhamento individual. Quer que eu te explique como funciona?";
 
+export const BULLINK_RECORDED_COURSE_DETAILS_REPLY =
+  "O Curso Gravado apresenta o método em módulos práticos: nichos validados, idiomas de atuação, validação, mineração de referências, títulos de alto clique, roteiros de alta retenção, leitura de métricas e monetização. Você segue no seu ritmo e pode rever as aulas; a diferença é que ele não inclui o acompanhamento individual da Mentoria. Qual parte você quer entender melhor?";
+
 export const BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY =
   "Sim. A Mentoria inclui acesso ao conteúdo gravado e também os 3 meses de acompanhamento individual comigo. Quer que eu te explique o próximo passo para entrar?";
 
@@ -191,6 +212,7 @@ export function enforceBullinkConversationGuard(
   const reasons: BullinkGuardReason[] = [];
   const asksMentorshipInclusion = isMentorshipRecordedContentInclusionQuestion(input.inbound);
   const explicitCourse = isExplicitRecordedCourseRequest(input.inbound);
+  const explicitCoursePrice = isExplicitRecordedCoursePriceRequest(input.inbound);
   const budgetObjection = isBudgetObjection(input.inbound);
 
   if (containsPersonaSelfConfirmation(text)) {
@@ -201,12 +223,22 @@ export function enforceBullinkConversationGuard(
   if (asksMentorshipInclusion && text !== BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY) {
     reasons.push("mentorship_recorded_content_inclusion");
     text = BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY;
-  } else if (explicitCourse && !mentionsRecordedCourseWithPrice(text)) {
-    reasons.push("explicit_recorded_course_unanswered");
-    text = BULLINK_RECORDED_COURSE_REPLY;
   } else if (budgetObjection && !mentionsRecordedCourseWithPrice(text)) {
     reasons.push("budget_objection_without_downsell");
     text = BULLINK_BUDGET_DOWNSELL_REPLY;
+  } else if (explicitCoursePrice && !mentionsRecordedCourseWithPrice(text)) {
+    reasons.push("explicit_recorded_course_unanswered");
+    text = BULLINK_RECORDED_COURSE_REPLY;
+  } else if (explicitCourse && !explicitCoursePrice) {
+    const normalizedResponse = norm(text);
+    const answeredCourse = COURSE_MENTION.test(normalizedResponse);
+    const volunteeredPrice = COURSE_PRICE.test(normalizedResponse);
+    if (!answeredCourse || volunteeredPrice) {
+      reasons.push(volunteeredPrice
+        ? "recorded_course_price_not_requested"
+        : "explicit_recorded_course_unanswered");
+      text = BULLINK_RECORDED_COURSE_DETAILS_REPLY;
+    }
   }
 
   const repeated = repeatedQuestions(text, input.previousAgentQuestions ?? []);
@@ -225,7 +257,8 @@ export function buildBullinkConversationPromptBlock(empresaId: string | null | u
     "\n=== REFORÇO CONVERSACIONAL BULLINK (INVIOLÁVEL) ===",
     '- Nunca confirme sua identidade com frases como "sou eu mesmo, Fernando", "é o Fernando mesmo", "aqui é o Fernando" ou equivalentes.',
     '- A Mentoria INCLUI acesso ao conteúdo gravado e 3 meses de acompanhamento individual. Se o lead perguntar se o curso/conteúdo gravado vem junto, está incluso ou faz parte da Mentoria, responda isso diretamente e mantenha a Mentoria como oferta ativa.',
-    '- Só apresente o Curso Gravado avulso por R$ 997 quando o lead pedir explicitamente para conhecer/comprar o curso separado, recusar a Mentoria ou apresentar objeção financeira. A simples menção a "conteúdo gravado" não autoriza trocar a oferta.',
+    '- Se o lead demonstrar interesse, pedir para conhecer ou perguntar como funciona o Curso Gravado, explique primeiro conteúdo, módulos, formato e diferença para a Mentoria. NÃO informe preço nesse momento.',
+    '- Só informe R$ 997 quando o lead perguntar explicitamente por preço, valor, custo ou investimento do Curso Gravado, ou quando apresentar objeção financeira à Mentoria. A simples menção a "curso", "gravado" ou "conteúdo gravado" não autoriza revelar o preço.',
     "- Se houver objeção financeira, apresente imediatamente e com respeito o Curso Gravado por R$ 997; não repita o preço da Mentoria antes da alternativa.",
     "- Nunca repita a mesma pergunta sem acrescentar informação útil. Responda primeiro a dúvida específica do lead.",
     "=== FIM DO REFORÇO CONVERSACIONAL BULLINK ===\n",
