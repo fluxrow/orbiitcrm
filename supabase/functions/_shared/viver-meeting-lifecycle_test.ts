@@ -53,7 +53,20 @@ const authoritativeMeeting = {
   scheduled_at: "2026-08-26T19:00:00.000Z",
   duration_minutes: 60,
   status: "scheduled",
+  meeting_url: "https://meet.google.com/abc-defg-hij",
 };
+
+Deno.test("lembrete sem link Google Meet autoritativo falha fechado", () => {
+  const result = evaluateViverMeetingReminder({
+    reminderKind: "meeting_reminder_1h",
+    meetingId: authoritativeMeeting.id,
+    meeting: { ...authoritativeMeeting, meeting_url: null },
+  }, new Date("2026-08-26T18:00:00.000Z"));
+  assertEquals(result, {
+    allowed: false,
+    reason: "meeting_reminder_authoritative_link_missing",
+  });
+});
 
 Deno.test("lembrete autoritativo é permitido somente na janela exata do próprio tipo", () => {
   const result = evaluateViverMeetingReminder({

@@ -17,6 +17,7 @@ import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { getTokenForEmpresa, ensureFreshAccessToken, checkAvailability } from "../_shared/google-calendar.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
+import { isMeetingReminderKind } from "../_shared/meeting-reminder-policy.ts";
 import {
   VIVER_EMPRESA_ID,
   meetingIdFromFlowContext,
@@ -75,12 +76,13 @@ function deriveOutboxSourceType(
   triggerType: string | null,
   hasScheduledAction: boolean,
   cfg: Json,
-): "flow_initial" | "flow_followup" | "flow_stage" {
+): "flow_initial" | "flow_followup" | "flow_stage" | "meeting_confirmation" {
   const override = typeof cfg?.outbox_source_type === "string" ? cfg.outbox_source_type : null;
   if (override && ALLOWED_OUTBOX_SOURCE_OVERRIDES.has(override)) {
     return override as any;
   }
   if (triggerType === "deal_stage_changed") return "flow_stage";
+  if (isMeetingReminderKind(triggerType)) return "meeting_confirmation";
   if (triggerType === "lead_recebido") return hasScheduledAction ? "flow_followup" : "flow_initial";
   // Demais triggers (deal_idle, conversa_no_reply, meeting_reminder_*): mantém heurística legada.
   return hasScheduledAction ? "flow_followup" : "flow_initial";
@@ -127,6 +129,31 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
   const prospectId = await resolveProspectId(run);
   if (!prospectId) return { ok: false, error: "prospect não identificado" };
 
+  const triggerType = await getFlowTriggerType((run as any).flow_id ?? null);
+  const meetingId = meetingIdFromFlowContext(run.context);
+  let authoritativeMeeting: any = null;
+  if (run.empresa_id === VIVER_EMPRESA_ID && isMeetingReminderKind(triggerType)) {
+    const meetingLookup = meetingId ? await supabase
+      .from("orbit_meetings")
+      .select("id, empresa_id, prospect_id, conversa_id, scheduled_at, duration_minutes, status, meeting_url, titulo")
+      .eq("empresa_id", VIVER_EMPRESA_ID)
+      .eq("id", meetingId)
+      .maybeSingle() : { data: null, error: null };
+    authoritativeMeeting = meetingLookup.data;
+    const reminderGuard = evaluateViverMeetingReminder({
+      reminderKind: triggerType,
+      meetingId,
+      meeting: (authoritativeMeeting as MeetingRow | null) ?? null,
+      queryFailed: Boolean(meetingLookup.error),
+    }, new Date());
+    if (!reminderGuard.allowed || String(authoritativeMeeting?.prospect_id ?? "") !== prospectId) {
+      return {
+        ok: false,
+        error: reminderGuard.allowed ? "meeting_reminder_prospect_mismatch" : reminderGuard.reason,
+      };
+    }
+  }
+
   const { data: prospect } = await supabase
     .from("orbit_prospects")
     .select("*")
@@ -148,7 +175,18 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
   if (!tpl) return { ok: false, error: "template não encontrado" };
 
   const p: any = prospect;
-  const payloadVars: any = run.context?.payload ?? {};
+  const payloadVars: any = {
+    ...(run.context?.payload ?? {}),
+    ...(authoritativeMeeting
+      ? {
+        meeting_id: authoritativeMeeting.id,
+        scheduled_at: authoritativeMeeting.scheduled_at,
+        duration_minutes: authoritativeMeeting.duration_minutes,
+        meeting_url: authoritativeMeeting.meeting_url,
+        titulo: authoritativeMeeting.titulo,
+      }
+      : {}),
+  };
   let meetingTimezone: string | null = null;
   if (payloadVars.scheduled_at) {
     try {
@@ -213,7 +251,6 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
   if (adapterOn) {
     const scheduledActionId = (run as any)._scheduled_action_id ?? null;
     const hasScheduled = !!scheduledActionId;
-    const triggerType = await getFlowTriggerType((run as any).flow_id ?? null);
     const sourceType = deriveOutboxSourceType(triggerType, hasScheduled, cfg);
     const eventCreated = run.context?.payload?.created === true;
     const payloadForCtx: Json = (run.context?.payload ?? {}) as Json;
@@ -233,6 +270,15 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
       metadata.viver_pilot_typebot_d0 = true;
       metadata.pilot_not_before = cfg?.pilot_not_before;
     }
+    if (cfg?.viver_controlled_followup === true) {
+      metadata.viver_controlled_followup = true;
+      metadata.pilot_not_before = cfg?.pilot_not_before;
+    }
+    if (sourceType === "meeting_confirmation") {
+      metadata.meeting_id = meetingId;
+      metadata.reminder_kind = triggerType;
+      metadata.scheduled_at = authoritativeMeeting?.scheduled_at ?? payloadForCtx.scheduled_at ?? null;
+    }
     const routed = await enqueueOutbox(supabase, {
       empresa_id: run.empresa_id,
       prospect_id: prospectId,
@@ -241,12 +287,14 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
       flow_run_id: (run as any).id ?? null,
       scheduled_action_id: scheduledActionId,
       source_type: sourceType,
-      source_id: eventId ?? actionId ?? scheduledActionId ?? null,
+      source_id: sourceType === "meeting_confirmation" ? meetingId : (eventId ?? actionId ?? scheduledActionId ?? null),
       event_id: eventId,
       target_stage_id: targetStageId,
       allow_terminal_stage_message: allowTerminal,
       action_id: actionId,
       event_created: eventCreated,
+      meeting_id: sourceType === "meeting_confirmation" ? meetingId : null,
+      idempotency_scope: sourceType === "meeting_confirmation" ? String(triggerType) : null,
       payload_type: tpl.imagem_url ? "image" : "text",
       payload: {
         mensagem,
@@ -469,12 +517,16 @@ async function actionSendRichMedia(cfg: Json, run: Json): Promise<StepResult> {
 
   const r = await sendZapi(run.empresa_id, telefone, tipo as any, payload);
   // best-effort logging
-  await supabase.from("orbit_webhook_logs").insert({
-    empresa_id: run.empresa_id,
-    direction: "out",
-    event_type: "flow_send_rich_media",
-    payload: { tipo, url: cfg.url_midia, telefone, flow_id: run.flow_id },
-  }).catch?.(() => {});
+  try {
+    await supabase.from("orbit_webhook_logs").insert({
+      empresa_id: run.empresa_id,
+      direction: "out",
+      event_type: "flow_send_rich_media",
+      payload: { tipo, url: cfg.url_midia, telefone, flow_id: run.flow_id },
+    });
+  } catch {
+    // best-effort logging: a entrega já foi resolvida por sendZapi
+  }
   return r;
 }
 
@@ -613,7 +665,7 @@ async function actionNotifyVendedor(cfg: Json, run: Json): Promise<StepResult> {
     const json = await resp.json().catch(() => ({}));
     return { ok: resp.ok, output: json, error: resp.ok ? undefined : `HTTP ${resp.status}` };
   } catch (e) {
-    return { ok: false, error: String(e?.message ?? e) };
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -936,7 +988,10 @@ async function handleSingleAction(scheduledId: string): Promise<Response> {
   // nunca executada (nenhuma cadência antiga ressuscita após o corte).
   {
     const pid = s.prospect_id ?? (await resolveProspectId(run));
-    const cutoff = await evaluateAutomationCutoff(supabase, { empresa_id: s.empresa_id, prospect_id: pid });
+    const reminderKind = String(s.context?.payload?.reminder_kind ?? "");
+    const cutoff = isMeetingReminderKind(reminderKind)
+      ? { allowed: true, reason: undefined }
+      : await evaluateAutomationCutoff(supabase, { empresa_id: s.empresa_id, prospect_id: pid });
     if (!cutoff.allowed) {
       await supabase
         .from("orbit_flow_scheduled_actions")
@@ -1024,7 +1079,10 @@ Deno.serve(async (req) => {
     // ── Corte de automação: run de prospect anterior ao corte não executa nenhuma action.
     {
       const pid = await resolveProspectId(run as Json);
-      const cutoff = await evaluateAutomationCutoff(supabase, { empresa_id: (run as any).empresa_id, prospect_id: pid });
+      const reminderKind = String((run as any).context?.payload?.reminder_kind ?? "");
+      const cutoff = isMeetingReminderKind(reminderKind)
+        ? { allowed: true, reason: undefined }
+        : await evaluateAutomationCutoff(supabase, { empresa_id: (run as any).empresa_id, prospect_id: pid });
       if (!cutoff.allowed) {
         await supabase
           .from("orbit_flow_runs")
@@ -1138,7 +1196,8 @@ Deno.serve(async (req) => {
     });
   } catch (e) {
     console.error("executor error", e);
-    return new Response(JSON.stringify({ ok: false, data: null, error: String(e?.message ?? e) }), {
+    const message = e instanceof Error ? e.message : String(e);
+    return new Response(JSON.stringify({ ok: false, data: null, error: message }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

@@ -37,6 +37,9 @@ export function evaluateViverMeetingReminder(input: {
   if (!input.meeting) {
     return { allowed: false, reason: "meeting_reminder_not_owned_by_viver" };
   }
+  if (!/^https:\/\/meet\.google\.com\/[a-z0-9-]+(?:[/?#].*)?$/i.test(String(input.meeting.meeting_url ?? ""))) {
+    return { allowed: false, reason: "meeting_reminder_authoritative_link_missing" };
+  }
   const phase = classifyMeeting(input.meeting, now);
   if (phase !== "upcoming") {
     return { allowed: false, reason: `meeting_reminder_${phase}` };

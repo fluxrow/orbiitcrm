@@ -172,7 +172,7 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
   // ── Corte de automação por tenant (auto_reply_new_leads_from).
   // Prospect anterior ao corte nunca recebe automação (IA/cadência/campanha/etapa).
   // `manual` continua livre: é o humano assumindo o atendimento.
-  if (!isManual) {
+  if (!isManual && ctx.source_type !== "meeting_confirmation") {
     const cutoffDecision = await evaluateAutomationCutoff(supabase, {
       empresa_id: ctx.empresa_id,
       prospect_id: ctx.prospect_id ?? null,
