@@ -1,8 +1,10 @@
 import {
   BULLINK_EMPRESA_ID,
+  BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY,
   BULLINK_RECORDED_COURSE_REPLY,
   enforceBullinkConversationGuard,
   isExplicitRecordedCourseRequest,
+  isMentorshipRecordedContentInclusionQuestion,
 } from "./bullink-conversation-guard.ts";
 
 const OTHER_TENANT = "36f26579-0000-0000-0000-000000000000";
@@ -60,6 +62,44 @@ Deno.test("Bullink: mera menção ou recusa do curso não força a oferta", () =
 
 Deno.test("Bullink: pergunta curta 'E o gravado?' continua sendo pedido explícito", () => {
   if (!isExplicitRecordedCourseRequest("E o gravado?")) throw new Error("pedido curto não detectado");
+});
+
+Deno.test("Bullink: conteúdo gravado incluso mantém a Mentoria como oferta ativa", () => {
+  for (const inbound of [
+    "Faz sim. Junto vem o conteúdo gravado?",
+    "A Mentoria inclui o curso gravado?",
+    "Esse valor inclui as aulas gravadas?",
+    "Na mentoria eu tenho acesso ao conteúdo gravado?",
+  ]) {
+    if (!isMentorshipRecordedContentInclusionQuestion(inbound)) {
+      throw new Error(`inclusão não detectada: ${inbound}`);
+    }
+    if (isExplicitRecordedCourseRequest(inbound)) {
+      throw new Error(`falso pedido de curso avulso: ${inbound}`);
+    }
+    const result = enforceBullinkConversationGuard({
+      empresaId: BULLINK_EMPRESA_ID,
+      inbound,
+      response: BULLINK_RECORDED_COURSE_REPLY,
+    });
+    if (!result.reasons.includes("mentorship_recorded_content_inclusion")) {
+      throw new Error(JSON.stringify(result));
+    }
+    if (result.text !== BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY) {
+      throw new Error(result.text);
+    }
+    if (/R\$\s*997/.test(result.text)) throw new Error(`downsell indevido: ${result.text}`);
+  }
+});
+
+Deno.test("Regressão Bullink 28/08: aceite da Mentoria seguido de dúvida sobre o gravado não faz downsell", () => {
+  const result = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "faz sim\njunto vem o conteúdo gravado?",
+    response: "Sim. Tenho o Curso Gravado por R$ 997 à vista no PIX, com o mesmo método da Mentoria, mas sem acompanhamento individual. Quer que eu te explique como funciona?",
+  });
+  if (result.text !== BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY) throw new Error(result.text);
+  if (!result.reasons.includes("mentorship_recorded_content_inclusion")) throw new Error(JSON.stringify(result));
 });
 
 Deno.test("Bullink: objeção financeira recebe downsell imediato e respeitoso", () => {
