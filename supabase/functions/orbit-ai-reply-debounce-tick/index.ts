@@ -13,6 +13,11 @@ import {
   readLockBusyRetryFlag,
   DEBOUNCE_RECOVERY_GRACE_MS,
 } from "../_shared/ai-reply-debounce.ts";
+import {
+  evaluateIncidentRecovery,
+  INCIDENT_RECOVERY_MAX_AGE_MS,
+  INCIDENT_RECOVERY_MIN_AGE_MS,
+} from "../_shared/ai-incident-recovery.ts";
 
 const MAX_ATTEMPTS = 3;
 /** Não recupera nada mais velho que isso (zero reprocessamento de backlog). */
@@ -70,6 +75,143 @@ serve(async (req) => {
         }),
       });
       results.push({ conversa_id: event.conversa_id, action: resp.ok ? "queued_drained" : "queued_retry" });
+    }
+
+    // Recuperação automática estritamente limitada de incidentes recentes.
+    // Uma conversa por tenant/tick; nunca recupera backlog, delivery_failed,
+    // handoff humano, opt-out, fila pausada ou mensagem que deixou de ser a mais recente.
+    const incidentMinAt = new Date(now.getTime() - INCIDENT_RECOVERY_MAX_AGE_MS).toISOString();
+    const incidentMaxAt = new Date(now.getTime() - INCIDENT_RECOVERY_MIN_AGE_MS).toISOString();
+    const { data: incidents, error: incidentsError } = await supabase
+      .from("orbit_ai_delivery_incidents")
+      .select("id, empresa_id, conversa_id, inbound_message_id, incident_type, status, inbound_at")
+      .eq("status", "open")
+      .in("incident_type", ["missing_dispatch", "execution_failed"])
+      .gte("inbound_at", incidentMinAt)
+      .lte("inbound_at", incidentMaxAt)
+      .order("inbound_at", { ascending: true })
+      .limit(20);
+    if (incidentsError) console.warn("[orbit-ai-reply-debounce-tick] incident recovery unavailable");
+    const recoveredTenants = new Set<string>();
+
+    for (const incident of incidents ?? []) {
+      if (recoveredTenants.has(incident.empresa_id)) continue;
+      const [aiCfgResult, sendCfgResult, zapiResult, conversaResult, inboundResult, claimResult] = await Promise.all([
+        supabase.from("orbit_ai_config")
+          .select("modo_automatico, responder_fora_horario, horario_inicio, horario_fim")
+          .eq("empresa_id", incident.empresa_id).maybeSingle(),
+        supabase.from("orbit_whatsapp_sending_config")
+          .select("enabled, outbox_adapter_enabled")
+          .eq("empresa_id", incident.empresa_id).maybeSingle(),
+        supabase.from("orbit_zapi_config")
+          .select("ativo, instance_offline, envio_real_liberado, canary_mode_enabled, canary_phone_numbers")
+          .eq("empresa_id", incident.empresa_id).eq("ativo", true).maybeSingle(),
+        supabase.from("orbit_conversas")
+          .select("prospect_id, telefone_whatsapp, status, human_talk, human_user_id, archived_at, quarantine_reason")
+          .eq("empresa_id", incident.empresa_id).eq("id", incident.conversa_id).maybeSingle(),
+        supabase.from("orbit_mensagens")
+          .select("id, mensagem, media_extracted_text, timestamp, direcao")
+          .eq("empresa_id", incident.empresa_id).eq("id", incident.inbound_message_id).maybeSingle(),
+        supabase.from("orbit_ai_execution_claims")
+          .select("status, attempts, finished_at")
+          .eq("empresa_id", incident.empresa_id)
+          .eq("conversa_id", incident.conversa_id)
+          .eq("inbound_message_id", incident.inbound_message_id)
+          .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      const aiCfg = aiCfgResult.data as any;
+      const sendCfg = sendCfgResult.data as any;
+      const zapi = zapiResult.data as any;
+      const conversa = conversaResult.data as any;
+      const inbound = inboundResult.data as any;
+      const claim = claimResult.data as any;
+      if (!conversa?.prospect_id || inbound?.direcao !== "IN") continue;
+
+      const [prospectResult, latestInboundResult, outboundResult, outboxResult] = await Promise.all([
+        supabase.from("orbit_prospects")
+          .select("telefone, deleted_at, optout_whatsapp")
+          .eq("empresa_id", incident.empresa_id).eq("id", conversa.prospect_id).maybeSingle(),
+        supabase.from("orbit_mensagens")
+          .select("id")
+          .eq("empresa_id", incident.empresa_id).eq("conversa_id", incident.conversa_id)
+          .eq("direcao", "IN").order("timestamp", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("orbit_mensagens")
+          .select("id, status")
+          .eq("empresa_id", incident.empresa_id).eq("conversa_id", incident.conversa_id)
+          .eq("direcao", "OUT").gt("timestamp", incident.inbound_at).limit(20),
+        supabase.from("orbit_whatsapp_outbox")
+          .select("id, status")
+          .eq("empresa_id", incident.empresa_id).eq("conversa_id", incident.conversa_id)
+          .eq("source_type", "ai_reply").gte("created_at", incident.inbound_at)
+          .in("status", ["pending", "processing", "sent"]).limit(1),
+      ]);
+      const prospect = prospectResult.data as any;
+      const phone = String(conversa.telefone_whatsapp || prospect?.telefone || "").trim() || null;
+      const realOutbounds = (outboundResult.data ?? []).filter((row: any) =>
+        !["queued", "cancelada", "canceled", "falhou", "failed", "pendente"].includes(String(row.status ?? "").toLowerCase())
+      );
+      const decision = evaluateIncidentRecovery({
+        incidentType: incident.incident_type,
+        incidentStatus: incident.status,
+        inboundAt: incident.inbound_at,
+        now,
+        automaticMode: aiCfg?.modo_automatico === true,
+        sendingEnabled: sendCfg?.enabled === true,
+        outboxAdapterEnabled: sendCfg?.outbox_adapter_enabled === true,
+        zapiActive: zapi?.ativo === true,
+        zapiOffline: zapi?.instance_offline === true,
+        realSendEnabled: zapi?.envio_real_liberado === true,
+        canaryModeEnabled: zapi?.canary_mode_enabled === true,
+        canaryPhoneNumbers: Array.isArray(zapi?.canary_phone_numbers) ? zapi.canary_phone_numbers : [],
+        phone,
+        responderForaHorario: aiCfg?.responder_fora_horario === true,
+        horarioInicio: aiCfg?.horario_inicio ?? null,
+        horarioFim: aiCfg?.horario_fim ?? null,
+        humanTalk: conversa.human_talk === true,
+        humanUserId: conversa.human_user_id ?? null,
+        archivedAt: conversa.archived_at ?? null,
+        quarantineReason: conversa.quarantine_reason ?? null,
+        conversationStatus: conversa.status ?? null,
+        prospectDeletedAt: prospect?.deleted_at ?? null,
+        prospectOptoutWhatsapp: prospect?.optout_whatsapp === true,
+        latestInboundMessageId: latestInboundResult.data?.id ?? null,
+        incidentInboundMessageId: incident.inbound_message_id,
+        hasRealOutboundAfterInbound: realOutbounds.length > 0,
+        hasActiveOutboxAfterInbound: (outboxResult.data?.length ?? 0) > 0,
+        claimStatus: claim?.status ?? null,
+        claimAttempts: Number(claim?.attempts ?? 0),
+        claimFinishedAt: claim?.finished_at ?? null,
+      });
+      if (!decision.eligible) continue;
+
+      const text = String(inbound.mensagem ?? inbound.media_extracted_text ?? "").trim();
+      if (!text || !phone) continue;
+      recoveredTenants.add(incident.empresa_id);
+      const recoveryTag = `auto_incident_${String(incident.inbound_message_id).replace(/-/g, "").slice(0, 16)}`;
+      const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-ai-agent`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          "x-orbit-internal-secret": Deno.env.get("ORBIT_AI_AGENT_SECRET") ?? "",
+          "Idempotency-Key": recoveryTag,
+        },
+        body: JSON.stringify({
+          conversa_id: incident.conversa_id,
+          prospect_id: conversa.prospect_id,
+          telefone: phone,
+          mensagem: text,
+          inbound_message_id: incident.inbound_message_id,
+          recovery_tag: recoveryTag,
+          correlation_id: recoveryTag,
+        }),
+      });
+      results.push({
+        conversa_id: incident.conversa_id,
+        action: response.ok ? "incident_recovered" : "incident_retry_failed",
+        incident_type: incident.incident_type,
+        http_status: response.status,
+      });
     }
 
     // Busca com carência ZERO e aplica a carência por tenant abaixo:

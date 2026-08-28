@@ -4,6 +4,7 @@ import {
   buildCanonicalFactsBlock,
   detectRepetition,
   recentAgentQuestions,
+  enforceSingleQuestion,
   buildDeterministicFallback,
   stripPersonaReintroduction,
   containsPersonaReintroduction,
@@ -97,6 +98,46 @@ Deno.test("resposta recente preenche entidade perguntada e impede repetição", 
   const facts = hydrateCanonicalFacts({ mensagens });
   assertEquals(facts.renda_capital.value, "R$ 20.000");
   assert(detectRepetition("Qual é o capital disponível?", facts, recentAgentQuestions(mensagens)).violates);
+});
+
+Deno.test("REGRESSÃO Viver: objetivo complementar já respondido não pode ser perguntado novamente", () => {
+  const mensagens = [
+    {
+      direcao: "OUT",
+      mensagem: "Hoje essas vendas complementam sua renda ou você quer transformar isso no seu negócio principal?",
+    },
+    {
+      direcao: "IN",
+      mensagem: "Por enquanto é uma renda a mais porque trabalho como enfermeira. No futuro gostaria de viver disso.",
+    },
+  ];
+  const facts = hydrateCanonicalFacts({ mensagens });
+  assertEquals(facts.objetivo_negocio.source, "conversation");
+  const verdict = detectRepetition(
+    "Transformar isso no seu negócio principal, com previsibilidade, é prioridade para você hoje?",
+    facts,
+    recentAgentQuestions(mensagens),
+  );
+  assertEquals(verdict.violates, true);
+  assertEquals(verdict.reason, "asks_known_field");
+  assertEquals(verdict.field, "objetivo_negocio");
+});
+
+Deno.test("barreira global mantém explicação e apenas a primeira pergunta", () => {
+  const result = enforceSingleQuestion(
+    "Entendi o cenário. Você vende só para colegas do trabalho? Como divulga hoje as peças? Posso te orientar depois.",
+  );
+  assertEquals(result.changed, true);
+  assertEquals(result.removedQuestions, 1);
+  assertEquals(result.text, "Entendi o cenário. Você vende só para colegas do trabalho? Posso te orientar depois.");
+});
+
+Deno.test("barreira global preserva resposta com zero ou uma pergunta", () => {
+  for (const text of ["Entendi o cenário.", "Entendi. Qual é o próximo passo?"]) {
+    const result = enforceSingleQuestion(text);
+    assertEquals(result.changed, false);
+    assertEquals(result.text, text);
+  }
 });
 
 Deno.test("não persiste confirmação vaga, negação ou resposta sem conteúdo", () => {

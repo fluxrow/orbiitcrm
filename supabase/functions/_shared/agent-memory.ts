@@ -118,6 +118,15 @@ export const CANONICAL_FIELDS: CanonicalFieldDef[] = [
     aliases: ["momento_negocio", "momento do negocio", "fase do negocio", "estagio do negocio", "situacao atual do negocio"],
   },
   {
+    key: "objetivo_negocio",
+    label: "Objetivo com o negócio",
+    aliases: [
+      "objetivo_negocio", "objetivo do negocio", "objetivo com o negocio", "renda complementar",
+      "complemento de renda", "renda extra", "negocio principal", "viver do negocio", "viver disso",
+      "dedicacao integral", "prioridade do negocio",
+    ],
+  },
+  {
     key: "empresa",
     label: "Empresa",
     aliases: ["empresa", "nome da empresa", "razao social", "nome_fantasia"],
@@ -211,7 +220,7 @@ export function normalizeFactForField(key: string, value: unknown): string | nul
   if (key === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) return null;
   if (key === "telefone" && clean.replace(/\D/g, "").length < 10) return null;
   if (key === "estado" && !/^[A-Za-zÀ-ÿ ]{2,30}$/.test(clean)) return null;
-  if (["dificuldade", "momento_negocio", "etapa_atual", "objetivo_nivel"].includes(key) &&
+  if (["dificuldade", "momento_negocio", "objetivo_negocio", "etapa_atual", "objetivo_nivel"].includes(key) &&
       (clean.length < 4 || !/[A-Za-zÀ-ÿ]/.test(clean))) return null;
   return clean;
 }
@@ -407,6 +416,16 @@ const FIELD_QUESTION_PATTERNS: Array<{ key: string; patterns: RegExp[] }> = [
   { key: "dificuldade", patterns: [/\bqual (e )?(o |a )?(seu|sua) (maior|principal) (dificuldade|desafio)\b/i, /\bo que (mais )?(te trava|esta dificultando|te impede)\b/i, /\b(principal|maior) desafio\b/i] },
   { key: "renda_capital", patterns: [/\bquanto (voce )?(tem|pode|consegue).{0,25}(investir|disponivel)\b/i, /\bqual (e )?(a )?sua (renda|faixa de investimento)\b/i, /\bcapital disponivel\b/i] },
   { key: "momento_negocio", patterns: [/\bqual (e )?(o )?momento do (seu )?negocio\b/i, /\bem que (fase|momento).{0,15}negocio\b/i] },
+  {
+    key: "objetivo_negocio",
+    patterns: [
+      /\b(complementa|complementar|complemento).{0,30}(renda|salario)\b/i,
+      /\b(renda|salario).{0,30}(extra|complementar|complemento)\b/i,
+      /\b(transformar|tornar|virar).{0,35}(negocio principal|principal fonte|profissao)\b/i,
+      /\b(negocio principal|principal fonte).{0,35}(prioridade|objetivo|meta|hoje)\b/i,
+      /\b(viver disso|viver do negocio|dedicar integralmente)\b/i,
+    ],
+  },
   { key: "empresa", patterns: [/\bqual (e )?(o )?nome da (sua )?empresa\b/i, /\bqual (e )?(a )?sua empresa\b/i] },
   { key: "segmento", patterns: [/\bqual (e )?(o )?seu segmento\b/i, /\bem qual ramo\b/i, /\barea de atuacao\b/i] },
 ];
@@ -437,6 +456,43 @@ export function detectRepetition(
     }
   }
   return { violates: false };
+}
+
+export interface SingleQuestionResult {
+  text: string;
+  changed: boolean;
+  removedQuestions: number;
+}
+
+/**
+ * Barreira final tenant-neutra: uma resposta pode conter explicações e somente
+ * uma pergunta. Perguntas excedentes são removidas sem chamar o modelo outra vez.
+ */
+export function enforceSingleQuestion(text: string): SingleQuestionResult {
+  const original = String(text ?? "").trim();
+  if (!original) return { text: "", changed: false, removedQuestions: 0 };
+
+  const segments = original
+    .split(/(?<=[?!.])\s+|\n+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  let keptQuestion = false;
+  let removedQuestions = 0;
+  const kept = segments.filter((segment) => {
+    if (!segment.includes("?")) return true;
+    if (!keptQuestion) {
+      keptQuestion = true;
+      return true;
+    }
+    removedQuestions += extractQuestions(segment).length || 1;
+    return false;
+  });
+  const normalized = kept.join(" ").replace(/\s{2,}/g, " ").trim();
+  return {
+    text: normalized || original,
+    changed: removedQuestions > 0 && Boolean(normalized),
+    removedQuestions,
+  };
 }
 
 export function buildCorrectiveInstruction(verdict: RepetitionVerdict, facts: CanonicalFacts): string {

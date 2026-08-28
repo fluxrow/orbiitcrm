@@ -168,6 +168,7 @@ import {
   detectRepetition,
   buildCorrectiveInstruction,
   buildDeterministicFallback,
+  enforceSingleQuestion,
   stripPersonaReintroduction,
   canonicalFactsToCollectedFields,
   resolveCanonicalKey,
@@ -2595,6 +2596,14 @@ ${regrasBlock}`;
       if (freshMeetingError && !mentionsAgendaContent(resposta)) {
         console.log("[orbit-ai-agent] Resposta sem conteúdo de agenda preservada apesar da falha transitória.");
       }
+    }
+    const singleQuestion = enforceSingleQuestion(resposta);
+    if (singleQuestion.changed) {
+      console.warn("[orbit-ai-agent] Barreira global de pergunta única acionada:", {
+        removed_questions: singleQuestion.removedQuestions,
+      });
+      resposta = singleQuestion.text;
+      parsed.mensagem = resposta;
     }
     await sendAIResponse(supabase, telefone, resposta, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
 
