@@ -10,6 +10,8 @@ import {
   extractCommercialSignals,
   computeCommercialPermissions,
   evaluateCommercialV2,
+  updateCommercialState,
+  isCommercialSaleHandoffAuthorized,
   EMPTY_COMMERCIAL_STATE,
   type CommercialStateV2,
 } from "./commercial-signals.ts";
@@ -138,6 +140,35 @@ Deno.test("D: 'Sim' isolado após pergunta informativa não apresenta preço", (
 Deno.test("D2: 'ficou claro' não apresenta preço", () => {
   const { perms: p } = perms("ficou claro", EXPLAINED);
   assertFalse(p.mustAnswerPriceNow);
+});
+
+Deno.test("D3: regressão Claudia — convite para investimento não conta como preço", () => {
+  const before = state({ product_focus: "mentoria", product_explained: true });
+  const first = perms("A estrutura para fazer", before);
+  const outbound = "É exatamente isso que a Mentoria resolve. Você quer saber como funciona o investimento?";
+  const pending = updateCommercialState(before, first.extracted, outbound, first.perms, "2026-08-29T12:13:29.135Z");
+  assertEquals(pending.price_informed, null);
+  assert(pending.awaiting_price_answer);
+
+  const accepted = perms("Sim por favor", pending);
+  assert(accepted.perms.mustAnswerPriceNow);
+  assertFalse(accepted.perms.mayAskPaymentMethod);
+  assert(evaluateCommercialV2(
+    "A Mentoria tem duas formas de pagamento: à vista no PIX ou parcelado no cartão.",
+    accepted.perms,
+  ).reasons.includes("price_omitted_when_required"));
+  assertFalse(evaluateCommercialV2(`O investimento é ${PRIMARY_LINE}.`, accepted.perms).violates);
+});
+
+Deno.test("D4: regressão Claudia — PIX sem fechamento não vira venda", () => {
+  const invalid = state({
+    product_focus: "mentoria",
+    product_explained: true,
+    price_informed: { product: "mentoria", at: "2026-08-29T12:13:29.135Z" },
+    awaiting_payment_method: true,
+  });
+  const current = perms("PIX", invalid);
+  assertFalse(isCommercialSaleHandoffAuthorized(current.extracted, invalid, current.perms));
 });
 
 // ── E: quero saber mais ──

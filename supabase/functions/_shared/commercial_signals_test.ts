@@ -13,6 +13,8 @@ import {
   sanitizeCommercialV2,
   updateCommercialState,
   readCommercialState,
+  replyInvitesPriceAnswer,
+  isCommercialSaleHandoffAuthorized,
   EMPTY_COMMERCIAL_STATE,
   type CommercialStateV2,
 } from "./commercial-signals.ts";
@@ -207,4 +209,69 @@ Deno.test("P3: pergunta de preço pendente permanece obrigatória no turno segui
   assert(pendente.unanswered_price_question);
   const proximo = run("é isso", pendente);
   assert(proximo.perms.mustAnswerPriceNow);
+});
+
+Deno.test("Q: mencionar investimento sem número não registra preço informado", () => {
+  const st = state({ product_focus: "mentoria", product_explained: true });
+  const { extracted, perms } = run("A estrutura para fazer", st);
+  const resposta = "É exatamente isso que a Mentoria resolve. Você quer saber como funciona o investimento?";
+  assert(replyInvitesPriceAnswer(resposta));
+  assertFalse(evaluateCommercialV2(resposta, perms).hasPrice);
+
+  const next = updateCommercialState(st, extracted, resposta, perms, NOW);
+  assertEquals(next.price_informed, null);
+  assert(next.awaiting_price_answer);
+});
+
+Deno.test("Q2: aceite da oferta de investimento exige o preço no turno seguinte", () => {
+  const pending = state({
+    product_focus: "mentoria",
+    product_explained: true,
+    awaiting_price_answer: true,
+  });
+  const { perms } = run("Sim, por favor", pending);
+  assert(perms.mustAnswerPriceNow);
+  assertFalse(perms.mayAskPaymentMethod);
+  assert(evaluateCommercialV2(
+    "A Mentoria tem pagamento à vista no PIX ou parcelado no cartão.",
+    perms,
+  ).reasons.includes("price_omitted_when_required"));
+  assertFalse(evaluateCommercialV2(
+    "A Mentoria custa R$ 6.500 à vista no PIX ou 12x de R$ 650 no cartão.",
+    perms,
+  ).violates);
+});
+
+Deno.test("Q2b: resposta não afirmativa não força preço fora de contexto", () => {
+  const pending = state({
+    product_focus: "mentoria",
+    product_explained: true,
+    awaiting_price_answer: true,
+  });
+  const { extracted, perms } = run("Só um momento", pending);
+  assertFalse(perms.mustAnswerPriceNow);
+  const next = updateCommercialState(pending, extracted, "Claro, fico à disposição.", perms, NOW);
+  assertFalse(next.awaiting_price_answer);
+});
+
+Deno.test("Q3: PIX isolado sem intenção comprovada não autoriza venda/handoff", () => {
+  const falseContext = state({
+    product_focus: "mentoria",
+    product_explained: true,
+    price_informed: { product: "mentoria", at: NOW },
+    awaiting_payment_method: true,
+  });
+  const current = run("PIX", falseContext);
+  assertFalse(current.perms.closingRecognized);
+  assertFalse(isCommercialSaleHandoffAuthorized(current.extracted, falseContext, current.perms));
+});
+
+Deno.test("Q4: escolha da forma após fechamento comprovado mantém handoff autorizado", () => {
+  const valid = state({
+    ...PRICE_INFORMED,
+    awaiting_payment_method: true,
+    closing_intent_at: NOW,
+  });
+  const current = run("PIX", valid);
+  assert(isCommercialSaleHandoffAuthorized(current.extracted, valid, current.perms));
 });

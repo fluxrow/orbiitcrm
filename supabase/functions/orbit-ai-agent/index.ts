@@ -107,6 +107,7 @@ import {
   evaluateCommercialV2,
   sanitizeCommercialV2,
   updateCommercialState,
+  isCommercialSaleHandoffAuthorized,
   EMPTY_COMMERCIAL_STATE,
 } from "../_shared/commercial-signals.ts";
 import {
@@ -1931,6 +1932,15 @@ ${regrasBlock}`;
           // Preço obrigatório nunca é apagado.
           const enforced = sanitizeCommercialV2(retryText || resposta, commercialPerms);
           resposta = enforced.text;
+          const enforcedVerdict = evaluateCommercialV2(resposta, commercialPerms);
+          if (
+            enforcedVerdict.reasons.includes("price_omitted_when_required") &&
+            primaryOfferCfg?.primaryPriceLine
+          ) {
+            // Fail-safe determinístico: quando o preço é obrigatório, nunca
+            // dependemos de uma segunda resposta correta do modelo.
+            resposta = `O investimento é ${primaryOfferCfg.primaryPriceLine}.`;
+          }
           console.warn("[orbit-ai-agent] Condução comercial v2 sanitizada.", {
             fallback: enforced.fallbackUsed,
             reasons: verdict.reasons,
@@ -2032,6 +2042,20 @@ ${regrasBlock}`;
       console.warn("[orbit-ai-agent] falar_humano descartado: lead não pediu atendimento humano.");
       intencaoNormalizada = "duvida";
     }
+
+    // O LLM não tem autoridade para transformar "PIX"/"cartão" isolado em
+    // venda. Exigimos fechamento explícito ou a sequência comprovada:
+    // preço informado -> intenção de fechar -> pergunta da forma -> escolha.
+    if (
+      commercialV2Enabled &&
+      commercialPerms &&
+      intencaoNormalizada === "venda_fechada" &&
+      !isCommercialSaleHandoffAuthorized(commercialExtracted, commercialState, commercialPerms)
+    ) {
+      console.warn("[orbit-ai-agent] venda_fechada descartada: sequência comercial não comprovada.");
+      intencaoNormalizada = "duvida";
+    }
+    parsed.intencao = intencaoNormalizada;
 
     const isCommercialSignal =
       intencaoNormalizada === "agendar_call" ||
@@ -2161,7 +2185,7 @@ ${regrasBlock}`;
         ...canonicalValidatedFields,
       },
       cadastro_completo: effectiveCadastroCompleto,
-      ultima_intencao: parsed.intencao,
+      ultima_intencao: intencaoNormalizada,
       intro_already_sent: introAlreadySent || primeiraInteracao,
       // Campos de classificação
       message_classification: msgClassification,
@@ -2493,6 +2517,14 @@ ${regrasBlock}`;
             fallback: finalV2.fallbackUsed,
           });
           resposta = finalV2.text;
+        }
+        const finalVerdict = evaluateCommercialV2(resposta, commercialPerms);
+        if (
+          finalVerdict.reasons.includes("price_omitted_when_required") &&
+          primaryOfferCfg?.primaryPriceLine
+        ) {
+          console.warn("[orbit-ai-agent] Preço obrigatório restaurado na última barreira.");
+          resposta = `O investimento é ${primaryOfferCfg.primaryPriceLine}.`;
         }
       } else {
         const finalStage = enforceCommercialStage(mensagemAgregada, resposta, strictCommercialStageGuard);

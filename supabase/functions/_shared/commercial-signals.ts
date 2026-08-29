@@ -41,6 +41,7 @@ export const COMMERCIAL_SIGNALS = [
   "payment_method_choice",
   "payment_details_request",
   "discount_request",
+  "price_answer_affirmative",
   "contact_data_only",
 ] as const;
 
@@ -160,6 +161,11 @@ const RE_DISCOUNT_REQUEST: RegExp[] = [
   /\bfaz\s+(?:por|pra\s+mim\s+por)\s+r?\$?\s*\d/,
 ];
 
+/** Aceite curto a uma pergunta anterior do agente sobre explicar o preço. */
+const RE_PRICE_ANSWER_AFFIRMATIVE: RegExp[] = [
+  /^(?:sim(?:,?\s+por\s+favor)?|claro|por\s+favor|pode\s+(?:falar|dizer|passar|informar)|quero\s+saber)[\s!.,]*$/,
+];
+
 const RE_PIX_CHOICE: RegExp[] = [
   /^(?:pix|no\s+pix|a\s+vista|à\s+vista|vista\s+no\s+pix|prefiro\s+(?:o\s+)?pix|pix\s+mesmo)\b[\s!.,]*$/,
   /\b(?:prefiro|vou|quero|melhor|fico|opto)\s+(?:fazer\s+)?(?:no\s+|com\s+|de\s+|pelo\s+)?pix\b/,
@@ -232,6 +238,7 @@ export function extractCommercialSignals(
   if (anyMatch(RE_CLOSING_AFFIRMATIVE_CONTEXTUAL, n)) signals.add("closing_affirmative_contextual");
   if (anyMatch(RE_PAYMENT_DETAILS_REQUEST, n)) signals.add("payment_details_request");
   if (anyMatch(RE_DISCOUNT_REQUEST, n)) signals.add("discount_request");
+  if (anyMatch(RE_PRICE_ANSWER_AFFIRMATIVE, n)) signals.add("price_answer_affirmative");
 
   if (anyMatch(RE_PIX_CHOICE, n)) {
     signals.add("payment_method_choice");
@@ -266,6 +273,8 @@ export interface CommercialStateV2 {
   payment_details_sent_at: string | null;
   awaiting_receipt: boolean;
   awaiting_payment_method: boolean;
+  /** O agente ofereceu explicar o preço, mas ainda não informou nenhum valor. */
+  awaiting_price_answer: boolean;
   unanswered_price_question: boolean;
 }
 
@@ -279,6 +288,7 @@ export const EMPTY_COMMERCIAL_STATE: CommercialStateV2 = {
   payment_details_sent_at: null,
   awaiting_receipt: false,
   awaiting_payment_method: false,
+  awaiting_price_answer: false,
   unanswered_price_question: false,
 };
 
@@ -300,6 +310,7 @@ export function readCommercialState(aiContexto: Record<string, unknown> | null |
     payment_details_sent_at: typeof raw.payment_details_sent_at === "string" ? raw.payment_details_sent_at : null,
     awaiting_receipt: raw.awaiting_receipt === true,
     awaiting_payment_method: raw.awaiting_payment_method === true,
+    awaiting_price_answer: raw.awaiting_price_answer === true,
     unanswered_price_question: raw.unanswered_price_question === true,
   };
 }
@@ -359,7 +370,12 @@ export function computeCommercialPermissions(
   const commercialIntentNeedsPrice =
     !hasPriceContext && (closingRecognized || s.has("payment_details_request"));
   const mustAnswerPriceNow =
-    !contactOnly && (priceAsked || state.unanswered_price_question || commercialIntentNeedsPrice);
+    !contactOnly && (
+      priceAsked ||
+      (state.awaiting_price_answer && s.has("price_answer_affirmative")) ||
+      state.unanswered_price_question ||
+      commercialIntentNeedsPrice
+    );
 
   const mayAskPaymentMethod =
     !contactOnly &&
@@ -394,6 +410,19 @@ const RE_PRICE_SENTENCE: RegExp[] = [
   /\b\d{1,2}\s*x\s*(?:de\s*)?r?\$?\s*\d/,
 ];
 
+/** Evidência de que um valor monetário foi realmente comunicado. */
+const RE_PRICE_AMOUNT: RegExp[] = [
+  /r\$\s*\d/,
+  /\b\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?\s*reais\b/,
+  /\b\d{1,2}\s*x\s*(?:de\s*)?r?\$?\s*\d/,
+];
+
+/** Pergunta meta do agente: promete explicar preço, mas ainda não o informa. */
+const RE_PRICE_ANSWER_INVITATION: RegExp[] = [
+  /\b(?:voce\s+)?quer\s+saber\b[^?]{0,80}\b(?:investimento|valor|preco|custo)\b[^?]*\?/,
+  /\b(?:quer|posso)\s+(?:que\s+eu\s+)?(?:te\s+)?(?:explicar|mostrar|passar|informar)\b[^?]{0,80}\b(?:investimento|valor|preco|custo)\b[^?]*\?/,
+];
+
 const RE_METHOD_QUESTION: RegExp[] = [
   /\bpix\b[^?]{0,60}\bcart(?:ao|ão)\b[^?]{0,40}\?/,
   /\bcart(?:ao|ão)\b[^?]{0,60}\bpix\b[^?]{0,40}\?/,
@@ -425,6 +454,7 @@ function splitClauses(text: string): string[] {
 
 export interface SentenceKinds {
   price: boolean;
+  priceAmount: boolean;
   methodQuestion: boolean;
   paymentDetails: boolean;
   installmentTotal: boolean;
@@ -434,10 +464,16 @@ export function classifySentence(sentence: string): SentenceKinds {
   const n = norm(sentence);
   return {
     price: anyMatch(RE_PRICE_SENTENCE, n),
+    priceAmount: anyMatch(RE_PRICE_AMOUNT, n),
     methodQuestion: anyMatch(RE_METHOD_QUESTION, n),
     paymentDetails: anyMatch(RE_PAYMENT_DETAILS, n),
     installmentTotal: anyMatch(RE_INSTALLMENT_TOTAL, n),
   };
+}
+
+export function replyInvitesPriceAnswer(response: string | null | undefined): boolean {
+  const n = norm(response);
+  return n ? anyMatch(RE_PRICE_ANSWER_INVITATION, n) : false;
 }
 
 export type CommercialV2Reason =
@@ -461,7 +497,9 @@ export function evaluateCommercialV2(
 ): CommercialV2Verdict {
   const clauses = splitClauses(String(resposta ?? ""));
   const kinds = clauses.map(classifySentence);
-  const hasPrice = kinds.some((k) => k.price);
+  // "Quer saber como funciona o investimento?" menciona preço, mas não
+  // comunica nenhum valor. Só evidência monetária satisfaz a obrigação.
+  const hasPrice = kinds.some((k) => k.priceAmount);
   const hasMethodQuestion = kinds.some((k) => k.methodQuestion);
   const hasPaymentDetails = kinds.some((k) => k.paymentDetails);
   const hasTotal = kinds.some((k) => k.installmentTotal);
@@ -610,8 +648,11 @@ export function updateCommercialState(
   opts?: UpdateCommercialStateOptions,
 ): CommercialStateV2 {
   const clauses = splitClauses(respostaFinal).map(classifySentence);
-  const respondeuPreco = clauses.some((k) => k.price);
+  const respondeuPreco = clauses.some((k) => k.priceAmount);
   const perguntouForma = clauses.some((k) => k.methodQuestion);
+  const prometeuResponderPreco = !respondeuPreco && replyInvitesPriceAnswer(respostaFinal);
+  const confirmouPedidoDePreco = state.awaiting_price_answer &&
+    extracted.signals.has("price_answer_affirmative");
   const enviouDados = clauses.some((k) => k.paymentDetails) && perms.maySharePaymentDetails;
   const explicouNaResposta = opts?.detectExplanationInReply === true && replyExplainsOffer(respostaFinal);
 
@@ -631,6 +672,26 @@ export function updateCommercialState(
     payment_details_sent_at: enviouDados ? (state.payment_details_sent_at ?? nowISO) : state.payment_details_sent_at,
     awaiting_receipt: enviouDados ? true : state.awaiting_receipt,
     awaiting_payment_method: perguntouForma ? true : (perms.chosenMethod ? false : state.awaiting_payment_method),
+    awaiting_price_answer: respondeuPreco
+      ? false
+      : (prometeuResponderPreco ? true : confirmouPedidoDePreco),
     unanswered_price_question: priceAsked ? !respondeuPreco : (state.unanswered_price_question && !respondeuPreco),
   };
+}
+
+/**
+ * Autoriza o rótulo forte de venda apenas com evidência determinística.
+ * Uma escolha isolada de PIX/cartão nunca pode criar handoff comercial se o
+ * preço e a intenção de fechar não tiverem sido confirmados antes.
+ */
+export function isCommercialSaleHandoffAuthorized(
+  extracted: CommercialSignalsResult,
+  state: CommercialStateV2,
+  perms: CommercialPermissions,
+): boolean {
+  if (perms.closingRecognized) return true;
+  return extracted.signals.has("payment_method_choice") &&
+    state.awaiting_payment_method &&
+    !!state.closing_intent_at &&
+    !!state.price_informed;
 }
