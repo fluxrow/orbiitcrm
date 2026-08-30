@@ -162,6 +162,7 @@ import {
   enforceBullinkConversationGuard,
   readBullinkOfficialPixKey,
 } from "../_shared/bullink-conversation-guard.ts";
+import { decideAutomaticReplyOwnership } from "../_shared/conversation-ownership.ts";
 
 import {
   hydrateCanonicalFacts,
@@ -718,6 +719,22 @@ async function sendWhatsAppAudio(
   opts: { audioKey?: string | null } = {},
 ) {
   try {
+    const { data: currentConv, error: ownershipError } = await supabase
+      .from("orbit_conversas")
+      .select("id, empresa_id, prospect_id, human_talk, human_user_id")
+      .eq("id", conversa_id)
+      .maybeSingle();
+    const ownership = ownershipError
+      ? { allowed: false as const, reason: "conversation_missing" as const }
+      : decideAutomaticReplyOwnership(currentConv, empresaId);
+    if (!ownership.allowed) {
+      console.log("[orbit-ai-agent] áudio automático abortado por posse atual", {
+        conversa_id,
+        reason: ownership.reason,
+      });
+      return;
+    }
+
     // ── Adapter routing (Fase 3): ai_reply/áudio enfileira quando outbox_adapter_enabled=true ──
     if (empresaId && await isAdapterEnabled(supabase, empresaId)) {
       const { data: lastIn } = await supabase
@@ -730,11 +747,6 @@ async function sendWhatsAppAudio(
         .maybeSingle();
       const inboundId = (lastIn as any)?.id ?? conversa_id;
       const audioKey = opts.audioKey ?? audioSource;
-      const { data: conv } = await supabase
-        .from("orbit_conversas")
-        .select("prospect_id")
-        .eq("id", conversa_id)
-        .maybeSingle();
       const isPath = !/^https?:\/\//i.test(audioSource);
       // Pré-cria a linha visual antes de enfileirar para linkar orbit_message_id.
       const { data: novaAudio } = await supabase.from("orbit_mensagens").insert({
@@ -752,7 +764,7 @@ async function sendWhatsAppAudio(
       const routed = await enqueueOutbox(supabase, {
         empresa_id: empresaId,
         conversa_id,
-        prospect_id: (conv as any)?.prospect_id ?? null,
+        prospect_id: (currentConv as any)?.prospect_id ?? null,
         source_type: "ai_reply",
         // Chave única = inbound + tipo + identificador do áudio (permite texto+áudio no mesmo turn).
         inbound_message_id: `${inboundId}:audio:${audioKey}`,
@@ -1060,6 +1072,22 @@ serve(async (req) => {
       .select("*")
       .eq("id", conversa_id)
       .single();
+
+    const ownershipAtGeneration = decideAutomaticReplyOwnership(conversa, empresaId);
+    if (!ownershipAtGeneration.allowed) {
+      console.log("[orbit-ai-agent] geração abortada por posse atual da conversa", {
+        conversa_id,
+        reason: ownershipAtGeneration.reason,
+      });
+      await supabase.from("orbit_conversas")
+        .update({ ai_processing: false })
+        .eq("id", conversa_id)
+        .eq("empresa_id", empresaId);
+      return new Response(
+        JSON.stringify({ ok: true, skipped: true, reason: ownershipAtGeneration.reason }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     // ── AGREGAR: buscar todas as mensagens IN pendentes desde o último OUT ──
     const { data: lastOutMsg } = await supabase
@@ -2958,6 +2986,27 @@ export function sanitizeOutboxHoldUntil(value: unknown, nowMs = Date.now()): str
 async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw: string, conversa_id: string, isDemo: boolean, empresaId?: string | null, allowIntro = true) {
   const mensagem = finalizeAgentMessage(mensagemRaw, allowIntro);
   try {
+    // Revalidação comum e fail-closed imediatamente antes de qualquer efeito.
+    // Cobre tanto o adapter/outbox quanto o caminho legado de envio direto.
+    const { data: currentConv, error: ownershipError } = await supabase
+      .from("orbit_conversas")
+      .select("id, empresa_id, prospect_id, human_talk, human_user_id")
+      .eq("id", conversa_id)
+      .maybeSingle();
+    const ownership = ownershipError
+      ? { allowed: false as const, reason: "conversation_missing" as const }
+      : decideAutomaticReplyOwnership(currentConv, empresaId);
+    if (!ownership.allowed) {
+      console.log("[orbit-ai-agent] resposta automática abortada por posse atual", {
+        conversa_id,
+        reason: ownership.reason,
+      });
+      await supabase.from("orbit_conversas")
+        .update({ ai_processing: false })
+        .eq("id", conversa_id);
+      return;
+    }
+
     if (isDemo) {
       console.log("[orbit-ai-agent] Demo mode — simulando envio");
       await supabase.from("orbit_mensagens").insert({
@@ -2992,23 +3041,6 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw:
         .limit(1)
         .maybeSingle();
       const inboundId = (lastIn as any)?.id ?? conversa_id;
-      const { data: conv } = await supabase
-        .from("orbit_conversas")
-        .select("prospect_id, human_talk, human_user_id")
-        .eq("id", conversa_id)
-        .maybeSingle();
-      // Revalidação de POSSE ATUAL imediatamente antes de materializar a OUT e
-      // enfileirar: entre a geração e o enqueue o humano pode ter assumido.
-      // handoff_sent_at é histórico e NÃO bloqueia sozinho (após devolução para a
-      // IA a conversa volta a responder normalmente).
-      if (
-        (conv as any)?.human_talk === true ||
-        (conv as any)?.human_user_id
-      ) {
-        console.log("[orbit-ai-agent] ai_reply abortada: conversa sob posse humana", { conversa_id });
-        await supabase.from("orbit_conversas").update({ ai_processing: false }).eq("id", conversa_id);
-        return;
-      }
       // Pré-cria linha "queued" para linkar orbit_message_id.
       const { data: novaTxt } = await supabase
         .from("orbit_mensagens")
@@ -3027,7 +3059,7 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw:
       const routed = await enqueueOutbox(supabase, {
         empresa_id: empresaId,
         conversa_id,
-        prospect_id: (conv as any)?.prospect_id ?? null,
+        prospect_id: (currentConv as any)?.prospect_id ?? null,
         source_type: "ai_reply",
         inbound_message_id: `${inboundId}:text`,
         source_id: inboundId,
