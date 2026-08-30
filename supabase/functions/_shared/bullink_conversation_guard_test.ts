@@ -1,6 +1,9 @@
 import {
   BULLINK_EMPRESA_ID,
   BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY,
+  BULLINK_BUDGET_DOWNSELL_REPLY,
+  BULLINK_LEAD_SOURCE_REPLY,
+  BULLINK_RESULTS_TIMELINE_REPLY,
   BULLINK_RECORDED_COURSE_DETAILS_REPLY,
   BULLINK_RECORDED_COURSE_REPLY,
   enforceBullinkConversationGuard,
@@ -144,6 +147,17 @@ Deno.test("Regressão Bullink 28/08: aceite da Mentoria seguido de dúvida sobre
   if (!result.reasons.includes("mentorship_recorded_content_inclusion")) throw new Error(JSON.stringify(result));
 });
 
+Deno.test("Regressão Diogo 30/08: aula gravada ou ao vivo permanece na Mentoria em foco", () => {
+  const result = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "Tem aula gravada ou só ao vivo? Aulas todos os dias?",
+    response: BULLINK_RECORDED_COURSE_REPLY,
+    commercialState: { product_focus: "mentoria" },
+  });
+  if (result.text !== BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY) throw new Error(result.text);
+  if (!result.reasons.includes("mentorship_recorded_content_inclusion")) throw new Error(JSON.stringify(result));
+});
+
 Deno.test("Bullink: objeção financeira recebe downsell imediato e respeitoso", () => {
   const result = enforceBullinkConversationGuard({
     empresaId: BULLINK_EMPRESA_ID,
@@ -163,6 +177,58 @@ Deno.test("Regressão Rogério 29/08: alcance financeiro exige Curso com R$ 997"
   });
   if (!result.reasons.includes("budget_objection_without_downsell")) throw new Error(JSON.stringify(result));
   if (!/Curso Gravado/.test(result.text) || !/997/.test(result.text)) throw new Error(result.text);
+});
+
+Deno.test("Regressão Ivan 30/08: expectativa financeira exige downsell imediato", () => {
+  for (const inbound of [
+    "Acho um pouco acima do valor da minha expectativa",
+    "Fica acima da expectativa",
+    "Nesse momento não teria esse investimento",
+  ]) {
+    const result = enforceBullinkConversationGuard({
+      empresaId: BULLINK_EMPRESA_ID,
+      inbound,
+      response: "Entendo. O parcelamento ajuda. Fica dentro da sua expectativa?",
+    });
+    if (result.text !== BULLINK_BUDGET_DOWNSELL_REPLY) throw new Error(`${inbound}: ${result.text}`);
+  }
+});
+
+Deno.test("Regressão Marcos 30/08: origem do contato nunca é descartada", () => {
+  for (const inbound of [
+    "Inicialmente onde você viu minhas respostas?",
+    "Bullink? O que é isso?",
+  ]) {
+    const result = enforceBullinkConversationGuard({
+      empresaId: BULLINK_EMPRESA_ID,
+      inbound,
+      response: "Voltando ao que importa: a Mentoria faz sentido para você?",
+    });
+    if (result.text !== BULLINK_LEAD_SOURCE_REPLY) throw new Error(result.text);
+    if (!result.reasons.includes("lead_source_question_unanswered")) throw new Error(JSON.stringify(result));
+  }
+});
+
+Deno.test("Regressão Luiz 30/08: prazo de resultado é respondido sem downsell inventado", () => {
+  const result = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "Qual o prazo médio para um mentorado atingir faturamento de R$ 10.000 por mês?",
+    response: "Faz mais sentido para você? Tenho o Curso Gravado por R$ 997.",
+    commercialState: { product_focus: "mentoria" },
+  });
+  if (result.text !== BULLINK_RESULTS_TIMELINE_REPLY) throw new Error(result.text);
+  if (!result.reasons.includes("results_timeline_question_unanswered")) throw new Error(JSON.stringify(result));
+});
+
+Deno.test("Bullink: Curso não é oferecido sem pedido, objeção ou foco anterior", () => {
+  const result = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "Quero entender melhor a mentoria",
+    response: "Tenho também o Curso Gravado por R$ 997. Quer conhecer?",
+    commercialState: { product_focus: "mentoria" },
+  });
+  if (!result.reasons.includes("unsolicited_recorded_course_offer")) throw new Error(JSON.stringify(result));
+  if (/curso|997/i.test(result.text)) throw new Error(result.text);
 });
 
 Deno.test("Regressão Rogério 29/08: aceite do Curso entrega PIX sem ciclo de permissões", () => {

@@ -90,6 +90,10 @@ const RE_BUDGET_OBJECTION: RegExp[] = [
   /\bfalta\s+(?:de\s+)?(?:dinheiro|grana|verba|orcamento)\b/,
   /\b(?:esse|o)\s+valor\b[^.?!]{0,45}\b(?:nao\s+e\s+possivel|nao\s+da|nao\s+consigo|impossivel)\b/,
   /\b(?:hoje|agora)\b[^.?!]{0,35}\bnao\s+(?:e\s+possivel|da|consigo)\b/,
+  /\b(?:um\s+)?pouco\s+acima\s+(?:do\s+valor\s+)?da\s+minha\s+expectativa\b/,
+  /\b(?:fica|ficou|esta|ta)\s+acima\s+(?:do\s+valor\s+)?da\s+(?:minha\s+)?expectativa\b/,
+  /\b(?:nesse|neste)\s+momento\b[^.?!]{0,45}\bnao\s+(?:teria|tenho|consigo)\b[^.?!]{0,30}\b(?:valor|investimento|condic\w*)\b/,
+  /\bnao\s+(?:teria|tenho|consigo)\b[^.?!]{0,35}\b(?:esse|o)?\s*(?:valor|investimento)\b/,
 ];
 
 /** Pedido de desconto/negociação: valores são FIXOS, mas abre a alternativa. */

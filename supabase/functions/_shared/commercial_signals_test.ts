@@ -49,6 +49,19 @@ Deno.test("A: pergunta direta de valor obriga responder preço agora", () => {
   assert(v.reasons.includes("price_omitted_when_required"));
 });
 
+Deno.test("A2: variações reais de preço curto e produto + valores são detectadas", () => {
+  for (const inbound of [
+    "O preço",
+    "E os valores?",
+    "Gostaria de saber sobre a mentoria e valores",
+    "Curso e preço",
+  ]) {
+    const { extracted, perms } = run(inbound, state({ product_focus: "mentoria" }));
+    assert(extracted.signals.has("direct_price_question"), inbound);
+    assert(perms.mustAnswerPriceNow, inbound);
+  }
+});
+
 // B — "quanto custa a mentoria?" responde preço sem iniciar pagamento
 Deno.test("B: quanto custa -> preço permitido, pagamento não", () => {
   const { perms } = run("quanto custa a mentoria?", state());
@@ -169,6 +182,17 @@ Deno.test("N: objeção de orçamento mantém conversa consultiva", () => {
   assertFalse(perms.mayAskPaymentMethod);
   const next = updateCommercialState(perms ? PRICE_INFORMED : PRICE_INFORMED, extracted, "Entendo. Dá pra começar pelo curso.", perms, NOW);
   assert(next.budget_objection);
+});
+
+Deno.test("N2: objeções reais de expectativa e momento financeiro são detectadas", () => {
+  for (const inbound of [
+    "Acho um pouco acima do valor da minha expectativa",
+    "Fica acima da expectativa",
+    "Nesse momento não teria esse investimento",
+  ]) {
+    const { extracted } = run(inbound, PRICE_INFORMED);
+    assert(extracted.signals.has("budget_objection"), inbound);
+  }
 });
 
 // O — estado é idempotente e sem PII

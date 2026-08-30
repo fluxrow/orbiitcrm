@@ -14,6 +14,9 @@ export type BullinkGuardReason =
   | "recorded_course_price_not_requested"
   | "budget_objection_without_downsell"
   | "course_purchase_confirmation_without_payment_details"
+  | "unsolicited_recorded_course_offer"
+  | "lead_source_question_unanswered"
+  | "results_timeline_question_unanswered"
   | "repeated_question";
 
 export interface BullinkConversationGuardInput {
@@ -77,9 +80,13 @@ const BUDGET_OBJECTION = [
   /\b(?:valor|investimento)\b.{0,30}\b(?:pesa|pesou|pesado|impossivel)\b/,
   /\bsem\s+(?:dinheiro|grana|verba|orcamento)\b/,
   /\bnao\s+cabe\b.{0,20}\b(?:bolso|orcamento)\b/,
+  /\b(?:um\s+)?pouco\s+acima\s+(?:do\s+valor\s+)?da\s+minha\s+expectativa\b/,
+  /\b(?:fica|ficou|esta|ta)\s+acima\s+(?:do\s+valor\s+)?da\s+(?:minha\s+)?expectativa\b/,
+  /\b(?:nesse|neste)\s+momento\b.{0,45}\bnao\s+(?:teria|tenho|consigo)\b.{0,30}\b(?:valor|investimento|condic\w*)\b/,
+  /\bnao\s+(?:teria|tenho|consigo)\b.{0,35}\b(?:esse|o)?\s*(?:valor|investimento)\b/,
 ];
 
-const COURSE_MENTION = /\b(?:curso|formato|conteudo|aulas?)\b.{0,40}\bgravad[oa]s?\b|\bcurso\s+gravad[oa]\b/;
+const COURSE_MENTION = /\bcurso\b|\b(?:formato|conteudo|aulas?)\b.{0,40}\bgravad[oa]s?\b/;
 const COURSE_PRICE = /\b(?:r\$\s*)?997(?:[,.]00)?\b/;
 const SHORT_AFFIRMATIVE = /^(?:sim|sim\s+por\s+favor|por\s+favor|por\s+gentileza|claro|pode|perfeito|combinado)[!.,\s]*$/;
 
@@ -90,6 +97,25 @@ const MENTORSHIP_RECORDED_CONTENT_INCLUSION = [
   /\b(?:junto|inclus[oa]|inclui|faz parte|vem com|acompanha)\b.{0,50}\b(?:curso|conteudo|formato|aulas?|gravad[oa])\b/,
   /\b(?:esse|este|o)\s+valor\b.{0,35}\b(?:inclui|vem com|da acesso)\b.{0,40}\b(?:curso|conteudo|formato|aulas?|gravad[oa])\b/,
   /\b(?:tenho|terei|vou ter|da)\s+acesso\b.{0,35}\b(?:curso|conteudo|formato|aulas?|gravad[oa])\b.{0,35}\b(?:na|com a|junto da)?\s*mentoria\b/,
+];
+
+const RECORDED_CONTENT_FORMAT_QUESTION = [
+  /\btem\b.{0,30}\b(?:aulas?|conteudo|material)\s+gravad[oa]s?\b/,
+  /\b(?:aulas?|conteudo|material)\s+gravad[oa]s?\b.{0,35}\b(?:ou|so|apenas|tambem|tem)\b/,
+  /\b(?:ao\s+vivo|live)\b.{0,25}\b(?:ou|e)\b.{0,25}\bgravad[oa]s?\b/,
+];
+
+const LEAD_SOURCE_QUESTION = [
+  /\bonde\b.{0,45}\b(?:viu|conseguiu|pegou|achou)\b.{0,45}\b(?:respostas?|dados?|contato|numero)\b/,
+  /\b(?:de\s+onde|como)\b.{0,45}\b(?:vieram|conseguiu|pegou)\b.{0,35}\b(?:respostas?|dados?|contato|numero)\b/,
+  /\bqual\b.{0,25}\bformulario\b/,
+  /\bbullink\b.{0,15}\bo\s+que\s+(?:e|eh)\b/,
+];
+
+const RESULTS_TIMELINE_QUESTION = [
+  /\b(?:em\s+)?quanto\s+tempo\b.{0,75}\b(?:resultado|faturamento|monetiz|renda|10\s*mil)\b/,
+  /\b(?:prazo|tempo)\s+medi[oa]\b.{0,75}\b(?:resultado|faturamento|monetiz|renda|10\s*mil)\b/,
+  /\b(?:resultado|faturamento|monetiz|renda|10\s*mil)\b.{0,75}\b(?:prazo|tempo)\s+medi[oa]\b/,
 ];
 
 const SELF_CONFIRMATION_PATTERNS: RegExp[] = [
@@ -205,6 +231,12 @@ export const BULLINK_BUDGET_DOWNSELL_REPLY =
 export const BULLINK_REPETITION_FALLBACK =
   "Entendi. Me diz qual ponto você quer esclarecer agora que eu respondo direto.";
 
+export const BULLINK_LEAD_SOURCE_REPLY =
+  "A Bullink é a empresa deste atendimento. Suas informações chegaram pelo formulário de interesse que você preencheu antes do contato; por isso eu recebi suas respostas para dar continuidade por aqui.";
+
+export const BULLINK_RESULTS_TIMELINE_REPLY =
+  "Não existe um prazo médio que eu possa prometer para chegar a R$ 10 mil por mês. Isso varia conforme nicho, execução e desempenho do canal; os 3 meses são o período de acompanhamento, não uma garantia de faturamento.";
+
 export function readBullinkOfficialPixKey(
   aiConfig: Record<string, unknown> | null | undefined,
 ): string | null {
@@ -243,17 +275,29 @@ export function enforceBullinkConversationGuard(
 
   let text = original;
   const reasons: BullinkGuardReason[] = [];
-  const asksMentorshipInclusion = isMentorshipRecordedContentInclusionQuestion(input.inbound);
-  const explicitCourse = isExplicitRecordedCourseRequest(input.inbound);
+  const normalizedInbound = norm(input.inbound);
+  const recordedFormatQuestion = RECORDED_CONTENT_FORMAT_QUESTION.some((pattern) => pattern.test(normalizedInbound));
+  const asksMentorshipInclusion = isMentorshipRecordedContentInclusionQuestion(input.inbound) ||
+    (input.commercialState?.product_focus === "mentoria" && recordedFormatQuestion);
+  const explicitCourse = !asksMentorshipInclusion && isExplicitRecordedCourseRequest(input.inbound);
   const explicitCoursePrice = isExplicitRecordedCoursePriceRequest(input.inbound);
   const budgetObjection = isBudgetObjection(input.inbound);
+  const courseAlreadyEstablished = input.commercialState?.product_focus === "curso";
+  const asksLeadSource = LEAD_SOURCE_QUESTION.some((pattern) => pattern.test(normalizedInbound));
+  const asksResultsTimeline = RESULTS_TIMELINE_QUESTION.some((pattern) => pattern.test(normalizedInbound));
 
   if (containsPersonaSelfConfirmation(text)) {
     reasons.push("persona_self_confirmation");
     text = stripPersonaSelfConfirmation(text);
   }
 
-  if (asksMentorshipInclusion && text !== BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY) {
+  if (asksLeadSource && text !== BULLINK_LEAD_SOURCE_REPLY) {
+    reasons.push("lead_source_question_unanswered");
+    text = BULLINK_LEAD_SOURCE_REPLY;
+  } else if (asksResultsTimeline && text !== BULLINK_RESULTS_TIMELINE_REPLY) {
+    reasons.push("results_timeline_question_unanswered");
+    text = BULLINK_RESULTS_TIMELINE_REPLY;
+  } else if (asksMentorshipInclusion && text !== BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY) {
     reasons.push("mentorship_recorded_content_inclusion");
     text = BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY;
   } else if (budgetObjection && !mentionsRecordedCourseWithPrice(text)) {
@@ -272,6 +316,14 @@ export function enforceBullinkConversationGuard(
         : "explicit_recorded_course_unanswered");
       text = BULLINK_RECORDED_COURSE_DETAILS_REPLY;
     }
+  } else if (!courseAlreadyEstablished && COURSE_MENTION.test(norm(text))) {
+    reasons.push("unsolicited_recorded_course_offer");
+    const withoutCourse = String(text)
+      .split(/(?<=[.!?])\s+|\n+/)
+      .filter((part) => !COURSE_MENTION.test(norm(part)))
+      .join(" ")
+      .trim();
+    text = withoutCourse || BULLINK_REPETITION_FALLBACK;
   }
 
   if (isConfirmedCoursePurchase(input) && input.officialPixKey && !text.includes(input.officialPixKey)) {
@@ -295,10 +347,13 @@ export function buildBullinkConversationPromptBlock(empresaId: string | null | u
     "\n=== REFORÇO CONVERSACIONAL BULLINK (INVIOLÁVEL) ===",
     '- Nunca confirme sua identidade com frases como "sou eu mesmo, Fernando", "é o Fernando mesmo", "aqui é o Fernando" ou equivalentes.',
     '- A Mentoria INCLUI acesso ao conteúdo gravado e 3 meses de acompanhamento individual. Se o lead perguntar se o curso/conteúdo gravado vem junto, está incluso ou faz parte da Mentoria, responda isso diretamente e mantenha a Mentoria como oferta ativa.',
+    '- Se a Mentoria estiver em foco e o lead perguntar "tem aula gravada ou só ao vivo?", trate como dúvida sobre o que a Mentoria inclui; não mude para o Curso avulso.',
     '- Se o lead demonstrar interesse, pedir para conhecer ou perguntar como funciona o Curso Gravado, explique primeiro conteúdo, módulos, formato e diferença para a Mentoria. NÃO informe preço nesse momento.',
     '- Só informe R$ 997 quando o lead perguntar explicitamente por preço, valor, custo ou investimento do Curso Gravado, ou quando apresentar objeção financeira à Mentoria. A simples menção a "curso", "gravado" ou "conteúdo gravado" não autoriza revelar o preço.',
     "- Se houver objeção financeira, apresente imediatamente e com respeito o Curso Gravado por R$ 997; não repita o preço da Mentoria antes da alternativa.",
     "- Nunca repita a mesma pergunta sem acrescentar informação útil. Responda primeiro a dúvida específica do lead.",
+    '- Nunca descarte uma dúvida com "voltando ao que importa" ou equivalente. Perguntas sobre origem do contato, prazo e resultados devem ser respondidas de forma direta e honesta.',
+    '- Nunca prometa prazo ou faturamento. Os 3 meses são acompanhamento, não garantia de resultado.',
     "=== FIM DO REFORÇO CONVERSACIONAL BULLINK ===\n",
   ].join("\n");
 }
