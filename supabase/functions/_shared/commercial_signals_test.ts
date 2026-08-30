@@ -14,6 +14,7 @@ import {
   updateCommercialState,
   readCommercialState,
   replyInvitesPriceAnswer,
+  detectProductInReply,
   isCommercialSaleHandoffAuthorized,
   EMPTY_COMMERCIAL_STATE,
   type CommercialStateV2,
@@ -274,4 +275,73 @@ Deno.test("Q4: escolha da forma após fechamento comprovado mantém handoff auto
   });
   const current = run("PIX", valid);
   assert(isCommercialSaleHandoffAuthorized(current.extracted, valid, current.perms));
+});
+
+Deno.test("R: preço da Mentoria nunca autoriza pagamento do Curso", () => {
+  const mentorshipPriced = state({
+    product_focus: "curso",
+    product_explained: true,
+    price_informed: { product: "mentoria", at: NOW },
+    awaiting_offer_confirmation: "curso",
+  });
+  const extracted = extractCommercialSignals("sim");
+  const perms = computeCommercialPermissions(extracted, mentorshipPriced, {
+    effectiveProduct: "curso",
+    defaultPaymentMethod: "pix",
+  });
+  assertFalse(perms.closingRecognized);
+  assertFalse(perms.maySharePaymentDetails);
+});
+
+Deno.test("R2: downsell com preço troca o estado para Curso e aguarda um único aceite", () => {
+  const mentorshipPriced = state({
+    product_focus: "mentoria",
+    product_explained: true,
+    price_informed: { product: "mentoria", at: NOW },
+  });
+  const objection = extractCommercialSignals(
+    "sim, faz. mas infelizmente está fora do meu alcance financeiro",
+  );
+  assert(objection.signals.has("budget_objection"));
+  const perms = computeCommercialPermissions(objection, mentorshipPriced, {
+    effectiveProduct: "curso",
+  });
+  const reply = "Entendo. Tenho o Curso Gravado por R$ 997 à vista no PIX. Faz mais sentido para você?";
+  assertEquals(detectProductInReply(reply), "curso");
+  const next = updateCommercialState(mentorshipPriced, objection, reply, perms, NOW);
+  assertEquals(next.product_focus, "curso");
+  assertEquals(next.price_informed?.product, "curso");
+  assertEquals(next.awaiting_offer_confirmation, "curso");
+  assertEquals(next.payment_method, null);
+  assertEquals(next.closing_intent_at, null);
+
+  const accepted = extractCommercialSignals("sim");
+  const acceptedPerms = computeCommercialPermissions(accepted, next, {
+    effectiveProduct: "curso",
+    defaultPaymentMethod: "pix",
+  });
+  assert(acceptedPerms.closingRecognized);
+  assertEquals(acceptedPerms.chosenMethod, "pix");
+  assertFalse(acceptedPerms.mayAskPaymentMethod);
+  assert(acceptedPerms.maySharePaymentDetails);
+});
+
+Deno.test("R3: trocar para Curso sem informar R$ 997 invalida o preço herdado", () => {
+  const mentorshipPriced = state({
+    product_focus: "mentoria",
+    product_explained: true,
+    price_informed: { product: "mentoria", at: NOW },
+  });
+  const objection = extractCommercialSignals("está fora do meu alcance financeiro");
+  const perms = computeCommercialPermissions(objection, mentorshipPriced, { effectiveProduct: "curso" });
+  const next = updateCommercialState(
+    mentorshipPriced,
+    objection,
+    "Tenho o Curso Gravado com o mesmo método. Faz sentido para você?",
+    perms,
+    NOW,
+  );
+  assertEquals(next.product_focus, "curso");
+  assertEquals(next.price_informed, null);
+  assertEquals(next.awaiting_offer_confirmation, null);
 });

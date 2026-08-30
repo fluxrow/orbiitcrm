@@ -13,6 +13,7 @@ export type BullinkGuardReason =
   | "explicit_recorded_course_unanswered"
   | "recorded_course_price_not_requested"
   | "budget_objection_without_downsell"
+  | "course_purchase_confirmation_without_payment_details"
   | "repeated_question";
 
 export interface BullinkConversationGuardInput {
@@ -20,6 +21,12 @@ export interface BullinkConversationGuardInput {
   inbound: string | null | undefined;
   response: string | null | undefined;
   previousAgentQuestions?: string[] | null;
+  commercialState?: {
+    product_focus?: unknown;
+    price_informed?: { product?: unknown } | null;
+    awaiting_offer_confirmation?: unknown;
+  } | null;
+  officialPixKey?: string | null;
 }
 
 export interface BullinkConversationGuardResult {
@@ -65,6 +72,7 @@ const EXPLICIT_COURSE_PRICE_REQUEST = [
 const BUDGET_OBJECTION = [
   /\b(?:muito\s+)?(?:caro|alto)\b/,
   /\bfora\s+do\s+(?:meu\s+)?orcamento\b/,
+  /\bfora\s+do\s+(?:meu\s+)?alcance(?:\s+financeiro)?\b/,
   /\bnao\s+(?:tenho|consigo|da)\b.{0,40}\b(?:dinheiro|grana|valor|investimento|pagar)\b/,
   /\b(?:valor|investimento)\b.{0,30}\b(?:pesa|pesou|pesado|impossivel)\b/,
   /\bsem\s+(?:dinheiro|grana|verba|orcamento)\b/,
@@ -73,6 +81,7 @@ const BUDGET_OBJECTION = [
 
 const COURSE_MENTION = /\b(?:curso|formato|conteudo|aulas?)\b.{0,40}\bgravad[oa]s?\b|\bcurso\s+gravad[oa]\b/;
 const COURSE_PRICE = /\b(?:r\$\s*)?997(?:[,.]00)?\b/;
+const SHORT_AFFIRMATIVE = /^(?:sim|sim\s+por\s+favor|por\s+favor|por\s+gentileza|claro|pode|perfeito|combinado)[!.,\s]*$/;
 
 const MENTORSHIP_RECORDED_CONTENT_INCLUSION = [
   /\bmentoria\b.{0,35}\b(?:tenho|terei|vou ter|da)\s+acesso\b.{0,40}\b(?:curso|conteudo|formato|aulas?|gravad[oa])\b/,
@@ -196,6 +205,30 @@ export const BULLINK_BUDGET_DOWNSELL_REPLY =
 export const BULLINK_REPETITION_FALLBACK =
   "Entendi. Me diz qual ponto você quer esclarecer agora que eu respondo direto.";
 
+export function readBullinkOfficialPixKey(
+  aiConfig: Record<string, unknown> | null | undefined,
+): string | null {
+  const source = [aiConfig?.prompt_regras, aiConfig?.prompt_roteiro]
+    .filter((value): value is string => typeof value === "string")
+    .join("\n");
+  const match = source.match(
+    /(?:use\s+exclusivamente\s+a\s+chave|chave\s+aleatoria)\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
+  );
+  return match?.[1] ?? null;
+}
+
+function isConfirmedCoursePurchase(input: BullinkConversationGuardInput): boolean {
+  const st = input.commercialState;
+  return norm(input.inbound).match(SHORT_AFFIRMATIVE) !== null &&
+    st?.product_focus === "curso" &&
+    st?.price_informed?.product === "curso" &&
+    st?.awaiting_offer_confirmation === "curso";
+}
+
+function canonicalCoursePixReply(key: string): string {
+  return `Perfeito. O Curso Gravado fica em R$ 997 à vista no PIX. A chave PIX é ${key}. Depois do pagamento, me envie o comprovante por aqui.`;
+}
+
 /**
  * Barreira final determinística. Para qualquer outro tenant, devolve exatamente
  * o texto recebido, sem normalização ou efeitos colaterais.
@@ -239,6 +272,11 @@ export function enforceBullinkConversationGuard(
         : "explicit_recorded_course_unanswered");
       text = BULLINK_RECORDED_COURSE_DETAILS_REPLY;
     }
+  }
+
+  if (isConfirmedCoursePurchase(input) && input.officialPixKey && !text.includes(input.officialPixKey)) {
+    reasons.push("course_purchase_confirmation_without_payment_details");
+    text = canonicalCoursePixReply(input.officialPixKey);
   }
 
   const repeated = repeatedQuestions(text, input.previousAgentQuestions ?? []);

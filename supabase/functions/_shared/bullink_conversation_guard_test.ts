@@ -7,6 +7,7 @@ import {
   isExplicitRecordedCoursePriceRequest,
   isExplicitRecordedCourseRequest,
   isMentorshipRecordedContentInclusionQuestion,
+  readBullinkOfficialPixKey,
 } from "./bullink-conversation-guard.ts";
 
 const OTHER_TENANT = "36f26579-0000-0000-0000-000000000000";
@@ -152,6 +153,42 @@ Deno.test("Bullink: objeção financeira recebe downsell imediato e respeitoso",
   if (!result.reasons.includes("budget_objection_without_downsell")) throw new Error(JSON.stringify(result));
   if (!/Curso Gravado/.test(result.text) || !/997/.test(result.text)) throw new Error(result.text);
   if (/6\.500|12x/.test(result.text)) throw new Error(result.text);
+});
+
+Deno.test("Regressão Rogério 29/08: alcance financeiro exige Curso com R$ 997", () => {
+  const result = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "sim, faz. mas infelizmente está fora do meu alcance financeiro",
+    response: "Entendo. Tenho o Curso Gravado com o mesmo método. Faz sentido pra você?",
+  });
+  if (!result.reasons.includes("budget_objection_without_downsell")) throw new Error(JSON.stringify(result));
+  if (!/Curso Gravado/.test(result.text) || !/997/.test(result.text)) throw new Error(result.text);
+});
+
+Deno.test("Regressão Rogério 29/08: aceite do Curso entrega PIX sem ciclo de permissões", () => {
+  const fakeKey = "11111111-2222-3333-4444-555555555555";
+  const extracted = readBullinkOfficialPixKey({
+    prompt_regras: `Após escolha por PIX, use exclusivamente a chave ${fakeKey} e peça o comprovante.`,
+  });
+  if (extracted !== fakeKey) throw new Error("chave oficial não extraída");
+  const result = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "sim",
+    response: "Perfeito. Quer que eu te passe os dados agora?",
+    commercialState: {
+      product_focus: "curso",
+      price_informed: { product: "curso" },
+      awaiting_offer_confirmation: "curso",
+    },
+    officialPixKey: fakeKey,
+  });
+  if (!result.reasons.includes("course_purchase_confirmation_without_payment_details")) {
+    throw new Error(JSON.stringify(result));
+  }
+  if (!result.text.includes(fakeKey) || !/R\$ 997/.test(result.text) || !/comprovante/i.test(result.text)) {
+    throw new Error(result.text);
+  }
+  if (/quer que eu|posso te passar/i.test(result.text)) throw new Error(result.text);
 });
 
 Deno.test("Bullink: pergunta exatamente repetida é removida", () => {

@@ -185,6 +185,7 @@ const OBJECOES: Array<[string, string]> = [
   ["G", "Esse investimento pesa"],
   ["H", "Vou tentar levantar esse valor"],
   ["H2", "Está fora do meu alcance agora"],
+  ["H2b", "Sim, faz, mas infelizmente está fora do meu alcance financeiro"],
   ["H3", "Esse valor pra mim hoje não é possível"],
   ["H4", "Falta de dinheiro"],
 ];
@@ -202,6 +203,13 @@ for (const [id, frase] of OBJECOES) {
     assert(/Curso Gravado/.test(fixed.text));
     assert(/997/.test(fixed.text));
     assertFalse(evaluateSecondaryOfferV2(fixed.text, CFG, op).violates);
+
+    const semPreco = "Entendo. Tenho o Curso Gravado com o mesmo método, sem acompanhamento individual.";
+    const vp = evaluateSecondaryOfferV2(semPreco, CFG, op);
+    assert(vp.reasons.includes("secondary_price_omitted_when_required"));
+    const fixedPrice = sanitizeSecondaryOfferV2(semPreco, CFG, op);
+    assert(/997/.test(fixedPrice.text));
+    assertFalse(evaluateSecondaryOfferV2(fixedPrice.text, CFG, op).violates);
 
     // resposta correta passa direto
     const ok = `Entendo, cara. Pra você não ficar sem um caminho, tenho o Curso Gravado por ${SECONDARY_LINE}, com o mesmo método, só sem meu acompanhamento individual. Faz mais sentido pra você?`;

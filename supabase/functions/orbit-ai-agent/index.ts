@@ -160,6 +160,7 @@ import {
 import {
   buildBullinkConversationPromptBlock,
   enforceBullinkConversationGuard,
+  readBullinkOfficialPixKey,
 } from "../_shared/bullink-conversation-guard.ts";
 
 import {
@@ -1537,11 +1538,28 @@ serve(async (req) => {
     const commercialExtracted = commercialV2Enabled
       ? extractCommercialSignals(mensagemAgregada)
       : { signals: new Set<never>(), paymentMethod: null, productMentioned: null } as any;
+    const commercialProductInFocus = primaryOfferCfg &&
+        (commercialExtracted.signals.has("budget_objection") || commercialExtracted.signals.has("discount_request"))
+      ? primaryOfferCfg.secondaryFocus as "mentoria" | "curso"
+      : (commercialExtracted.productMentioned ?? commercialState.product_focus);
+    const singlePaymentMethod = primaryOfferCfg &&
+        commercialProductInFocus === primaryOfferCfg.secondaryFocus &&
+        /\bpix\b/i.test(primaryOfferCfg.secondaryPriceLine) &&
+        !/\bcart(?:ao|ão)\b/i.test(primaryOfferCfg.secondaryPriceLine)
+      ? "pix" as const
+      : null;
     const commercialPerms = commercialV2Enabled
       ? computeCommercialPermissions(commercialExtracted, commercialState, {
           suppressRepeatedPrice: primaryOfferCfg?.antiRepetitionEnabled === true,
+          defaultPaymentMethod: singlePaymentMethod,
+          effectiveProduct: commercialProductInFocus,
         })
       : null;
+    const requiredCommercialPriceLine = primaryOfferCfg &&
+        commercialProductInFocus === primaryOfferCfg.secondaryFocus
+      ? primaryOfferCfg.secondaryPriceLine
+      : primaryOfferCfg?.primaryPriceLine;
+    const commercialTurnTimestamp = new Date().toISOString();
     const commercialV2Block = commercialV2Enabled && commercialPerms
       ? buildCommercialV2PromptBlock(commercialState, commercialPerms, commercialExtracted)
       : "";
@@ -1935,11 +1953,11 @@ ${regrasBlock}`;
           const enforcedVerdict = evaluateCommercialV2(resposta, commercialPerms);
           if (
             enforcedVerdict.reasons.includes("price_omitted_when_required") &&
-            primaryOfferCfg?.primaryPriceLine
+            requiredCommercialPriceLine
           ) {
             // Fail-safe determinístico: quando o preço é obrigatório, nunca
             // dependemos de uma segunda resposta correta do modelo.
-            resposta = `O investimento é ${primaryOfferCfg.primaryPriceLine}.`;
+            resposta = `O investimento é ${requiredCommercialPriceLine}.`;
           }
           console.warn("[orbit-ai-agent] Condução comercial v2 sanitizada.", {
             fallback: enforced.fallbackUsed,
@@ -2210,7 +2228,7 @@ ${regrasBlock}`;
               commercialExtracted,
               String(parsed.mensagem || resposta || ""),
               commercialPerms,
-              new Date().toISOString(),
+              commercialTurnTimestamp,
               // Tenant com identidade única: a explicação da oferta na própria
               // resposta do agente já marca product_explained (idempotente).
               { detectExplanationInReply: blockIdentitySplit },
@@ -2521,10 +2539,10 @@ ${regrasBlock}`;
         const finalVerdict = evaluateCommercialV2(resposta, commercialPerms);
         if (
           finalVerdict.reasons.includes("price_omitted_when_required") &&
-          primaryOfferCfg?.primaryPriceLine
+          requiredCommercialPriceLine
         ) {
           console.warn("[orbit-ai-agent] Preço obrigatório restaurado na última barreira.");
-          resposta = `O investimento é ${primaryOfferCfg.primaryPriceLine}.`;
+          resposta = `O investimento é ${requiredCommercialPriceLine}.`;
         }
       } else {
         const finalStage = enforceCommercialStage(mensagemAgregada, resposta, strictCommercialStageGuard);
@@ -2559,6 +2577,8 @@ ${regrasBlock}`;
       inbound: mensagemAgregada,
       response: resposta,
       previousAgentQuestions,
+      commercialState,
+      officialPixKey: readBullinkOfficialPixKey(aiConfig as Record<string, unknown>),
     });
     if (finalBullink.changed) {
       console.warn("[orbit-ai-agent] Reforço conversacional Bullink acionado.", {
@@ -2580,6 +2600,33 @@ ${regrasBlock}`;
       console.warn("[orbit-ai-agent] Barreira de notificação Comunica acionada:", finalComunica.reason);
       resposta = finalComunica.text;
       parsed.mensagem = resposta;
+    }
+
+    // Os guards finais podem trocar produto, inserir o preço oficial ou remover
+    // um avanço indevido. O estado comercial precisa refletir exatamente o texto
+    // que será enviado — nunca a versão anterior produzida pelo modelo.
+    parsed.mensagem = resposta;
+    if (commercialV2Enabled && commercialPerms) {
+      const finalCommercialState = updateCommercialState(
+        commercialState,
+        commercialExtracted,
+        resposta,
+        commercialPerms,
+        commercialTurnTimestamp,
+        { detectExplanationInReply: blockIdentitySplit },
+      );
+      const persistedCommercialState = (novoContexto as any).commercial_v2;
+      if (JSON.stringify(finalCommercialState) !== JSON.stringify(persistedCommercialState)) {
+        (novoContexto as any).commercial_v2 = finalCommercialState;
+        const { error: finalStateError } = await supabase
+          .from("orbit_conversas")
+          .update({ ai_contexto: novoContexto })
+          .eq("id", conversa_id)
+          .eq("empresa_id", empresaId);
+        if (finalStateError) {
+          throw new Error(`Falha ao persistir estado comercial final: ${finalStateError.message}`);
+        }
+      }
     }
 
     // Enviar resposta via WhatsApp (fallback: texto)

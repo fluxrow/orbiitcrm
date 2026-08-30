@@ -342,6 +342,7 @@ export function buildPrimaryOfferPromptBlock(
 export type SecondaryOfferReasonV2 =
   | "secondary_offered_without_permission"
   | "secondary_offer_omitted_when_required"
+  | "secondary_price_omitted_when_required"
   | "judgmental_framing"
   | "invented_discount";
 
@@ -353,6 +354,27 @@ export interface SecondaryOfferVerdictV2 {
 
 function mentionsSecondary(text: string, cfg: PrimaryOfferLockConfig): boolean {
   return anyMatch(cfg.secondaryMentionPatterns, norm(text));
+}
+
+function normalizeMoneyToken(raw: string): string | null {
+  const value = Number(raw.replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(value) ? value.toFixed(2) : null;
+}
+
+function officialPriceToken(priceLine: string): string | null {
+  const match = String(priceLine).match(/r\$\s*([0-9.]+(?:,[0-9]{1,2})?)/i);
+  return match ? normalizeMoneyToken(match[1]) : null;
+}
+
+export function mentionsOfficialSecondaryPrice(
+  text: string | null | undefined,
+  cfg: PrimaryOfferLockConfig,
+): boolean {
+  const expected = officialPriceToken(cfg.secondaryPriceLine);
+  if (!expected) return false;
+  const values = [...String(text ?? "").matchAll(/r\$\s*([0-9.]+(?:,[0-9]{1,2})?)/gi)]
+    .map((match) => normalizeMoneyToken(match[1]));
+  return values.includes(expected);
 }
 
 /** Cláusulas que julgam o lead. */
@@ -383,6 +405,9 @@ export function evaluateSecondaryOfferV2(
   }
   if (perm.mustSecondary && !mentionsSecondary(raw, cfg)) {
     reasons.push("secondary_offer_omitted_when_required");
+  }
+  if (perm.mustSecondary && mentionsSecondary(raw, cfg) && !mentionsOfficialSecondaryPrice(raw, cfg)) {
+    reasons.push("secondary_price_omitted_when_required");
   }
   const judg = detectJudgmentalFraming(raw);
   if (judg.length) {
@@ -424,10 +449,14 @@ export function sanitizeSecondaryOfferV2(
   }
   let text = kept.join(" ").replace(/\s{2,}/g, " ").trim();
 
-  if (perm.mustSecondary && !mentionsSecondary(text, cfg)) {
+  if (perm.mustSecondary && (!mentionsSecondary(text, cfg) || !mentionsOfficialSecondaryPrice(text, cfg))) {
+    const withoutIncompleteSecondary = splitClauses(text)
+      .filter((clause) => !mentionsSecondary(clause, cfg))
+      .join(" ")
+      .trim();
     const alt = `Pra você não ficar sem caminho, tenho o ${cfg.secondaryLabel} por ${cfg.secondaryPriceLine}, com o mesmo método, só sem meu acompanhamento individual.`;
     const prefix = perm.discountRequestNow ? "Os valores são fixos. " : "Entendo. ";
-    text = text ? `${text} ${alt}` : `${prefix}${alt}`;
+    text = withoutIncompleteSecondary ? `${withoutIncompleteSecondary} ${alt}` : `${prefix}${alt}`;
     changed = true;
     return { text: text.trim(), changed: true, fallbackUsed: !kept.length };
   }
@@ -453,6 +482,11 @@ export function buildSecondaryOfferCorrectiveV2(
       perm.discountRequestNow
         ? `o lead pediu desconto: diga com leveza que os valores são fixos e apresente ${cfg.secondaryLabel} por ${cfg.secondaryPriceLine} como alternativa, sem pressionar por fechamento.`
         : `o lead sinalizou limitação de orçamento: apresente AGORA ${cfg.secondaryLabel} por ${cfg.secondaryPriceLine}, com o mesmo método e sem acompanhamento individual, de forma respeitosa. Não insista na ${cfg.primaryFocus}.`,
+    );
+  }
+  if (verdict.reasons.includes("secondary_price_omitted_when_required")) {
+    parts.push(
+      `${cfg.secondaryLabel} foi citado sem o valor: informe no mesmo turno o preço oficial ${cfg.secondaryPriceLine}.`,
     );
   }
   if (verdict.reasons.includes("judgmental_framing")) {

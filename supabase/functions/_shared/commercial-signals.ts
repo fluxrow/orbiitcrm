@@ -94,6 +94,7 @@ const RE_BUDGET_OBJECTION: RegExp[] = [
   /\bnao\s+tenho\s+(?:esse|todo\s+esse|como|dinheiro|grana|condic)\w*/,
   /\b(?:esta|ta|e|eh)\s+(?:muito\s+)?caro\b/,
   /\bfora\s+do\s+(?:meu\s+)?orcamento\b/,
+  /\bfora\s+do\s+(?:meu\s+)?alcance(?:\s+financeiro)?\b/,
   /\b(?:to|estou)\s+(?:apertado|sem\s+grana|sem\s+dinheiro|desempregad\w+)\b/,
   /\bpouco\s+(?:dinheiro|orcamento)\b/,
   /\balgo\s+mais\s+(?:barato|acessivel|em\s+conta)\b/,
@@ -273,6 +274,8 @@ export interface CommercialStateV2 {
   payment_details_sent_at: string | null;
   awaiting_receipt: boolean;
   awaiting_payment_method: boolean;
+  /** Produto cujo aceite foi solicitado depois de o preço oficial ser informado. */
+  awaiting_offer_confirmation: "mentoria" | "curso" | null;
   /** O agente ofereceu explicar o preço, mas ainda não informou nenhum valor. */
   awaiting_price_answer: boolean;
   unanswered_price_question: boolean;
@@ -288,6 +291,7 @@ export const EMPTY_COMMERCIAL_STATE: CommercialStateV2 = {
   payment_details_sent_at: null,
   awaiting_receipt: false,
   awaiting_payment_method: false,
+  awaiting_offer_confirmation: null,
   awaiting_price_answer: false,
   unanswered_price_question: false,
 };
@@ -310,6 +314,10 @@ export function readCommercialState(aiContexto: Record<string, unknown> | null |
     payment_details_sent_at: typeof raw.payment_details_sent_at === "string" ? raw.payment_details_sent_at : null,
     awaiting_receipt: raw.awaiting_receipt === true,
     awaiting_payment_method: raw.awaiting_payment_method === true,
+    awaiting_offer_confirmation:
+      raw.awaiting_offer_confirmation === "mentoria" || raw.awaiting_offer_confirmation === "curso"
+        ? raw.awaiting_offer_confirmation
+        : null,
     awaiting_price_answer: raw.awaiting_price_answer === true,
     unanswered_price_question: raw.unanswered_price_question === true,
   };
@@ -329,6 +337,10 @@ export interface CommercialPermissions {
 export interface CommercialPermissionOptions {
   /** Impede repetir preço já informado sem novo pedido explícito. */
   suppressRepeatedPrice?: boolean;
+  /** Forma única do produto em foco (ex.: Curso Gravado disponível apenas no PIX). */
+  defaultPaymentMethod?: "pix" | "cartao" | null;
+  /** Produto efetivo deste turno quando uma regra determinística troca a oferta. */
+  effectiveProduct?: "mentoria" | "curso" | null;
 }
 
 export function computeCommercialPermissions(
@@ -339,7 +351,9 @@ export function computeCommercialPermissions(
   const s = extracted.signals;
   const contactOnly = s.has("contact_data_only");
 
-  const hasPriceContext = !!state.price_informed;
+  const effectiveProduct = opts?.effectiveProduct ?? extracted.productMentioned ?? state.product_focus;
+  const hasPriceContext = !!state.price_informed &&
+    (!effectiveProduct || state.price_informed.product === effectiveProduct);
   const hasCommercialContext =
     hasPriceContext ||
     state.product_explained ||
@@ -357,7 +371,11 @@ export function computeCommercialPermissions(
   const closingRecognized =
     !contactOnly &&
     (s.has("explicit_closing_intent") ||
-      (s.has("closing_affirmative_contextual") && hasPriceContext && !!state.product_focus));
+      (s.has("closing_affirmative_contextual") && hasPriceContext && !!effectiveProduct) ||
+      (s.has("price_answer_affirmative") &&
+        hasPriceContext &&
+        !!effectiveProduct &&
+        state.awaiting_offer_confirmation === effectiveProduct));
 
   const mayMentionPrice = !contactOnly && (
     opts?.suppressRepeatedPrice === true && hasPriceContext
@@ -377,12 +395,14 @@ export function computeCommercialPermissions(
       commercialIntentNeedsPrice
     );
 
+  const defaultPaymentMethod = closingRecognized ? (opts?.defaultPaymentMethod ?? null) : null;
   const mayAskPaymentMethod =
     !contactOnly &&
+    !defaultPaymentMethod &&
     ((hasPriceContext && (closingRecognized || s.has("payment_details_request"))) ||
       (closingRecognized && hasPriceContext));
 
-  const chosenMethod = extracted.paymentMethod ?? state.payment_method;
+  const chosenMethod = extracted.paymentMethod ?? state.payment_method ?? defaultPaymentMethod;
 
   const maySharePaymentDetails =
     !contactOnly &&
@@ -623,6 +643,36 @@ const RE_REPLY_EXPLAINS_OFFER: RegExp[] = [
   /\beu\s+(?:te\s+)?(?:entrego|libero|forneco|passo)\b[^.?!]{0,40}\b(?:nichos|estrutura|referencias|roteiros|tudo)\b/,
 ];
 
+const RE_REPLY_COURSE = /\bcurso(?:\s+gravad[oa])?\b|\b(?:conteudo|formato|aulas?)\s+gravad[oa]s?\b/;
+const RE_REPLY_MENTORSHIP = /\bmentoria\b/;
+const RE_REPLY_OFFER_CONFIRMATION = [
+  /\bfaz\s+(?:mais\s+)?sentido\s+(?:pra|para)\s+voce\b[^?]*\?/,
+  /\bquer\s+(?:seguir|entrar|comecar|ficar)\b[^?]*\?/,
+  /\bpodemos\s+(?:seguir|avancar|fechar)\b[^?]*\?/,
+];
+
+/** Produto efetivamente citado pela resposta; evita herdar preço de outra oferta. */
+export function detectProductInReply(
+  resposta: string | null | undefined,
+): "mentoria" | "curso" | null {
+  const n = norm(resposta);
+  if (!n) return null;
+  const course = RE_REPLY_COURSE.test(n);
+  const mentorship = RE_REPLY_MENTORSHIP.test(n);
+  if (course && !mentorship) return "curso";
+  if (mentorship && !course) return "mentoria";
+  if (course && mentorship) {
+    if (/\b(?:r\$\s*)?997(?:[,.]00)?\b/.test(n) && !/\b6[.]?500(?:[,.]00)?\b/.test(n)) return "curso";
+    if (/\b6[.]?500(?:[,.]00)?\b/.test(n) && !/\b(?:r\$\s*)?997(?:[,.]00)?\b/.test(n)) return "mentoria";
+  }
+  return null;
+}
+
+export function replyAsksOfferConfirmation(resposta: string | null | undefined): boolean {
+  const n = norm(resposta);
+  return !!n && RE_REPLY_OFFER_CONFIRMATION.some((re) => re.test(n));
+}
+
 export function replyExplainsOffer(resposta: string | null | undefined): boolean {
   const n = norm(resposta);
   if (!n) return false;
@@ -656,22 +706,41 @@ export function updateCommercialState(
   const enviouDados = clauses.some((k) => k.paymentDetails) && perms.maySharePaymentDetails;
   const explicouNaResposta = opts?.detectExplanationInReply === true && replyExplainsOffer(respostaFinal);
 
-  const product = extracted.productMentioned ?? state.product_focus ?? null;
+  const responseProduct = detectProductInReply(respostaFinal);
+  const product = responseProduct ?? extracted.productMentioned ?? state.product_focus ?? null;
+  const switchedProduct = !!product && !!state.product_focus && product !== state.product_focus;
+  const previousPriceForProduct = state.price_informed &&
+      (!product || state.price_informed.product === product)
+    ? state.price_informed
+    : null;
+  const priceInformed = respondeuPreco
+    ? { product: product ?? previousPriceForProduct?.product ?? "mentoria", at: nowISO }
+    : (switchedProduct ? null : previousPriceForProduct);
+  const asksOfferConfirmation = !!priceInformed && replyAsksOfferConfirmation(respostaFinal);
   const priceAsked = extracted.signals.has("direct_price_question") || extracted.signals.has("payment_terms_question");
 
   return {
     product_focus: product,
-    product_explained: state.product_explained || respondeuPreco || explicouNaResposta ||
+    product_explained: (!switchedProduct && state.product_explained) || respondeuPreco || explicouNaResposta ||
       extracted.signals.has("informational_question"),
-    price_informed: respondeuPreco
-      ? { product: product ?? state.price_informed?.product ?? "mentoria", at: nowISO }
-      : state.price_informed,
+    price_informed: priceInformed,
     budget_objection: state.budget_objection || extracted.signals.has("budget_objection"),
-    closing_intent_at: perms.closingRecognized ? (state.closing_intent_at ?? nowISO) : state.closing_intent_at,
-    payment_method: perms.chosenMethod ?? state.payment_method,
-    payment_details_sent_at: enviouDados ? (state.payment_details_sent_at ?? nowISO) : state.payment_details_sent_at,
-    awaiting_receipt: enviouDados ? true : state.awaiting_receipt,
-    awaiting_payment_method: perguntouForma ? true : (perms.chosenMethod ? false : state.awaiting_payment_method),
+    closing_intent_at: perms.closingRecognized
+      ? (switchedProduct ? nowISO : (state.closing_intent_at ?? nowISO))
+      : (switchedProduct ? null : state.closing_intent_at),
+    payment_method: perms.chosenMethod ?? (switchedProduct ? null : state.payment_method),
+    payment_details_sent_at: enviouDados
+      ? (switchedProduct ? nowISO : (state.payment_details_sent_at ?? nowISO))
+      : (switchedProduct ? null : state.payment_details_sent_at),
+    awaiting_receipt: enviouDados ? true : (switchedProduct ? false : state.awaiting_receipt),
+    awaiting_payment_method: perguntouForma
+      ? true
+      : (perms.chosenMethod ? false : (switchedProduct ? false : state.awaiting_payment_method)),
+    awaiting_offer_confirmation: perms.closingRecognized
+      ? null
+      : (asksOfferConfirmation && product
+        ? product
+        : null),
     awaiting_price_answer: respondeuPreco
       ? false
       : (prometeuResponderPreco ? true : confirmouPedidoDePreco),
@@ -690,8 +759,11 @@ export function isCommercialSaleHandoffAuthorized(
   perms: CommercialPermissions,
 ): boolean {
   if (perms.closingRecognized) return true;
+  const effectiveProduct = extracted.productMentioned ?? state.product_focus;
+  const hasPriceForProduct = !!state.price_informed &&
+    (!effectiveProduct || state.price_informed.product === effectiveProduct);
   return extracted.signals.has("payment_method_choice") &&
     state.awaiting_payment_method &&
     !!state.closing_intent_at &&
-    !!state.price_informed;
+    hasPriceForProduct;
 }
