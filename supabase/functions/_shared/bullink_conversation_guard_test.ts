@@ -4,6 +4,7 @@ import {
   BULLINK_BUDGET_DOWNSELL_REPLY,
   BULLINK_LEAD_SOURCE_REPLY,
   BULLINK_RESULTS_TIMELINE_REPLY,
+  BULLINK_COURSE_CONTINUITY_REPLY,
   BULLINK_RECORDED_COURSE_DETAILS_REPLY,
   BULLINK_RECORDED_COURSE_REPLY,
   enforceBullinkConversationGuard,
@@ -229,6 +230,18 @@ Deno.test("Bullink: Curso não é oferecido sem pedido, objeção ou foco anteri
   });
   if (!result.reasons.includes("unsolicited_recorded_course_offer")) throw new Error(JSON.stringify(result));
   if (/curso|997/i.test(result.text)) throw new Error(result.text);
+});
+
+Deno.test("Regressão Ivan 30/08: interesse no Curso não volta sozinho para a Mentoria", () => {
+  const result = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "Interessante",
+    response: "Quer seguir com a Mentoria completa ou prefere pensar mais um pouco?",
+    commercialState: { product_focus: "curso" },
+  });
+  if (result.text !== BULLINK_COURSE_CONTINUITY_REPLY) throw new Error(result.text);
+  if (!result.reasons.includes("course_context_regressed_to_mentorship")) throw new Error(JSON.stringify(result));
+  if (/997/.test(result.text)) throw new Error(`preço repetido: ${result.text}`);
 });
 
 Deno.test("Regressão Rogério 29/08: aceite do Curso entrega PIX sem ciclo de permissões", () => {

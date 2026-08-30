@@ -17,6 +17,7 @@ export type BullinkGuardReason =
   | "unsolicited_recorded_course_offer"
   | "lead_source_question_unanswered"
   | "results_timeline_question_unanswered"
+  | "course_context_regressed_to_mentorship"
   | "repeated_question";
 
 export interface BullinkConversationGuardInput {
@@ -237,6 +238,9 @@ export const BULLINK_LEAD_SOURCE_REPLY =
 export const BULLINK_RESULTS_TIMELINE_REPLY =
   "Não existe um prazo médio que eu possa prometer para chegar a R$ 10 mil por mês. Isso varia conforme nicho, execução e desempenho do canal; os 3 meses são o período de acompanhamento, não uma garantia de faturamento.";
 
+export const BULLINK_COURSE_CONTINUITY_REPLY =
+  "Perfeito. O Curso Gravado segue com o mesmo método em aulas no seu ritmo, sem acompanhamento individual. Qual dúvida você quer esclarecer antes de decidir?";
+
 export function readBullinkOfficialPixKey(
   aiConfig: Record<string, unknown> | null | undefined,
 ): string | null {
@@ -285,6 +289,9 @@ export function enforceBullinkConversationGuard(
   const courseAlreadyEstablished = input.commercialState?.product_focus === "curso";
   const asksLeadSource = LEAD_SOURCE_QUESTION.some((pattern) => pattern.test(normalizedInbound));
   const asksResultsTimeline = RESULTS_TIMELINE_QUESTION.some((pattern) => pattern.test(normalizedInbound));
+  const responseRegressesToMentorship = courseAlreadyEstablished &&
+    !/\bmentoria\b/.test(normalizedInbound) &&
+    /\b(?:seguir|voltar|ficar|prefere|continuar)\b.{0,45}\bmentoria\b|\bmentoria\s+completa\b/.test(norm(text));
 
   if (containsPersonaSelfConfirmation(text)) {
     reasons.push("persona_self_confirmation");
@@ -316,6 +323,9 @@ export function enforceBullinkConversationGuard(
         : "explicit_recorded_course_unanswered");
       text = BULLINK_RECORDED_COURSE_DETAILS_REPLY;
     }
+  } else if (responseRegressesToMentorship) {
+    reasons.push("course_context_regressed_to_mentorship");
+    text = BULLINK_COURSE_CONTINUITY_REPLY;
   } else if (!courseAlreadyEstablished && COURSE_MENTION.test(norm(text))) {
     reasons.push("unsolicited_recorded_course_offer");
     const withoutCourse = String(text)
@@ -353,6 +363,7 @@ export function buildBullinkConversationPromptBlock(empresaId: string | null | u
     "- Se houver objeção financeira, apresente imediatamente e com respeito o Curso Gravado por R$ 997; não repita o preço da Mentoria antes da alternativa.",
     "- Nunca repita a mesma pergunta sem acrescentar informação útil. Responda primeiro a dúvida específica do lead.",
     '- Nunca descarte uma dúvida com "voltando ao que importa" ou equivalente. Perguntas sobre origem do contato, prazo e resultados devem ser respondidas de forma direta e honesta.',
+    '- Quando o Curso Gravado já for o produto em foco, não volte a oferecer a Mentoria por conta própria. Continue no Curso até o lead pedir explicitamente a Mentoria.',
     '- Nunca prometa prazo ou faturamento. Os 3 meses são acompanhamento, não garantia de resultado.',
     "=== FIM DO REFORÇO CONVERSACIONAL BULLINK ===\n",
   ].join("\n");
