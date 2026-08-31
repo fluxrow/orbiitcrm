@@ -4,8 +4,9 @@
  * Problema real: a pergunta genérica de preço ("e qual valor fica") fazia o
  * agente responder em formato de cardápio, apresentando a oferta principal
  * (Mentoria) e a oferta secundária/downsell (Curso Gravado R$997) no mesmo
- * turno — inclusive quando não havia objeção de orçamento nem pedido explícito
- * pela opção mais barata. Tags informativas do Typebot (renda, desemprego)
+ * turno — inclusive quando não havia objeção de orçamento. Pedido pelo Curso,
+ * menção ao gravado ou foco secundário legado NÃO liberam o downsell. Tags
+ * informativas do Typebot (renda, desemprego)
  * também não devem forçar o downsell.
  *
  * Esta trava é ativada SOMENTE quando `orbit_ai_config.primary_offer_lock`
@@ -135,19 +136,35 @@ export function readPrimaryOfferLockConfig(
   const raw = (aiConfig as any)?.primary_offer_lock;
   if (!raw || typeof raw !== "object" || raw.enabled !== true) return null;
   const arr = (v: unknown, fallback: string[]): string[] =>
-    Array.isArray(v) && v.every((x) => typeof x === "string") && v.length > 0 ? (v as string[]) : fallback;
+    Array.isArray(v) && v.every((x) => typeof x === "string") && v.length > 0
+      ? (v as string[])
+      : fallback;
   return {
     enabled: true,
-    primaryFocus: typeof raw.primary_focus === "string" ? raw.primary_focus : "mentoria",
+    primaryFocus: typeof raw.primary_focus === "string"
+      ? raw.primary_focus
+      : "mentoria",
     primaryFocusTags: arr(raw.primary_focus_tags, ["OFERTA_MENTORIA"]),
-    secondaryFocus: typeof raw.secondary_focus === "string" ? raw.secondary_focus : "curso",
-    secondaryMentionPatterns: arr(raw.secondary_mention_patterns, DEFAULT_SECONDARY_MENTION),
-    secondaryRequestPatterns: arr(raw.secondary_request_patterns, DEFAULT_SECONDARY_REQUEST),
-    primaryPriceLine: typeof raw.primary_price_line === "string" && raw.primary_price_line.trim()
+    secondaryFocus: typeof raw.secondary_focus === "string"
+      ? raw.secondary_focus
+      : "curso",
+    secondaryMentionPatterns: arr(
+      raw.secondary_mention_patterns,
+      DEFAULT_SECONDARY_MENTION,
+    ),
+    secondaryRequestPatterns: arr(
+      raw.secondary_request_patterns,
+      DEFAULT_SECONDARY_REQUEST,
+    ),
+    primaryPriceLine: typeof raw.primary_price_line === "string" &&
+        raw.primary_price_line.trim()
       ? raw.primary_price_line
       : "R$ 6.500 à vista no PIX ou 12x de R$ 650 no cartão",
-    secondaryLabel: typeof raw.secondary_label === "string" ? raw.secondary_label : "Curso Gravado",
-    secondaryPriceLine: typeof raw.secondary_price_line === "string" && raw.secondary_price_line.trim()
+    secondaryLabel: typeof raw.secondary_label === "string"
+      ? raw.secondary_label
+      : "Curso Gravado",
+    secondaryPriceLine: typeof raw.secondary_price_line === "string" &&
+        raw.secondary_price_line.trim()
       ? raw.secondary_price_line
       : "R$ 997 à vista no PIX",
     antiRepetitionEnabled: raw.anti_repetition_enabled === true,
@@ -176,8 +193,6 @@ export interface PrimaryOfferPermissionInput {
 
 export type PrimaryOfferReason =
   | "budget_objection"
-  | "explicit_secondary_request"
-  | "secondary_focus_established"
   | "locked_to_primary";
 
 export interface PrimaryOfferPermission {
@@ -194,14 +209,18 @@ export interface PrimaryOfferPermission {
 }
 
 /** Objeção explícita de orçamento detectada no turno atual. */
-export function detectBudgetObjection(inbound: string | null | undefined): boolean {
+export function detectBudgetObjection(
+  inbound: string | null | undefined,
+): boolean {
   const n = norm(inbound);
   if (!n) return false;
   return RE_BUDGET_OBJECTION.some((re) => re.test(n));
 }
 
 /** Pedido explícito de desconto no turno atual. */
-export function detectDiscountRequest(inbound: string | null | undefined): boolean {
+export function detectDiscountRequest(
+  inbound: string | null | undefined,
+): boolean {
   const n = norm(inbound);
   if (!n) return false;
   return RE_DISCOUNT_REQUEST.some((re) => re.test(n));
@@ -211,38 +230,30 @@ export function computePrimaryOfferPermission(
   input: PrimaryOfferPermissionInput,
 ): PrimaryOfferPermission {
   const { cfg } = input;
-  const n = norm(input.inbound);
-  const tags = (input.tags ?? []).map((t) => String(t).toUpperCase());
-  const stateFocus = input.stateFocus ?? null;
-
   const budgetObjectionNow = detectBudgetObjection(input.inbound);
   const discountRequestNow = detectDiscountRequest(input.inbound);
   const mustSecondary = budgetObjectionNow || discountRequestNow;
-  const explicitRequest = !!n && anyMatch(cfg.secondaryRequestPatterns, n);
-  const secondaryEstablished = stateFocus === cfg.secondaryFocus;
-
-  const primaryByTag = tags.some((t) => cfg.primaryFocusTags.map((x) => x.toUpperCase()).includes(t));
-  const effectiveFocus = secondaryEstablished
-    ? cfg.secondaryFocus
-    : (stateFocus === cfg.primaryFocus || primaryByTag || !stateFocus ? cfg.primaryFocus : stateFocus);
-
   if (mustSecondary || input.stateBudgetObjection === true) {
     return {
       maySecondary: true,
       mustSecondary,
       reason: "budget_objection",
-      effectiveFocus,
+      effectiveFocus: cfg.secondaryFocus,
       budgetObjectionNow,
       discountRequestNow,
     };
   }
-  if (explicitRequest) {
-    return { maySecondary: true, mustSecondary: false, reason: "explicit_secondary_request", effectiveFocus: cfg.secondaryFocus, budgetObjectionNow, discountRequestNow };
-  }
-  if (secondaryEstablished) {
-    return { maySecondary: true, mustSecondary: false, reason: "secondary_focus_established", effectiveFocus, budgetObjectionNow, discountRequestNow };
-  }
-  return { maySecondary: false, mustSecondary: false, reason: "locked_to_primary", effectiveFocus, budgetObjectionNow, discountRequestNow };
+  // Fail-closed: pedido pelo Curso ou foco secundário deixado por runtime antigo
+  // não substituem a prova de objeção financeira. Sem essa prova, a Mentoria é
+  // sempre o único foco comercial permitido.
+  return {
+    maySecondary: false,
+    mustSecondary: false,
+    reason: "locked_to_primary",
+    effectiveFocus: cfg.primaryFocus,
+    budgetObjectionNow,
+    discountRequestNow,
+  };
 }
 
 function splitClauses(text: string): string[] {
@@ -278,7 +289,9 @@ export function sanitizeSecondaryOffer(
   perm: PrimaryOfferPermission,
 ): { text: string; changed: boolean; fallbackUsed: boolean } {
   const raw = String(resposta ?? "");
-  if (perm.maySecondary || !raw.trim()) return { text: raw.trim(), changed: false, fallbackUsed: false };
+  if (perm.maySecondary || !raw.trim()) {
+    return { text: raw.trim(), changed: false, fallbackUsed: false };
+  }
   const kept: string[] = [];
   let changed = false;
   for (const clause of splitClauses(raw)) {
@@ -299,7 +312,9 @@ export function sanitizeSecondaryOffer(
   return { text, changed, fallbackUsed: false };
 }
 
-export function buildSecondaryOfferCorrective(cfg: PrimaryOfferLockConfig): string {
+export function buildSecondaryOfferCorrective(
+  cfg: PrimaryOfferLockConfig,
+): string {
   return (
     "CORREÇÃO OBRIGATÓRIA (oferta principal): não cite, compare nem ofereça " +
     `${cfg.secondaryLabel} neste turno. O lead fez uma pergunta de preço e o foco é a ` +
@@ -322,7 +337,7 @@ export function buildPrimaryOfferPromptBlock(
       ? `PODE apresentar ${cfg.secondaryLabel} neste turno (motivo: ${perm.reason}).`
       : `NÃO PODE citar, comparar ou oferecer ${cfg.secondaryLabel} neste turno.`,
     `- Pergunta genérica de preço/valor => responda SOMENTE preço e condições da ${cfg.primaryFocus}.`,
-    `- ${cfg.secondaryLabel} só entra se houver objeção explícita de orçamento/preço, pedido explícito pela opção mais barata, ou foco já estabelecido como ${cfg.secondaryFocus}.`,
+    `- ${cfg.secondaryLabel} só entra depois de objeção explícita de orçamento/preço à ${cfg.primaryFocus}. Pedido pelo curso, menção ao gravado, pergunta de preço do curso ou foco secundário legado NÃO liberam a alternativa.`,
     "- PROIBIDO responder em formato de cardápio/comparação espontânea das duas ofertas.",
     "- Tags de renda, momento ou desemprego servem apenas de contexto: nunca forçam o downsell nem impedem a oferta principal.",
     "- Não envie chave PIX, link de pagamento nem peça comprovante antes de o lead escolher a forma de pagamento.",
@@ -333,8 +348,10 @@ export function buildPrimaryOfferPromptBlock(
           ? `- O lead pediu desconto: diga com leveza que os valores são fixos e, no MESMO turno, apresente ${cfg.secondaryLabel} (${cfg.secondaryPriceLine}) como alternativa. Não pressione com "quer fechar?".`
           : `- O lead sinalizou limitação de orçamento: apresente IMEDIATAMENTE, no mesmo turno, ${cfg.secondaryLabel} (${cfg.secondaryPriceLine}) como alternativa leve e digna.`,
         `- Não insista na ${cfg.primaryFocus} antes de oferecer a alternativa. Mesmo método, sem o acompanhamento individual.`,
-        "- PROIBIDO julgar: nunca diga ou insinue desempregado, sem caixa, sem condições, desqualificado, \"não é o seu momento\" ou \"não é para você\".",
-        "- Tom: 1 a 3 frases, até 300 caracteres, no máximo uma pergunta curta. Exemplo de tom: \"Entendo, cara. Pra você não ficar sem um caminho, tenho o " + cfg.secondaryLabel + " por " + cfg.secondaryPriceLine + ", com o mesmo método, só sem meu acompanhamento individual. Faz mais sentido pra você?\"",
+        '- PROIBIDO julgar: nunca diga ou insinue desempregado, sem caixa, sem condições, desqualificado, "não é o seu momento" ou "não é para você".',
+        '- Tom: 1 a 3 frases, até 300 caracteres, no máximo uma pergunta curta. Exemplo de tom: "Entendo, cara. Pra você não ficar sem um caminho, tenho o ' +
+        cfg.secondaryLabel + " por " + cfg.secondaryPriceLine +
+        ', com o mesmo método, só sem meu acompanhamento individual. Faz mais sentido pra você?"',
         `- Se o lead recusar ${cfg.secondaryLabel} ou reafirmar que quer a ${cfg.primaryFocus}, respeite e siga pela escolha dele.`,
       ]
       : []),
@@ -342,7 +359,6 @@ export function buildPrimaryOfferPromptBlock(
   ];
   return lines.join("\n");
 }
-
 
 // ── Downsell obrigatório, respeito e preço fixo (mesmo tenant-scope) ──
 
@@ -379,19 +395,29 @@ export function mentionsOfficialSecondaryPrice(
 ): boolean {
   const expected = officialPriceToken(cfg.secondaryPriceLine);
   if (!expected) return false;
-  const values = [...String(text ?? "").matchAll(/r\$\s*([0-9.]+(?:,[0-9]{1,2})?)/gi)]
+  const values = [
+    ...String(text ?? "").matchAll(/r\$\s*([0-9.]+(?:,[0-9]{1,2})?)/gi),
+  ]
     .map((match) => normalizeMoneyToken(match[1]));
   return values.includes(expected);
 }
 
 /** Cláusulas que julgam o lead. */
-export function detectJudgmentalFraming(resposta: string | null | undefined): string[] {
-  return splitClauses(String(resposta ?? "")).filter((c) => RE_JUDGMENTAL.some((re) => re.test(norm(c))));
+export function detectJudgmentalFraming(
+  resposta: string | null | undefined,
+): string[] {
+  return splitClauses(String(resposta ?? "")).filter((c) =>
+    RE_JUDGMENTAL.some((re) => re.test(norm(c)))
+  );
 }
 
 /** Cláusulas que inventam desconto/negociação. */
-export function detectInventedDiscount(resposta: string | null | undefined): string[] {
-  return splitClauses(String(resposta ?? "")).filter((c) => RE_INVENTED_DISCOUNT.some((re) => re.test(norm(c))));
+export function detectInventedDiscount(
+  resposta: string | null | undefined,
+): string[] {
+  return splitClauses(String(resposta ?? "")).filter((c) =>
+    RE_INVENTED_DISCOUNT.some((re) => re.test(norm(c)))
+  );
 }
 
 export function evaluateSecondaryOfferV2(
@@ -413,7 +439,10 @@ export function evaluateSecondaryOfferV2(
   if (perm.mustSecondary && !mentionsSecondary(raw, cfg)) {
     reasons.push("secondary_offer_omitted_when_required");
   }
-  if (perm.mustSecondary && mentionsSecondary(raw, cfg) && !mentionsOfficialSecondaryPrice(raw, cfg)) {
+  if (
+    perm.mustSecondary && mentionsSecondary(raw, cfg) &&
+    !mentionsOfficialSecondaryPrice(raw, cfg)
+  ) {
     reasons.push("secondary_price_omitted_when_required");
   }
   const judg = detectJudgmentalFraming(raw);
@@ -456,19 +485,32 @@ export function sanitizeSecondaryOfferV2(
   }
   let text = kept.join(" ").replace(/\s{2,}/g, " ").trim();
 
-  if (perm.mustSecondary && (!mentionsSecondary(text, cfg) || !mentionsOfficialSecondaryPrice(text, cfg))) {
+  if (
+    perm.mustSecondary &&
+    (!mentionsSecondary(text, cfg) ||
+      !mentionsOfficialSecondaryPrice(text, cfg))
+  ) {
     const withoutIncompleteSecondary = splitClauses(text)
       .filter((clause) => !mentionsSecondary(clause, cfg))
       .join(" ")
       .trim();
-    const alt = `Pra você não ficar sem caminho, tenho o ${cfg.secondaryLabel} por ${cfg.secondaryPriceLine}, com o mesmo método, só sem meu acompanhamento individual.`;
-    const prefix = perm.discountRequestNow ? "Os valores são fixos. " : "Entendo. ";
-    text = withoutIncompleteSecondary ? `${withoutIncompleteSecondary} ${alt}` : `${prefix}${alt}`;
+    const alt =
+      `Pra você não ficar sem caminho, tenho o ${cfg.secondaryLabel} por ${cfg.secondaryPriceLine}, com o mesmo método, só sem meu acompanhamento individual.`;
+    const prefix = perm.discountRequestNow
+      ? "Os valores são fixos. "
+      : "Entendo. ";
+    text = withoutIncompleteSecondary
+      ? `${withoutIncompleteSecondary} ${alt}`
+      : `${prefix}${alt}`;
     changed = true;
     return { text: text.trim(), changed: true, fallbackUsed: !kept.length };
   }
   if (!text) {
-    return { text: `O investimento fica ${cfg.primaryPriceLine}.`, changed: true, fallbackUsed: true };
+    return {
+      text: `O investimento fica ${cfg.primaryPriceLine}.`,
+      changed: true,
+      fallbackUsed: true,
+    };
   }
   return { text, changed, fallbackUsed: false };
 }
@@ -497,11 +539,17 @@ export function buildSecondaryOfferCorrectiveV2(
     );
   }
   if (verdict.reasons.includes("judgmental_framing")) {
-    parts.push('nunca julgue o lead: proibido desempregado, sem caixa, sem condições, desqualificado, "não é o seu momento" ou "não é para você".');
+    parts.push(
+      'nunca julgue o lead: proibido desempregado, sem caixa, sem condições, desqualificado, "não é o seu momento" ou "não é para você".',
+    );
   }
   if (verdict.reasons.includes("invented_discount")) {
-    parts.push("os valores são FIXOS: nunca ofereça desconto, negociação, cupom, promoção ou condição especial.");
+    parts.push(
+      "os valores são FIXOS: nunca ofereça desconto, negociação, cupom, promoção ou condição especial.",
+    );
   }
-  parts.push("Mantenha 1 a 3 frases curtas, até 300 caracteres, no máximo uma pergunta curta.");
+  parts.push(
+    "Mantenha 1 a 3 frases curtas, até 300 caracteres, no máximo uma pergunta curta.",
+  );
   return parts.join(" ");
 }

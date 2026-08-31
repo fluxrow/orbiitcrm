@@ -186,7 +186,7 @@ import { schedulingPolicy, isAmbiguousSlotAcceptance, selectExplicitSuggestion }
 // Persistido na metadata de cada ai_reply para comprovar qual barreira estava
 // realmente publicada quando uma resposta saiu. O monitor não precisa inferir
 // versão por horário de commit nem confiar no deploy do frontend.
-export const ORBIT_AI_AGENT_RUNTIME_VERSION = "2026-08-31-deterministic-checkout-v2";
+export const ORBIT_AI_AGENT_RUNTIME_VERSION = "2026-08-31-bullink-primary-offer-v3";
 
 /**
  * Normalização final aplicada em TODOS os caminhos de saída do agente.
@@ -1634,11 +1634,25 @@ serve(async (req) => {
       empresaId,
       recentMessages: mensagens || [],
       stateFocus: commercialState.product_focus,
+      stateBudgetObjection: commercialState.budget_objection,
     });
-    const commercialProductInFocus = primaryOfferCfg &&
+    const rawCommercialProductFocus = primaryOfferCfg &&
         (commercialExtracted.signals.has("budget_objection") || commercialExtracted.signals.has("discount_request"))
       ? primaryOfferCfg.secondaryFocus as "mentoria" | "curso"
       : (commercialExtracted.productMentioned ?? bullinkHistoryProductFocus ?? commercialState.product_focus);
+    // A trava da oferta principal é a autoridade sobre o produto efetivo. Uma
+    // simples menção ao Curso (ou estado legado em "curso") não pode contaminar
+    // preço, checkout nem o estado persistido antes da objeção financeira.
+    const primaryOfferPerm = primaryOfferCfg
+      ? computePrimaryOfferPermission({
+          cfg: primaryOfferCfg,
+          inbound: mensagemAgregada,
+          tags: Array.isArray((prospect as any)?.tags) ? ((prospect as any).tags as string[]) : [],
+          stateFocus: rawCommercialProductFocus,
+          stateBudgetObjection: commercialState.budget_objection || commercialExtracted.signals?.has?.("budget_objection") === true,
+        })
+      : null;
+    const commercialProductInFocus = primaryOfferPerm?.effectiveFocus ?? rawCommercialProductFocus;
     const singlePaymentMethod = primaryOfferCfg &&
         commercialProductInFocus === primaryOfferCfg.secondaryFocus &&
         /\bpix\b/i.test(primaryOfferCfg.secondaryPriceLine) &&
@@ -1663,15 +1677,6 @@ serve(async (req) => {
 
     // ── TRAVA DE OFERTA PRINCIPAL (tenant-scoped por orbit_ai_config.primary_offer_lock) ──
     // Pergunta genérica de preço não pode virar cardápio com a oferta secundária.
-    const primaryOfferPerm = primaryOfferCfg
-      ? computePrimaryOfferPermission({
-          cfg: primaryOfferCfg,
-          inbound: mensagemAgregada,
-          tags: Array.isArray((prospect as any)?.tags) ? ((prospect as any).tags as string[]) : [],
-          stateFocus: commercialProductInFocus,
-          stateBudgetObjection: commercialState.budget_objection || commercialExtracted.signals?.has?.("budget_objection") === true,
-        })
-      : null;
     const primaryOfferBlock = primaryOfferCfg && primaryOfferPerm
       ? buildPrimaryOfferPromptBlock(primaryOfferCfg, primaryOfferPerm)
       : "";

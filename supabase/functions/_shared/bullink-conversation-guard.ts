@@ -22,6 +22,7 @@ export type BullinkGuardReason =
   | "results_timeline_question_unanswered"
   | "course_context_regressed_to_mentorship"
   | "course_context_price_unanswered"
+  | "secondary_requested_before_budget_objection"
   | "repeated_question";
 
 export interface BullinkRecentMessage {
@@ -38,6 +39,7 @@ export interface BullinkConversationGuardInput {
   recentMessages?: BullinkRecentMessage[] | null;
   commercialState?: {
     product_focus?: unknown;
+    budget_objection?: unknown;
     price_informed?: { product?: unknown } | null;
     awaiting_offer_confirmation?: unknown;
     awaiting_payment_method?: unknown;
@@ -79,6 +81,7 @@ const EXPLICIT_COURSE_REQUEST = [
 ];
 
 const EXPLICIT_COURSE_PRICE_REQUEST = [
+  /\b(?:curso|gravado)\b.{0,120}\b(?:valor(?:es)?|preco(?:s)?|investimento(?:s)?|custo(?:s)?)(?:\s+de\s+cada)?\b/,
   /\b(?:qual|quanto|quanto\s+e|me\s+diz|informa|informar)\b.{0,45}\b(?:valor|preco|investimento)\b.{0,45}\b(?:curso|gravado)\b/,
   /\b(?:valor|preco|investimento)\b.{0,45}\b(?:curso|gravado)\b/,
   /\b(?:curso|gravado)\b.{0,45}\b(?:valor|preco|custa|custaria|investimento)\b/,
@@ -104,7 +107,8 @@ const BUDGET_OBJECTION = [
   /\balem\s+do\s+que\s+(?:eu\s+)?(?:posso|consigo)\b/,
 ];
 
-const COURSE_MENTION = /\bcurso\b|\b(?:formato|conteudo|aulas?)\b.{0,40}\bgravad[oa]s?\b/;
+const COURSE_MENTION =
+  /\bcurso\b|\b(?:formato|conteudo|aulas?)\b.{0,40}\bgravad[oa]s?\b/;
 const COURSE_PRICE = /\b(?:r\$\s*)?997(?:[,.]00)?\b/;
 const GENERIC_PRICE_REQUEST = [
   /\bquanto\s+(?:custa|fica|sai|e|eh|esta|ta)\b/,
@@ -114,9 +118,12 @@ const GENERIC_PRICE_REQUEST = [
   /^(?:e\s+)?(?:o\s+|os\s+)?(?:valor|valores|preco|precos|investimento|custo)\s*[?!.]*$/,
   /\b(?:valor|preco|investimento|custo)\s*\?/,
 ];
-const SHORT_AFFIRMATIVE = /^(?:sim|sim\s+por\s+favor|por\s+favor|por\s+gentileza|claro|pode|perfeito|combinado)[!.,\s]*$/;
-const PIX_CHOICE = /^(?:pix|no\s+pix|a\s+vista|vista\s+no\s+pix|prefiro\s+(?:o\s+)?pix|pix\s+mesmo)[!.,\s]*$|\b(?:prefiro|vou|quero|melhor|fico|opto)\b.{0,25}\bpix\b/;
-const CARD_CHOICE = /^(?:cartao|no\s+cartao|parcelado|cartao\s+de\s+credito|prefiro\s+(?:o\s+)?cartao)[!.,\s]*$|\b(?:prefiro|vou|quero|melhor|fico|opto)\b.{0,25}\b(?:cartao|parcelado)\b/;
+const SHORT_AFFIRMATIVE =
+  /^(?:sim|sim\s+por\s+favor|por\s+favor|por\s+gentileza|claro|pode|perfeito|combinado)[!.,\s]*$/;
+const PIX_CHOICE =
+  /^(?:pix|no\s+pix|a\s+vista|vista\s+no\s+pix|prefiro\s+(?:o\s+)?pix|pix\s+mesmo)[!.,\s]*$|\b(?:prefiro|vou|quero|melhor|fico|opto)\b.{0,25}\bpix\b/;
+const CARD_CHOICE =
+  /^(?:cartao|no\s+cartao|parcelado|cartao\s+de\s+credito|prefiro\s+(?:o\s+)?cartao)[!.,\s]*$|\b(?:prefiro|vou|quero|melhor|fico|opto)\b.{0,25}\b(?:cartao|parcelado)\b/;
 
 const MENTORSHIP_RECORDED_CONTENT_INCLUSION = [
   /\bmentoria\b.{0,35}\b(?:tenho|terei|vou ter|da)\s+acesso\b.{0,40}\b(?:curso|conteudo|formato|aulas?|gravad[oa])\b/,
@@ -167,16 +174,21 @@ function cleanup(value: string): string {
     .trim();
 }
 
-export function isExplicitRecordedCourseRequest(inbound: string | null | undefined): boolean {
+export function isExplicitRecordedCourseRequest(
+  inbound: string | null | undefined,
+): boolean {
   const n = norm(inbound);
-  const rejectionVerb = "(?:quero|tenho\\s+interesse|prefiro|gosto|gostei|curti|funciona|funcionou|serve)";
+  const rejectionVerb =
+    "(?:quero|tenho\\s+interesse|prefiro|gosto|gostei|curti|funciona|funcionou|serve)";
   const rejectsCourse = new RegExp(
     `\\b(?:nao|nunca)\\s+${rejectionVerb}\\b.{0,35}\\b(?:curso|conteudo|formato|aulas?|gravad[oa])\\b`,
-  ).test(n)
-    || new RegExp(
+  ).test(n) ||
+    new RegExp(
       `\\b(?:curso|conteudo|formato|aulas?|gravad[oa])\\b.{0,35}\\b(?:nao|nunca)\\s+${rejectionVerb}\\b`,
     ).test(n);
-  if (!n || rejectsCourse || isMentorshipRecordedContentInclusionQuestion(n)) return false;
+  if (!n || rejectsCourse || isMentorshipRecordedContentInclusionQuestion(n)) {
+    return false;
+  }
   return EXPLICIT_COURSE_REQUEST.some((pattern) => pattern.test(n));
 }
 
@@ -192,7 +204,8 @@ export function isMentorshipRecordedContentInclusionQuestion(
   inbound: string | null | undefined,
 ): boolean {
   const n = norm(inbound);
-  return !!n && MENTORSHIP_RECORDED_CONTENT_INCLUSION.some((pattern) => pattern.test(n));
+  return !!n &&
+    MENTORSHIP_RECORDED_CONTENT_INCLUSION.some((pattern) => pattern.test(n));
 }
 
 export function isBudgetObjection(inbound: string | null | undefined): boolean {
@@ -200,12 +213,16 @@ export function isBudgetObjection(inbound: string | null | undefined): boolean {
   return !!n && BUDGET_OBJECTION.some((pattern) => pattern.test(n));
 }
 
-export function mentionsRecordedCourseWithPrice(response: string | null | undefined): boolean {
+export function mentionsRecordedCourseWithPrice(
+  response: string | null | undefined,
+): boolean {
   const n = norm(response);
   return COURSE_MENTION.test(n) && COURSE_PRICE.test(n);
 }
 
-export function containsPersonaSelfConfirmation(response: string | null | undefined): boolean {
+export function containsPersonaSelfConfirmation(
+  response: string | null | undefined,
+): boolean {
   const raw = String(response ?? "");
   return SELF_CONFIRMATION_PATTERNS.some((pattern) => {
     pattern.lastIndex = 0;
@@ -213,7 +230,9 @@ export function containsPersonaSelfConfirmation(response: string | null | undefi
   });
 }
 
-export function stripPersonaSelfConfirmation(response: string | null | undefined): string {
+export function stripPersonaSelfConfirmation(
+  response: string | null | undefined,
+): string {
   let out = String(response ?? "");
   for (const pattern of SELF_CONFIRMATION_PATTERNS) {
     pattern.lastIndex = 0;
@@ -235,7 +254,9 @@ function questionKey(text: string): string {
 
 function repeatedQuestions(response: string, previous: string[]): string[] {
   const prior = new Set(previous.map(questionKey).filter(Boolean));
-  return extractQuestions(response).filter((question) => prior.has(questionKey(question)));
+  return extractQuestions(response).filter((question) =>
+    prior.has(questionKey(question))
+  );
 }
 
 function removeRepeatedQuestions(response: string, repeated: string[]): string {
@@ -255,6 +276,9 @@ export const BULLINK_RECORDED_COURSE_DETAILS_REPLY =
 
 export const BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY =
   "Sim. A Mentoria inclui acesso ao conteúdo gravado e também os 3 meses de acompanhamento individual comigo. Quer que eu te explique o próximo passo para entrar?";
+
+export const BULLINK_PRIMARY_OFFER_LOCK_REPLY =
+  "A Mentoria inclui o conteúdo gravado e 3 meses de acompanhamento individual comigo. O investimento é R$ 6.500 à vista no PIX ou 12x de R$ 650 no cartão. Faz sentido para você?";
 
 export const BULLINK_MENTORSHIP_PAYMENT_METHOD_REPLY =
   "Perfeito. Você prefere pagar à vista no PIX ou parcelar em 12x no cartão?";
@@ -303,18 +327,24 @@ function recentOutboundTexts(input: BullinkConversationGuardInput): string[] {
     .filter(Boolean);
 }
 
-function recentMentorshipOfferAwaitingConfirmation(input: BullinkConversationGuardInput): boolean {
+function recentMentorshipOfferAwaitingConfirmation(
+  input: BullinkConversationGuardInput,
+): boolean {
   return recentOutboundTexts(input).some((text) =>
     /\bmentoria\b/.test(text) &&
     /\b6\s*500(?:\s*00)?\b/.test(text) &&
-    /\b(?:faz\s+sentido|quer\s+seguir|podemos\s+(?:seguir|avancar|fechar))\b.{0,40}\?/.test(text)
+    /\b(?:faz\s+sentido|quer\s+seguir|podemos\s+(?:seguir|avancar|fechar))\b.{0,40}\?/
+      .test(text)
   );
 }
 
-function recentMentorshipPaymentMethodQuestion(input: BullinkConversationGuardInput): boolean {
+function recentMentorshipPaymentMethodQuestion(
+  input: BullinkConversationGuardInput,
+): boolean {
   const out = recentOutboundTexts(input);
   const askedMethod = out.some((text) =>
-    /\bpix\b.{0,70}\b(?:cartao|parcelado)\b.{0,40}\?|\b(?:cartao|parcelado)\b.{0,70}\bpix\b.{0,40}\?/.test(text)
+    /\bpix\b.{0,70}\b(?:cartao|parcelado)\b.{0,40}\?|\b(?:cartao|parcelado)\b.{0,70}\bpix\b.{0,40}\?/
+      .test(text)
   );
   const pricedMentorship = out.some((text) =>
     /\bmentoria\b/.test(text) && /\b6\s*500(?:\s*00)?\b/.test(text)
@@ -322,7 +352,9 @@ function recentMentorshipPaymentMethodQuestion(input: BullinkConversationGuardIn
   return askedMethod && pricedMentorship;
 }
 
-function isConfirmedMentorshipPurchase(input: BullinkConversationGuardInput): boolean {
+function isConfirmedMentorshipPurchase(
+  input: BullinkConversationGuardInput,
+): boolean {
   if (!SHORT_AFFIRMATIVE.test(norm(input.inbound))) return false;
   const stateConfirms = input.commercialState?.product_focus === "mentoria" &&
     input.commercialState?.price_informed?.product === "mentoria" &&
@@ -330,7 +362,9 @@ function isConfirmedMentorshipPurchase(input: BullinkConversationGuardInput): bo
   return stateConfirms || recentMentorshipOfferAwaitingConfirmation(input);
 }
 
-function hasMentorshipPaymentChoiceContext(input: BullinkConversationGuardInput): boolean {
+function hasMentorshipPaymentChoiceContext(
+  input: BullinkConversationGuardInput,
+): boolean {
   const stateConfirms = input.commercialState?.product_focus === "mentoria" &&
     input.commercialState?.price_informed?.product === "mentoria" &&
     input.commercialState?.awaiting_payment_method === true &&
@@ -358,9 +392,12 @@ export function shouldDeferBullinkSaleHandoff(input: {
     Boolean(input.officialCardUrl);
 }
 
-function isConfirmedCoursePurchase(input: BullinkConversationGuardInput): boolean {
+function isConfirmedCoursePurchase(
+  input: BullinkConversationGuardInput,
+): boolean {
   const st = input.commercialState;
   return norm(input.inbound).match(SHORT_AFFIRMATIVE) !== null &&
+    st?.budget_objection === true &&
     st?.product_focus === "curso" &&
     st?.price_informed?.product === "curso" &&
     st?.awaiting_offer_confirmation === "curso";
@@ -376,8 +413,10 @@ function isGenericPriceRequest(inbound: string | null | undefined): boolean {
 }
 
 function rejectsRecordedCourse(text: string): boolean {
-  return /\b(?:nao|nunca)\b.{0,25}\b(?:quero|tenho\s+interesse|prefiro|gosto|funciona|serve)\b.{0,35}\b(?:curso|gravado)\b/.test(text) ||
-    /\b(?:curso|gravado)\b.{0,35}\b(?:nao|nunca)\b.{0,25}\b(?:quero|tenho\s+interesse|prefiro|gosto|funciona|serve)\b/.test(text);
+  return /\b(?:nao|nunca)\b.{0,25}\b(?:quero|tenho\s+interesse|prefiro|gosto|funciona|serve)\b.{0,35}\b(?:curso|gravado)\b/
+    .test(text) ||
+    /\b(?:curso|gravado)\b.{0,35}\b(?:nao|nunca)\b.{0,25}\b(?:quero|tenho\s+interesse|prefiro|gosto|funciona|serve)\b/
+      .test(text);
 }
 
 /**
@@ -389,13 +428,18 @@ export function inferBullinkConversationProductFocus(input: {
   empresaId: string | null | undefined;
   recentMessages?: BullinkRecentMessage[] | null;
   stateFocus?: unknown;
+  stateBudgetObjection?: unknown;
 }): "mentoria" | "curso" | null {
-  const stateFocus = input.stateFocus === "mentoria" || input.stateFocus === "curso"
-    ? input.stateFocus
-    : null;
+  const stateFocus =
+    input.stateFocus === "mentoria" || input.stateFocus === "curso"
+      ? input.stateFocus
+      : null;
   if (!isBullinkTenant(input.empresaId)) return stateFocus;
 
-  let focus: "mentoria" | "curso" | null = stateFocus;
+  let budgetUnlocked = input.stateBudgetObjection === true;
+  let focus: "mentoria" | "curso" | null = budgetUnlocked
+    ? stateFocus
+    : "mentoria";
   for (const message of input.recentMessages ?? []) {
     const text = norm(String(message?.mensagem ?? ""));
     if (!text) continue;
@@ -404,10 +448,13 @@ export function inferBullinkConversationProductFocus(input: {
     if (direction === "OUT") {
       const hasCourse = COURSE_MENTION.test(text);
       const hasMentorship = /\bmentoria\b/.test(text);
-      const saysIncluded = /\b(?:inclui|inclus[oa]|vem\s+com|junto|faz\s+parte|acesso)\b/.test(text);
+      const saysIncluded =
+        /\b(?:inclui|inclus[oa]|vem\s+com|junto|faz\s+parte|acesso)\b/.test(
+          text,
+        );
       if (hasCourse && hasMentorship && saysIncluded) {
         focus = "mentoria";
-      } else if (hasCourse) {
+      } else if (hasCourse && budgetUnlocked) {
         focus = "curso";
       } else if (hasMentorship) {
         focus = "mentoria";
@@ -416,9 +463,18 @@ export function inferBullinkConversationProductFocus(input: {
     }
 
     if (direction === "IN") {
-      if (rejectsRecordedCourse(text) || /\b(?:quero|prefiro|vou\s+seguir\s+com)\b.{0,30}\bmentoria\b/.test(text)) {
+      if (isBudgetObjection(text)) budgetUnlocked = true;
+      if (
+        rejectsRecordedCourse(text) ||
+        /\b(?:quero|prefiro|vou\s+seguir\s+com)\b.{0,30}\bmentoria\b/.test(text)
+      ) {
         focus = "mentoria";
-      } else if (isExplicitRecordedCourseRequest(text) || /\b(?:quero|prefiro|tenho\s+interesse)\b.{0,30}\b(?:curso|gravado)\b/.test(text)) {
+      } else if (
+        budgetUnlocked &&
+        (isExplicitRecordedCourseRequest(text) ||
+          /\b(?:quero|prefiro|tenho\s+interesse)\b.{0,30}\b(?:curso|gravado)\b/
+            .test(text))
+      ) {
         focus = "curso";
       }
     }
@@ -441,24 +497,46 @@ export function enforceBullinkConversationGuard(
   let text = original;
   const reasons: BullinkGuardReason[] = [];
   const normalizedInbound = norm(input.inbound);
-  const recordedFormatQuestion = RECORDED_CONTENT_FORMAT_QUESTION.some((pattern) => pattern.test(normalizedInbound));
-  const asksMentorshipInclusion = isMentorshipRecordedContentInclusionQuestion(input.inbound) ||
-    (input.commercialState?.product_focus === "mentoria" && recordedFormatQuestion);
-  const explicitCourse = !asksMentorshipInclusion && isExplicitRecordedCourseRequest(input.inbound);
-  const explicitCoursePrice = isExplicitRecordedCoursePriceRequest(input.inbound);
+  const recordedFormatQuestion = RECORDED_CONTENT_FORMAT_QUESTION.some((
+    pattern,
+  ) => pattern.test(normalizedInbound));
+  const asksMentorshipInclusion =
+    isMentorshipRecordedContentInclusionQuestion(input.inbound) ||
+    (input.commercialState?.product_focus === "mentoria" &&
+      recordedFormatQuestion);
+  const explicitCourse = !asksMentorshipInclusion &&
+    isExplicitRecordedCourseRequest(input.inbound);
+  const explicitCoursePrice = isExplicitRecordedCoursePriceRequest(
+    input.inbound,
+  );
   const budgetObjection = isBudgetObjection(input.inbound);
+  const historicalBudgetObjection =
+    input.commercialState?.budget_objection === true ||
+    (input.recentMessages ?? []).some((message) =>
+      String(message?.direcao ?? "").toUpperCase() === "IN" &&
+      isBudgetObjection(String(message?.mensagem ?? ""))
+    );
+  const secondaryUnlocked = budgetObjection || historicalBudgetObjection;
   const inferredProductFocus = inferBullinkConversationProductFocus({
     empresaId: input.empresaId,
     recentMessages: input.recentMessages,
     stateFocus: input.commercialState?.product_focus,
+    stateBudgetObjection: input.commercialState?.budget_objection,
   });
-  const courseAlreadyEstablished = inferredProductFocus === "curso";
-  const genericCoursePrice = courseAlreadyEstablished && isGenericPriceRequest(input.inbound);
-  const asksLeadSource = LEAD_SOURCE_QUESTION.some((pattern) => pattern.test(normalizedInbound));
-  const asksResultsTimeline = RESULTS_TIMELINE_QUESTION.some((pattern) => pattern.test(normalizedInbound));
+  const courseAlreadyEstablished = secondaryUnlocked &&
+    inferredProductFocus === "curso";
+  const genericCoursePrice = courseAlreadyEstablished &&
+    isGenericPriceRequest(input.inbound);
+  const asksLeadSource = LEAD_SOURCE_QUESTION.some((pattern) =>
+    pattern.test(normalizedInbound)
+  );
+  const asksResultsTimeline = RESULTS_TIMELINE_QUESTION.some((pattern) =>
+    pattern.test(normalizedInbound)
+  );
   const responseRegressesToMentorship = courseAlreadyEstablished &&
     !/\bmentoria\b/.test(normalizedInbound) &&
-    /\b(?:seguir|voltar|ficar|prefere|continuar)\b.{0,45}\bmentoria\b|\bmentoria\s+completa\b/.test(norm(text));
+    /\b(?:seguir|voltar|ficar|prefere|continuar)\b.{0,45}\bmentoria\b|\bmentoria\s+completa\b/
+      .test(norm(text));
 
   if (containsPersonaSelfConfirmation(text)) {
     reasons.push("persona_self_confirmation");
@@ -471,12 +549,21 @@ export function enforceBullinkConversationGuard(
   } else if (asksResultsTimeline && text !== BULLINK_RESULTS_TIMELINE_REPLY) {
     reasons.push("results_timeline_question_unanswered");
     text = BULLINK_RESULTS_TIMELINE_REPLY;
-  } else if (asksMentorshipInclusion && text !== BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY) {
+  } else if (!secondaryUnlocked && explicitCoursePrice) {
+    reasons.push("secondary_requested_before_budget_objection");
+    text = BULLINK_PRIMARY_OFFER_LOCK_REPLY;
+  } else if (
+    asksMentorshipInclusion &&
+    text !== BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY
+  ) {
     reasons.push("mentorship_recorded_content_inclusion");
     text = BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY;
   } else if (budgetObjection && !mentionsRecordedCourseWithPrice(text)) {
     reasons.push("budget_objection_without_downsell");
     text = BULLINK_BUDGET_DOWNSELL_REPLY;
+  } else if (!secondaryUnlocked && explicitCourse) {
+    reasons.push("secondary_requested_before_budget_objection");
+    text = BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY;
   } else if (explicitCoursePrice && !mentionsRecordedCourseWithPrice(text)) {
     reasons.push("explicit_recorded_course_unanswered");
     text = BULLINK_RECORDED_COURSE_REPLY;
@@ -488,15 +575,17 @@ export function enforceBullinkConversationGuard(
     const answeredCourse = COURSE_MENTION.test(normalizedResponse);
     const volunteeredPrice = COURSE_PRICE.test(normalizedResponse);
     if (!answeredCourse || volunteeredPrice) {
-      reasons.push(volunteeredPrice
-        ? "recorded_course_price_not_requested"
-        : "explicit_recorded_course_unanswered");
+      reasons.push(
+        volunteeredPrice
+          ? "recorded_course_price_not_requested"
+          : "explicit_recorded_course_unanswered",
+      );
       text = BULLINK_RECORDED_COURSE_DETAILS_REPLY;
     }
   } else if (responseRegressesToMentorship) {
     reasons.push("course_context_regressed_to_mentorship");
     text = BULLINK_COURSE_CONTINUITY_REPLY;
-  } else if (!courseAlreadyEstablished && COURSE_MENTION.test(norm(text))) {
+  } else if (!secondaryUnlocked && COURSE_MENTION.test(norm(text))) {
     reasons.push("unsolicited_recorded_course_offer");
     const withoutCourse = String(text)
       .split(/(?<=[.!?])\s+|\n+/)
@@ -506,21 +595,33 @@ export function enforceBullinkConversationGuard(
     text = withoutCourse || BULLINK_REPETITION_FALLBACK;
   }
 
-  if (isConfirmedCoursePurchase(input) && input.officialPixKey && !text.includes(input.officialPixKey)) {
+  if (
+    isConfirmedCoursePurchase(input) && input.officialPixKey &&
+    !text.includes(input.officialPixKey)
+  ) {
     reasons.push("course_purchase_confirmation_without_payment_details");
     text = canonicalCoursePixReply(input.officialPixKey);
   }
 
-  if (isConfirmedMentorshipPurchase(input) && text !== BULLINK_MENTORSHIP_PAYMENT_METHOD_REPLY) {
+  if (
+    isConfirmedMentorshipPurchase(input) &&
+    text !== BULLINK_MENTORSHIP_PAYMENT_METHOD_REPLY
+  ) {
     reasons.push("mentorship_purchase_confirmation_without_payment_choice");
     text = BULLINK_MENTORSHIP_PAYMENT_METHOD_REPLY;
-  } else if (hasMentorshipPaymentChoiceContext(input) && PIX_CHOICE.test(normalizedInbound) && input.officialPixKey) {
+  } else if (
+    hasMentorshipPaymentChoiceContext(input) &&
+    PIX_CHOICE.test(normalizedInbound) && input.officialPixKey
+  ) {
     const expected = canonicalMentorshipPixReply(input.officialPixKey);
     if (text !== expected) {
       reasons.push("mentorship_pix_choice_without_payment_details");
       text = expected;
     }
-  } else if (hasMentorshipPaymentChoiceContext(input) && CARD_CHOICE.test(normalizedInbound) && input.officialCardUrl) {
+  } else if (
+    hasMentorshipPaymentChoiceContext(input) &&
+    CARD_CHOICE.test(normalizedInbound) && input.officialCardUrl
+  ) {
     const expected = canonicalMentorshipCardReply(input.officialCardUrl);
     if (text !== expected) {
       reasons.push("mentorship_card_choice_without_payment_details");
@@ -538,22 +639,24 @@ export function enforceBullinkConversationGuard(
   return { text, changed: text !== original, reasons };
 }
 
-export function buildBullinkConversationPromptBlock(empresaId: string | null | undefined): string {
+export function buildBullinkConversationPromptBlock(
+  empresaId: string | null | undefined,
+): string {
   if (!isBullinkTenant(empresaId)) return "";
   return [
     "\n=== REFORÇO CONVERSACIONAL BULLINK (INVIOLÁVEL) ===",
     '- Nunca confirme sua identidade com frases como "sou eu mesmo, Fernando", "é o Fernando mesmo", "aqui é o Fernando" ou equivalentes.',
-    '- A Mentoria INCLUI acesso ao conteúdo gravado e 3 meses de acompanhamento individual. Se o lead perguntar se o curso/conteúdo gravado vem junto, está incluso ou faz parte da Mentoria, responda isso diretamente e mantenha a Mentoria como oferta ativa.',
+    "- A Mentoria INCLUI acesso ao conteúdo gravado e 3 meses de acompanhamento individual. Se o lead perguntar se o curso/conteúdo gravado vem junto, está incluso ou faz parte da Mentoria, responda isso diretamente e mantenha a Mentoria como oferta ativa.",
     '- Se a Mentoria estiver em foco e o lead perguntar "tem aula gravada ou só ao vivo?", trate como dúvida sobre o que a Mentoria inclui; não mude para o Curso avulso.',
-    '- Se o lead demonstrar interesse, pedir para conhecer ou perguntar como funciona o Curso Gravado, explique primeiro conteúdo, módulos, formato e diferença para a Mentoria. NÃO informe preço nesse momento.',
-    '- Só informe R$ 997 quando o lead perguntar explicitamente por preço, valor, custo ou investimento do Curso Gravado, ou quando apresentar objeção financeira à Mentoria. A simples menção a "curso", "gravado" ou "conteúdo gravado" não autoriza revelar o preço.',
+    "- Antes de uma objeção financeira explícita à Mentoria, pedido, interesse, menção ou pergunta sobre Curso/gravado NÃO libera a oferta secundária: mantenha somente a Mentoria e explique que ela inclui conteúdo gravado.",
+    "- Só depois de o lead dizer explicitamente que não consegue pagar, que está caro ou fora do orçamento, apresente o Curso Gravado e informe R$ 997. Perguntar diretamente pelo Curso ou pelo preço dele, sem objeção financeira anterior, NÃO libera essa alternativa.",
     "- Se houver objeção financeira, apresente imediatamente e com respeito o Curso Gravado por R$ 997; não repita o preço da Mentoria antes da alternativa.",
     "- Nunca repita a mesma pergunta sem acrescentar informação útil. Responda primeiro a dúvida específica do lead.",
     '- Nunca descarte uma dúvida com "voltando ao que importa" ou equivalente. Perguntas sobre origem do contato, prazo e resultados devem ser respondidas de forma direta e honesta.',
-    '- Quando o Curso Gravado já for o produto em foco, não volte a oferecer a Mentoria por conta própria. Continue no Curso até o lead pedir explicitamente a Mentoria.',
-    '- Depois que o preço da Mentoria for informado e o lead aceitar, pergunte somente se prefere PIX ou cartão. Não peça horário e não prometa enviar dados depois.',
-    '- Depois que o lead escolher PIX ou cartão, envie os dados oficiais correspondentes e aguarde confirmação/comprovante. Não transfira a conversa antes disso.',
-    '- Nunca prometa prazo ou faturamento. Os 3 meses são acompanhamento, não garantia de resultado.',
+    "- Quando o Curso Gravado já for o produto em foco, não volte a oferecer a Mentoria por conta própria. Continue no Curso até o lead pedir explicitamente a Mentoria.",
+    "- Depois que o preço da Mentoria for informado e o lead aceitar, pergunte somente se prefere PIX ou cartão. Não peça horário e não prometa enviar dados depois.",
+    "- Depois que o lead escolher PIX ou cartão, envie os dados oficiais correspondentes e aguarde confirmação/comprovante. Não transfira a conversa antes disso.",
+    "- Nunca prometa prazo ou faturamento. Os 3 meses são acompanhamento, não garantia de resultado.",
     "=== FIM DO REFORÇO CONVERSACIONAL BULLINK ===\n",
   ].join("\n");
 }

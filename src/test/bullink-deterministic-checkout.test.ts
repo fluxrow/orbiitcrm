@@ -23,7 +23,7 @@ const architecture = fs.readFileSync(
 
 describe("Bullink deterministic checkout wiring", () => {
   it("publishes a distinct observable runtime version", () => {
-    expect(agent).toContain("2026-08-31-deterministic-checkout-v2");
+    expect(agent).toContain("2026-08-31-bullink-primary-offer-v3");
     expect(agent).toContain(
       "agent_runtime_version: ORBIT_AI_AGENT_RUNTIME_VERSION",
     );
