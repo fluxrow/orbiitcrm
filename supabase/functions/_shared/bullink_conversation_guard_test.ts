@@ -6,8 +6,10 @@ import {
   BULLINK_RESULTS_TIMELINE_REPLY,
   BULLINK_COURSE_CONTINUITY_REPLY,
   BULLINK_RECORDED_COURSE_DETAILS_REPLY,
+  BULLINK_RECORDED_COURSE_PRICE_REPLY,
   BULLINK_RECORDED_COURSE_REPLY,
   enforceBullinkConversationGuard,
+  inferBullinkConversationProductFocus,
   isExplicitRecordedCoursePriceRequest,
   isExplicitRecordedCourseRequest,
   isMentorshipRecordedContentInclusionQuestion,
@@ -185,6 +187,7 @@ Deno.test("Regressão Ivan 30/08: expectativa financeira exige downsell imediato
     "Acho um pouco acima do valor da minha expectativa",
     "Fica acima da expectativa",
     "Nesse momento não teria esse investimento",
+    "Muito além do meu orçamento",
   ]) {
     const result = enforceBullinkConversationGuard({
       empresaId: BULLINK_EMPRESA_ID,
@@ -193,6 +196,56 @@ Deno.test("Regressão Ivan 30/08: expectativa financeira exige downsell imediato
     });
     if (result.text !== BULLINK_BUDGET_DOWNSELL_REPLY) throw new Error(`${inbound}: ${result.text}`);
   }
+});
+
+Deno.test("Regressão Marcelo 31/08: 'além do que eu posso' exige Curso com preço", () => {
+  const result = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "Entendo sua história, mas esse valor no momento é além do que eu posso",
+    response: "Entendo. Tenho uma opção mais acessível em formato gravado. Quer conhecer?",
+  });
+  if (result.text !== BULLINK_BUDGET_DOWNSELL_REPLY) throw new Error(result.text);
+  if (!result.reasons.includes("budget_objection_without_downsell")) throw new Error(JSON.stringify(result));
+});
+
+Deno.test("Regressão Marcelo 31/08: histórico do downsell recupera foco do Curso", () => {
+  const recentMessages = [
+    { direcao: "OUT", mensagem: "O investimento da Mentoria é R$ 6.500 à vista no PIX." },
+    { direcao: "IN", mensagem: "Esse valor no momento é além do que eu posso." },
+    { direcao: "OUT", mensagem: "Tenho uma opção mais acessível com o mesmo método em formato gravado, sem acompanhamento individual." },
+    { direcao: "IN", mensagem: "Se não for atrapalhar, pode explicar." },
+    { direcao: "OUT", mensagem: "O Curso Gravado funciona em aulas no seu ritmo. Te interessa?" },
+    { direcao: "IN", mensagem: "Interessa." },
+  ];
+  const focus = inferBullinkConversationProductFocus({
+    empresaId: BULLINK_EMPRESA_ID,
+    recentMessages,
+    stateFocus: "mentoria",
+  });
+  if (focus !== "curso") throw new Error(`foco incorreto: ${focus}`);
+
+  const result = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "A questão maior que eu precisaria saber ainda é o preço",
+    response: "Entendo.",
+    recentMessages,
+    commercialState: { product_focus: "mentoria" },
+  });
+  if (result.text !== BULLINK_RECORDED_COURSE_PRICE_REPLY) throw new Error(result.text);
+  if (!result.reasons.includes("course_context_price_unanswered")) throw new Error(JSON.stringify(result));
+  if (!/R\$ 997/.test(result.text)) throw new Error(`preço ausente: ${result.text}`);
+});
+
+Deno.test("Bullink: conteúdo gravado incluso mantém o foco da Mentoria", () => {
+  const focus = inferBullinkConversationProductFocus({
+    empresaId: BULLINK_EMPRESA_ID,
+    recentMessages: [
+      { direcao: "OUT", mensagem: BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY },
+      { direcao: "IN", mensagem: "E qual o preço?" },
+    ],
+    stateFocus: "mentoria",
+  });
+  if (focus !== "mentoria") throw new Error(`foco incorreto: ${focus}`);
 });
 
 Deno.test("Regressão Marcos 30/08: origem do contato nunca é descartada", () => {

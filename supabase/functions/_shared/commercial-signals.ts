@@ -58,6 +58,8 @@ const RE_DIRECT_PRICE: RegExp[] = [
   /\bqual\s+(?:e\s+|eh\s+)?(?:o\s+|a\s+)?(?:valor|preco|investimento|custo|ticket)\b/,
   /\b(?:valor|preco|precos|investimento)\s+(?:da|do|de|dessa|desse|total)\b/,
   /\b(?:me\s+)?(?:passa|manda|informa|diz)\w*\s+(?:o\s+)?(?:valor|preco|investimento)\b/,
+  /\b(?:preciso|queria|gostaria)\b[^.?!]{0,45}\b(?:saber|entender)\b[^.?!]{0,30}\b(?:valor|preco|investimento|custo)\b/,
+  /\b(?:saber|entender)\b[^.?!]{0,45}\b(?:valor|preco|investimento|custo)\b/,
   /\bqual\s+o\s+(?:custo|montante)\b/,
   /\b(?:valor|preco|investimento)\s*\?/,
   // Perguntas curtas dependem do produto já estabelecido no estado.
@@ -101,6 +103,7 @@ const RE_BUDGET_OBJECTION: RegExp[] = [
   /\bnao\s+tenho\s+(?:esse|todo\s+esse|como|dinheiro|grana|condic)\w*/,
   /\b(?:esta|ta|e|eh)\s+(?:muito\s+)?caro\b/,
   /\bfora\s+do\s+(?:meu\s+)?orcamento\b/,
+  /\balem\s+(?:do\s+)?(?:meu\s+)?orcamento\b/,
   /\bfora\s+do\s+(?:meu\s+)?alcance(?:\s+financeiro)?\b/,
   /\b(?:to|estou)\s+(?:apertado|sem\s+grana|sem\s+dinheiro|desempregad\w+)\b/,
   /\bpouco\s+(?:dinheiro|orcamento)\b/,
@@ -113,6 +116,8 @@ const RE_BUDGET_OBJECTION: RegExp[] = [
   /\b(?:fica|ficou|esta|ta)\s+acima\s+(?:do\s+valor\s+)?da\s+(?:minha\s+)?expectativa\b/,
   /\b(?:nesse|neste)\s+momento\b[^.?!]{0,45}\bnao\s+(?:teria|tenho|consigo)\b[^.?!]{0,30}\b(?:valor|investimento|condic\w*)\b/,
   /\bnao\s+(?:teria|tenho|consigo)\b[^.?!]{0,35}\b(?:esse|o)?\s*(?:valor|investimento)\b/,
+  /\b(?:esse|este|o)?\s*(?:valor|investimento)\b[^.?!]{0,45}\b(?:alem|acima)\b[^.?!]{0,25}\b(?:do\s+que\s+)?(?:eu\s+)?(?:posso|consigo|tenho\s+condic\w*)\b/,
+  /\balem\s+do\s+que\s+(?:eu\s+)?(?:posso|consigo)\b/,
 ];
 
 const RE_PURCHASE_INTEREST: RegExp[] = [

@@ -54,6 +54,7 @@ Deno.test("A2: variações reais de preço curto e produto + valores são detect
     "O preço",
     "E os valores?",
     "Gostaria de saber sobre a mentoria e valores",
+    "A questão maior que eu precisaria saber ainda é o preço",
     "Curso e preço",
   ]) {
     const { extracted, perms } = run(inbound, state({ product_focus: "mentoria" }));
@@ -189,6 +190,8 @@ Deno.test("N2: objeções reais de expectativa e momento financeiro são detecta
     "Acho um pouco acima do valor da minha expectativa",
     "Fica acima da expectativa",
     "Nesse momento não teria esse investimento",
+    "Esse valor no momento é além do que eu posso",
+    "Muito além do meu orçamento",
   ]) {
     const { extracted } = run(inbound, PRICE_INFORMED);
     assert(extracted.signals.has("budget_objection"), inbound);

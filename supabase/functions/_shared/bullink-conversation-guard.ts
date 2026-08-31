@@ -18,13 +18,21 @@ export type BullinkGuardReason =
   | "lead_source_question_unanswered"
   | "results_timeline_question_unanswered"
   | "course_context_regressed_to_mentorship"
+  | "course_context_price_unanswered"
   | "repeated_question";
+
+export interface BullinkRecentMessage {
+  direcao?: unknown;
+  mensagem?: unknown;
+  sender_type?: unknown;
+}
 
 export interface BullinkConversationGuardInput {
   empresaId: string | null | undefined;
   inbound: string | null | undefined;
   response: string | null | undefined;
   previousAgentQuestions?: string[] | null;
+  recentMessages?: BullinkRecentMessage[] | null;
   commercialState?: {
     product_focus?: unknown;
     price_informed?: { product?: unknown } | null;
@@ -76,6 +84,7 @@ const EXPLICIT_COURSE_PRICE_REQUEST = [
 const BUDGET_OBJECTION = [
   /\b(?:muito\s+)?(?:caro|alto)\b/,
   /\bfora\s+do\s+(?:meu\s+)?orcamento\b/,
+  /\balem\s+(?:do\s+)?(?:meu\s+)?orcamento\b/,
   /\bfora\s+do\s+(?:meu\s+)?alcance(?:\s+financeiro)?\b/,
   /\bnao\s+(?:tenho|consigo|da)\b.{0,40}\b(?:dinheiro|grana|valor|investimento|pagar)\b/,
   /\b(?:valor|investimento)\b.{0,30}\b(?:pesa|pesou|pesado|impossivel)\b/,
@@ -85,10 +94,20 @@ const BUDGET_OBJECTION = [
   /\b(?:fica|ficou|esta|ta)\s+acima\s+(?:do\s+valor\s+)?da\s+(?:minha\s+)?expectativa\b/,
   /\b(?:nesse|neste)\s+momento\b.{0,45}\bnao\s+(?:teria|tenho|consigo)\b.{0,30}\b(?:valor|investimento|condic\w*)\b/,
   /\bnao\s+(?:teria|tenho|consigo)\b.{0,35}\b(?:esse|o)?\s*(?:valor|investimento)\b/,
+  /\b(?:esse|este|o)?\s*(?:valor|investimento)\b.{0,45}\b(?:alem|acima)\b.{0,25}\b(?:do\s+que\s+)?(?:eu\s+)?(?:posso|consigo|tenho\s+condic\w*)\b/,
+  /\balem\s+do\s+que\s+(?:eu\s+)?(?:posso|consigo)\b/,
 ];
 
 const COURSE_MENTION = /\bcurso\b|\b(?:formato|conteudo|aulas?)\b.{0,40}\bgravad[oa]s?\b/;
 const COURSE_PRICE = /\b(?:r\$\s*)?997(?:[,.]00)?\b/;
+const GENERIC_PRICE_REQUEST = [
+  /\bquanto\s+(?:custa|fica|sai|e|eh|esta|ta)\b/,
+  /\bqual\b.{0,20}\b(?:valor|preco|investimento|custo)\b/,
+  /\b(?:preciso|queria|gostaria)\b.{0,45}\b(?:saber|entender)\b.{0,30}\b(?:valor|preco|investimento|custo)\b/,
+  /\b(?:saber|entender)\b.{0,45}\b(?:valor|preco|investimento|custo)\b/,
+  /^(?:e\s+)?(?:o\s+|os\s+)?(?:valor|valores|preco|precos|investimento|custo)\s*[?!.]*$/,
+  /\b(?:valor|preco|investimento|custo)\s*\?/,
+];
 const SHORT_AFFIRMATIVE = /^(?:sim|sim\s+por\s+favor|por\s+favor|por\s+gentileza|claro|pode|perfeito|combinado)[!.,\s]*$/;
 
 const MENTORSHIP_RECORDED_CONTENT_INCLUSION = [
@@ -220,6 +239,9 @@ function removeRepeatedQuestions(response: string, repeated: string[]): string {
 export const BULLINK_RECORDED_COURSE_REPLY =
   "Sim. Tenho o Curso Gravado por R$ 997 à vista no PIX, com o mesmo método da Mentoria, mas sem acompanhamento individual. Quer que eu te explique como funciona?";
 
+export const BULLINK_RECORDED_COURSE_PRICE_REPLY =
+  "O Curso Gravado fica em R$ 997 à vista no PIX, com o mesmo método da Mentoria e sem acompanhamento individual. Quer que eu te explique o próximo passo?";
+
 export const BULLINK_RECORDED_COURSE_DETAILS_REPLY =
   "O Curso Gravado apresenta o método em módulos práticos: nichos validados, idiomas de atuação, validação, mineração de referências, títulos de alto clique, roteiros de alta retenção, leitura de métricas e monetização. Você segue no seu ritmo e pode rever as aulas; a diferença é que ele não inclui o acompanhamento individual da Mentoria. Qual parte você quer entender melhor?";
 
@@ -265,6 +287,62 @@ function canonicalCoursePixReply(key: string): string {
   return `Perfeito. O Curso Gravado fica em R$ 997 à vista no PIX. A chave PIX é ${key}. Depois do pagamento, me envie o comprovante por aqui.`;
 }
 
+function isGenericPriceRequest(inbound: string | null | undefined): boolean {
+  const n = norm(inbound);
+  return !!n && GENERIC_PRICE_REQUEST.some((pattern) => pattern.test(n));
+}
+
+function rejectsRecordedCourse(text: string): boolean {
+  return /\b(?:nao|nunca)\b.{0,25}\b(?:quero|tenho\s+interesse|prefiro|gosto|funciona|serve)\b.{0,35}\b(?:curso|gravado)\b/.test(text) ||
+    /\b(?:curso|gravado)\b.{0,35}\b(?:nao|nunca)\b.{0,25}\b(?:quero|tenho\s+interesse|prefiro|gosto|funciona|serve)\b/.test(text);
+}
+
+/**
+ * Reconstrói o produto ativo pelo diálogo recente quando o estado persistido
+ * ficou atrasado. Isso cobre deploys antigos e turns em que o downsell foi dito
+ * pelo agente, mas `commercial_v2.product_focus` permaneceu em `mentoria`.
+ */
+export function inferBullinkConversationProductFocus(input: {
+  empresaId: string | null | undefined;
+  recentMessages?: BullinkRecentMessage[] | null;
+  stateFocus?: unknown;
+}): "mentoria" | "curso" | null {
+  const stateFocus = input.stateFocus === "mentoria" || input.stateFocus === "curso"
+    ? input.stateFocus
+    : null;
+  if (!isBullinkTenant(input.empresaId)) return stateFocus;
+
+  let focus: "mentoria" | "curso" | null = stateFocus;
+  for (const message of input.recentMessages ?? []) {
+    const text = norm(String(message?.mensagem ?? ""));
+    if (!text) continue;
+    const direction = String(message?.direcao ?? "").toUpperCase();
+
+    if (direction === "OUT") {
+      const hasCourse = COURSE_MENTION.test(text);
+      const hasMentorship = /\bmentoria\b/.test(text);
+      const saysIncluded = /\b(?:inclui|inclus[oa]|vem\s+com|junto|faz\s+parte|acesso)\b/.test(text);
+      if (hasCourse && hasMentorship && saysIncluded) {
+        focus = "mentoria";
+      } else if (hasCourse) {
+        focus = "curso";
+      } else if (hasMentorship) {
+        focus = "mentoria";
+      }
+      continue;
+    }
+
+    if (direction === "IN") {
+      if (rejectsRecordedCourse(text) || /\b(?:quero|prefiro|vou\s+seguir\s+com)\b.{0,30}\bmentoria\b/.test(text)) {
+        focus = "mentoria";
+      } else if (isExplicitRecordedCourseRequest(text) || /\b(?:quero|prefiro|tenho\s+interesse)\b.{0,30}\b(?:curso|gravado)\b/.test(text)) {
+        focus = "curso";
+      }
+    }
+  }
+  return focus;
+}
+
 /**
  * Barreira final determinística. Para qualquer outro tenant, devolve exatamente
  * o texto recebido, sem normalização ou efeitos colaterais.
@@ -286,7 +364,13 @@ export function enforceBullinkConversationGuard(
   const explicitCourse = !asksMentorshipInclusion && isExplicitRecordedCourseRequest(input.inbound);
   const explicitCoursePrice = isExplicitRecordedCoursePriceRequest(input.inbound);
   const budgetObjection = isBudgetObjection(input.inbound);
-  const courseAlreadyEstablished = input.commercialState?.product_focus === "curso";
+  const inferredProductFocus = inferBullinkConversationProductFocus({
+    empresaId: input.empresaId,
+    recentMessages: input.recentMessages,
+    stateFocus: input.commercialState?.product_focus,
+  });
+  const courseAlreadyEstablished = inferredProductFocus === "curso";
+  const genericCoursePrice = courseAlreadyEstablished && isGenericPriceRequest(input.inbound);
   const asksLeadSource = LEAD_SOURCE_QUESTION.some((pattern) => pattern.test(normalizedInbound));
   const asksResultsTimeline = RESULTS_TIMELINE_QUESTION.some((pattern) => pattern.test(normalizedInbound));
   const responseRegressesToMentorship = courseAlreadyEstablished &&
@@ -313,6 +397,9 @@ export function enforceBullinkConversationGuard(
   } else if (explicitCoursePrice && !mentionsRecordedCourseWithPrice(text)) {
     reasons.push("explicit_recorded_course_unanswered");
     text = BULLINK_RECORDED_COURSE_REPLY;
+  } else if (genericCoursePrice && !mentionsRecordedCourseWithPrice(text)) {
+    reasons.push("course_context_price_unanswered");
+    text = BULLINK_RECORDED_COURSE_PRICE_REPLY;
   } else if (explicitCourse && !explicitCoursePrice) {
     const normalizedResponse = norm(text);
     const answeredCourse = COURSE_MENTION.test(normalizedResponse);

@@ -160,6 +160,7 @@ import {
 import {
   buildBullinkConversationPromptBlock,
   enforceBullinkConversationGuard,
+  inferBullinkConversationProductFocus,
   readBullinkOfficialPixKey,
 } from "../_shared/bullink-conversation-guard.ts";
 import { decideAutomaticReplyOwnership } from "../_shared/conversation-ownership.ts";
@@ -177,6 +178,11 @@ import {
   resolveCanonicalKey,
 } from "../_shared/agent-memory.ts";
 import { schedulingPolicy, isAmbiguousSlotAcceptance, selectExplicitSuggestion } from "../_shared/tenant-scheduling-policy.ts";
+
+// Persistido na metadata de cada ai_reply para comprovar qual barreira estava
+// realmente publicada quando uma resposta saiu. O monitor não precisa inferir
+// versão por horário de commit nem confiar no deploy do frontend.
+export const ORBIT_AI_AGENT_RUNTIME_VERSION = "2026-08-31-course-context-v1";
 
 /**
  * Normalização final aplicada em TODOS os caminhos de saída do agente.
@@ -1570,10 +1576,15 @@ serve(async (req) => {
     const commercialExtracted = commercialV2Enabled
       ? extractCommercialSignals(mensagemAgregada)
       : { signals: new Set<never>(), paymentMethod: null, productMentioned: null } as any;
+    const bullinkHistoryProductFocus = inferBullinkConversationProductFocus({
+      empresaId,
+      recentMessages: mensagens || [],
+      stateFocus: commercialState.product_focus,
+    });
     const commercialProductInFocus = primaryOfferCfg &&
         (commercialExtracted.signals.has("budget_objection") || commercialExtracted.signals.has("discount_request"))
       ? primaryOfferCfg.secondaryFocus as "mentoria" | "curso"
-      : (commercialExtracted.productMentioned ?? commercialState.product_focus);
+      : (commercialExtracted.productMentioned ?? bullinkHistoryProductFocus ?? commercialState.product_focus);
     const singlePaymentMethod = primaryOfferCfg &&
         commercialProductInFocus === primaryOfferCfg.secondaryFocus &&
         /\bpix\b/i.test(primaryOfferCfg.secondaryPriceLine) &&
@@ -1603,7 +1614,7 @@ serve(async (req) => {
           cfg: primaryOfferCfg,
           inbound: mensagemAgregada,
           tags: Array.isArray((prospect as any)?.tags) ? ((prospect as any).tags as string[]) : [],
-          stateFocus: commercialState.product_focus,
+          stateFocus: commercialProductInFocus,
           stateBudgetObjection: commercialState.budget_objection || commercialExtracted.signals?.has?.("budget_objection") === true,
         })
       : null;
@@ -2609,7 +2620,11 @@ ${regrasBlock}`;
       inbound: mensagemAgregada,
       response: resposta,
       previousAgentQuestions,
-      commercialState,
+      recentMessages: mensagens || [],
+      commercialState: {
+        ...commercialState,
+        product_focus: commercialProductInFocus ?? commercialState.product_focus,
+      },
       officialPixKey: readBullinkOfficialPixKey(aiConfig as Record<string, unknown>),
     });
     if (finalBullink.changed) {
@@ -3073,6 +3088,7 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw:
         ...(holdUntilQueued ? { scheduled_for: holdUntilQueued } : {}),
         metadata: {
           orbit_message_id: novaTxt?.id ?? null,
+          agent_runtime_version: ORBIT_AI_AGENT_RUNTIME_VERSION,
           ...(recoveryTag ? { recovery_tag: recoveryTag } : {}),
           ...(holdUntilQueued ? { outbox_hold_until: holdUntilQueued } : {}),
         },
