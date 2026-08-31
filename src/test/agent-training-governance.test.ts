@@ -89,6 +89,7 @@ describe("agent training governance", () => {
   });
 
   it("publishes and rolls back runtime content atomically with an audit record", () => {
+    expect(migration).toContain("a.conversion_guidance IS DISTINCT FROM v.content");
     expect(migration).toContain("WHEN 'publish'");
     expect(migration).toContain("WHEN 'rollback'");
     expect(migration).toContain("conversion_guidance = v_content");

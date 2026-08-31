@@ -135,6 +135,17 @@ JOIN public.orbit_feature_flags f ON f.empresa_id = d.empresa_id
 WHERE f.feature_key = 'tenant_agent_training_governance_v1'
 ON CONFLICT (empresa_id, version_number) DO NOTHING;
 
+UPDATE public.orbit_ai_config a
+SET conversion_guidance = v.content,
+    updated_at = now()
+FROM public.orbit_agent_training_versions v
+JOIN public.orbit_feature_flags f
+  ON f.empresa_id = v.empresa_id
+ AND f.feature_key = 'tenant_agent_training_governance_v1'
+WHERE a.empresa_id = v.empresa_id
+  AND v.is_active = true
+  AND a.conversion_guidance IS DISTINCT FROM v.content;
+
 CREATE OR REPLACE FUNCTION public.orbit_agent_training_is_admin(
   p_user_id uuid,
   p_empresa_id uuid
