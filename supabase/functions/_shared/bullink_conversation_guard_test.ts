@@ -1,6 +1,7 @@
 import {
   BULLINK_EMPRESA_ID,
   BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY,
+  BULLINK_MENTORSHIP_PAYMENT_METHOD_REPLY,
   BULLINK_BUDGET_DOWNSELL_REPLY,
   BULLINK_LEAD_SOURCE_REPLY,
   BULLINK_RESULTS_TIMELINE_REPLY,
@@ -14,6 +15,8 @@ import {
   isExplicitRecordedCourseRequest,
   isMentorshipRecordedContentInclusionQuestion,
   readBullinkOfficialPixKey,
+  readBullinkOfficialCardUrl,
+  shouldDeferBullinkSaleHandoff,
 } from "./bullink-conversation-guard.ts";
 
 const OTHER_TENANT = "36f26579-0000-0000-0000-000000000000";
@@ -321,6 +324,120 @@ Deno.test("Regressão Rogério 29/08: aceite do Curso entrega PIX sem ciclo de p
     throw new Error(result.text);
   }
   if (/quer que eu|posso te passar/i.test(result.text)) throw new Error(result.text);
+});
+
+Deno.test("Regressão Bullink 31/08: aceite da Mentoria pergunta a forma de pagamento", () => {
+  const result = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "Sim",
+    response: "Perfeito! Então te envio os dados. Qual é o melhor horário?",
+    commercialState: {
+      product_focus: "mentoria",
+      price_informed: { product: "mentoria" },
+      awaiting_offer_confirmation: "mentoria",
+    },
+  });
+  if (result.text !== BULLINK_MENTORSHIP_PAYMENT_METHOD_REPLY) throw new Error(result.text);
+  if (!result.reasons.includes("mentorship_purchase_confirmation_without_payment_choice")) {
+    throw new Error(JSON.stringify(result));
+  }
+  if (/hor[aá]rio/i.test(result.text)) throw new Error(result.text);
+});
+
+Deno.test("Bullink: aceite da Mentoria reconstrói oferta pelo diálogo se o estado estiver atrasado", () => {
+  const result = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "sim",
+    response: "Perfeito. Vou pedir para a equipe falar com você.",
+    recentMessages: [{
+      direcao: "OUT",
+      sender_type: "ai",
+      mensagem: "A Mentoria custa R$ 6.500 à vista no PIX ou 12x de R$ 650 no cartão. Faz sentido para você?",
+    }],
+    commercialState: { product_focus: null, price_informed: null, awaiting_offer_confirmation: null },
+  });
+  if (result.text !== BULLINK_MENTORSHIP_PAYMENT_METHOD_REPLY) throw new Error(result.text);
+});
+
+Deno.test("Bullink: escolha PIX após aceite entrega somente a chave oficial", () => {
+  const key = "11111111-2222-3333-4444-555555555555";
+  const result = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "PIX",
+    response: "Perfeito. Qual é o melhor horário?",
+    commercialState: {
+      product_focus: "mentoria",
+      price_informed: { product: "mentoria" },
+      awaiting_offer_confirmation: null,
+      awaiting_payment_method: true,
+      closing_intent_at: "2026-08-31T16:07:00.000Z",
+    },
+    officialPixKey: key,
+  });
+  if (!result.reasons.includes("mentorship_pix_choice_without_payment_details")) throw new Error(JSON.stringify(result));
+  if (!result.text.includes(key) || !/comprovante/i.test(result.text)) throw new Error(result.text);
+  if (/hor[aá]rio|cart[aã]o/i.test(result.text)) throw new Error(result.text);
+});
+
+Deno.test("Bullink: escolha cartão após aceite entrega somente o link oficial", () => {
+  const url = "https://link.infinitepay.io/empresa/oferta-segura";
+  const extracted = readBullinkOfficialCardUrl({ prompt_regras: `Para cartão, use exclusivamente ${url}.` });
+  if (extracted !== url) throw new Error(`link não extraído: ${extracted}`);
+  const result = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "Prefiro no cartão",
+    response: "Perfeito. Vou verificar e te aviso.",
+    commercialState: {
+      product_focus: "mentoria",
+      price_informed: { product: "mentoria" },
+      awaiting_offer_confirmation: null,
+      awaiting_payment_method: true,
+      closing_intent_at: "2026-08-31T16:07:00.000Z",
+    },
+    officialCardUrl: url,
+  });
+  if (!result.reasons.includes("mentorship_card_choice_without_payment_details")) throw new Error(JSON.stringify(result));
+  if (!result.text.includes(url) || !/12x de R\$ 650/i.test(result.text)) throw new Error(result.text);
+  if (/pix|hor[aá]rio/i.test(result.text)) throw new Error(result.text);
+});
+
+Deno.test("Bullink: configuração incompleta nunca inventa dado de pagamento", () => {
+  const result = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "PIX",
+    response: "Vou confirmar os dados corretos e sigo com você por aqui.",
+    commercialState: {
+      product_focus: "mentoria",
+      price_informed: { product: "mentoria" },
+      awaiting_offer_confirmation: null,
+      awaiting_payment_method: true,
+      closing_intent_at: "2026-08-31T16:07:00.000Z",
+    },
+    officialPixKey: null,
+  });
+  if (result.changed) throw new Error(JSON.stringify(result));
+  if (/chave|https?:\/\//i.test(result.text)) throw new Error(result.text);
+});
+
+Deno.test("Bullink: venda permanece com a IA até concluir dados de pagamento", () => {
+  if (!shouldDeferBullinkSaleHandoff({
+    empresaId: BULLINK_EMPRESA_ID,
+    intent: "venda_fechada",
+    officialPixKey: "11111111-2222-3333-4444-555555555555",
+    officialCardUrl: "https://link.infinitepay.io/empresa/oferta-segura",
+  })) throw new Error("checkout completo deveria adiar handoff");
+  if (shouldDeferBullinkSaleHandoff({
+    empresaId: OTHER_TENANT,
+    intent: "venda_fechada",
+    officialPixKey: "11111111-2222-3333-4444-555555555555",
+    officialCardUrl: "https://link.infinitepay.io/empresa/oferta-segura",
+  })) throw new Error("outro tenant não pode mudar");
+  if (shouldDeferBullinkSaleHandoff({
+    empresaId: BULLINK_EMPRESA_ID,
+    intent: "venda_fechada",
+    officialPixKey: null,
+    officialCardUrl: null,
+  })) throw new Error("configuração incompleta deve manter fallback humano");
 });
 
 Deno.test("Bullink: pergunta exatamente repetida é removida", () => {

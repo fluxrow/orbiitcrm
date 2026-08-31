@@ -1,0 +1,21 @@
+risks:
+  - name: cross_tenant_behavior_change
+    severity: high
+    description: Uma regra de checkout da Bullink pode afetar outros tenants.
+    mitigation: Ativação por igualdade exata de empresa_id e regressão byte-for-byte para outro tenant.
+  - name: invented_payment_details
+    severity: high
+    description: O agente pode inventar ou reutilizar chave ou link legado.
+    mitigation: Extração somente da configuração oficial; sem dado completo, o checkout determinístico não assume a posse.
+  - name: premature_handoff
+    severity: high
+    description: O aceite pode bloquear a IA antes de entregar os dados de pagamento.
+    mitigation: Handoff adiado durante aceite e escolha do método; comprovante usa o guard existente.
+  - name: duplicated_notification_or_reply
+    severity: high
+    description: Retry pode repetir notificação ou mensagem financeira.
+    mitigation: Mantém claims, commercial_notified e idempotência do outbox existentes.
+  - name: stale_runtime
+    severity: high
+    description: Código correto pode não estar efetivamente publicado.
+    mitigation: Nova versão em metadata.agent_runtime_version e homologação da primeira resposta real.

@@ -33,6 +33,12 @@ import {
   readLockBusyRetryFlag,
   type DebounceRow,
 } from "./ai-reply-debounce.ts";
+import {
+  BULLINK_EMPRESA_ID,
+  BULLINK_MENTORSHIP_PAYMENT_METHOD_REPLY,
+  enforceBullinkConversationGuard,
+  shouldDeferBullinkSaleHandoff,
+} from "./bullink-conversation-guard.ts";
 
 const PRIMARY_LINE = "R$ 6.500 à vista no PIX ou 12x de R$ 650 no cartão";
 const SECONDARY_LINE = "R$ 997 à vista no PIX";
@@ -461,4 +467,60 @@ Deno.test("P8: nova inbound Bullink habilita claim limpo e lock ocupado não con
   assert(readLockBusyRetryFlag(config));
   assertFalse(readFreshClaimResetFlag({ ai_reply_debounce: { enabled: true } }));
   assertFalse(readLockBusyRetryFlag({ ai_reply_debounce: { enabled: true } }));
+});
+
+Deno.test("P9: fluxo completo Mentoria — aceite, método, dados e espera por comprovante", () => {
+  const priced = state({
+    product_focus: "mentoria",
+    product_explained: true,
+    price_informed: { product: "mentoria", at: "2026-08-31T16:00:00.000Z" },
+    awaiting_offer_confirmation: "mentoria",
+  });
+  const acceptedSignals = extractCommercialSignals("sim");
+  const acceptedPerms = computeCommercialPermissions(acceptedSignals, priced, { effectiveProduct: "mentoria" });
+  assert(acceptedPerms.closingRecognized);
+  const acceptedReply = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "sim",
+    response: "Vou te passar os dados depois. Qual é o melhor horário?",
+    commercialState: priced,
+  }).text;
+  assertEquals(acceptedReply, BULLINK_MENTORSHIP_PAYMENT_METHOD_REPLY);
+  const awaitingMethod = updateCommercialState(
+    priced,
+    acceptedSignals,
+    acceptedReply,
+    acceptedPerms,
+    "2026-08-31T16:01:00.000Z",
+  );
+  assert(awaitingMethod.awaiting_payment_method);
+  assert(awaitingMethod.closing_intent_at);
+
+  const pixSignals = extractCommercialSignals("PIX");
+  const pixPerms = computeCommercialPermissions(pixSignals, awaitingMethod, { effectiveProduct: "mentoria" });
+  assert(pixPerms.maySharePaymentDetails);
+  const key = "11111111-2222-3333-4444-555555555555";
+  const pixReply = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "PIX",
+    response: "Perfeito.",
+    commercialState: awaitingMethod,
+    officialPixKey: key,
+  }).text;
+  assert(pixReply.includes(key));
+  assert(/comprovante/i.test(pixReply));
+  const awaitingReceipt = updateCommercialState(
+    awaitingMethod,
+    pixSignals,
+    pixReply,
+    pixPerms,
+    "2026-08-31T16:02:00.000Z",
+  );
+  assert(awaitingReceipt.awaiting_receipt);
+  assert(shouldDeferBullinkSaleHandoff({
+    empresaId: BULLINK_EMPRESA_ID,
+    intent: "venda_fechada",
+    officialPixKey: key,
+    officialCardUrl: LINK,
+  }));
 });

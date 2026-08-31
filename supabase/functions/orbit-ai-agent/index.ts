@@ -161,7 +161,10 @@ import {
   buildBullinkConversationPromptBlock,
   enforceBullinkConversationGuard,
   inferBullinkConversationProductFocus,
+  isBullinkTenant,
+  readBullinkOfficialCardUrl,
   readBullinkOfficialPixKey,
+  shouldDeferBullinkSaleHandoff,
 } from "../_shared/bullink-conversation-guard.ts";
 import { decideAutomaticReplyOwnership } from "../_shared/conversation-ownership.ts";
 
@@ -182,7 +185,7 @@ import { schedulingPolicy, isAmbiguousSlotAcceptance, selectExplicitSuggestion }
 // Persistido na metadata de cada ai_reply para comprovar qual barreira estava
 // realmente publicada quando uma resposta saiu. O monitor não precisa inferir
 // versão por horário de commit nem confiar no deploy do frontend.
-export const ORBIT_AI_AGENT_RUNTIME_VERSION = "2026-08-31-course-context-v1";
+export const ORBIT_AI_AGENT_RUNTIME_VERSION = "2026-08-31-deterministic-checkout-v2";
 
 /**
  * Normalização final aplicada em TODOS os caminhos de saída do agente.
@@ -1570,6 +1573,8 @@ serve(async (req) => {
     // ── CONDUÇÃO COMERCIAL v2 (tenant-scoped por commercial_stage_v2_enabled) ──
     const commercialV2Enabled = (aiConfig as any).commercial_stage_v2_enabled === true;
     const primaryOfferCfg = readPrimaryOfferLockConfig(aiConfig as Record<string, unknown>);
+    const bullinkOfficialPixKey = readBullinkOfficialPixKey(aiConfig as Record<string, unknown>);
+    const bullinkOfficialCardUrl = readBullinkOfficialCardUrl(aiConfig as Record<string, unknown>);
     const commercialState = commercialV2Enabled
       ? readCommercialState(aiContexto as Record<string, unknown>)
       : { ...EMPTY_COMMERCIAL_STATE };
@@ -2118,10 +2123,16 @@ ${regrasBlock}`;
     }
     parsed.intencao = intencaoNormalizada;
 
+    // Na Bullink, um aceite contextual comprovado é sinal comercial mesmo se o
+    // modelo o rotular apenas como "duvida". Isso permite avisar Fernando sem
+    // entregar a posse da conversa antes de concluir o checkout.
+    const bullinkCheckoutAccepted = isBullinkTenant(empresaId) &&
+      commercialV2Enabled && commercialPerms?.closingRecognized === true;
     const isCommercialSignal =
       intencaoNormalizada === "agendar_call" ||
       intencaoNormalizada === "venda_fechada" ||
-      intencaoNormalizada === "falar_humano";
+      intencaoNormalizada === "falar_humano" ||
+      bullinkCheckoutAccepted;
 
     // Handoff humano real: só com pedido explícito do lead, conversa assumida por
     // humano, ou intenção que exige ação humana externa (venda/agendamento).
@@ -2180,9 +2191,18 @@ ${regrasBlock}`;
       }
     }
 
-    // Só fazer handoff se NÃO houve auto-agendamento resolvido pela IA (sugestão ou evento criado).
+    // Só fazer handoff se NÃO houve auto-agendamento resolvido pela IA. Na
+    // Bullink, aceite/forma de pagamento permanecem com a IA; o handoff seguro
+    // já existente acontece quando o comprovante é recebido. Se a configuração
+    // oficial estiver incompleta, falhamos para o comportamento humano anterior.
     const suppressHandoff = scheduleOutcome.handled === true;
-    const isHandoff = isCommercialSignal && !suppressHandoff;
+    const deferBullinkCheckoutHandoff = shouldDeferBullinkSaleHandoff({
+      empresaId,
+      intent: bullinkCheckoutAccepted ? "venda_fechada" : intencaoNormalizada,
+      officialPixKey: bullinkOfficialPixKey,
+      officialCardUrl: bullinkOfficialCardUrl,
+    });
+    const isHandoff = isCommercialSignal && !suppressHandoff && !deferBullinkCheckoutHandoff;
     const quoteReadiness = comunicaQuoteReady({
       empresaId,
       collectingQuote: parsed.iniciar_coleta_orcamento === true || emColetaOrcamento,
@@ -2212,7 +2232,9 @@ ${regrasBlock}`;
     if (shouldNotifyCommercial) {
       if (!await renewExecutionLease()) return leaseLostResponse();
       notificationAttempted = true;
-      const notificationClassification = quoteReadySignal ? "orcamento_pronto" : intencaoNormalizada;
+      const notificationClassification = quoteReadySignal
+        ? "orcamento_pronto"
+        : (bullinkCheckoutAccepted ? "venda_fechada" : intencaoNormalizada);
       console.log("[orbit-ai-agent] Sinal comercial detectado:", notificationClassification, "— notificando responsável...");
       const notificationResult = await notifyCommercialHumanDetected(supabase, {
         prospect,
@@ -2625,7 +2647,8 @@ ${regrasBlock}`;
         ...commercialState,
         product_focus: commercialProductInFocus ?? commercialState.product_focus,
       },
-      officialPixKey: readBullinkOfficialPixKey(aiConfig as Record<string, unknown>),
+      officialPixKey: bullinkOfficialPixKey,
+      officialCardUrl: bullinkOfficialCardUrl,
     });
     if (finalBullink.changed) {
       console.warn("[orbit-ai-agent] Reforço conversacional Bullink acionado.", {

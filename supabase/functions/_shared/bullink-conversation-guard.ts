@@ -14,6 +14,9 @@ export type BullinkGuardReason =
   | "recorded_course_price_not_requested"
   | "budget_objection_without_downsell"
   | "course_purchase_confirmation_without_payment_details"
+  | "mentorship_purchase_confirmation_without_payment_choice"
+  | "mentorship_pix_choice_without_payment_details"
+  | "mentorship_card_choice_without_payment_details"
   | "unsolicited_recorded_course_offer"
   | "lead_source_question_unanswered"
   | "results_timeline_question_unanswered"
@@ -37,8 +40,11 @@ export interface BullinkConversationGuardInput {
     product_focus?: unknown;
     price_informed?: { product?: unknown } | null;
     awaiting_offer_confirmation?: unknown;
+    awaiting_payment_method?: unknown;
+    closing_intent_at?: unknown;
   } | null;
   officialPixKey?: string | null;
+  officialCardUrl?: string | null;
 }
 
 export interface BullinkConversationGuardResult {
@@ -109,6 +115,8 @@ const GENERIC_PRICE_REQUEST = [
   /\b(?:valor|preco|investimento|custo)\s*\?/,
 ];
 const SHORT_AFFIRMATIVE = /^(?:sim|sim\s+por\s+favor|por\s+favor|por\s+gentileza|claro|pode|perfeito|combinado)[!.,\s]*$/;
+const PIX_CHOICE = /^(?:pix|no\s+pix|a\s+vista|vista\s+no\s+pix|prefiro\s+(?:o\s+)?pix|pix\s+mesmo)[!.,\s]*$|\b(?:prefiro|vou|quero|melhor|fico|opto)\b.{0,25}\bpix\b/;
+const CARD_CHOICE = /^(?:cartao|no\s+cartao|parcelado|cartao\s+de\s+credito|prefiro\s+(?:o\s+)?cartao)[!.,\s]*$|\b(?:prefiro|vou|quero|melhor|fico|opto)\b.{0,25}\b(?:cartao|parcelado)\b/;
 
 const MENTORSHIP_RECORDED_CONTENT_INCLUSION = [
   /\bmentoria\b.{0,35}\b(?:tenho|terei|vou ter|da)\s+acesso\b.{0,40}\b(?:curso|conteudo|formato|aulas?|gravad[oa])\b/,
@@ -248,6 +256,9 @@ export const BULLINK_RECORDED_COURSE_DETAILS_REPLY =
 export const BULLINK_MENTORSHIP_INCLUDES_RECORDED_REPLY =
   "Sim. A Mentoria inclui acesso ao conteúdo gravado e também os 3 meses de acompanhamento individual comigo. Quer que eu te explique o próximo passo para entrar?";
 
+export const BULLINK_MENTORSHIP_PAYMENT_METHOD_REPLY =
+  "Perfeito. Você prefere pagar à vista no PIX ou parcelar em 12x no cartão?";
+
 export const BULLINK_BUDGET_DOWNSELL_REPLY =
   "Entendo, cara. Pra você não ficar sem um caminho, tenho o Curso Gravado por R$ 997 à vista no PIX, com o mesmo método, só sem meu acompanhamento individual. Faz mais sentido pra você?";
 
@@ -273,6 +284,78 @@ export function readBullinkOfficialPixKey(
     /(?:use\s+exclusivamente\s+a\s+chave|chave\s+aleatoria)\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
   );
   return match?.[1] ?? null;
+}
+
+export function readBullinkOfficialCardUrl(
+  aiConfig: Record<string, unknown> | null | undefined,
+): string | null {
+  const source = [aiConfig?.prompt_regras, aiConfig?.prompt_roteiro]
+    .filter((value): value is string => typeof value === "string")
+    .join("\n");
+  const match = source.match(/https:\/\/link\.infinitepay\.io\/[^\s<>"']+/i);
+  return match?.[0]?.replace(/[),.;]+$/, "") ?? null;
+}
+
+function recentOutboundTexts(input: BullinkConversationGuardInput): string[] {
+  return (input.recentMessages ?? [])
+    .filter((message) => String(message?.direcao ?? "").toUpperCase() === "OUT")
+    .map((message) => norm(String(message?.mensagem ?? "")))
+    .filter(Boolean);
+}
+
+function recentMentorshipOfferAwaitingConfirmation(input: BullinkConversationGuardInput): boolean {
+  return recentOutboundTexts(input).some((text) =>
+    /\bmentoria\b/.test(text) &&
+    /\b6\s*500(?:\s*00)?\b/.test(text) &&
+    /\b(?:faz\s+sentido|quer\s+seguir|podemos\s+(?:seguir|avancar|fechar))\b.{0,40}\?/.test(text)
+  );
+}
+
+function recentMentorshipPaymentMethodQuestion(input: BullinkConversationGuardInput): boolean {
+  const out = recentOutboundTexts(input);
+  const askedMethod = out.some((text) =>
+    /\bpix\b.{0,70}\b(?:cartao|parcelado)\b.{0,40}\?|\b(?:cartao|parcelado)\b.{0,70}\bpix\b.{0,40}\?/.test(text)
+  );
+  const pricedMentorship = out.some((text) =>
+    /\bmentoria\b/.test(text) && /\b6\s*500(?:\s*00)?\b/.test(text)
+  );
+  return askedMethod && pricedMentorship;
+}
+
+function isConfirmedMentorshipPurchase(input: BullinkConversationGuardInput): boolean {
+  if (!SHORT_AFFIRMATIVE.test(norm(input.inbound))) return false;
+  const stateConfirms = input.commercialState?.product_focus === "mentoria" &&
+    input.commercialState?.price_informed?.product === "mentoria" &&
+    input.commercialState?.awaiting_offer_confirmation === "mentoria";
+  return stateConfirms || recentMentorshipOfferAwaitingConfirmation(input);
+}
+
+function hasMentorshipPaymentChoiceContext(input: BullinkConversationGuardInput): boolean {
+  const stateConfirms = input.commercialState?.product_focus === "mentoria" &&
+    input.commercialState?.price_informed?.product === "mentoria" &&
+    input.commercialState?.awaiting_payment_method === true &&
+    typeof input.commercialState?.closing_intent_at === "string";
+  return stateConfirms || recentMentorshipPaymentMethodQuestion(input);
+}
+
+function canonicalMentorshipPixReply(key: string): string {
+  return `Perfeito. A chave PIX oficial é ${key}. Depois do pagamento, me envie o comprovante por aqui.`;
+}
+
+function canonicalMentorshipCardReply(url: string): string {
+  return `Perfeito. O pagamento em 12x de R$ 650 no cartão é feito por este link oficial: ${url}. Depois de concluir, me avise por aqui.`;
+}
+
+export function shouldDeferBullinkSaleHandoff(input: {
+  empresaId: string | null | undefined;
+  intent: string | null | undefined;
+  officialPixKey?: string | null;
+  officialCardUrl?: string | null;
+}): boolean {
+  return isBullinkTenant(input.empresaId) &&
+    input.intent === "venda_fechada" &&
+    Boolean(input.officialPixKey) &&
+    Boolean(input.officialCardUrl);
 }
 
 function isConfirmedCoursePurchase(input: BullinkConversationGuardInput): boolean {
@@ -428,6 +511,23 @@ export function enforceBullinkConversationGuard(
     text = canonicalCoursePixReply(input.officialPixKey);
   }
 
+  if (isConfirmedMentorshipPurchase(input) && text !== BULLINK_MENTORSHIP_PAYMENT_METHOD_REPLY) {
+    reasons.push("mentorship_purchase_confirmation_without_payment_choice");
+    text = BULLINK_MENTORSHIP_PAYMENT_METHOD_REPLY;
+  } else if (hasMentorshipPaymentChoiceContext(input) && PIX_CHOICE.test(normalizedInbound) && input.officialPixKey) {
+    const expected = canonicalMentorshipPixReply(input.officialPixKey);
+    if (text !== expected) {
+      reasons.push("mentorship_pix_choice_without_payment_details");
+      text = expected;
+    }
+  } else if (hasMentorshipPaymentChoiceContext(input) && CARD_CHOICE.test(normalizedInbound) && input.officialCardUrl) {
+    const expected = canonicalMentorshipCardReply(input.officialCardUrl);
+    if (text !== expected) {
+      reasons.push("mentorship_card_choice_without_payment_details");
+      text = expected;
+    }
+  }
+
   const repeated = repeatedQuestions(text, input.previousAgentQuestions ?? []);
   if (repeated.length > 0) {
     reasons.push("repeated_question");
@@ -451,6 +551,8 @@ export function buildBullinkConversationPromptBlock(empresaId: string | null | u
     "- Nunca repita a mesma pergunta sem acrescentar informação útil. Responda primeiro a dúvida específica do lead.",
     '- Nunca descarte uma dúvida com "voltando ao que importa" ou equivalente. Perguntas sobre origem do contato, prazo e resultados devem ser respondidas de forma direta e honesta.',
     '- Quando o Curso Gravado já for o produto em foco, não volte a oferecer a Mentoria por conta própria. Continue no Curso até o lead pedir explicitamente a Mentoria.',
+    '- Depois que o preço da Mentoria for informado e o lead aceitar, pergunte somente se prefere PIX ou cartão. Não peça horário e não prometa enviar dados depois.',
+    '- Depois que o lead escolher PIX ou cartão, envie os dados oficiais correspondentes e aguarde confirmação/comprovante. Não transfira a conversa antes disso.',
     '- Nunca prometa prazo ou faturamento. Os 3 meses são acompanhamento, não garantia de resultado.',
     "=== FIM DO REFORÇO CONVERSACIONAL BULLINK ===\n",
   ].join("\n");
