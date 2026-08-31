@@ -41,6 +41,12 @@ import {
 } from "./viver-class-guard.ts";
 import { ensureViverClassMeeting } from "./viver-class-meeting.ts";
 import {
+  hasUnresolvedInboundMedia,
+  VIVER_MEDIA_CONTEXT_POLL_MS,
+  VIVER_MEDIA_CONTEXT_WAIT_MAX_MS,
+  viverAdditionalAggregationDelayMs,
+} from "./viver-media-context-guard.ts";
+import {
   COMUNICA_EMPRESA_ID,
   comunicaQuoteReady,
   enforceComunicaNotificationTruth,
@@ -1099,6 +1105,15 @@ serve(async (req) => {
       );
     }
 
+    // Viver: a mensagem de texto e o áudio seguinte costumam chegar em webhooks
+    // separados. A janela adicional evita congelar o contexto imediatamente antes
+    // do áudio; os outros tenants preservam a latência atual.
+    const viverAggregationDelayMs = viverAdditionalAggregationDelayMs(empresaId);
+    if (viverAggregationDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, viverAggregationDelayMs));
+      if (!await renewExecutionLease()) return leaseLostResponse();
+    }
+
     // ── AGREGAR: buscar todas as mensagens IN pendentes desde o último OUT ──
     const { data: lastOutMsg } = await supabase
       .from("orbit_mensagens")
@@ -1109,18 +1124,34 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    let pendingQuery = supabase
-      .from("orbit_mensagens")
-      .select("id, mensagem, media_extracted_text, tipo_midia")
-      .eq("conversa_id", conversa_id)
-      .eq("direcao", "IN")
-      .order("timestamp", { ascending: true });
+    const loadPendingMessages = async () => {
+      let query = supabase
+        .from("orbit_mensagens")
+        .select("id, mensagem, media_extracted_text, media_processing_status, media_processing_error, tipo_midia")
+        .eq("empresa_id", empresaId)
+        .eq("conversa_id", conversa_id)
+        .eq("direcao", "IN")
+        .order("timestamp", { ascending: true });
+      if (lastOutMsg?.timestamp) query = query.gt("timestamp", lastOutMsg.timestamp);
+      const { data, error } = await query;
+      if (error) throw new Error(`pending_messages_failed:${error.message}`);
+      return data || [];
+    };
 
-    if (lastOutMsg?.timestamp) {
-      pendingQuery = pendingQuery.gt("timestamp", lastOutMsg.timestamp);
+    let pendingMsgs = await loadPendingMessages();
+    if (empresaId === VIVER_EMPRESA_ID && hasUnresolvedInboundMedia(pendingMsgs)) {
+      const mediaWaitDeadline = Date.now() + VIVER_MEDIA_CONTEXT_WAIT_MAX_MS;
+      while (hasUnresolvedInboundMedia(pendingMsgs) && Date.now() < mediaWaitDeadline) {
+        await new Promise((resolve) => setTimeout(resolve, VIVER_MEDIA_CONTEXT_POLL_MS));
+        if (!await renewExecutionLease()) return leaseLostResponse();
+        pendingMsgs = await loadPendingMessages();
+      }
+      console.log("[orbit-ai-agent] Viver media context settled:", {
+        conversa_id,
+        pending_messages: pendingMsgs.length,
+        unresolved_media: hasUnresolvedInboundMedia(pendingMsgs),
+      });
     }
-
-    const { data: pendingMsgs } = await pendingQuery;
     const mensagemAgregada = (pendingMsgs && pendingMsgs.length > 0)
       ? pendingMsgs.map(messageTextForAgent).filter(Boolean).join("\n")
       : mensagem;
