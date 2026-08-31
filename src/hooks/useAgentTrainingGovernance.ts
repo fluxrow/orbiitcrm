@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import type { Json } from "@/integrations/supabase/types";
 import { EMPTY_AGENT_TRAINING_STATE, type AgentTrainingGovernanceState } from "@/lib/agent-training-governance";
 import type { AgentSandboxScenarioKey } from "@/lib/agent-sandbox-review";
 
@@ -66,7 +65,7 @@ export function useAgentTrainingAction(tenantSlug?: string | null) {
       const { data, error } = await supabase.rpc("orbit_agent_training_action", {
         p_tenant_slug: tenantSlug,
         p_action: input.action,
-        p_payload: payload as unknown as Json,
+        p_payload: payload,
       });
       if (error) throw error;
       const result = data as unknown as {
