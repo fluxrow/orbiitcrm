@@ -65,7 +65,7 @@ export function useAgentTrainingAction(tenantSlug?: string | null) {
       const { data, error } = await supabase.rpc("orbit_agent_training_action", {
         p_tenant_slug: tenantSlug,
         p_action: input.action,
-        p_payload: payload,
+        p_payload: payload as unknown as never,
       });
       if (error) throw error;
       const result = data as unknown as {
