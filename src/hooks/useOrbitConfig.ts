@@ -6,6 +6,17 @@ import { isTenantFeatureEnabled } from "@/lib/tenant-explicit-mutations";
 
 export const TENANT_CONFIG_GOVERNANCE_WAVE3_FLAG =
   "tenant_config_governance_wave3_v1" as const;
+export const TENANT_AGENT_TRAINING_GOVERNANCE_FLAG =
+  "tenant_agent_training_governance_v1" as const;
+
+// These fields have their own audited/versioned publication paths. The generic
+// settings form must never write them directly to runtime.
+export const PROTECTED_AI_TRAINING_FIELDS = new Set([
+  "prompt_identidade",
+  "prompt_roteiro",
+  "prompt_regras",
+  "conversion_guidance",
+]);
 
 type AIConfig = Tables<"orbit_ai_config">;
 type AIConfigUpdate = TablesUpdate<"orbit_ai_config">;
@@ -14,7 +25,7 @@ type ResendConfigUpdate = TablesUpdate<"orbit_resend_config">;
 
 // Secret material is intentionally excluded from every browser read.
 const AI_CONFIG_SAFE_COLS =
-  "id,tom_conversa,modo_automatico,responder_fora_horario,horario_inicio,horario_fim,mensagem_boas_vindas,mensagem_fora_horario,created_at,updated_at,empresa_id,idioma,max_tokens,tempo_espera,tts_ativo,tts_provider,tts_voice_id,tts_modo,prompt_identidade,prompt_roteiro,prompt_regras,campos_qualificacao,knowledge_base_enabled,modelo_ia,advisor_locked_paths,advisor_thresholds,advisor_playbook_flow_prefixes,inbound_image_understanding_enabled,inbound_audio_transcription_enabled,scheduling_mode,scheduling_handoff_whatsapp,scheduling_handoff_message,scheduling_meeting_duration_minutes,notification_recipient_whatsapp,auto_reply_new_leads_from,block_email_collection,strict_commercial_stage_guard,commercial_stage_v2_enabled,campos_cadastro_obrigatorios,block_location_collection,primary_offer_lock,block_identity_split,ai_reply_debounce,mixed_payment_handoff,self_introduction_guard,false_benefits_guard";
+  "id,tom_conversa,modo_automatico,responder_fora_horario,horario_inicio,horario_fim,mensagem_boas_vindas,mensagem_fora_horario,created_at,updated_at,empresa_id,idioma,max_tokens,tempo_espera,tts_ativo,tts_provider,tts_voice_id,tts_modo,prompt_identidade,prompt_roteiro,prompt_regras,conversion_guidance,campos_qualificacao,knowledge_base_enabled,modelo_ia,advisor_locked_paths,advisor_thresholds,advisor_playbook_flow_prefixes,inbound_image_understanding_enabled,inbound_audio_transcription_enabled,scheduling_mode,scheduling_handoff_whatsapp,scheduling_handoff_message,scheduling_meeting_duration_minutes,notification_recipient_whatsapp,auto_reply_new_leads_from,block_email_collection,strict_commercial_stage_guard,commercial_stage_v2_enabled,campos_cadastro_obrigatorios,block_location_collection,primary_offer_lock,block_identity_split,ai_reply_debounce,mixed_payment_handoff,self_introduction_guard,false_benefits_guard";
 
 export interface OrbitZAPIConfigView {
   id: string;
@@ -71,9 +82,18 @@ export function useUpdateAIConfig() {
       if (updates.empresa_id && updates.empresa_id !== empresaId) {
         throw new Error("TENANT_CONTEXT_MISMATCH");
       }
+      const trainingGoverned = await isTenantFeatureEnabled(
+        empresaId,
+        TENANT_AGENT_TRAINING_GOVERNANCE_FLAG,
+      );
+      const safeUpdates = (trainingGoverned
+        ? Object.fromEntries(
+            Object.entries(updates).filter(([key]) => !PROTECTED_AI_TRAINING_FIELDS.has(key)),
+          )
+        : updates) as AIConfigUpdate & { empresa_id?: string | null };
       if (await isTenantFeatureEnabled(empresaId, TENANT_CONFIG_GOVERNANCE_WAVE3_FLAG)) {
         const { id: _id, empresa_id: _empresaId, created_at: _createdAt,
-          updated_at: _updatedAt, ...rawPayload } = updates;
+          updated_at: _updatedAt, ...rawPayload } = safeUpdates;
         const payload = Object.fromEntries(
           Object.entries(rawPayload).filter(([key, value]) =>
             value !== undefined && !(key === "tts_api_key" && value === "")),
@@ -94,7 +114,7 @@ export function useUpdateAIConfig() {
       if (existing) {
         const { data, error } = await supabase
           .from("orbit_ai_config")
-          .update(updates)
+          .update(safeUpdates)
           .eq("id", existing.id)
           .select(AI_CONFIG_SAFE_COLS)
           .single();
@@ -103,7 +123,7 @@ export function useUpdateAIConfig() {
       } else {
         const { data, error } = await supabase
           .from("orbit_ai_config")
-          .insert({ ...updates, empresa_id: empresaId } as any)
+          .insert({ ...safeUpdates, empresa_id: empresaId } as any)
           .select(AI_CONFIG_SAFE_COLS)
           .single();
         if (error) throw error;

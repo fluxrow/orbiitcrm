@@ -56,7 +56,9 @@ export interface AgentSandboxReviewState {
   reviews: AgentSandboxReview[];
 }
 
-export function countApprovedAgentSandboxScenarios(reviews: AgentSandboxReview[]): number {
+export function countApprovedAgentSandboxScenarios(
+  reviews: Array<Pick<AgentSandboxReview, "scenario_key" | "status">>,
+): number {
   return AGENT_SANDBOX_SCENARIOS.filter((scenario) =>
     reviews.some((review) => review.scenario_key === scenario.key && review.status === "approved"),
   ).length;

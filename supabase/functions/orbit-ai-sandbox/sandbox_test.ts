@@ -64,6 +64,21 @@ Deno.test("buildSystemPrompt injeta guardrails anti-autorrevelação e do webhoo
   assertStringIncludes(prompt, "Typebot - Captacao Meta");
 });
 
+Deno.test("buildSystemPrompt aplica orientação de conversão antes das regras protegidas", () => {
+  const prompt = buildSystemPrompt({
+    prompt_identidade: "Você representa a empresa.",
+    conversion_guidance: "Explique valor antes da chamada para ação.",
+    prompt_regras: "Nunca invente preço e faça apenas uma pergunta.",
+  });
+
+  assertStringIncludes(prompt, "ORIENTAÇÕES DE CONVERSÃO DO TENANT");
+  assertStringIncludes(prompt, "subordinadas às regras invioláveis");
+  assert(
+    prompt.indexOf("ORIENTAÇÕES DE CONVERSÃO DO TENANT") < prompt.indexOf("REGRAS INVIOLÁVEIS"),
+    "a camada editável deve aparecer antes das regras protegidas",
+  );
+});
+
 Deno.test("renderWelcomeMessage usa a abertura aprovada e personaliza o nome", () => {
   const reply = renderWelcomeMessage(
     "Oi, {{nome}}! Aqui é a Fernanda, da Viver Semijoias. Vi suas respostas no diagnóstico.",

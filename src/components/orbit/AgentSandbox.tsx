@@ -16,6 +16,7 @@ import {
   type AgentSandboxScenarioKey,
 } from "@/lib/agent-sandbox-review";
 import { useAgentSandboxReview, useSaveAgentSandboxReview } from "@/hooks/useAgentSandboxReview";
+import { useAgentTrainingAction, useAgentTrainingGovernance } from "@/hooks/useAgentTrainingGovernance";
 
 interface AgentSandboxProps {
   open: boolean;
@@ -69,10 +70,26 @@ export function AgentSandbox({ open, onOpenChange, empresaId, tenantSlug }: Agen
   const scrollRef = useRef<HTMLDivElement>(null);
   const reviewQuery = useAgentSandboxReview(open ? tenantSlug : null);
   const saveReview = useSaveAgentSandboxReview(tenantSlug);
-  const reviewState = reviewQuery.data;
+  const trainingQuery = useAgentTrainingGovernance(open ? tenantSlug : null);
+  const trainingAction = useAgentTrainingAction(tenantSlug);
+  const trainingState = trainingQuery.data;
+  const reviewState = trainingState?.enabled
+    ? {
+        enabled: true,
+        can_review: trainingState.can_edit,
+        reviews: trainingState.reviews,
+      }
+    : reviewQuery.data;
+  const trainingDraftFingerprint = trainingState?.enabled ? trainingState.draft?.fingerprint ?? null : null;
   const selectedScenario = AGENT_SANDBOX_SCENARIOS.find((scenario) => scenario.key === scenarioKey)!;
   const approvedCount = countApprovedAgentSandboxScenarios(reviewState?.reviews ?? []);
   const selectedReview = reviewState?.reviews.find((review) => review.scenario_key === scenarioKey);
+  const reviewPending = trainingState?.enabled ? trainingAction.isPending : saveReview.isPending;
+
+  useEffect(() => {
+    setMessages([]);
+    setInput("");
+  }, [trainingDraftFingerprint]);
 
   // Auto scroll
   useEffect(() => {
@@ -94,6 +111,7 @@ export function AgentSandbox({ open, onOpenChange, empresaId, tenantSlug }: Agen
             empresaId,
             mockLead: trigger === "inbound_webhook" ? MOCK_LEAD : null,
             trigger: trigger ?? "manual",
+            trainingDraftFingerprint,
             messages: history.map((m) => ({ role: m.role, content: m.content })),
           },
         });
@@ -122,7 +140,7 @@ export function AgentSandbox({ open, onOpenChange, empresaId, tenantSlug }: Agen
         setTyping(false);
       }
     },
-    [empresaId],
+    [empresaId, trainingDraftFingerprint],
   );
 
   const handleTriggerWebhook = () => {
@@ -165,17 +183,27 @@ export function AgentSandbox({ open, onOpenChange, empresaId, tenantSlug }: Agen
       toast.error("Explique o que precisa ser ajustado.");
       return;
     }
-    saveReview.mutate(
-      { scenarioKey, status: reviewStatus, comment: reviewComment },
-      {
-        onSuccess: () => {
-          toast.success(reviewStatus === "approved" ? "Cenário aprovado" : "Ajuste registrado");
-          setReviewStatus(null);
-          setReviewComment("");
-        },
-        onError: (error: any) => toast.error(error?.message || "Não foi possível salvar a avaliação"),
+    const callbacks = {
+      onSuccess: () => {
+        toast.success(reviewStatus === "approved" ? "Cenário aprovado" : "Ajuste registrado");
+        setReviewStatus(null);
+        setReviewComment("");
       },
-    );
+      onError: (error: unknown) => toast.error(
+        error instanceof Error ? error.message : "Não foi possível salvar a avaliação",
+      ),
+    };
+    if (trainingState?.enabled && trainingDraftFingerprint) {
+      trainingAction.mutate({
+        action: "review",
+        draftFingerprint: trainingDraftFingerprint,
+        scenarioKey,
+        status: reviewStatus,
+        comment: reviewComment,
+      }, callbacks);
+    } else {
+      saveReview.mutate({ scenarioKey, status: reviewStatus, comment: reviewComment }, callbacks);
+    }
   };
 
   return (
@@ -208,6 +236,7 @@ export function AgentSandbox({ open, onOpenChange, empresaId, tenantSlug }: Agen
           <Badge variant="secondary" className="w-fit gap-1 text-[10px]">
             <ShieldCheck className="h-3 w-3" />
             Ambiente de Teste Seguro · sem persistência
+            {trainingState?.enabled && trainingState.draft ? ` · rascunho #${trainingState.draft.revision}` : ""}
           </Badge>
           {reviewState?.enabled && (
             <div className="space-y-2 pt-1">
@@ -382,8 +411,8 @@ export function AgentSandbox({ open, onOpenChange, empresaId, tenantSlug }: Agen
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setReviewStatus(null)}>Cancelar</Button>
-            <Button onClick={submitReview} disabled={saveReview.isPending}>
-              {saveReview.isPending ? "Salvando…" : "Confirmar avaliação"}
+            <Button onClick={submitReview} disabled={reviewPending}>
+              {reviewPending ? "Salvando…" : "Confirmar avaliação"}
             </Button>
           </DialogFooter>
         </DialogContent>

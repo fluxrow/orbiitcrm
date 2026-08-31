@@ -13,6 +13,7 @@ import { Users, Phone, Calendar, Activity } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -43,6 +44,8 @@ import { QualificationFieldsBuilder } from "@/components/orbit/QualificationFiel
 import { KnowledgeBaseManager } from "@/components/orbit/KnowledgeBaseManager";
 import { Database, Sparkles } from "lucide-react";
 import { AgentSandbox } from "@/components/orbit/AgentSandbox";
+import { AgentTrainingGovernanceCard } from "@/components/orbit/AgentTrainingGovernanceCard";
+import { useAgentTrainingGovernance } from "@/hooks/useAgentTrainingGovernance";
 
 interface ParsedProspect {
   nome_razao: string;
@@ -80,6 +83,8 @@ export default function ConfigPage() {
   const { data: sendingConfig, isLoading: sendingConfigLoading } = useWhatsAppSendingConfig(empresaId);
   const { data: dailyUsage } = useWhatsAppDailyUsage(empresaId);
   const updateSendingConfig = useUpdateWhatsAppSendingConfig();
+  const trainingGovernance = useAgentTrainingGovernance(slug);
+  const trainingGovernanceEnabled = trainingGovernance.data?.enabled === true;
 
   const [aiForm, setAiForm] = useState({ 
     modo_automatico: true, 
@@ -202,7 +207,23 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
     });
   }, [sendingConfig]);
 
-  const saveAI = async () => { await updateAI.mutateAsync({ id: aiConfig?.id, ...aiForm, campos_qualificacao: aiForm.campos_qualificacao as any, empresa_id: empresaId }); toast.success("Salvo!"); };
+  const saveAI = async () => {
+    const editableAIForm = trainingGovernanceEnabled
+      ? (({
+          prompt_identidade: _protectedIdentity,
+          prompt_roteiro: _protectedScript,
+          prompt_regras: _protectedRules,
+          ...editable
+        }) => editable)(aiForm)
+      : aiForm;
+    await updateAI.mutateAsync({
+      id: aiConfig?.id,
+      ...editableAIForm,
+      campos_qualificacao: aiForm.campos_qualificacao as any,
+      empresa_id: empresaId,
+    });
+    toast.success("Salvo!");
+  };
   const saveZAPI = async () => {
     if (!empresaId) {
       toast.error("Empresa não identificada. Recarregue a página e tente novamente.");
@@ -444,41 +465,44 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                       </div>
                     </div>
                   </div>
-                  <CardDescription>Configure o treinamento da IA para geração de mensagens</CardDescription>
+                  <CardDescription>Configurações operacionais e prompts-base protegidos do agente</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   {/* Bloco 1: Identidade & Tom */}
                   <div className="space-y-2">
-                    <Label>Prompt de Identidade *</Label>
+                    <Label>Prompt de Identidade * {trainingGovernanceEnabled && <Badge variant="outline" className="ml-2"><Lock className="mr-1 h-3 w-3" />Protegido</Badge>}</Label>
                     <Textarea 
-                      className="min-h-[120px]"
+                      className={trainingGovernanceEnabled ? "min-h-[120px] bg-muted/40" : "min-h-[120px]"}
                       placeholder="Você é a Júlia, SDR sênior de uma mentoria high-ticket. Tom consultivo, direto, sem floreio. Trate o lead com respeito mas sem subserviência..."
-                      value={aiForm.prompt_identidade} 
-                      onChange={(e) => setAiForm({ ...aiForm, prompt_identidade: e.target.value })} 
+                      value={aiForm.prompt_identidade}
+                      readOnly={trainingGovernanceEnabled}
+                      onChange={(event) => !trainingGovernanceEnabled && setAiForm({ ...aiForm, prompt_identidade: event.target.value })}
                     />
-                    <p className="text-xs text-muted-foreground">Quem é a IA, persona, tom de voz e postura.</p>
+                    <p className="text-xs text-muted-foreground">{trainingGovernanceEnabled ? "Prompts-base protegidos pelo Orbit. Use o treinamento de conversão abaixo para melhorar a linguagem sem alterar identidade ou regras críticas." : "Quem é a IA, persona, tom de voz e postura."}</p>
                   </div>
 
                   {/* Bloco 2: Roteiro */}
                   <div className="space-y-2">
-                    <Label>Roteiro de Qualificação</Label>
+                    <Label>Roteiro de Qualificação {trainingGovernanceEnabled && <Badge variant="outline" className="ml-2"><Lock className="mr-1 h-3 w-3" />Protegido</Badge>}</Label>
                     <Textarea 
-                      className="min-h-[140px]"
+                      className={trainingGovernanceEnabled ? "min-h-[140px] bg-muted/40" : "min-h-[140px]"}
                       placeholder="1. Cumprimente pelo nome. 2. Confirme o canal de origem. 3. Faça as perguntas de qualificação na ordem. 4. Se qualificado, ofereça call de diagnóstico..."
-                      value={aiForm.prompt_roteiro} 
-                      onChange={(e) => setAiForm({ ...aiForm, prompt_roteiro: e.target.value })} 
+                      value={aiForm.prompt_roteiro}
+                      readOnly={trainingGovernanceEnabled}
+                      onChange={(event) => !trainingGovernanceEnabled && setAiForm({ ...aiForm, prompt_roteiro: event.target.value })}
                     />
                     <p className="text-xs text-muted-foreground">Passo a passo que a IA deve seguir para mover o lead no funil.</p>
                   </div>
 
                   {/* Bloco 3: Regras Invioláveis */}
                   <div className="space-y-2">
-                    <Label>Regras Invioláveis</Label>
+                    <Label>Regras Invioláveis {trainingGovernanceEnabled && <Badge variant="outline" className="ml-2"><Lock className="mr-1 h-3 w-3" />Protegido</Badge>}</Label>
                     <Textarea 
-                      className="min-h-[100px]"
+                      className={trainingGovernanceEnabled ? "min-h-[100px] bg-muted/40" : "min-h-[100px]"}
                       placeholder={"- Nunca dê descontos.\n- Não responda sobre assuntos fora da mentoria.\n- Nunca prometa resultados financeiros específicos."}
-                      value={aiForm.prompt_regras} 
-                      onChange={(e) => setAiForm({ ...aiForm, prompt_regras: e.target.value })} 
+                      value={aiForm.prompt_regras}
+                      readOnly={trainingGovernanceEnabled}
+                      onChange={(event) => !trainingGovernanceEnabled && setAiForm({ ...aiForm, prompt_regras: event.target.value })}
                     />
                     <p className="text-xs text-muted-foreground">Uma regra por linha. Serão injetadas <strong>ao final</strong> do prompt (maior peso para o LLM).</p>
                   </div>
@@ -579,6 +603,11 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
                   </Button>
               </CardContent>
             </Card>
+
+            <AgentTrainingGovernanceCard
+              tenantSlug={slug}
+              onOpenSandbox={() => setSandboxOpen(true)}
+            />
 
             {/* Card 2: Horário de Atendimento */}
             <Card>

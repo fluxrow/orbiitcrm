@@ -1093,6 +1093,7 @@ export type Database = {
           campos_qualificacao: Json
           canonical_field_aliases: Json
           commercial_stage_v2_enabled: boolean
+          conversion_guidance: string | null
           created_at: string | null
           empresa_id: string | null
           false_benefits_guard: Json | null
@@ -1143,6 +1144,7 @@ export type Database = {
           campos_qualificacao?: Json
           canonical_field_aliases?: Json
           commercial_stage_v2_enabled?: boolean
+          conversion_guidance?: string | null
           created_at?: string | null
           empresa_id?: string | null
           false_benefits_guard?: Json | null
@@ -1193,6 +1195,7 @@ export type Database = {
           campos_qualificacao?: Json
           canonical_field_aliases?: Json
           commercial_stage_v2_enabled?: boolean
+          conversion_guidance?: string | null
           created_at?: string | null
           empresa_id?: string | null
           false_benefits_guard?: Json | null
@@ -8105,6 +8108,18 @@ export type Database = {
       }
     }
     Functions: {
+      orbit_agent_training_action: {
+        Args: {
+          p_action: string
+          p_payload?: Json
+          p_tenant_slug: string
+        }
+        Returns: Json
+      }
+      orbit_agent_training_read: {
+        Args: { p_tenant_slug: string }
+        Returns: Json
+      }
       _build_orbit_zapi_public_response: {
         Args: { p_config_id: string }
         Returns: Json

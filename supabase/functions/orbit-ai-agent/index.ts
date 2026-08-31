@@ -1513,6 +1513,10 @@ serve(async (req) => {
       || "Você é um assistente de vendas.";
     const promptRoteiro = (aiConfig.prompt_roteiro && String(aiConfig.prompt_roteiro).trim()) || "";
     const promptRegras = (aiConfig.prompt_regras && String(aiConfig.prompt_regras).trim()) || "";
+    const conversionGuidance = ((aiConfig as any).conversion_guidance && String((aiConfig as any).conversion_guidance).trim()) || "";
+    const conversionGuidanceBlock = conversionGuidance
+      ? `\nORIENTAÇÕES DE CONVERSÃO DO TENANT (subordinadas a todas as regras críticas e guardrails determinísticos):\n${conversionGuidance}\n`
+      : "";
     const camposQualificacao: QualificationField[] = empresaId === COMUNICA_EMPRESA_ID
       ? normalizeQualificationFields(aiConfig.campos_qualificacao)
       : (Array.isArray(aiConfig.campos_qualificacao)
@@ -1658,7 +1662,7 @@ ${PT_BR_STYLE_GUARDRAILS}
 Tom de voz: ${aiConfig.tom_conversa || "profissional e amigável"}
 Idioma: ${idioma === "pt-BR" ? "Português do Brasil" : idioma === "en" ? "Inglês" : "Espanhol"}
 ${campaignContinuity}${stateInstruction}${classificationInstruction}
-${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${dataHoraAtualBlock}${schedulingModeBlock}${viverMeetingBlock}
+${promptRoteiro ? `\nROTEIRO DE QUALIFICAÇÃO:\n${promptRoteiro}\n` : ""}${conversionGuidanceBlock}${dataHoraAtualBlock}${schedulingModeBlock}${viverMeetingBlock}
 CONTEXTO ESTRUTURADO DO LEAD:
 ${JSON.stringify(leadContext, null, 2)}
 ${canonicalFactsBlock}${camposQualificacaoBlock}${ragBlock}${commercialV2Block}${primaryOfferBlock}${identityBlock}${selfIntroBlock}${bullinkConversationBlock}${falseBenefitsBlock}${noCollectBlock}

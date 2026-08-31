@@ -37,6 +37,7 @@ interface SandboxRequest {
   messages?: SandboxMessage[];
   mockLead?: MockLead | null;
   trigger?: "inbound_webhook" | "manual" | "follow_up";
+  trainingDraftFingerprint?: string | null;
 }
 
 interface LoadedAIConfig {
@@ -49,6 +50,7 @@ interface LoadedAIConfig {
   modelo_ia?: string | null;
   mensagem_boas_vindas?: string | null;
   campos_qualificacao?: unknown;
+  conversion_guidance?: string | null;
 }
 
 interface QualificationField {
@@ -120,6 +122,7 @@ export function buildSystemPrompt(cfg: LoadedAIConfig, mockLead?: MockLead | nul
   const identidade = (cfg.prompt_identidade || "").trim();
   const roteiro = (cfg.prompt_roteiro || "").trim();
   const regras = (cfg.prompt_regras || "").trim();
+  const conversionGuidance = (cfg.conversion_guidance || "").trim();
   const tom = cfg.tom_conversa || "profissional";
   const idioma = cfg.idioma || "pt-BR";
 
@@ -153,6 +156,9 @@ export function buildSystemPrompt(cfg: LoadedAIConfig, mockLead?: MockLead | nul
     camposQ ? `\n=== CAMPOS A QUALIFICAR ===\n${camposQ}\n=== FIM ===` : "",
     leadCtx,
     triggerCtx,
+    conversionGuidance
+      ? `\n=== ORIENTAÇÕES DE CONVERSÃO DO TENANT (subordinadas às regras invioláveis) ===\n${conversionGuidance}\n=== FIM ===`
+      : "",
     regras ? `\n=== REGRAS INVIOLÁVEIS ===\n${regras}\n=== FIM ===` : "",
     `\nResponda como mensagens curtas de WhatsApp. Uma ideia por mensagem.`,
     `Nao use emojis nas respostas, salvo se o prompt do tenant pedir explicitamente.`,
@@ -209,7 +215,7 @@ serve(async (req) => {
     const { data: cfgRow, error: cfgErr } = await service
       .from("orbit_ai_config")
       .select(
-        "prompt_identidade, prompt_roteiro, prompt_regras, tom_conversa, idioma, max_tokens, modelo_ia, mensagem_boas_vindas, campos_qualificacao",
+        "prompt_identidade, prompt_roteiro, prompt_regras, tom_conversa, idioma, max_tokens, modelo_ia, mensagem_boas_vindas, campos_qualificacao, conversion_guidance",
       )
       .eq("empresa_id", empresaId)
       .maybeSingle();
@@ -218,6 +224,37 @@ serve(async (req) => {
     }
 
     const cfg: LoadedAIConfig = cfgRow || {};
+    const trainingDraftFingerprint = body.trainingDraftFingerprint?.trim() || null;
+    if (trainingDraftFingerprint) {
+      if (!/^[0-9a-f]{32}$/.test(trainingDraftFingerprint)) {
+        return json(400, { ok: false, code: "INVALID_TRAINING_FINGERPRINT", error: "Rascunho inválido." });
+      }
+      const [{ data: feature }, { data: trainingDraft, error: trainingDraftError }] = await Promise.all([
+        service
+          .from("orbit_feature_flags")
+          .select("enabled")
+          .eq("empresa_id", empresaId)
+          .eq("feature_key", "tenant_agent_training_governance_v1")
+          .maybeSingle(),
+        service
+          .from("orbit_agent_training_drafts")
+          .select("content, fingerprint")
+          .eq("empresa_id", empresaId)
+          .eq("fingerprint", trainingDraftFingerprint)
+          .maybeSingle(),
+      ]);
+      if (feature?.enabled !== true) {
+        return json(403, { ok: false, code: "TRAINING_GOVERNANCE_DISABLED", error: "Treinamento governado indisponível." });
+      }
+      if (trainingDraftError || !trainingDraft) {
+        return json(409, {
+          ok: false,
+          code: "TRAINING_DRAFT_CHANGED",
+          error: "O rascunho mudou. Reabra a sandbox para testar a versão atual.",
+        });
+      }
+      cfg.conversion_guidance = trainingDraft.content || "";
+    }
     if (!cfg.prompt_identidade || !cfg.prompt_identidade.trim()) {
       return json(409, {
         ok: false,
