@@ -283,6 +283,50 @@ async function updateCampaignRecipient(
   }
 }
 
+// Mantém o estado operacional coerente quando o gate piloto barra um item.
+// Sem isso, o outbox ficava cancelado, mas campanhas permaneciam "enviando" e
+// actions de follow-up/lembrete apareciam como sucesso — exatamente o tipo de
+// falso positivo que esconde uma falha de versão entre produtor e worker.
+async function reconcilePilotCancellation(item: any, reason: string): Promise<void> {
+  if (item.source_type === "campaign") {
+    await updateCampaignRecipient(item, { status: "ignorado", motivo: reason });
+  }
+
+  if (item.scheduled_action_id) {
+    await supabase
+      .from("orbit_flow_scheduled_actions")
+      .update({
+        status: "canceled",
+        canceled_reason: reason,
+        last_error: reason,
+        locked_at: null,
+        locked_by: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", item.scheduled_action_id)
+      .eq("empresa_id", item.empresa_id)
+      .in("status", ["pending", "processing", "success"]);
+  }
+
+  try {
+    await supabase.from("orbit_audit_log").insert({
+      empresa_id: item.empresa_id,
+      acao: "viver_pilot_outbox_blocked",
+      entidade: "orbit_whatsapp_outbox",
+      entidade_id: item.id,
+      detalhes: {
+        reason,
+        source_type: item.source_type ?? null,
+        campaign_id: item.campaign_id ?? null,
+        scheduled_action_id: item.scheduled_action_id ?? null,
+        flow_run_id: item.flow_run_id ?? null,
+      },
+    });
+  } catch (error) {
+    console.warn("[outbox] pilot cancellation audit failed", error instanceof Error ? error.message : String(error));
+  }
+}
+
 // Resolve ou cria conversa tenant-safe antes de persistir OUT para campanhas.
 // Sem esse passo, mensagens de campanha ficariam sem conversa e a resposta inbound
 // não caía na mesma thread.
@@ -484,6 +528,7 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
         locked_by: null,
       })
       .eq("id", item.id);
+    await reconcilePilotCancellation(item, pilotBlock);
     return { outcome: "canceled", reason: pilotBlock };
   }
 
