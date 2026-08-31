@@ -11,6 +11,10 @@ const migration = fs.readFileSync(
   path.resolve(process.cwd(), "supabase/migrations/20260831122112_agent_training_governance.sql"),
   "utf8",
 );
+const bullinkSeed = fs.readFileSync(
+  path.resolve(process.cwd(), "supabase/migrations/20260831133326_seed_bullink_training_draft.sql"),
+  "utf8",
+);
 const sandbox = fs.readFileSync(
   path.resolve(process.cwd(), "supabase/functions/orbit-ai-sandbox/index.ts"),
   "utf8",
@@ -112,5 +116,12 @@ describe("agent training governance", () => {
     expect(runtime).toContain("ORIENTAÇÕES DE CONVERSÃO DO TENANT");
     expect(runtime.indexOf("ORIENTAÇÕES DE CONVERSÃO DO TENANT"))
       .toBeLessThan(runtime.indexOf("REGRAS CRÍTICAS:"));
+  });
+
+  it("seeds Bullink only while the governed draft is still the empty baseline", () => {
+    expect(bullinkSeed).toContain("slug = 'bullink-negocios'");
+    expect(bullinkSeed).toContain("d.content = ''");
+    expect(bullinkSeed).toContain("d.fingerprint = md5('')");
+    expect(bullinkSeed).toContain("'changes_runtime', false");
   });
 });
