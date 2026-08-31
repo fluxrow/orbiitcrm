@@ -15,6 +15,7 @@ import {
 } from "@/hooks/useOrbitGoogleCalendar";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useTenant } from "@/contexts/TenantContext";
 
 const TIMEZONES = [
   "America/Sao_Paulo",
@@ -29,6 +30,7 @@ const TIMEZONES = [
 interface Props { empresaId: string }
 
 export default function AgendaConfigTab({ empresaId }: Props) {
+  const { basePath } = useTenant();
   const [params, setParams] = useSearchParams();
   const status = useGoogleCalendarStatus(empresaId);
   const connect = useConnectGoogleCalendar();
@@ -239,7 +241,7 @@ export default function AgendaConfigTab({ empresaId }: Props) {
               Eventos do Google e reuniões agendadas pela IA são exibidos junto com suas tarefas.
             </p>
           </div>
-          <a href="../tarefas" className="text-primary text-sm hover:underline shrink-0 inline-flex items-center gap-1">
+          <a href={`${basePath}/tarefas`} className="text-primary text-sm hover:underline shrink-0 inline-flex items-center gap-1">
             Ver agenda <ExternalLink className="h-3 w-3" />
           </a>
         </div>

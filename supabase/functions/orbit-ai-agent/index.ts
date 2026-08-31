@@ -39,6 +39,7 @@ import {
   extractCanonicalClassUrl,
   previousAssistantOfferedClassAccess,
 } from "./viver-class-guard.ts";
+import { ensureViverClassMeeting } from "./viver-class-meeting.ts";
 import {
   COMUNICA_EMPRESA_ID,
   comunicaQuoteReady,
@@ -1266,6 +1267,7 @@ serve(async (req) => {
       const classInviteEmailPending = aiContexto.viver_class_email_pending === true;
       const suppliedClassEmail = extractClassInviteEmail(normativeInboundText);
       const declinedClassEmail = declinedClassInviteEmail(normativeInboundText);
+      let viverClassContext = aiContexto;
 
       if (classInviteEmailPending && (suppliedClassEmail || declinedClassEmail)) {
         if (suppliedClassEmail && prospect?.id) {
@@ -1283,13 +1285,14 @@ serve(async (req) => {
             });
           }
         }
+        viverClassContext = {
+          ...viverClassContext,
+          viver_class_email_pending: false,
+          viver_class_participation_confirmed: true,
+          viver_class_invite_email_collected: Boolean(suppliedClassEmail),
+        };
         await supabase.from("orbit_conversas").update({
-          ai_contexto: {
-            ...aiContexto,
-            viver_class_email_pending: false,
-            viver_class_participation_confirmed: true,
-            viver_class_invite_email_collected: Boolean(suppliedClassEmail),
-          },
+          ai_contexto: viverClassContext,
         }).eq("id", conversa_id).eq("empresa_id", empresaId);
       }
 
@@ -1308,9 +1311,55 @@ serve(async (req) => {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
+        if (!prospect?.id || !normativeInbound.id) {
+          const fallback = "Não consegui confirmar sua participação agora. Você quer que eu verifique isso antes de continuar?";
+          await sendAIResponse(supabase, telefone, fallback, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
+          return new Response(JSON.stringify({ ok: true, class_participation_guarded: true, resposta: fallback, simulated: isDemo }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        try {
+          if (isDemo) {
+            viverClassContext = {
+              ...viverClassContext,
+              viver_class_participation_confirmed: true,
+              viver_class_reminder_status: "simulated",
+            };
+          } else {
+            const participation = await ensureViverClassMeeting(supabase, {
+              empresaId,
+              prospectId: prospect.id,
+              conversaId: conversa_id,
+              consentMessageId: normativeInbound.id,
+              canonicalMeetUrl: canonicalUrl,
+              now: new Date(),
+            });
+            viverClassContext = {
+              ...viverClassContext,
+              viver_class_participation_confirmed: true,
+              viver_class_meeting_id: participation.meetingId,
+              viver_class_scheduled_at: participation.scheduledAt,
+              viver_class_reminder_status: "scheduled",
+            };
+          }
+        } catch (classMeetingError) {
+          console.error("[orbit-ai-agent] Participação da aula Viver não agendada:", {
+            empresa_id: empresaId,
+            conversa_id,
+            error: classMeetingError instanceof Error
+              ? classMeetingError.message
+              : "viver_class_meeting_unknown_error",
+          });
+          const fallback = "Não consegui confirmar sua participação agora. Você quer que eu verifique isso antes de continuar?";
+          await sendAIResponse(supabase, telefone, fallback, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
+          return new Response(JSON.stringify({ ok: true, class_participation_guarded: true, resposta: fallback, simulated: isDemo }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
         const emailRequest = buildClassInviteEmailRequest(prospect?.nome_contato || prospect?.nome_razao);
+        viverClassContext = { ...viverClassContext, viver_class_email_pending: true };
         await supabase.from("orbit_conversas").update({
-          ai_contexto: { ...aiContexto, viver_class_email_pending: true },
+          ai_contexto: viverClassContext,
         }).eq("id", conversa_id).eq("empresa_id", empresaId);
         if (!await renewExecutionLease()) return leaseLostResponse();
         await sendAIResponse(supabase, telefone, emailRequest, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
@@ -1374,7 +1423,7 @@ serve(async (req) => {
         }
         await supabase.from("orbit_conversas").update({
           ai_contexto: {
-            ...aiContexto,
+            ...viverClassContext,
             viver_class_email_pending: false,
             viver_class_participation_confirmed: true,
             viver_class_invite_email_collected: Boolean(suppliedClassEmail),
