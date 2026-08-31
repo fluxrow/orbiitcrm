@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { EMPTY_AGENT_TRAINING_STATE, type AgentTrainingGovernanceState } from "@/lib/agent-training-governance";
 import type { AgentSandboxScenarioKey } from "@/lib/agent-sandbox-review";
 
