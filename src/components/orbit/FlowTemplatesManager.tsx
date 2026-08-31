@@ -33,6 +33,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   buildTemplateExport,
+  inspectFlowDefinition,
   parseTemplateImport,
   type FlowTemplateExport,
 } from "@/lib/flowTemplateSchema";
@@ -77,17 +78,20 @@ export function FlowTemplatesManager() {
       return (data ?? []) as { id: string; nome: string }[];
     },
   });
-  const { data: availableAgents = [] } = useQuery({
-    queryKey: ["flow-import-agents"],
-    queryFn: async () => {
-      const { data } = await (supabase.from("orbit_ai_config" as any) as any)
-        .select("agent_slug, nome_agente")
-        .limit(1000);
-      return ((data ?? []) as any[])
-        .filter((r) => r.agent_slug)
-        .map((r) => ({ slug: r.agent_slug as string, nome: r.nome_agente as string | null }));
-    },
-  });
+  // `toggle_ai_agent` alterna somente human_talk e não referencia um cadastro
+  // de agentes. `agent_slug` é um campo legado de portabilidade dos templates,
+  // portanto as opções válidas vêm dos próprios templates existentes. Consultar
+  // colunas inexistentes em orbit_ai_config fazia o preview falhar para usuários
+  // autenticados e ainda tentava ampliar desnecessariamente a superfície de leitura.
+  const availableAgents = useMemo(() => {
+    const slugs = new Set<string>();
+    for (const template of templates ?? []) {
+      for (const slug of inspectFlowDefinition(template.definicao).usedAgentSlugs) {
+        if (slug.trim()) slugs.add(slug.trim());
+      }
+    }
+    return [...slugs].sort().map((slug) => ({ slug, nome: null }));
+  }, [templates]);
 
   const handleExport = (t: OrbitFlowTemplate) => {
     const payload = buildTemplateExport(t);
