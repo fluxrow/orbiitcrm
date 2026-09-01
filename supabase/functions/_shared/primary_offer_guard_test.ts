@@ -10,6 +10,7 @@ import {
   detectSecondaryOffer,
   readPrimaryOfferLockConfig,
   sanitizeSecondaryOffer,
+  sanitizeSecondaryOfferV2,
 } from "./primary-offer-guard.ts";
 
 const BULLINK_CONFIG = {
@@ -114,6 +115,7 @@ Deno.test("pedido pelo curso sem objeção financeira => permanece somente na Me
     });
     assertEquals(perm.maySecondary, false, msg);
     assertEquals(perm.effectiveFocus, "mentoria", msg);
+    assertEquals(perm.reason, "locked_to_primary", msg);
   }
 });
 
@@ -140,6 +142,7 @@ Deno.test("foco curso legado sem objeção registrada => volta fail-closed para 
   });
   assertEquals(perm.maySecondary, false);
   assertEquals(perm.effectiveFocus, "mentoria");
+  assertEquals(perm.reason, "locked_to_primary");
 });
 
 Deno.test("objeção registrada no estado mantém curso liberado nos turnos seguintes", () => {
@@ -232,6 +235,7 @@ Deno.test("Bullink: linguagem natural de preço alto exige downsell imediato", (
       "Ser muito caro",
       "Esse investimento ficou alto para mim",
       "Esse valor pesou",
+      "de forma alguma, valor tá totalmente fora da curva",
     ]
   ) {
     const perm = computePrimaryOfferPermission({
@@ -244,4 +248,22 @@ Deno.test("Bullink: linguagem natural de preço alto exige downsell imediato", (
     assert(perm.budgetObjectionNow, `não detectou: ${inbound}`);
     assert(perm.mustSecondary, `não obrigou downsell: ${inbound}`);
   }
+});
+
+Deno.test("Bullink: objeção fora da curva remove sondagem de orçamento e injeta alternativa oficial", () => {
+  const perm = computePrimaryOfferPermission({
+    cfg,
+    inbound: "de forma alguma, valor tá totalmente fora da curva",
+    tags: LEONARDO_TAGS,
+    stateFocus: "mentoria",
+  });
+  assert(perm.mustSecondary);
+  const fixed = sanitizeSecondaryOfferV2(
+    "Entendo. Quanto você conseguiria investir agora?",
+    cfg,
+    perm,
+  );
+  assert(!/quanto .*investir/i.test(fixed.text));
+  assertStringIncludes(fixed.text, "Curso Gravado");
+  assertStringIncludes(fixed.text, "R$ 997");
 });

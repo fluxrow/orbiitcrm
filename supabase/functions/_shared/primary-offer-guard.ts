@@ -84,6 +84,7 @@ const RE_BUDGET_OBJECTION: RegExp[] = [
   /\bvou\s+tentar\s+levantar\b/,
   /\bpreciso\s+(?:levantar|juntar|guardar)\b[^.?!]{0,30}\b(?:valor|dinheiro|grana)\b/,
   /\bfora\s+do\s+(?:meu\s+)?alcance\b/,
+  /\b(?:valor|investimento|preco)?\s*(?:esta|ta|e|eh|ficou)?\s*(?:totalmente|completamente|muito)?\s*fora\s+da\s+curva\b/,
   /\bnao\s+cabe\s+(?:no\s+)?(?:meu\s+)?(?:bolso|orcamento)\b/,
   /\bacima\s+do\s+que\s+(?:eu\s+)?(?:posso|consigo)\b/,
   /\balem\s+(?:do\s+)?(?:meu\s+)?orcamento\b/,
@@ -128,6 +129,13 @@ const RE_INVENTED_DISCOUNT: RegExp[] = [
   /\bcondicao\s+especial\b/,
   /\bfaco\s+por\s+r?\$?\s*\d/,
   /\bpreco\s+promocional\b/,
+];
+
+/** Perguntas que transformam a objeção em barganha/leilão em vez de oferecer a alternativa oficial. */
+const RE_BUDGET_PROBING: RegExp[] = [
+  /\bquanto\s+(?:voce\s+)?(?:consegue|conseguiria|pode|poderia|tem)\s+(?:investir|pagar|colocar)\b/,
+  /\bqual\s+(?:valor|investimento)\s+(?:cabe|caberia|consegue|conseguiria)\b/,
+  /\bate\s+quanto\s+(?:voce\s+)?(?:consegue|conseguiria|pode|poderia)\b/,
 ];
 
 export function readPrimaryOfferLockConfig(
@@ -476,8 +484,9 @@ export function sanitizeSecondaryOfferV2(
     const n = norm(clause);
     const judg = RE_JUDGMENTAL.some((re) => re.test(n));
     const disc = RE_INVENTED_DISCOUNT.some((re) => re.test(n));
+    const budgetProbe = perm.mustSecondary && RE_BUDGET_PROBING.some((re) => re.test(n));
     const badSecondary = !perm.maySecondary && mentionsSecondary(clause, cfg);
-    if (judg || disc || badSecondary) {
+    if (judg || disc || budgetProbe || badSecondary) {
       changed = true;
       continue;
     }
