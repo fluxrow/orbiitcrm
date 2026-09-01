@@ -6213,6 +6213,285 @@ export type Database = {
           },
         ]
       }
+      orbit_remediation_class_approvals: {
+        Row: {
+          approved: boolean
+          approved_at: string | null
+          approved_by: string | null
+          canary_run_id: string | null
+          created_at: string
+          empresa_id: string
+          expires_at: string | null
+          incident_class: string
+          mode: string
+          updated_at: string
+        }
+        Insert: {
+          approved?: boolean
+          approved_at?: string | null
+          approved_by?: string | null
+          canary_run_id?: string | null
+          created_at?: string
+          empresa_id: string
+          expires_at?: string | null
+          incident_class: string
+          mode?: string
+          updated_at?: string
+        }
+        Update: {
+          approved?: boolean
+          approved_at?: string | null
+          approved_by?: string | null
+          canary_run_id?: string | null
+          created_at?: string
+          empresa_id?: string
+          expires_at?: string | null
+          incident_class?: string
+          mode?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_remediation_class_approvals_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_remediation_class_approvals_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_remediation_class_approvals_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+        ]
+      }
+      orbit_remediation_incidents: {
+        Row: {
+          attempts: number
+          canonical_link_hash: string | null
+          content_hash: string | null
+          created_at: string
+          delivery_deadline: string
+          descriptor: Json
+          descriptor_version: number
+          empresa_id: string
+          entity_id: string
+          event_id: string
+          flow_run_id: string | null
+          id: string
+          idempotency_key: string
+          incident_class: string
+          last_error_code: string | null
+          lease_owner: string | null
+          lease_until: string | null
+          outbox_id: string | null
+          preflight_at: string
+          recipient_hash: string | null
+          release_at: string
+          release_deadline: string
+          release_kind: string
+          scheduled_action_id: string | null
+          snapshot_after: Json
+          snapshot_before: Json
+          source: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          canonical_link_hash?: string | null
+          content_hash?: string | null
+          created_at?: string
+          delivery_deadline: string
+          descriptor: Json
+          descriptor_version?: number
+          empresa_id: string
+          entity_id: string
+          event_id: string
+          flow_run_id?: string | null
+          id?: string
+          idempotency_key: string
+          incident_class: string
+          last_error_code?: string | null
+          lease_owner?: string | null
+          lease_until?: string | null
+          outbox_id?: string | null
+          preflight_at: string
+          recipient_hash?: string | null
+          release_at: string
+          release_deadline: string
+          release_kind: string
+          scheduled_action_id?: string | null
+          snapshot_after?: Json
+          snapshot_before?: Json
+          source: string
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          canonical_link_hash?: string | null
+          content_hash?: string | null
+          created_at?: string
+          delivery_deadline?: string
+          descriptor?: Json
+          descriptor_version?: number
+          empresa_id?: string
+          entity_id?: string
+          event_id?: string
+          flow_run_id?: string | null
+          id?: string
+          idempotency_key?: string
+          incident_class?: string
+          last_error_code?: string | null
+          lease_owner?: string | null
+          lease_until?: string | null
+          outbox_id?: string | null
+          preflight_at?: string
+          recipient_hash?: string | null
+          release_at?: string
+          release_deadline?: string
+          release_kind?: string
+          scheduled_action_id?: string | null
+          snapshot_after?: Json
+          snapshot_before?: Json
+          source?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_remediation_incidents_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_remediation_incidents_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_remediation_incidents_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_remediation_incidents_flow_run_id_fkey"
+            columns: ["flow_run_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_flow_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_remediation_incidents_outbox_id_fkey"
+            columns: ["outbox_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_whatsapp_outbox"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_remediation_incidents_scheduled_action_id_fkey"
+            columns: ["scheduled_action_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_flow_scheduled_actions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orbit_remediation_runs: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          dry_run: boolean
+          empresa_id: string
+          function_name: string
+          id: string
+          idempotency_key: string
+          playbook: string
+          reasons: Json
+          risk: string
+          rollback_attempted: boolean
+          snapshot_after: Json
+          snapshot_before: Json
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          dry_run?: boolean
+          empresa_id: string
+          function_name: string
+          id?: string
+          idempotency_key: string
+          playbook: string
+          reasons?: Json
+          risk: string
+          rollback_attempted?: boolean
+          snapshot_after?: Json
+          snapshot_before?: Json
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          dry_run?: boolean
+          empresa_id?: string
+          function_name?: string
+          id?: string
+          idempotency_key?: string
+          playbook?: string
+          reasons?: Json
+          risk?: string
+          rollback_attempted?: boolean
+          snapshot_after?: Json
+          snapshot_before?: Json
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_remediation_runs_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_remediation_runs_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_remediation_runs_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+        ]
+      }
       orbit_resend_config: {
         Row: {
           api_key: string | null
@@ -8540,6 +8819,46 @@ export type Database = {
         }[]
       }
       claim_orbit_flow_run_start: { Args: { _run_id: string }; Returns: string }
+      claim_orbit_remediation_incidents: {
+        Args: { _batch?: number; _worker: string }
+        Returns: {
+          attempts: number
+          canonical_link_hash: string | null
+          content_hash: string | null
+          created_at: string
+          delivery_deadline: string
+          descriptor: Json
+          descriptor_version: number
+          empresa_id: string
+          entity_id: string
+          event_id: string
+          flow_run_id: string | null
+          id: string
+          idempotency_key: string
+          incident_class: string
+          last_error_code: string | null
+          lease_owner: string | null
+          lease_until: string | null
+          outbox_id: string | null
+          preflight_at: string
+          recipient_hash: string | null
+          release_at: string
+          release_deadline: string
+          release_kind: string
+          scheduled_action_id: string | null
+          snapshot_after: Json
+          snapshot_before: Json
+          source: string
+          state: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "orbit_remediation_incidents"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       claim_scheduled_actions: {
         Args: { _batch?: number }
         Returns: {
