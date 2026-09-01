@@ -23,6 +23,7 @@ export type BullinkGuardReason =
   | "course_context_regressed_to_mentorship"
   | "course_context_price_unanswered"
   | "secondary_requested_before_budget_objection"
+  | "repeated_mentorship_price"
   | "repeated_question";
 
 export interface BullinkRecentMessage {
@@ -117,6 +118,8 @@ const GENERIC_PRICE_REQUEST = [
   /\b(?:saber|entender)\b.{0,45}\b(?:valor|preco|investimento|custo)\b/,
   /^(?:e\s+)?(?:o\s+|os\s+)?(?:valor|valores|preco|precos|investimento|custo)\s*[?!.]*$/,
   /\b(?:valor|preco|investimento|custo)\s*\?/,
+  /\b(?:pode|consegue|tem\s+como)\b.{0,30}\b(?:repetir|lembrar|informar)\b.{0,35}\b(?:valor|preco|investimento|condic\w*)\b/,
+  /\b(?:quais?|como)\b.{0,30}\b(?:condic\w*|formas?)\b.{0,20}\bpagamento\b/,
 ];
 const SHORT_AFFIRMATIVE =
   /^(?:sim|sim\s+por\s+favor|por\s+favor|por\s+gentileza|claro|pode|perfeito|combinado)[!.,\s]*$/;
@@ -148,10 +151,14 @@ const LEAD_SOURCE_QUESTION = [
 ];
 
 const RESULTS_TIMELINE_QUESTION = [
-  /\b(?:em\s+)?quanto\s+tempo\b.{0,75}\b(?:resultado|faturamento|monetiz|renda|10\s*mil)\b/,
-  /\b(?:prazo|tempo)\s+medi[oa]\b.{0,75}\b(?:resultado|faturamento|monetiz|renda|10\s*mil)\b/,
-  /\b(?:resultado|faturamento|monetiz|renda|10\s*mil)\b.{0,75}\b(?:prazo|tempo)\s+medi[oa]\b/,
+  /\b(?:em\s+)?quanto\s+tempo\b.{0,75}\b(?:resultado|retorno|payback|faturamento|monetiz|renda|10\s*mil)\b/,
+  /\b(?:prazo|tempo)\s+medi[oa]\b.{0,75}\b(?:resultado|retorno|payback|faturamento|monetiz|renda|10\s*mil)\b/,
+  /\b(?:resultado|retorno|payback|faturamento|monetiz|renda|10\s*mil)\b.{0,75}\b(?:prazo|tempo)\s+medi[oa]\b/,
+  /\b(?:retorno|payback)\b.{0,75}\b(?:investimento|prazo|tempo|esperad[oa])\b/,
 ];
+
+const MENTORSHIP_PRICE =
+  /\b6\s*500(?:\s*00)?\b|\b12\s*x\b.{0,25}\b650(?:\s*00)?\b/;
 
 const SELF_CONFIRMATION_PATTERNS: RegExp[] = [
   // "Sou eu mesmo, Fernando" / "sou eu, o Fernando"
@@ -325,6 +332,30 @@ function recentOutboundTexts(input: BullinkConversationGuardInput): string[] {
     .filter((message) => String(message?.direcao ?? "").toUpperCase() === "OUT")
     .map((message) => norm(String(message?.mensagem ?? "")))
     .filter(Boolean);
+}
+
+function mentorshipPriceAlreadySent(
+  input: BullinkConversationGuardInput,
+): boolean {
+  return recentOutboundTexts(input).some((text) => MENTORSHIP_PRICE.test(text));
+}
+
+function explicitlyRequestsMentorshipPriceOrTerms(
+  input: BullinkConversationGuardInput,
+): boolean {
+  const inbound = norm(input.inbound);
+  return isGenericPriceRequest(input.inbound) ||
+    PIX_CHOICE.test(inbound) ||
+    CARD_CHOICE.test(inbound) ||
+    /\b(?:pix|cartao|parcelas?|parcelamento)\b.{0,35}\?/.test(inbound);
+}
+
+function stripRepeatedMentorshipPrice(response: string): string {
+  const kept = response
+    .split(/(?<=[.!?])\s+|\n+/)
+    .filter((part) => !MENTORSHIP_PRICE.test(norm(part)))
+    .join(" ");
+  return cleanup(kept) || BULLINK_REPETITION_FALLBACK;
 }
 
 function recentMentorshipOfferAwaitingConfirmation(
@@ -593,6 +624,15 @@ export function enforceBullinkConversationGuard(
       .join(" ")
       .trim();
     text = withoutCourse || BULLINK_REPETITION_FALLBACK;
+  }
+
+  if (
+    MENTORSHIP_PRICE.test(norm(text)) &&
+    mentorshipPriceAlreadySent(input) &&
+    !explicitlyRequestsMentorshipPriceOrTerms(input)
+  ) {
+    reasons.push("repeated_mentorship_price");
+    text = stripRepeatedMentorshipPrice(text);
   }
 
   if (

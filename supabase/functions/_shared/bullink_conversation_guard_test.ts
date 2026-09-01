@@ -421,6 +421,77 @@ Deno.test("Regressão Luiz 30/08: prazo de resultado é respondido sem downsell 
   }
 });
 
+Deno.test("Regressão Fernando 01/09: pergunta de payback não repete preço", () => {
+  const result = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound:
+      "Em quanto tempo é esperado o retorno e o payback do investimento?",
+    response:
+      "Não trabalho com prazo ou garantia de retorno. A Mentoria custa R$ 6.500 à vista no PIX ou 12x de R$ 650 no cartão. Quer seguir com a inscrição?",
+    recentMessages: [{
+      direcao: "OUT",
+      mensagem:
+        "O investimento é R$ 6.500 à vista no PIX ou 12x de R$ 650 no cartão.",
+    }],
+    commercialState: { product_focus: "mentoria" },
+  });
+  if (result.text !== BULLINK_RESULTS_TIMELINE_REPLY) {
+    throw new Error(result.text);
+  }
+  if (!result.reasons.includes("results_timeline_question_unanswered")) {
+    throw new Error(JSON.stringify(result));
+  }
+  if (/6[.]?500|12x|650/.test(result.text)) {
+    throw new Error(`preço repetido: ${result.text}`);
+  }
+});
+
+Deno.test("Bullink: histórico real bloqueia preço repetido fora de pergunta comercial", () => {
+  const result = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "E como funciona?",
+    response:
+      "Nos 3 meses você tem acesso direto comigo para tirar dúvidas. O investimento é R$ 6.500 à vista no PIX ou 12x de R$ 650 no cartão. Qual parte você quer que eu detalhe mais?",
+    recentMessages: [{
+      direcao: "OUT",
+      mensagem:
+        "A Mentoria custa R$ 6.500 à vista no PIX ou 12x de R$ 650 no cartão.",
+    }],
+    commercialState: { product_focus: "mentoria" },
+  });
+  if (!result.reasons.includes("repeated_mentorship_price")) {
+    throw new Error(JSON.stringify(result));
+  }
+  if (/6[.]?500|12x|650/.test(result.text)) {
+    throw new Error(`preço repetido: ${result.text}`);
+  }
+  if (!result.text.includes("acesso direto comigo")) {
+    throw new Error(`resposta útil removida: ${result.text}`);
+  }
+});
+
+Deno.test("Bullink: pedido explícito permite repetir preço", () => {
+  const response =
+    "Claro. O investimento é R$ 6.500 à vista no PIX ou 12x de R$ 650 no cartão.";
+  const result = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "Pode repetir o valor e as condições de pagamento?",
+    response,
+    recentMessages: [{
+      direcao: "OUT",
+      mensagem:
+        "A Mentoria custa R$ 6.500 à vista no PIX ou 12x de R$ 650 no cartão.",
+    }],
+    commercialState: { product_focus: "mentoria" },
+  });
+  if (
+    result.text !== response ||
+    result.reasons.includes("repeated_mentorship_price")
+  ) {
+    throw new Error(JSON.stringify(result));
+  }
+});
+
 Deno.test("Bullink: Curso não é oferecido sem pedido, objeção ou foco anterior", () => {
   const result = enforceBullinkConversationGuard({
     empresaId: BULLINK_EMPRESA_ID,
