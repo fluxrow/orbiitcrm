@@ -145,11 +145,40 @@ Deno.test("J: 'bora' sem preço informado não abre pagamento", () => {
   assert(v.reasons.includes("payment_method_without_intent"));
 });
 
-// K — aceite curto COM contexto conta como fechamento
-Deno.test("K: 'bora' com produto em foco e preço informado é fechamento", () => {
+// K — preserva o fechamento legado, mas notificação exige confirmação explícita
+Deno.test("K: 'bora' com preço mantém checkout sem autorizar notificação verificada", () => {
   const { perms } = run("bora", PRICE_INFORMED);
   assert(perms.closingRecognized);
   assert(perms.mayAskPaymentMethod);
+  assertFalse(perms.verifiedPurchaseIntent);
+});
+
+Deno.test("K2: 'bora' aguardando confirmação da oferta é fechamento", () => {
+  const awaiting = state({ ...PRICE_INFORMED, awaiting_offer_confirmation: "mentoria" });
+  const { perms } = run("bora", awaiting);
+  assert(perms.closingRecognized);
+  assert(perms.mayAskPaymentMethod);
+  assert(perms.verifiedPurchaseIntent);
+});
+
+Deno.test("K3: objetivos vagos e link sem finalidade de pagamento nunca verificam intenção", () => {
+  for (const inbound of [
+    "Quero começar do zero",
+    "Quero começar a ganhar dinheiro com vídeos",
+    "Pode enviar o link da publicação para eu lembrar",
+    "Quero sim",
+  ]) {
+    const { extracted, perms } = run(inbound, PRICE_INFORMED);
+    assertFalse(extracted.signals.has("verified_purchase_intent"), inbound);
+    assertFalse(perms.verifiedPurchaseIntent, inbound);
+  }
+});
+
+Deno.test("K4: pergunta genérica de próximo passo informa preço sem notificar intenção verificada", () => {
+  const { perms } = run("Como faço para começar?", state({ product_focus: "mentoria", product_explained: true }));
+  assert(perms.closingRecognized);
+  assert(perms.mustAnswerPriceNow);
+  assertFalse(perms.verifiedPurchaseIntent);
 });
 
 // L — link só depois da escolha da forma

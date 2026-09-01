@@ -134,6 +134,10 @@ import {
   normalizeE164Digits,
 } from "../_shared/internal-notification.ts";
 import {
+  commercialNotificationTitle,
+  resolveCommercialNotificationPolicy,
+} from "../_shared/commercial-notification-policy.ts";
+import {
   readMixedPaymentHandoffConfig,
   detectMixedPaymentRequest,
   readMixedPaymentState,
@@ -434,14 +438,7 @@ async function notifyCommercialHumanDetected(
   };
 
   const motivo = (classification || "").toString();
-  const titulo =
-    motivo === "venda_fechada" ? "Venda confirmada"
-    : motivo === "pagamento_recebido" ? "Comprovante de pagamento recebido"
-    : motivo === "agendar_call" ? "Call agendada"
-    : motivo === "falar_humano" ? "Lead pediu atendimento humano"
-    : motivo === "pagamento_misto" ? "Lead pediu pagamento misto (PIX + cartão)"
-    : motivo === "orcamento_pronto" ? "Orçamento pronto para análise"
-    : "Novo sinal comercial";
+  const titulo = commercialNotificationTitle(motivo);
 
   const notificacao = [
     `${titulo} — ${getDisplayName(prospect)}`,
@@ -2194,16 +2191,15 @@ ${regrasBlock}`;
     }
     parsed.intencao = intencaoNormalizada;
 
-    // Na Bullink, um aceite contextual comprovado é sinal comercial mesmo se o
-    // modelo o rotular apenas como "duvida". Isso permite avisar Fernando sem
-    // entregar a posse da conversa antes de concluir o checkout.
-    const bullinkCheckoutAccepted = isBullinkTenant(empresaId) &&
-      commercialV2Enabled && commercialPerms?.closingRecognized === true;
+    // Na Bullink, somente uma intenção de compra determinística autoriza o
+    // alerta interno. O rótulo do modelo nunca é autoridade isolada.
+    const bullinkVerifiedPurchaseIntent = isBullinkTenant(empresaId) &&
+      commercialV2Enabled && commercialPerms?.verifiedPurchaseIntent === true;
     const isCommercialSignal =
       intencaoNormalizada === "agendar_call" ||
       intencaoNormalizada === "venda_fechada" ||
       intencaoNormalizada === "falar_humano" ||
-      bullinkCheckoutAccepted;
+      bullinkVerifiedPurchaseIntent;
 
     // Handoff humano real: só com pedido explícito do lead, conversa assumida por
     // humano, ou intenção que exige ação humana externa (venda/agendamento).
@@ -2269,7 +2265,7 @@ ${regrasBlock}`;
     const suppressHandoff = scheduleOutcome.handled === true;
     const deferBullinkCheckoutHandoff = shouldDeferBullinkSaleHandoff({
       empresaId,
-      intent: bullinkCheckoutAccepted ? "venda_fechada" : intencaoNormalizada,
+      intent: bullinkVerifiedPurchaseIntent ? "venda_fechada" : intencaoNormalizada,
       officialPixKey: bullinkOfficialPixKey,
       officialCardUrl: bullinkOfficialCardUrl,
     });
@@ -2297,15 +2293,24 @@ ${regrasBlock}`;
     // ── Notificação comercial: sinal explícito ou orçamento completo da Comunica ──
     const alreadyNotified = aiContexto.commercial_notified === true;
     const quoteReadySignal = empresaId === COMUNICA_EMPRESA_ID && quoteReadiness.ready;
-    const shouldNotifyCommercial = (isCommercialSignal || quoteReadySignal) && !alreadyNotified && !suppressHandoff && !scheduleOutcome.handoff_ready;
+    const notificationPolicy = resolveCommercialNotificationPolicy({
+      empresaId,
+      commercialV2Enabled,
+      verifiedPurchaseIntent: commercialPerms?.verifiedPurchaseIntent === true,
+      genericCommercialSignal: isCommercialSignal,
+      quoteReadySignal,
+      genericClassification: intencaoNormalizada,
+      alreadyNotified,
+      suppressHandoff,
+      scheduleHandoffReady: scheduleOutcome.handoff_ready === true,
+    });
+    const shouldNotifyCommercial = notificationPolicy.shouldNotify;
     let notificationAttempted = false;
     let notificationSent = false;
     if (shouldNotifyCommercial) {
       if (!await renewExecutionLease()) return leaseLostResponse();
       notificationAttempted = true;
-      const notificationClassification = quoteReadySignal
-        ? "orcamento_pronto"
-        : (bullinkCheckoutAccepted ? "venda_fechada" : intencaoNormalizada);
+      const notificationClassification = notificationPolicy.classification;
       console.log("[orbit-ai-agent] Sinal comercial detectado:", notificationClassification, "— notificando responsável...");
       const notificationResult = await notifyCommercialHumanDetected(supabase, {
         prospect,

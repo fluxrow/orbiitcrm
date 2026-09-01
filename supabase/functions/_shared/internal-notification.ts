@@ -1,5 +1,5 @@
 // Fonte ÚNICA do destinatário de notificações internas por WhatsApp
-// (venda confirmada, novo lead qualificado, handoff/comercial, notify_vendedor).
+// (intenção verificada, comprovante, novo lead qualificado, handoff/comercial).
 //
 // REGRAS INVIOLÁVEIS
 //  1. O telefone é sempre resolvido a partir da configuração do MESMO empresa_id

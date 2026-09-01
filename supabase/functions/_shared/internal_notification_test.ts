@@ -81,7 +81,7 @@ Deno.test("lead qualificado no Bullink resolve Fernando (5547991237508)", async 
   assertEquals(t.source, "ai_config_scheduling_handoff");
 });
 
-Deno.test("venda confirmada no Bullink resolve Fernando mesmo sem vendedor", async () => {
+Deno.test("intenção verificada no Bullink resolve Fernando mesmo sem vendedor", async () => {
   const fx = baseFixture();
   const t = await resolveInternalNotificationTarget(makeSupabase(fx), BULLINK, {});
   assertEquals(t.phone, "5547991237508");

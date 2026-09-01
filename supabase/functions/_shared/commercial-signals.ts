@@ -37,6 +37,7 @@ export const COMMERCIAL_SIGNALS = [
   "budget_objection",
   "purchase_interest",
   "explicit_closing_intent",
+  "verified_purchase_intent",
   "closing_affirmative_contextual",
   "payment_method_choice",
   "payment_details_request",
@@ -129,6 +130,27 @@ const RE_PURCHASE_INTEREST: RegExp[] = [
   /\bquero\s+(?:a\s+)?(?:mentoria|o\s+curso)\b/,
 ];
 
+const RE_VERIFIED_PURCHASE_INTENT: RegExp[] = [
+  // Verbos transacionais inequívocos podem decidir sem objeto explícito.
+  /\bquero\s+(?:fechar|comprar|assinar|contratar|me\s+inscrever)\b/,
+  // Verbos ambíguos (entrar/participar/começar) só são fechamento quando o
+  // próprio texto nomeia a oferta. "Quero começar do zero" é objetivo do lead,
+  // não autorização de checkout.
+  /\bquero\s+(?:entrar|participar|come[cç]ar|fazer\s+parte)\s+(?:(?:na|no|da|do)\s+)?(?:mentoria|curso)\b/,
+  /\bvamos\s+fechar\b/,
+  /\bpode\s+(?:gerar|mandar|enviar)\s+(?:o\s+)?(?:pedido|pagamento|link\s+(?:de|do)\s+pagamento)\b/,
+  /\bquero\s+garantir\s+(?:minha\s+)?vaga\b/,
+  /\bvou\s+fechar\b/,
+  /\bvou\s+(?:querer|entrar)\s+(?:(?:na|no|da|do)\s+)?(?:mentoria|curso)\b/,
+  /\bbora\s+fechar\b/,
+  // Intenção comercial explícita em linguagem livre (não é apenas curiosidade).
+  /\bcomo\s+(?:eu\s+)?(?:fa[cç]o|posso\s+fazer)\s+(?:para|pra)\s+(?:come[cç]ar|entrar|participar|fazer\s+parte|avancar)\s+(?:(?:na|no|da|do)\s+)?(?:mentoria|curso)\b/,
+  /\bcomo\s+(?:eu\s+)?(?:come[cç]o|participo|entro)\s+(?:na|no)\s+(?:mentoria|curso)\b/,
+  /\bquero\s+avancar\s+(?:(?:com|na|no)\s+)?(?:a\s+|o\s+)?(?:mentoria|curso)\b/,
+  /\bquero\s+dar\s+(?:o\s+)?proximo\s+passo\s+(?:(?:com|na|no)\s+)?(?:a\s+|o\s+)?(?:mentoria|curso)\b/,
+  /\bquero\s+(?:muito\s+)?(?:fazer|entrar\s+n)(?:a|o)\s+(?:mentoria|curso)\b/,
+];
+
 const RE_EXPLICIT_CLOSING: RegExp[] = [
   /\bquero\s+(?:fechar|comprar|entrar|participar|assinar|come[cç]ar|garantir|contratar|me\s+inscrever)\b/,
   /\bvamos\s+fechar\b/,
@@ -137,7 +159,6 @@ const RE_EXPLICIT_CLOSING: RegExp[] = [
   /\bquero\s+garantir\s+(?:minha\s+)?vaga\b/,
   /\bvou\s+(?:querer|fechar|entrar)\b/,
   /\bbora\s+(?:fechar|come[cç]ar|nessa)\b/,
-  // Intenção comercial explícita em linguagem livre (não é apenas curiosidade).
   /\bcomo\s+(?:eu\s+)?(?:fa[cç]o|posso\s+fazer)\s+(?:para|pra)\s+(?:come[cç]ar|entrar|participar|fazer\s+parte|avancar)\b/,
   /\bcomo\s+(?:eu\s+)?(?:come[cç]o|participo|entro)\s+(?:na|no)\s+(?:mentoria|curso)\b/,
   /^como\s+(?:eu\s+)?(?:come[cç]o|participo)\b[\s?!.]*$/,
@@ -252,6 +273,7 @@ export function extractCommercialSignals(
   if (anyMatch(RE_BUDGET_OBJECTION, n)) signals.add("budget_objection");
   if (anyMatch(RE_PURCHASE_INTEREST, n)) signals.add("purchase_interest");
   if (anyMatch(RE_EXPLICIT_CLOSING, n)) signals.add("explicit_closing_intent");
+  if (anyMatch(RE_VERIFIED_PURCHASE_INTENT, n)) signals.add("verified_purchase_intent");
   if (anyMatch(RE_CLOSING_AFFIRMATIVE_CONTEXTUAL, n)) signals.add("closing_affirmative_contextual");
   if (anyMatch(RE_PAYMENT_DETAILS_REQUEST, n)) signals.add("payment_details_request");
   if (anyMatch(RE_DISCOUNT_REQUEST, n)) signals.add("discount_request");
@@ -348,6 +370,7 @@ export interface CommercialPermissions {
   maySharePaymentDetails: boolean;
   chosenMethod: "pix" | "cartao" | null;
   closingRecognized: boolean;
+  verifiedPurchaseIntent: boolean;
 }
 
 export interface CommercialPermissionOptions {
@@ -384,6 +407,11 @@ export function computeCommercialPermissions(
 
   // Fechamento reconhecido: explícito sempre; aceite curto só com contexto real
   // (produto em foco + preço já informado).
+  const contextualPurchaseAcceptance =
+    (s.has("closing_affirmative_contextual") || s.has("price_answer_affirmative")) &&
+    hasPriceContext &&
+    !!effectiveProduct &&
+    state.awaiting_offer_confirmation === effectiveProduct;
   const closingRecognized =
     !contactOnly &&
     (s.has("explicit_closing_intent") ||
@@ -392,6 +420,9 @@ export function computeCommercialPermissions(
         hasPriceContext &&
         !!effectiveProduct &&
         state.awaiting_offer_confirmation === effectiveProduct));
+  const verifiedPurchaseIntent =
+    !contactOnly &&
+    (s.has("verified_purchase_intent") || contextualPurchaseAcceptance);
 
   const mayMentionPrice = !contactOnly && (
     opts?.suppressRepeatedPrice === true && hasPriceContext
@@ -433,6 +464,7 @@ export function computeCommercialPermissions(
     maySharePaymentDetails,
     chosenMethod: chosenMethod ?? null,
     closingRecognized,
+    verifiedPurchaseIntent,
   };
 }
 

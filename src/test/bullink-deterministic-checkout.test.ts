@@ -30,14 +30,13 @@ describe("Bullink deterministic checkout wiring", () => {
   });
 
   it("keeps checkout with the AI while still notifying commercial intent", () => {
-    expect(agent).toContain("bullinkCheckoutAccepted");
+    expect(agent).toContain("bullinkVerifiedPurchaseIntent");
     expect(agent).toContain("deferBullinkCheckoutHandoff");
     expect(agent).toMatch(
       /isHandoff\s*=\s*isCommercialSignal\s*&&\s*!suppressHandoff\s*&&\s*!deferBullinkCheckoutHandoff/,
     );
-    expect(agent).toContain(
-      'bullinkCheckoutAccepted ? "venda_fechada" : intencaoNormalizada',
-    );
+    expect(agent).toContain('classification: notificationPolicy.classification');
+    expect(agent).toContain("resolveCommercialNotificationPolicy");
   });
 
   it("passes only configured payment details into the final tenant guard", () => {
