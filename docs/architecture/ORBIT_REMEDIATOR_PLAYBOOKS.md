@@ -40,3 +40,18 @@ npx --yes deno test supabase/functions/orbit-flow-executor/outbox-source_test.ts
 ```
 
 Esta implementação não executa remediação em produção e a migration deve passar por revisão de segurança antes de qualquer aplicação.
+
+## Modelo operacional sem aprovação por ocorrência
+
+O monitor somente produz `SanitizedIncidentDescriptor`; a fila `orbit_remediation_incidents` faz o handoff persistente. O worker adquire lease, valida idempotência e consome apenas descritores allowlisted. Notificações ficam fora do worker.
+
+| Classe | Aprovação | Automático após ativação/canário |
+|---|---|---|
+| follow-up | única por classe | preflight, lease transitório, correção reversível e release no vencimento |
+| meeting_confirmation | única por classe | mesmas condições, com consentimento e reunião futura |
+| meeting_reminder (24h/1h/5m/semanal) | única por classe | somente antes da janela, conteúdo/link/template idênticos e outbox ausente |
+| edge_deploy_drift | por ocorrência | nunca automático por padrão; exige SHA/runtime, quality gate e rollback |
+
+Qualquer divergência, janela vencida, reunião iniciada/encerrada, opt-out, handoff, dúvida de aceite do provedor, duplicidade ou cross-tenant muda o estado para `needs_approval`/`expired` e alerta Cauã. A liberação só usa o outbox oficial, exatamente uma vez, com `attempts=1` e `provider_message_id`; nunca chama o provedor diretamente.
+
+Ativação segura: migration revisada → canário em tenant de teste → aprovar classe e registrar `canary_run_id` → habilitar worker em modo dry-run → observar → habilitar release. Rollback: pausar worker, expirar leases, restaurar snapshot operacional e manter mensagens vencidas sem compensação.
