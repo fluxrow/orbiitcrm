@@ -29,6 +29,7 @@ import { resolveEventId, buildScheduledActionContext, restoreRunFromScheduled } 
 import { computeCadenceKey } from "./cadence-key.ts";
 import { isActionDisabled } from "./action-guards.ts";
 import { buildMeetingTemplateVars } from "./template-vars.ts";
+import { deriveOutboxSourceType } from "./outbox-source.ts";
 
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -59,33 +60,6 @@ async function getFlowTriggerType(flowId: string | null | undefined): Promise<st
   const t = (data?.trigger_type as string | undefined) ?? null;
   FLOW_TRIGGER_CACHE.set(flowId, t);
   return t;
-}
-
-const ALLOWED_OUTBOX_SOURCE_OVERRIDES = new Set(["flow_initial", "flow_followup", "flow_stage"]);
-
-/**
- * Deriva source_type semanticamente a partir do trigger do flow e da presença
- * de scheduled_action_id, com override opcional restrito ao enum permitido.
- *
- * - lead_recebido + imediato → flow_initial
- * - lead_recebido + agendado → flow_followup
- * - deal_stage_changed (imediato OU agendado) → flow_stage
- * - qualquer outro trigger → mantém heurística legada (initial/followup)
- */
-function deriveOutboxSourceType(
-  triggerType: string | null,
-  hasScheduledAction: boolean,
-  cfg: Json,
-): "flow_initial" | "flow_followup" | "flow_stage" | "meeting_confirmation" {
-  const override = typeof cfg?.outbox_source_type === "string" ? cfg.outbox_source_type : null;
-  if (override && ALLOWED_OUTBOX_SOURCE_OVERRIDES.has(override)) {
-    return override as any;
-  }
-  if (triggerType === "deal_stage_changed") return "flow_stage";
-  if (isMeetingReminderKind(triggerType)) return "meeting_confirmation";
-  if (triggerType === "lead_recebido") return hasScheduledAction ? "flow_followup" : "flow_initial";
-  // Demais triggers (deal_idle, conversa_no_reply, meeting_reminder_*): mantém heurística legada.
-  return hasScheduledAction ? "flow_followup" : "flow_initial";
 }
 
 // resolveEventId, buildScheduledActionContext e restoreRunFromScheduled vivem em
