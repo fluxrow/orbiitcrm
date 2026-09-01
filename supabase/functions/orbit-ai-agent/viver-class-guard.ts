@@ -122,6 +122,30 @@ export function buildCanonicalClassDelivery(
   } aula já está acontecendo. Entre agora por este link: ${canonicalUrl}`;
 }
 
+export function buildImmediateClassAcceptance(
+  templateBody: string,
+  name: string | null | undefined,
+  now = new Date(),
+): {
+  reply: string;
+  contextPatch: {
+    viver_class_email_pending: false;
+    viver_class_participation_confirmed: true;
+    viver_class_invite_email_collected: false;
+    viver_class_calendar_invite_status: "not_requested";
+  };
+} {
+  return {
+    reply: buildCanonicalClassDelivery(templateBody, name, now),
+    contextPatch: {
+      viver_class_email_pending: false,
+      viver_class_participation_confirmed: true,
+      viver_class_invite_email_collected: false,
+      viver_class_calendar_invite_status: "not_requested",
+    },
+  };
+}
+
 export function enforceCanonicalClassLink(
   response: string,
   templateBody: string | null | undefined,

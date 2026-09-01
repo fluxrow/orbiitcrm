@@ -5,6 +5,7 @@ import {
 import {
   buildCanonicalClassDelivery,
   buildClassInviteEmailRequest,
+  buildImmediateClassAcceptance,
   declinedClassInviteEmail,
   enforceCanonicalClassLink,
   extractCanonicalClassUrl,
@@ -31,6 +32,19 @@ Deno.test("aceite explícito após oferta de acesso entrega template canônico",
   const rendered = renderCanonicalClassTemplate(canonical, "Eunice");
   assert(rendered.includes("Eunice"));
   assert(rendered.includes("https://meet.google.com/esz-wgwt-pge"));
+});
+
+Deno.test("primeiro SIM entrega o link imediatamente sem bloquear por e-mail", () => {
+  const acceptance = buildImmediateClassAcceptance(
+    canonical,
+    "Eunice",
+    new Date("2026-09-01T18:30:00Z"),
+  );
+  assert(acceptance.reply.includes("https://meet.google.com/esz-wgwt-pge"));
+  assertEquals(acceptance.contextPatch.viver_class_email_pending, false);
+  assertEquals(acceptance.contextPatch.viver_class_participation_confirmed, true);
+  assertEquals(acceptance.contextPatch.viver_class_invite_email_collected, false);
+  assertEquals(acceptance.contextPatch.viver_class_calendar_invite_status, "not_requested");
 });
 
 Deno.test("sim para pergunta sem aula não dispara link", () => {

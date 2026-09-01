@@ -32,7 +32,7 @@ import {
 import {
   VIVER_CLASS_TEMPLATE_NAME,
   buildCanonicalClassDelivery,
-  buildClassInviteEmailRequest,
+  buildImmediateClassAcceptance,
   declinedClassInviteEmail,
   enforceCanonicalClassLink,
   extractClassInviteEmail,
@@ -1356,17 +1356,34 @@ serve(async (req) => {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
-        const emailRequest = buildClassInviteEmailRequest(prospect?.nome_contato || prospect?.nome_razao);
-        viverClassContext = { ...viverClassContext, viver_class_email_pending: true };
+        const immediateAcceptance = buildImmediateClassAcceptance(
+          viverClassTemplateBody,
+          prospect?.nome_contato || prospect?.nome_razao,
+        );
+        viverClassContext = {
+          ...viverClassContext,
+          ...immediateAcceptance.contextPatch,
+        };
         await supabase.from("orbit_conversas").update({
           ai_contexto: viverClassContext,
         }).eq("id", conversa_id).eq("empresa_id", empresaId);
         if (!await renewExecutionLease()) return leaseLostResponse();
-        await sendAIResponse(supabase, telefone, emailRequest, conversa_id, isDemo, empresaId, aiConfig, primeiraInteracao);
+        await sendAIResponse(
+          supabase,
+          telefone,
+          immediateAcceptance.reply,
+          conversa_id,
+          isDemo,
+          empresaId,
+          aiConfig,
+          primeiraInteracao,
+        );
         return new Response(JSON.stringify({
           ok: true,
-          class_email_requested: true,
-          resposta: emailRequest,
+          class_link_delivered: true,
+          class_invite_email_collected: false,
+          class_calendar_invite_status: "not_requested",
+          resposta: immediateAcceptance.reply,
           simulated: isDemo,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
