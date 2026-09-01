@@ -6,6 +6,7 @@
 import { evaluateViverMeetingReminder } from "./viver-meeting-lifecycle.ts";
 
 export const VIVER_SEMIJOIAS_EMPRESA_ID = "36f26579-66ad-4ef1-9788-141e4c727232";
+export const VIVER_CONTROLLED_OUTBOX_GATE_VERSION = "2026-09-01-v2";
 
 export const PILOT_SOURCE_BLOCKED = "PILOT_SOURCE_BLOCKED";
 export const PILOT_INBOUND_REQUIRED = "PILOT_INBOUND_REQUIRED";

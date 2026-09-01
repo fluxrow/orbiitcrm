@@ -7,8 +7,13 @@ import {
   PILOT_SOURCE_BLOCKED,
   PILOT_TYPEBOT_EVIDENCE_REQUIRED,
   pilotStaticBlockReason,
+  VIVER_CONTROLLED_OUTBOX_GATE_VERSION,
   VIVER_SEMIJOIAS_EMPRESA_ID,
 } from "./outbox-pilot.ts";
+
+Deno.test("controlled Viver outbox gate exposes the deploy version", () => {
+  assertEquals(VIVER_CONTROLLED_OUTBOX_GATE_VERSION, "2026-09-01-v2");
+});
 
 Deno.test("pilot blocks every proactive source for Viver", () => {
   for (const source_type of ["campaign", "flow_initial", "flow_followup", "flow_stage", "meeting_confirmation", "manual"]) {

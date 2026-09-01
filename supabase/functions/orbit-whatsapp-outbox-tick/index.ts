@@ -44,9 +44,12 @@ import {
   ZAPI_STACK_VERSION,
 } from "../_shared/zapi-connection.ts";
 import { sendViaZapiUnified } from "../_shared/zapi-send.ts";
-import { pilotInboundBlockReason } from "../_shared/outbox-pilot.ts";
+import {
+  pilotInboundBlockReason,
+  VIVER_CONTROLLED_OUTBOX_GATE_VERSION,
+} from "../_shared/outbox-pilot.ts";
 
-console.log("[orbit-whatsapp-outbox-tick] boot version:", ZAPI_STACK_VERSION);
+console.log("[orbit-whatsapp-outbox-tick] boot version:", ZAPI_STACK_VERSION, VIVER_CONTROLLED_OUTBOX_GATE_VERSION);
 import {
   evaluateHoldGate,
   lastRecoverySentAtMs,
