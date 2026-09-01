@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -1079,6 +1079,171 @@ export type Database = {
           },
         ]
       }
+      orbit_agent_training_drafts: {
+        Row: {
+          content: string
+          empresa_id: string
+          fingerprint: string
+          revision: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          content?: string
+          empresa_id: string
+          fingerprint: string
+          revision?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          content?: string
+          empresa_id?: string
+          fingerprint?: string
+          revision?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_agent_training_drafts_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_agent_training_drafts_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_agent_training_drafts_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+        ]
+      }
+      orbit_agent_training_reviews: {
+        Row: {
+          comment: string | null
+          draft_fingerprint: string
+          empresa_id: string
+          id: string
+          reviewed_at: string
+          reviewer_id: string | null
+          scenario_key: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          comment?: string | null
+          draft_fingerprint: string
+          empresa_id: string
+          id?: string
+          reviewed_at?: string
+          reviewer_id?: string | null
+          scenario_key: string
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          comment?: string | null
+          draft_fingerprint?: string
+          empresa_id?: string
+          id?: string
+          reviewed_at?: string
+          reviewer_id?: string | null
+          scenario_key?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_agent_training_reviews_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_agent_training_reviews_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_agent_training_reviews_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+        ]
+      }
+      orbit_agent_training_versions: {
+        Row: {
+          changelog: string
+          content: string
+          empresa_id: string
+          fingerprint: string
+          id: string
+          is_active: boolean
+          published_at: string
+          published_by: string | null
+          version_number: number
+        }
+        Insert: {
+          changelog: string
+          content: string
+          empresa_id: string
+          fingerprint: string
+          id?: string
+          is_active?: boolean
+          published_at?: string
+          published_by?: string | null
+          version_number: number
+        }
+        Update: {
+          changelog?: string
+          content?: string
+          empresa_id?: string
+          fingerprint?: string
+          id?: string
+          is_active?: boolean
+          published_at?: string
+          published_by?: string | null
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_agent_training_versions_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_agent_training_versions_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_agent_training_versions_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+        ]
+      }
       orbit_ai_config: {
         Row: {
           advisor_locked_paths: Json
@@ -1510,6 +1675,201 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "orbit_tenant_ops_queue_v"
             referencedColumns: ["empresa_id"]
+          },
+        ]
+      }
+      orbit_ai_provider_alert_events: {
+        Row: {
+          created_at: string
+          dedupe_key: string
+          email_error: string | null
+          email_provider_id: string | null
+          email_sent: boolean
+          event_type: string
+          id: string
+          last_notified_at: string
+          message: string
+          metrics: Json
+          provider: string
+          resolved_at: string | null
+          severity: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          dedupe_key: string
+          email_error?: string | null
+          email_provider_id?: string | null
+          email_sent?: boolean
+          event_type: string
+          id?: string
+          last_notified_at?: string
+          message: string
+          metrics?: Json
+          provider: string
+          resolved_at?: string | null
+          severity: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          dedupe_key?: string
+          email_error?: string | null
+          email_provider_id?: string | null
+          email_sent?: boolean
+          event_type?: string
+          id?: string
+          last_notified_at?: string
+          message?: string
+          metrics?: Json
+          provider?: string
+          resolved_at?: string | null
+          severity?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_ai_provider_alert_events_provider_fkey"
+            columns: ["provider"]
+            isOneToOne: false
+            referencedRelation: "orbit_ai_provider_monitor_config"
+            referencedColumns: ["provider"]
+          },
+        ]
+      }
+      orbit_ai_provider_health: {
+        Row: {
+          admin_api_configured: boolean
+          average_daily_cost_7d_usd: number | null
+          consecutive_failures: number
+          cost_30d_usd: number | null
+          cost_7d_usd: number | null
+          cost_today_usd: number | null
+          currency: string
+          data_source: string
+          details: Json
+          estimated_balance_usd: number | null
+          last_checked_at: string | null
+          last_error_code: string | null
+          last_failure_at: string | null
+          last_provider_status: number | null
+          last_success_at: string | null
+          latency_ms: number | null
+          projected_days_remaining: number | null
+          provider: string
+          provider_ok: boolean | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          admin_api_configured?: boolean
+          average_daily_cost_7d_usd?: number | null
+          consecutive_failures?: number
+          cost_30d_usd?: number | null
+          cost_7d_usd?: number | null
+          cost_today_usd?: number | null
+          currency?: string
+          data_source?: string
+          details?: Json
+          estimated_balance_usd?: number | null
+          last_checked_at?: string | null
+          last_error_code?: string | null
+          last_failure_at?: string | null
+          last_provider_status?: number | null
+          last_success_at?: string | null
+          latency_ms?: number | null
+          projected_days_remaining?: number | null
+          provider: string
+          provider_ok?: boolean | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          admin_api_configured?: boolean
+          average_daily_cost_7d_usd?: number | null
+          consecutive_failures?: number
+          cost_30d_usd?: number | null
+          cost_7d_usd?: number | null
+          cost_today_usd?: number | null
+          currency?: string
+          data_source?: string
+          details?: Json
+          estimated_balance_usd?: number | null
+          last_checked_at?: string | null
+          last_error_code?: string | null
+          last_failure_at?: string | null
+          last_provider_status?: number | null
+          last_success_at?: string | null
+          latency_ms?: number | null
+          projected_days_remaining?: number | null
+          provider?: string
+          provider_ok?: boolean | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_ai_provider_health_provider_fkey"
+            columns: ["provider"]
+            isOneToOne: true
+            referencedRelation: "orbit_ai_provider_monitor_config"
+            referencedColumns: ["provider"]
+          },
+        ]
+      }
+      orbit_ai_provider_monitor_config: {
+        Row: {
+          alert_cooldown_minutes: number
+          alert_email: string
+          baseline_credit_usd: number | null
+          baseline_recorded_at: string | null
+          created_at: string
+          critical_balance_usd: number
+          critical_days_remaining: number
+          enabled: boolean
+          provider: string
+          updated_at: string
+          updated_by: string | null
+          warning_balance_usd: number
+          warning_days_remaining: number
+        }
+        Insert: {
+          alert_cooldown_minutes?: number
+          alert_email?: string
+          baseline_credit_usd?: number | null
+          baseline_recorded_at?: string | null
+          created_at?: string
+          critical_balance_usd?: number
+          critical_days_remaining?: number
+          enabled?: boolean
+          provider: string
+          updated_at?: string
+          updated_by?: string | null
+          warning_balance_usd?: number
+          warning_days_remaining?: number
+        }
+        Update: {
+          alert_cooldown_minutes?: number
+          alert_email?: string
+          baseline_credit_usd?: number | null
+          baseline_recorded_at?: string | null
+          created_at?: string
+          critical_balance_usd?: number
+          critical_days_remaining?: number
+          enabled?: boolean
+          provider?: string
+          updated_at?: string
+          updated_by?: string | null
+          warning_balance_usd?: number
+          warning_days_remaining?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_ai_provider_monitor_config_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -8108,18 +8468,6 @@ export type Database = {
       }
     }
     Functions: {
-      orbit_agent_training_action: {
-        Args: {
-          p_action: string
-          p_payload?: Json
-          p_tenant_slug: string
-        }
-        Returns: Json
-      }
-      orbit_agent_training_read: {
-        Args: { p_tenant_slug: string }
-        Returns: Json
-      }
       _build_orbit_zapi_public_response: {
         Args: { p_config_id: string }
         Returns: Json
@@ -8396,6 +8744,18 @@ export type Database = {
       normalize_name: { Args: { p: string }; Returns: string }
       normalize_phone: { Args: { p: string }; Returns: string }
       normalize_slug: { Args: { p: string }; Returns: string }
+      orbit_agent_training_action: {
+        Args: { p_action: string; p_payload?: Json; p_tenant_slug: string }
+        Returns: Json
+      }
+      orbit_agent_training_is_admin: {
+        Args: { p_empresa_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      orbit_agent_training_read: {
+        Args: { p_tenant_slug: string }
+        Returns: Json
+      }
       orbit_apply_flow_version: {
         Args: {
           p_edges: Json
@@ -8452,6 +8812,7 @@ export type Database = {
         Args: { p_tenant_slug: string }
         Returns: Json
       }
+      orbit_get_ai_provider_health: { Args: never; Returns: Json }
       orbit_get_tenant_alert_config: {
         Args: { p_tenant_slug: string }
         Returns: Json
@@ -8755,6 +9116,20 @@ export type Database = {
       }
       orbit_tenant_prospect_read_scoped: {
         Args: { p_prospect_id: string; p_tenant_slug: string }
+        Returns: Json
+      }
+      orbit_update_ai_provider_monitor_config: {
+        Args: {
+          p_alert_email?: string
+          p_baseline_credit_usd?: number
+          p_baseline_recorded_at?: string
+          p_clear_baseline?: boolean
+          p_critical_balance_usd?: number
+          p_critical_days_remaining?: number
+          p_enabled?: boolean
+          p_warning_balance_usd?: number
+          p_warning_days_remaining?: number
+        }
         Returns: Json
       }
       orbit_user_has_campaign_permission: {
