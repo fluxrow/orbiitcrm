@@ -3,7 +3,7 @@ import {
   buildCanonicalMeetingConfirmation, classifyMeeting, enforceFreshMeetingState,
   expiredMeetingIdsForReconciliation, formatMeetingAuthorityBlock,
   inboundExplicitlyRequestsMeetingLink, selectAuthoritativeMeeting, shouldCancelPastReminder,
-} from "./viver-meeting-guard.ts";
+} from "../_shared/viver-meeting-guard.ts";
 
 const meeting = (overrides: Record<string, unknown> = {}) => ({
   id: "0010b897-cd5d-43f1-8844-64d64c940015",

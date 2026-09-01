@@ -28,7 +28,7 @@ import {
   inboundExplicitlyRequestsMeetingLink,
   mentionsAgendaContent,
   type MeetingRow,
-} from "./viver-meeting-guard.ts";
+} from "../_shared/viver-meeting-guard.ts";
 import {
   VIVER_CLASS_TEMPLATE_NAME,
   buildCanonicalClassDelivery,

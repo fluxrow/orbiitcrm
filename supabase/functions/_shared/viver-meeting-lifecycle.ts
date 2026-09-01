@@ -1,12 +1,12 @@
 import {
   classifyMeeting,
   type MeetingRow,
-} from "../orbit-ai-agent/viver-meeting-guard.ts";
+} from "./viver-meeting-guard.ts";
 import {
   evaluateReminderDeliveryTime,
   isMeetingReminderKind,
 } from "./meeting-reminder-policy.ts";
-export * from "../orbit-ai-agent/viver-meeting-guard.ts";
+export * from "./viver-meeting-guard.ts";
 
 export function meetingIdFromFlowContext(
   context: Record<string, any> | null | undefined,
