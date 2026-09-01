@@ -35,7 +35,10 @@ describe("Bullink deterministic checkout wiring", () => {
     expect(agent).toMatch(
       /isHandoff\s*=\s*isCommercialSignal\s*&&\s*!suppressHandoff\s*&&\s*!deferBullinkCheckoutHandoff/,
     );
-    expect(agent).toContain('classification: notificationPolicy.classification');
+    expect(agent).toMatch(
+      /const\s+notificationClassification\s*=\s*notificationPolicy\.classification/,
+    );
+    expect(agent).toContain("classification: notificationClassification");
     expect(agent).toContain("resolveCommercialNotificationPolicy");
   });
 
