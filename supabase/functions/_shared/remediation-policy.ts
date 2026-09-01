@@ -23,8 +23,8 @@ export const APPROVAL_MATRIX: Record<
 
 export type SanitizedIncidentDescriptor = IncidentDescriptor & {
   incidentClass: IncidentClass;
-  source: "read_only_monitor";
-  remediationPlaybook: RemediationPlaybook;
+  source: "read_only_monitor" | "preflight_scanner";
+  remediationPlaybook: RemediationPlaybook | "official_outbox_release";
 };
 export function sanitizeIncidentDescriptor(
   input: SanitizedIncidentDescriptor,
@@ -32,11 +32,13 @@ export function sanitizeIncidentDescriptor(
   return JSON.parse(
     JSON.stringify(
       input,
-      (key, value) =>
-        /phone|telefone|message|mensagem|text|url|token|secret|email|name|nome|payload/i
+      (key, value) => {
+        if (/Hash$/.test(key)) return value;
+        return /phone|telefone|message|mensagem|text|url|link|token|secret|email|name|nome|payload/i
             .test(key)
           ? "[redacted]"
-          : value,
+          : value;
+      },
     ),
   );
 }
@@ -45,8 +47,8 @@ export function acceptDescriptor(
   now = new Date(),
 ): string[] {
   const reasons = validateDescriptor(d, now);
-  if (d.source !== "read_only_monitor") {
-    reasons.push("source_not_read_only_monitor");
+  if (!["read_only_monitor", "preflight_scanner"].includes(d.source)) {
+    reasons.push("source_not_allowlisted");
   }
   if (d.tenantId !== TENANTS.bullink && d.tenantId !== TENANTS.viver) {
     reasons.push("tenant_not_allowlisted");
@@ -58,7 +60,20 @@ export function acceptDescriptor(
       "meeting_reminder_5m",
       "weekly_reminder",
       "follow_up",
+      "meeting_confirmation",
     ].includes(d.kind as ReleaseKind)
   ) reasons.push("kind_not_allowlisted");
+  const operational = [
+    "follow_up",
+    "meeting_confirmation",
+    "meeting_reminder",
+  ].includes(d.incidentClass);
+  if (operational && d.remediationPlaybook !== "official_outbox_release") {
+    reasons.push("playbook_class_mismatch");
+  }
+  if (
+    d.incidentClass === "edge_deploy_drift" &&
+    d.remediationPlaybook !== "edge_function_deploy_drift"
+  ) reasons.push("playbook_class_mismatch");
   return [...new Set(reasons)];
 }
