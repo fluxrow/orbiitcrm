@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { callAnthropic } from "../_shared/anthropic.ts";
 import { transcribeAudio } from "./audio-transcription.ts";
+import { authorizeMediaProcessor } from "./internal-auth.ts";
 
 const MAX_MEDIA_BYTES = 15 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 20_000;
@@ -143,13 +144,18 @@ serve(async (req) => {
   if (req.method !== "POST") {
     return json({ ok: false, error: "method_not_allowed" }, 405);
   }
+  const { message_id, dry_run = false } = await req.json().catch(() => ({}));
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  const auth = req.headers.get("Authorization") || "";
-  if (!serviceKey || auth !== `Bearer ${serviceKey}`) {
+  const authorized = authorizeMediaProcessor({
+    authorization: req.headers.get("Authorization") || "",
+    serviceRoleKey: serviceKey,
+    schedulerToken: Deno.env.get("SCHEDULER_CRON_TOKEN") || "",
+    dryRun: dry_run === true,
+  });
+  if (!authorized) {
     return json({ ok: false, error: "unauthorized" }, 401);
   }
 
-  const { message_id, dry_run = false } = await req.json().catch(() => ({}));
   if (!message_id) {
     return json({ ok: false, error: "message_id_required" }, 400);
   }
