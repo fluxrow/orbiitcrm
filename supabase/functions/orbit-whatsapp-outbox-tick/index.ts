@@ -8,30 +8,35 @@
 // imediatamente um item de alta prioridade (ai_reply / manual) recém-enfileirado.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { getOrbitZapiRuntimeConfig, getOrbitZapiRealSendBlockReason } from "../_shared/orbit-zapi.ts";
+import {
+  getOrbitZapiRealSendBlockReason,
+  getOrbitZapiRuntimeConfig,
+} from "../_shared/orbit-zapi.ts";
 import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { checkEligibility } from "../_shared/orbit-whatsapp-outbox.ts";
 import { checkCampaignRecipientEligibility } from "../_shared/campaign-safety.ts";
 import {
-  saoPauloDayStartIso,
+  consumesProspectingQuota,
   effectiveDailyLimit,
+  type EffectiveLimit,
   nextAttemptForRetain,
+  PROSPECTING_QUOTA_SOURCES,
   RETAIN_REASON_DAILY,
   RETAIN_REASON_RATE,
-  type EffectiveLimit,
+  saoPauloDayStartIso,
 } from "../_shared/outbox-quota.ts";
 import {
-  countEngagedReserveUsedToday,
-  countEngagedReserveUsedTodayForConversa,
-  engagedReserveLimit,
-  engagedReplyUncapped,
-  evaluateEngagedReserve,
-  isEngagedReserveCandidate,
-  markEngagedReserveUse,
   auditEngagedReserveUsage,
   conversaSpacingWaitMs,
-  lastEngagedReplySentAt,
+  countEngagedReserveUsedToday,
+  countEngagedReserveUsedTodayForConversa,
   ENGAGED_RESERVE_CONVERSA_LIMIT,
+  engagedReplyUncapped,
+  engagedReserveLimit,
+  evaluateEngagedReserve,
+  isEngagedReserveCandidate,
+  lastEngagedReplySentAt,
+  markEngagedReserveUse,
   RETAIN_REASON_CONVERSA_SPACING,
   RETAIN_REASON_RESERVE_CONVERSA,
   RETAIN_REASON_RESERVE_DAILY,
@@ -39,9 +44,9 @@ import {
 import { auditEngagedReplySla } from "../_shared/engaged-reply-sla.ts";
 import {
   fetchZapiConnectionState,
-  zapiInstanceBlockReason,
   pauseTenantOutbox,
   ZAPI_STACK_VERSION,
+  zapiInstanceBlockReason,
 } from "../_shared/zapi-connection.ts";
 import { sendViaZapiUnified } from "../_shared/zapi-send.ts";
 import {
@@ -56,23 +61,26 @@ import {
   usesEssentialFlowDeliveryRepair,
 } from "../_shared/outbox-delivery-window.ts";
 
-console.log("[orbit-whatsapp-outbox-tick] boot version:", ZAPI_STACK_VERSION, VIVER_CONTROLLED_OUTBOX_GATE_VERSION);
+console.log(
+  "[orbit-whatsapp-outbox-tick] boot version:",
+  ZAPI_STACK_VERSION,
+  VIVER_CONTROLLED_OUTBOX_GATE_VERSION,
+);
 import {
+  DEFAULT_RECOVERY_SPACING_SECONDS,
   evaluateHoldGate,
   lastRecoverySentAtMs,
+  OUTBOX_HOLD_REASON,
+  parseHoldUntilMs,
+  RECOVERY_SPACING_REASON,
   recoveryTagOf,
   revalidateRecoveryTarget,
-  parseHoldUntilMs,
-  OUTBOX_HOLD_REASON,
-  RECOVERY_SPACING_REASON,
-  DEFAULT_RECOVERY_SPACING_SECONDS,
 } from "../_shared/outbox-hold.ts";
-
-
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -84,9 +92,12 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
 });
 
 const WORKER_ID = `outbox-${crypto.randomUUID().slice(0, 8)}`;
-const VIVER_SEMIJOIAS_EMPRESA_ID = "36f26579-66ad-4ef1-9788-141e4c727232";
-
-const URGENT_SOURCES = new Set(["ai_reply", "meeting_confirmation", "manual", "mixed_payment_confirmation"]);
+const URGENT_SOURCES = new Set([
+  "ai_reply",
+  "meeting_confirmation",
+  "manual",
+  "mixed_payment_confirmation",
+]);
 
 interface SendingConfig {
   enabled: boolean;
@@ -100,42 +111,37 @@ interface SendingConfig {
   batch_size: number | null;
 }
 
-async function getSendingConfig(empresa_id: string): Promise<SendingConfig | null> {
+async function getSendingConfig(
+  empresa_id: string,
+): Promise<SendingConfig | null> {
   const { data } = await supabase
     .from("orbit_whatsapp_sending_config")
-    .select("enabled, daily_limit, max_per_minute, min_delay_ms, max_delay_ms, warmup_enabled, warmup_start_date, outbox_adapter_enabled, batch_size")
+    .select(
+      "enabled, daily_limit, max_per_minute, min_delay_ms, max_delay_ms, warmup_enabled, warmup_start_date, outbox_adapter_enabled, batch_size",
+    )
     .eq("empresa_id", empresa_id)
     .maybeSingle();
   return (data as SendingConfig) ?? null;
 }
 
 async function getDailyUsage(empresa_id: string): Promise<number> {
-  // Cota diária de warm-up: por padrão conta todos os envios reais do tenant.
-  // Na Viver, o limite aprovado é de NOVOS contatos: ai_reply com inbound real
-  // validado e marcado pela reserva engajada não consome essa cota.
+  // A rampa protege exclusivamente a prospecção iniciada pelo sistema.
+  // Respostas reativas e mensagens operacionais nunca entram nesta contagem.
   const { count, error } = await supabase
     .from("orbit_whatsapp_outbox")
     .select("id", { count: "exact", head: true })
     .eq("empresa_id", empresa_id)
     .eq("status", "sent")
+    .in("source_type", [...PROSPECTING_QUOTA_SOURCES])
     .gte("sent_at", saoPauloDayStartIso());
   if (error) throw new Error(`daily_usage_query_failed: ${error.message}`);
-  const total = Number(count ?? 0);
-  if (empresa_id !== VIVER_SEMIJOIAS_EMPRESA_ID) return total;
-
-  const { count: engagedCount, error: engagedError } = await supabase
-    .from("orbit_whatsapp_outbox")
-    .select("id", { count: "exact", head: true })
-    .eq("empresa_id", empresa_id)
-    .eq("status", "sent")
-    .eq("source_type", "ai_reply")
-    .gte("sent_at", saoPauloDayStartIso())
-    .eq("metadata->>quota_reason", "engaged_reply_reserve");
-  if (engagedError) throw new Error(`engaged_daily_usage_query_failed: ${engagedError.message}`);
-  return Math.max(0, total - Number(engagedCount ?? 0));
+  return Number(count ?? 0);
 }
 
-async function bumpDailyUsage(empresa_id: string, delta: number): Promise<void> {
+async function bumpDailyUsage(
+  empresa_id: string,
+  delta: number,
+): Promise<void> {
   const today = new Date().toISOString().slice(0, 10);
   const { data: existing } = await supabase
     .from("orbit_whatsapp_daily_usage")
@@ -146,7 +152,10 @@ async function bumpDailyUsage(empresa_id: string, delta: number): Promise<void> 
   if (existing) {
     await supabase
       .from("orbit_whatsapp_daily_usage")
-      .update({ sent_count: Number((existing as any).sent_count ?? 0) + delta, updated_at: new Date().toISOString() })
+      .update({
+        sent_count: Number((existing as any).sent_count ?? 0) + delta,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", (existing as any).id);
   } else {
     await supabase.from("orbit_whatsapp_daily_usage").insert({
@@ -157,13 +166,17 @@ async function bumpDailyUsage(empresa_id: string, delta: number): Promise<void> 
   }
 }
 
-async function countRecentSends(empresa_id: string, seconds: number): Promise<number> {
+async function countRecentSends(
+  empresa_id: string,
+  seconds: number,
+): Promise<number> {
   const since = new Date(Date.now() - seconds * 1000).toISOString();
   const { count } = await supabase
     .from("orbit_whatsapp_outbox")
     .select("id", { count: "exact", head: true })
     .eq("empresa_id", empresa_id)
     .eq("status", "sent")
+    .in("source_type", [...PROSPECTING_QUOTA_SOURCES])
     .gte("sent_at", since);
   return Number(count ?? 0);
 }
@@ -176,15 +189,25 @@ interface QuotaState {
   remainingReserve?: number;
 }
 
-
 interface ProcessResult {
-  outcome: "sent" | "simulated" | "canceled" | "failed" | "deferred" | "blocked" | "retained";
+  outcome:
+    | "sent"
+    | "simulated"
+    | "canceled"
+    | "failed"
+    | "deferred"
+    | "blocked"
+    | "retained";
   reason?: string;
   provider_message_id?: string | null;
   status_message?: string;
 }
 
-async function sendViaZapi(item: any, telefone: string, config: any): Promise<{ ok: boolean; providerId?: string | null; error?: string }> {
+async function sendViaZapi(
+  item: any,
+  telefone: string,
+  config: any,
+): Promise<{ ok: boolean; providerId?: string | null; error?: string }> {
   // Handler ÚNICO (texto + mídia isolada) em _shared/zapi-send.ts.
   // Mídia sem URL resolvida NUNCA degrada para texto: retorna erro explícito.
   const payload = item.payload || {};
@@ -192,11 +215,16 @@ async function sendViaZapi(item: any, telefone: string, config: any): Promise<{ 
     phone: telefone,
     kind: (item.payload_type || "text") as any,
     message: payload.mensagem ?? "",
-    mediaSource: payload.storage_path || payload.url_midia || payload.url || null,
+    mediaSource: payload.storage_path || payload.url_midia || payload.url ||
+      null,
     payload,
     functionName: "orbit-whatsapp-outbox-tick",
   });
-  return { ok: result.ok, providerId: result.providerId ?? null, error: result.error };
+  return {
+    ok: result.ok,
+    providerId: result.providerId ?? null,
+    error: result.error,
+  };
 }
 
 // ── Persistência unificada em orbit_mensagens ──
@@ -205,7 +233,11 @@ async function sendViaZapi(item: any, telefone: string, config: any): Promise<{ 
 // orbit_message_id não vier (garante backward-compat).
 async function upsertVisualMensagem(
   item: any,
-  patch: { status: string; provider_message_id?: string | null; erro?: string | null },
+  patch: {
+    status: string;
+    provider_message_id?: string | null;
+    erro?: string | null;
+  },
 ) {
   const orbitMsgId: string | null = item.metadata?.orbit_message_id ?? null;
   if (!item.conversa_id) return;
@@ -221,7 +253,10 @@ async function upsertVisualMensagem(
       .select("id")
       .maybeSingle();
     if (!error && data) return;
-    console.warn("[outbox] upsertVisualMensagem update sem match, fallback INSERT", error?.message);
+    console.warn(
+      "[outbox] upsertVisualMensagem update sem match, fallback INSERT",
+      error?.message,
+    );
   }
   await supabase.from("orbit_mensagens").insert({
     conversa_id: item.conversa_id,
@@ -244,7 +279,11 @@ async function upsertVisualMensagem(
 // source_id, ignora.
 async function updateCampaignRecipient(
   item: any,
-  patch: { status: "enviado" | "simulated" | "falhou" | "ignorado"; erro?: string | null; motivo?: string | null },
+  patch: {
+    status: "enviado" | "simulated" | "falhou" | "ignorado";
+    erro?: string | null;
+    motivo?: string | null;
+  },
 ): Promise<void> {
   if (item.source_type !== "campaign" || !item.source_id) return;
   const upd: Record<string, unknown> = { erro: patch.erro ?? null };
@@ -272,7 +311,9 @@ async function updateCampaignRecipient(
     .in("status", ["pendente", "enviando"]);
   if (item.campaign_id) {
     try {
-      await supabase.rpc("reconcile_campaign_counters", { _campaign_id: item.campaign_id });
+      await supabase.rpc("reconcile_campaign_counters", {
+        _campaign_id: item.campaign_id,
+      });
     } catch (e) {
       console.warn("[outbox] reconcile falhou", (e as any)?.message);
     }
@@ -283,7 +324,10 @@ async function updateCampaignRecipient(
 // Sem isso, o outbox ficava cancelado, mas campanhas permaneciam "enviando" e
 // actions de follow-up/lembrete apareciam como sucesso — exatamente o tipo de
 // falso positivo que esconde uma falha de versão entre produtor e worker.
-async function reconcilePilotCancellation(item: any, reason: string): Promise<void> {
+async function reconcilePilotCancellation(
+  item: any,
+  reason: string,
+): Promise<void> {
   if (item.source_type === "campaign") {
     await updateCampaignRecipient(item, { status: "ignorado", motivo: reason });
   }
@@ -319,15 +363,23 @@ async function reconcilePilotCancellation(item: any, reason: string): Promise<vo
       },
     });
   } catch (error) {
-    console.warn("[outbox] pilot cancellation audit failed", error instanceof Error ? error.message : String(error));
+    console.warn(
+      "[outbox] pilot cancellation audit failed",
+      error instanceof Error ? error.message : String(error),
+    );
   }
 }
 
 // Resolve ou cria conversa tenant-safe antes de persistir OUT para campanhas.
 // Sem esse passo, mensagens de campanha ficariam sem conversa e a resposta inbound
 // não caía na mesma thread.
-async function ensureCampaignConversa(item: any, telefone: string): Promise<string | null> {
-  if (item.source_type !== "campaign" || !item.empresa_id || !item.prospect_id) {
+async function ensureCampaignConversa(
+  item: any,
+  telefone: string,
+): Promise<string | null> {
+  if (
+    item.source_type !== "campaign" || !item.empresa_id || !item.prospect_id
+  ) {
     return item.conversa_id ?? null;
   }
   if (item.conversa_id) return item.conversa_id;
@@ -368,7 +420,11 @@ async function ensureCampaignConversa(item: any, telefone: string): Promise<stri
 // Retém item na fila (queued) quando a cota de warm-up ou o ritmo por minuto
 // foram atingidos. NUNCA marca falha: status volta a pending com next_attempt_at
 // na próxima janela e razão estruturada em last_error + metadata.retained.
-async function retainItem(item: any, reason: string, limitInfo: EffectiveLimit): Promise<void> {
+async function retainItem(
+  item: any,
+  reason: string,
+  limitInfo: EffectiveLimit,
+): Promise<void> {
   const nowIso = new Date().toISOString();
   const metadata = {
     ...(item.metadata ?? {}),
@@ -396,7 +452,12 @@ async function retainItem(item: any, reason: string, limitInfo: EffectiveLimit):
 // Retém em lote os pendentes do tenant sem nenhum claim/fetch externo.
 // Em tenants `engagedReplyUncapped`, respostas engajadas (ai_reply com inbound real)
 // NÃO são retidas por cota/ritmo de prospecção: elas seguem para avaliação individual.
-async function retainPendingForTenant(empresa_id: string, reason: string, limitInfo: EffectiveLimit, max = 100): Promise<number> {
+async function retainPendingForTenant(
+  empresa_id: string,
+  reason: string,
+  limitInfo: EffectiveLimit,
+  max = 100,
+): Promise<number> {
   const nowIso = new Date().toISOString();
   const { data: pend } = await supabase
     .from("orbit_whatsapp_outbox")
@@ -408,7 +469,10 @@ async function retainPendingForTenant(empresa_id: string, reason: string, limitI
     .limit(max);
   let retained = 0;
   for (const row of (pend ?? []) as any[]) {
-    if (engagedReplyUncapped(empresa_id) && isEngagedReserveCandidate(row)) continue;
+    if (!consumesProspectingQuota(row.source_type)) continue;
+    if (engagedReplyUncapped(empresa_id) && isEngagedReserveCandidate(row)) {
+      continue;
+    }
     // Reserva esgotada: respostas engajadas recebem reason específico.
     const r = reason === RETAIN_REASON_DAILY && isEngagedReserveCandidate(row)
       ? RETAIN_REASON_RESERVE_DAILY
@@ -420,26 +484,13 @@ async function retainPendingForTenant(empresa_id: string, reason: string, limitI
   return retained;
 }
 
-// Existe resposta engajada pendente e elegível agora neste tenant isento?
-// Usado para não abortar o tick por cota/ritmo de PROSPECÇÃO.
-async function hasPendingEngagedReply(empresa_id: string): Promise<boolean> {
-  if (!engagedReplyUncapped(empresa_id)) return false;
-  const nowIso = new Date().toISOString();
-  const { data } = await supabase
-    .from("orbit_whatsapp_outbox")
-    .select("id, empresa_id, source_type, metadata")
-    .eq("empresa_id", empresa_id)
-    .eq("status", "pending")
-    .eq("source_type", "ai_reply")
-    .lte("scheduled_for", nowIso)
-    .or(`next_attempt_at.is.null,next_attempt_at.lte.${nowIso}`)
-    .limit(50);
-  return ((data ?? []) as any[]).some((row) => isEngagedReserveCandidate(row));
-}
-
 // Devolve o item a pending SEM incrementar attempts (compensa o incremento do
 // claim) e SEM qualquer chamada externa. Usado pelo gate de hold/cadência.
-async function releaseHeldItem(item: any, reason: string, retryAtIso: string | null): Promise<void> {
+async function releaseHeldItem(
+  item: any,
+  reason: string,
+  retryAtIso: string | null,
+): Promise<void> {
   const attempts = Math.max(0, Number(item.attempts ?? 0) - 1);
   await supabase
     .from("orbit_whatsapp_outbox")
@@ -448,7 +499,8 @@ async function releaseHeldItem(item: any, reason: string, retryAtIso: string | n
       locked_at: null,
       locked_by: null,
       attempts,
-      next_attempt_at: retryAtIso ?? new Date(Date.now() + 30 * 1000).toISOString(),
+      next_attempt_at: retryAtIso ??
+        new Date(Date.now() + 30 * 1000).toISOString(),
       last_error: reason,
     })
     .eq("id", item.id);
@@ -457,7 +509,9 @@ async function releaseHeldItem(item: any, reason: string, retryAtIso: string | n
 // Gate de hold/cadência. Usa o MESMO avaliador antes do claim e depois do claim.
 async function evaluateItemHold(item: any, nowMs = Date.now()) {
   const tag = recoveryTagOf(item.metadata);
-  const lastMs = tag ? await lastRecoverySentAtMs(supabase, item.empresa_id, tag) : null;
+  const lastMs = tag
+    ? await lastRecoverySentAtMs(supabase, item.empresa_id, tag)
+    : null;
   return evaluateHoldGate({
     metadata: item.metadata,
     nowMs,
@@ -482,7 +536,9 @@ async function deferHeldPendingForTenant(empresa_id: string): Promise<number> {
   let deferred = 0;
   const nowMs = Date.now();
   for (const row of (pend ?? []) as any[]) {
-    if (parseHoldUntilMs(row.metadata) === null && !recoveryTagOf(row.metadata)) continue;
+    if (
+      parseHoldUntilMs(row.metadata) === null && !recoveryTagOf(row.metadata)
+    ) continue;
     const verdict = await evaluateItemHold(row, nowMs);
     if (verdict.allowed) continue;
     await supabase
@@ -490,7 +546,8 @@ async function deferHeldPendingForTenant(empresa_id: string): Promise<number> {
       .update({
         locked_at: null,
         locked_by: null,
-        next_attempt_at: verdict.retryAtIso ?? new Date(nowMs + 30 * 1000).toISOString(),
+        next_attempt_at: verdict.retryAtIso ??
+          new Date(nowMs + 30 * 1000).toISOString(),
         last_error: verdict.reason,
       })
       .eq("id", row.id)
@@ -503,7 +560,10 @@ async function deferHeldPendingForTenant(empresa_id: string): Promise<number> {
 // Follow-up e mensagem inicial perdem o contexto operacional depois de 24h.
 // Cancela somente pendentes sem provider id e reconcilia a action correlata.
 // Respostas, reuniões, lembretes, campanhas e itens manuais nunca entram aqui.
-async function expireStaleFlowPendingForTenant(empresa_id: string, max = 500): Promise<number> {
+async function expireStaleFlowPendingForTenant(
+  empresa_id: string,
+  max = 500,
+): Promise<number> {
   if (!usesEssentialFlowDeliveryRepair(empresa_id)) return 0;
   const cutoffIso = new Date(Date.now() - FLOW_OUTBOX_MAX_AGE_MS).toISOString();
   const { data: stale, error: staleError } = await supabase
@@ -515,7 +575,9 @@ async function expireStaleFlowPendingForTenant(empresa_id: string, max = 500): P
     .is("provider_message_id", null)
     .lte("scheduled_for", cutoffIso)
     .limit(max);
-  if (staleError) throw new Error(`stale_flow_query_failed: ${staleError.message}`);
+  if (staleError) {
+    throw new Error(`stale_flow_query_failed: ${staleError.message}`);
+  }
   const ids = (stale ?? []).map((row: any) => row.id).filter(Boolean);
   if (ids.length === 0) return 0;
 
@@ -535,7 +597,9 @@ async function expireStaleFlowPendingForTenant(empresa_id: string, max = 500): P
     .eq("status", "pending")
     .in("id", ids)
     .select("id, scheduled_action_id");
-  if (cancelError) throw new Error(`stale_flow_cancel_failed: ${cancelError.message}`);
+  if (cancelError) {
+    throw new Error(`stale_flow_cancel_failed: ${cancelError.message}`);
+  }
 
   const actionIds = (canceled ?? [])
     .map((row: any) => row.scheduled_action_id)
@@ -554,18 +618,33 @@ async function expireStaleFlowPendingForTenant(empresa_id: string, max = 500): P
       .eq("empresa_id", empresa_id)
       .in("id", actionIds)
       .in("status", ["pending", "processing", "success"]);
-    if (actionError) throw new Error(`stale_flow_action_reconcile_failed: ${actionError.message}`);
+    if (actionError) {
+      throw new Error(
+        `stale_flow_action_reconcile_failed: ${actionError.message}`,
+      );
+    }
   }
   return (canceled ?? []).length;
 }
 
-async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaState): Promise<ProcessResult> {
+async function processItem(
+  item: any,
+  cfg: SendingConfig | null,
+  quota?: QuotaState,
+): Promise<ProcessResult> {
   // ── GATE 1 (pós-claim, anti-corrida): hold explícito e cadência por recovery.
   // Roda ANTES de horário comercial, elegibilidade, cota e qualquer fetch externo.
   const holdVerdict = await evaluateItemHold(item);
   if (!holdVerdict.allowed) {
-    await releaseHeldItem(item, holdVerdict.reason ?? OUTBOX_HOLD_REASON, holdVerdict.retryAtIso);
-    return { outcome: "deferred", reason: holdVerdict.reason ?? OUTBOX_HOLD_REASON };
+    await releaseHeldItem(
+      item,
+      holdVerdict.reason ?? OUTBOX_HOLD_REASON,
+      holdVerdict.retryAtIso,
+    );
+    return {
+      outcome: "deferred",
+      reason: holdVerdict.reason ?? OUTBOX_HOLD_REASON,
+    };
   }
 
   // Modo piloto fail-closed da Viver: bloqueia qualquer origem proativa e exige
@@ -592,12 +671,22 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
     if (usesEssentialFlowDeliveryRepair(item.empresa_id)) {
       // Um único defer até 08:00 de São Paulo. Compensa attempts incrementado no
       // claim, pois nenhuma tentativa externa ocorreu.
-      await releaseHeldItem(item, "outside_business_hours", nextOutboxBusinessOpening().toISOString());
+      await releaseHeldItem(
+        item,
+        "outside_business_hours",
+        nextOutboxBusinessOpening().toISOString(),
+      );
     } else {
       const next = new Date(Date.now() + 60 * 60 * 1000);
       await supabase
         .from("orbit_whatsapp_outbox")
-        .update({ status: "pending", locked_at: null, locked_by: null, next_attempt_at: next.toISOString(), last_error: "outside_business_hours" })
+        .update({
+          status: "pending",
+          locked_at: null,
+          locked_by: null,
+          next_attempt_at: next.toISOString(),
+          last_error: "outside_business_hours",
+        })
         .eq("id", item.id);
     }
     return { outcome: "deferred", reason: "outside_business_hours" };
@@ -619,16 +708,26 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
     meeting_id: item.metadata?.meeting_id ?? null,
     // flow_stage: propaga contexto de transição de etapa para o re-check no consumo.
     target_stage_id: item.metadata?.target_stage_id ?? null,
-    allow_terminal_stage_message: item.metadata?.allow_terminal_stage_message ?? null,
+    allow_terminal_stage_message: item.metadata?.allow_terminal_stage_message ??
+      null,
     event_id: item.metadata?.event_id ?? null,
     action_id: item.metadata?.action_id ?? null,
   });
   if (!elig.eligible) {
     await supabase
       .from("orbit_whatsapp_outbox")
-      .update({ status: "canceled", canceled_at: new Date().toISOString(), canceled_reason: elig.reasons.join(","), locked_at: null, locked_by: null })
+      .update({
+        status: "canceled",
+        canceled_at: new Date().toISOString(),
+        canceled_reason: elig.reasons.join(","),
+        locked_at: null,
+        locked_by: null,
+      })
       .eq("id", item.id);
-    await updateCampaignRecipient(item, { status: "ignorado", motivo: elig.reasons[0] ?? "ineligible" });
+    await updateCampaignRecipient(item, {
+      status: "ignorado",
+      motivo: elig.reasons[0] ?? "ineligible",
+    });
     return { outcome: "canceled", reason: elig.reasons.join(",") };
   }
 
@@ -646,7 +745,9 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
     if (item.prospect_id) {
       const { data: p } = await supabase
         .from("orbit_prospects")
-        .select("id, empresa_id, optout_whatsapp, deleted_at, nome_razao, nome_contato, nome_fantasia, email_principal, tags")
+        .select(
+          "id, empresa_id, optout_whatsapp, deleted_at, nome_razao, nome_contato, nome_fantasia, email_principal, tags",
+        )
         .eq("id", item.prospect_id)
         .maybeSingle();
       prospect = p;
@@ -660,7 +761,13 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
       const motivo = cse.motivo ?? "campaign_ineligible";
       await supabase
         .from("orbit_whatsapp_outbox")
-        .update({ status: "canceled", canceled_at: new Date().toISOString(), canceled_reason: motivo, locked_at: null, locked_by: null })
+        .update({
+          status: "canceled",
+          canceled_at: new Date().toISOString(),
+          canceled_reason: motivo,
+          locked_at: null,
+          locked_by: null,
+        })
         .eq("id", item.id);
       await updateCampaignRecipient(item, { status: "ignorado", motivo });
       return { outcome: "canceled", reason: motivo };
@@ -671,7 +778,13 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
   if (!cfg || cfg.enabled === false) {
     await supabase
       .from("orbit_whatsapp_outbox")
-      .update({ status: "pending", locked_at: null, locked_by: null, next_attempt_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(), last_error: "sending_disabled" })
+      .update({
+        status: "pending",
+        locked_at: null,
+        locked_by: null,
+        next_attempt_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        last_error: "sending_disabled",
+      })
       .eq("id", item.id);
     return { outcome: "deferred", reason: "sending_disabled" };
   }
@@ -680,14 +793,20 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
   if (item.source_type === "campaign" && cfg.outbox_adapter_enabled !== true) {
     await supabase
       .from("orbit_whatsapp_outbox")
-      .update({ status: "canceled", canceled_at: new Date().toISOString(), canceled_reason: "campaign_adapter_disabled", locked_at: null, locked_by: null })
+      .update({
+        status: "canceled",
+        canceled_at: new Date().toISOString(),
+        canceled_reason: "campaign_adapter_disabled",
+        locked_at: null,
+        locked_by: null,
+      })
       .eq("id", item.id);
     return { outcome: "canceled", reason: "campaign_adapter_disabled" };
   }
 
   // ── Cota de warm-up (diária) e ritmo por minuto ──
-  // Vale para TODAS as origens (ai_reply, manual, meeting_confirmation, flow_*,
-  // campaign) e todos os payload_type. Nenhuma origem fura a cota.
+  // Vale somente para prospecção iniciada pelo sistema. Respostas reativas e
+  // mensagens operacionais seguem os próprios gates, sem competir com essa cota.
   // Ao atingir o limite o item NÃO falha: continua queued (status=pending) com
   // next_attempt_at na próxima janela e last_error/metadata estruturados.
   const q: QuotaState = quota ?? {
@@ -695,11 +814,15 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
     remainingDaily: Number.POSITIVE_INFINITY,
     remainingMinute: Number.POSITIVE_INFINITY,
   };
+  const quotaControlled = consumesProspectingQuota(item.source_type);
   if (!quota) {
     const usedNow = await getDailyUsage(item.empresa_id);
-    q.remainingDaily = q.limitInfo.limit == null ? Number.POSITIVE_INFINITY : q.limitInfo.limit - usedNow;
+    q.remainingDaily = q.limitInfo.limit == null
+      ? Number.POSITIVE_INFINITY
+      : q.limitInfo.limit - usedNow;
     if (cfg?.max_per_minute && cfg.max_per_minute > 0) {
-      q.remainingMinute = cfg.max_per_minute - (await countRecentSends(item.empresa_id, 60));
+      q.remainingMinute = cfg.max_per_minute -
+        (await countRecentSends(item.empresa_id, 60));
     }
     if (q.remainingDaily <= 0 && engagedReserveLimit(item.empresa_id) > 0) {
       q.remainingReserve = engagedReserveLimit(item.empresa_id) -
@@ -735,7 +858,11 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
         return { outcome: "retained", reason: RETAIN_REASON_RESERVE_CONVERSA };
       }
       const waitMs = conversaSpacingWaitMs(
-        await lastEngagedReplySentAt(supabase, item.empresa_id, item.conversa_id),
+        await lastEngagedReplySentAt(
+          supabase,
+          item.empresa_id,
+          item.conversa_id,
+        ),
       );
       if (waitMs > 0) {
         await releaseHeldItem(
@@ -747,7 +874,10 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
       }
       engagedExempt = true;
       usedReserve = true;
-      const dailyUsed = await countEngagedReserveUsedToday(supabase, item.empresa_id);
+      const dailyUsed = await countEngagedReserveUsedToday(
+        supabase,
+        item.empresa_id,
+      );
       await markEngagedReserveUse(supabase, item, decision, {
         daily_used: dailyUsed + 1,
         daily_limit: reserveLimit,
@@ -757,7 +887,7 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
     }
   }
 
-  if (!engagedExempt && q.remainingDaily <= 0) {
+  if (quotaControlled && !engagedExempt && q.remainingDaily <= 0) {
     const reserveLeft = q.remainingReserve ?? 0;
     let retainReason = RETAIN_REASON_DAILY;
     if (reserveLimit > 0 && isEngagedReserveCandidate(item)) {
@@ -801,27 +931,40 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
 
   // Ritmo por minuto: é gate anti-banimento de PROSPECÇÃO. Resposta engajada isenta
   // usa o espaçamento por conversa (já aplicado acima) em vez da janela global.
-  if (!engagedExempt && q.remainingMinute <= 0) {
+  if (quotaControlled && !engagedExempt && q.remainingMinute <= 0) {
     await retainItem(item, RETAIN_REASON_RATE, q.limitInfo);
     return { outcome: "retained", reason: RETAIN_REASON_RATE };
   }
 
-
-
   // Resolver telefone
   let telefone: string | null = item.payload?.telefone ?? null;
   if (!telefone && item.conversa_id) {
-    const { data: c } = await supabase.from("orbit_conversas").select("telefone_whatsapp").eq("id", item.conversa_id).maybeSingle();
+    const { data: c } = await supabase.from("orbit_conversas").select(
+      "telefone_whatsapp",
+    ).eq("id", item.conversa_id).maybeSingle();
     telefone = (c as any)?.telefone_whatsapp ?? null;
   }
   if (!telefone && item.prospect_id) {
-    const { data: p } = await supabase.from("orbit_prospects").select("telefone").eq("id", item.prospect_id).maybeSingle();
+    const { data: p } = await supabase.from("orbit_prospects").select(
+      "telefone",
+    ).eq("id", item.prospect_id).maybeSingle();
     telefone = (p as any)?.telefone ?? null;
   }
   if (!telefone) {
-    await supabase.from("orbit_whatsapp_outbox").update({ status: "failed", last_error: "missing_phone", locked_at: null, locked_by: null }).eq("id", item.id);
-    await upsertVisualMensagem(item, { status: "falhou", erro: "missing_phone" });
-    await updateCampaignRecipient(item, { status: "falhou", erro: "missing_phone" });
+    await supabase.from("orbit_whatsapp_outbox").update({
+      status: "failed",
+      last_error: "missing_phone",
+      locked_at: null,
+      locked_by: null,
+    }).eq("id", item.id);
+    await upsertVisualMensagem(item, {
+      status: "falhou",
+      erro: "missing_phone",
+    });
+    await updateCampaignRecipient(item, {
+      status: "falhou",
+      erro: "missing_phone",
+    });
     return { outcome: "failed", reason: "missing_phone" };
   }
 
@@ -843,27 +986,47 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
         locked_by: null,
       })
       .eq("id", item.id);
-    await upsertVisualMensagem(item, { status: "cancelada", erro: recheck.reason ?? "recovery_target_invalid" });
-    return { outcome: "canceled", reason: recheck.reason ?? "recovery_target_invalid" };
+    await upsertVisualMensagem(item, {
+      status: "cancelada",
+      erro: recheck.reason ?? "recovery_target_invalid",
+    });
+    return {
+      outcome: "canceled",
+      reason: recheck.reason ?? "recovery_target_invalid",
+    };
   }
 
   // ── GATE 3 (último instante): re-avalia hold/cadência já com o telefone resolvido.
   const holdFinal = await evaluateItemHold(item);
   if (!holdFinal.allowed) {
-    await releaseHeldItem(item, holdFinal.reason ?? RECOVERY_SPACING_REASON, holdFinal.retryAtIso);
-    return { outcome: "deferred", reason: holdFinal.reason ?? RECOVERY_SPACING_REASON };
+    await releaseHeldItem(
+      item,
+      holdFinal.reason ?? RECOVERY_SPACING_REASON,
+      holdFinal.retryAtIso,
+    );
+    return {
+      outcome: "deferred",
+      reason: holdFinal.reason ?? RECOVERY_SPACING_REASON,
+    };
   }
 
   // Modo simulated para testes: metadata.simulate=true força simulação sem tocar Z-API
   if (item.metadata?.simulate === true) {
     await supabase
       .from("orbit_whatsapp_outbox")
-      .update({ status: "simulated", sent_at: new Date().toISOString(), locked_at: null, locked_by: null })
+      .update({
+        status: "simulated",
+        sent_at: new Date().toISOString(),
+        locked_at: null,
+        locked_by: null,
+      })
       .eq("id", item.id);
     await upsertVisualMensagem(item, { status: "simulated" });
     await updateCampaignRecipient(item, { status: "simulated" });
-    q.remainingDaily -= 1;
-    q.remainingMinute -= 1;
+    if (quotaControlled) {
+      q.remainingDaily -= 1;
+      q.remainingMinute -= 1;
+    }
     return { outcome: "simulated" };
   }
 
@@ -881,11 +1044,20 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
       conversa_id: item.conversa_id,
       prospect_id: item.prospect_id,
       campaign_id: item.campaign_id,
-      payload_summary: { source_type: item.source_type, payload_type: item.payload_type, telefone },
+      payload_summary: {
+        source_type: item.source_type,
+        payload_type: item.payload_type,
+        telefone,
+      },
     });
     await supabase
       .from("orbit_whatsapp_outbox")
-      .update({ status: "failed", last_error: block, locked_at: null, locked_by: null })
+      .update({
+        status: "failed",
+        last_error: block,
+        locked_at: null,
+        locked_by: null,
+      })
       .eq("id", item.id);
     await upsertVisualMensagem(item, { status: "falhou", erro: block });
     await updateCampaignRecipient(item, { status: "falhou", erro: block });
@@ -895,10 +1067,21 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
   if (!zcfg?.instance_id || !zcfg?.token) {
     await supabase
       .from("orbit_whatsapp_outbox")
-      .update({ status: "failed", last_error: "zapi_config_missing", locked_at: null, locked_by: null })
+      .update({
+        status: "failed",
+        last_error: "zapi_config_missing",
+        locked_at: null,
+        locked_by: null,
+      })
       .eq("id", item.id);
-    await upsertVisualMensagem(item, { status: "falhou", erro: "zapi_config_missing" });
-    await updateCampaignRecipient(item, { status: "falhou", erro: "zapi_config_missing" });
+    await upsertVisualMensagem(item, {
+      status: "falhou",
+      erro: "zapi_config_missing",
+    });
+    await updateCampaignRecipient(item, {
+      status: "falhou",
+      erro: "zapi_config_missing",
+    });
     return { outcome: "failed", reason: "zapi_config_missing" };
   }
 
@@ -907,7 +1090,11 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
   const freshConn = await fetchZapiConnectionState(supabase, item.empresa_id);
   const connBlockNow = zapiInstanceBlockReason(freshConn);
   if (connBlockNow) {
-    await releaseHeldItem(item, connBlockNow, new Date(Date.now() + 5 * 60_000).toISOString());
+    await releaseHeldItem(
+      item,
+      connBlockNow,
+      new Date(Date.now() + 5 * 60_000).toISOString(),
+    );
     return { outcome: "deferred", reason: connBlockNow };
   }
 
@@ -916,16 +1103,30 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
   if (result.ok) {
     await supabase
       .from("orbit_whatsapp_outbox")
-      .update({ status: "sent", sent_at: new Date().toISOString(), provider_message_id: result.providerId ?? null, locked_at: null, locked_by: null })
+      .update({
+        status: "sent",
+        sent_at: new Date().toISOString(),
+        provider_message_id: result.providerId ?? null,
+        locked_at: null,
+        locked_by: null,
+      })
       .eq("id", item.id);
 
     // Persistir orbit_mensagens: UPDATE se produtor pré-criou queued; INSERT fallback.
     if (item.conversa_id) {
-      const preview = String(item.payload?.mensagem || `📎 ${item.payload_type}`).slice(0, 100);
-      await upsertVisualMensagem(item, { status: "enviada", provider_message_id: result.providerId ?? null });
+      const preview = String(
+        item.payload?.mensagem || `📎 ${item.payload_type}`,
+      ).slice(0, 100);
+      await upsertVisualMensagem(item, {
+        status: "enviada",
+        provider_message_id: result.providerId ?? null,
+      });
       await supabase
         .from("orbit_conversas")
-        .update({ ultima_mensagem_at: new Date().toISOString(), ultima_mensagem_preview: preview })
+        .update({
+          ultima_mensagem_at: new Date().toISOString(),
+          ultima_mensagem_preview: preview,
+        })
         .eq("id", item.conversa_id);
     }
 
@@ -933,11 +1134,13 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
 
     if (usedReserve) {
       q.remainingReserve = Math.max(0, (q.remainingReserve ?? 0) - 1);
-    } else {
+    } else if (quotaControlled) {
       q.remainingDaily -= 1;
     }
-    q.remainingMinute -= 1;
-    await bumpDailyUsage(item.empresa_id, 1);
+    if (quotaControlled) {
+      q.remainingMinute -= 1;
+      await bumpDailyUsage(item.empresa_id, 1);
+    }
 
     await auditZapiSendAttempt(supabase, {
       empresa_id: item.empresa_id,
@@ -948,7 +1151,11 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
       conversa_id: item.conversa_id,
       prospect_id: item.prospect_id,
       campaign_id: item.campaign_id,
-      payload_summary: { source_type: item.source_type, payload_type: item.payload_type, telefone },
+      payload_summary: {
+        source_type: item.source_type,
+        payload_type: item.payload_type,
+        telefone,
+      },
     });
     return { outcome: "sent", provider_message_id: result.providerId };
   }
@@ -958,15 +1165,32 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
   if (Number(item.attempts) >= maxAttempts) {
     await supabase
       .from("orbit_whatsapp_outbox")
-      .update({ status: "failed", last_error: result.error?.slice(0, 500) ?? "unknown", locked_at: null, locked_by: null })
+      .update({
+        status: "failed",
+        last_error: result.error?.slice(0, 500) ?? "unknown",
+        locked_at: null,
+        locked_by: null,
+      })
       .eq("id", item.id);
-    await updateCampaignRecipient(item, { status: "falhou", erro: result.error?.slice(0, 500) ?? "unknown" });
+    await updateCampaignRecipient(item, {
+      status: "falhou",
+      erro: result.error?.slice(0, 500) ?? "unknown",
+    });
     return { outcome: "failed", reason: result.error };
   }
-  const backoff = Math.min(30 * 60 * 1000, 60 * 1000 * Math.pow(2, Number(item.attempts) - 1));
+  const backoff = Math.min(
+    30 * 60 * 1000,
+    60 * 1000 * Math.pow(2, Number(item.attempts) - 1),
+  );
   await supabase
     .from("orbit_whatsapp_outbox")
-    .update({ status: "pending", locked_at: null, locked_by: null, next_attempt_at: new Date(Date.now() + backoff).toISOString(), last_error: result.error?.slice(0, 500) ?? "unknown" })
+    .update({
+      status: "pending",
+      locked_at: null,
+      locked_by: null,
+      next_attempt_at: new Date(Date.now() + backoff).toISOString(),
+      last_error: result.error?.slice(0, 500) ?? "unknown",
+    })
     .eq("id", item.id);
   return { outcome: "deferred", reason: result.error };
 }
@@ -979,16 +1203,34 @@ function sortClaimed(items: any[]): any[] {
   return [...items].sort((a, b) => {
     const p = effectiveOutboxPriority(b, now) - effectiveOutboxPriority(a, now);
     if (p !== 0) return p;
-    const s = String(a.scheduled_for ?? "").localeCompare(String(b.scheduled_for ?? ""));
+    const s = String(a.scheduled_for ?? "").localeCompare(
+      String(b.scheduled_for ?? ""),
+    );
     if (s !== 0) return s;
-    const c = String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
+    const c = String(a.created_at ?? "").localeCompare(
+      String(b.created_at ?? ""),
+    );
     if (c !== 0) return c;
     return String(a.id).localeCompare(String(b.id));
   });
 }
 
-async function processTenant(empresa_id: string, batch: number): Promise<Record<string, number>> {
-  const stats = { claimed: 0, sent: 0, simulated: 0, canceled: 0, expired: 0, deferred: 0, failed: 0, blocked: 0, retained: 0, held: 0 };
+async function processTenant(
+  empresa_id: string,
+  batch: number,
+): Promise<Record<string, number>> {
+  const stats = {
+    claimed: 0,
+    sent: 0,
+    simulated: 0,
+    canceled: 0,
+    expired: 0,
+    deferred: 0,
+    failed: 0,
+    blocked: 0,
+    retained: 0,
+    held: 0,
+  };
   const cfg = await getSendingConfig(empresa_id);
 
   // Limpeza fail-closed antes de conexão/cota/claim: backlog vencido não pode
@@ -1019,39 +1261,42 @@ async function processTenant(empresa_id: string, batch: number): Promise<Record<
   if (remainingDaily <= 0 && engagedReserveLimit(empresa_id) > 0) {
     remainingReserve = Math.max(
       0,
-      engagedReserveLimit(empresa_id) - (await countEngagedReserveUsedToday(supabase, empresa_id)),
+      engagedReserveLimit(empresa_id) -
+        (await countEngagedReserveUsedToday(supabase, empresa_id)),
     );
   }
 
-  // Tenant isento: se há resposta engajada elegível pendente, o tick NÃO aborta por
-  // cota/ritmo de prospecção. Prospecção continua retida no mesmo passo.
-  const engagedPending = await hasPendingEngagedReply(empresa_id);
-
-  if (remainingDaily <= 0 && remainingReserve <= 0 && !engagedPending) {
-    stats.retained = await retainPendingForTenant(empresa_id, RETAIN_REASON_DAILY, limitInfo);
-    return stats;
+  if (remainingDaily <= 0) {
+    stats.retained += await retainPendingForTenant(
+      empresa_id,
+      RETAIN_REASON_DAILY,
+      limitInfo,
+    );
   }
 
   let remainingMinute = Number.POSITIVE_INFINITY;
   if (cfg?.max_per_minute && cfg.max_per_minute > 0) {
-    remainingMinute = cfg.max_per_minute - (await countRecentSends(empresa_id, 60));
-    if (remainingMinute <= 0 && !engagedPending) {
-      stats.retained = await retainPendingForTenant(empresa_id, RETAIN_REASON_RATE, limitInfo);
-      return stats;
+    remainingMinute = cfg.max_per_minute -
+      (await countRecentSends(empresa_id, 60));
+    if (remainingMinute <= 0) {
+      stats.retained += await retainPendingForTenant(
+        empresa_id,
+        RETAIN_REASON_RATE,
+        limitInfo,
+      );
     }
   }
 
-
-  const quota: QuotaState = { limitInfo, remainingDaily, remainingMinute, remainingReserve };
-  const budget = remainingDaily > 0 ? remainingDaily : remainingReserve;
-  // Com resposta engajada isenta pendente, o claim não pode ser zerado pela cota de
-  // prospecção: cada item ainda passa por todos os gates individualmente.
-  const quotaCap = engagedPending
-    ? batch
-    : Math.min(
-      Number.isFinite(budget) ? budget : batch,
-      Number.isFinite(remainingMinute) ? remainingMinute : batch,
-    );
+  const quota: QuotaState = {
+    limitInfo,
+    remainingDaily,
+    remainingMinute,
+    remainingReserve,
+  };
+  // O claim não é limitado pela cota de prospecção: respostas reativas e mensagens
+  // operacionais precisam continuar fluindo mesmo quando a rampa está esgotada.
+  // Cada item de prospecção ainda passa pelo gate individual antes do envio.
+  const quotaCap = batch;
   const cap = Math.max(
     1,
     Math.min(
@@ -1077,9 +1322,17 @@ async function processTenant(empresa_id: string, batch: number): Promise<Record<
   // Sobrou fila e a cota estourou durante o lote: retém o restante como queued
   // (respostas engajadas isentas são preservadas dentro de retainPendingForTenant).
   if (quota.remainingDaily <= 0 && (quota.remainingReserve ?? 0) <= 0) {
-    stats.retained += await retainPendingForTenant(empresa_id, RETAIN_REASON_DAILY, limitInfo);
+    stats.retained += await retainPendingForTenant(
+      empresa_id,
+      RETAIN_REASON_DAILY,
+      limitInfo,
+    );
   } else if (quota.remainingMinute <= 0) {
-    stats.retained += await retainPendingForTenant(empresa_id, RETAIN_REASON_RATE, limitInfo);
+    stats.retained += await retainPendingForTenant(
+      empresa_id,
+      RETAIN_REASON_RATE,
+      limitInfo,
+    );
   }
 
   // Telemetria de SLO (somente leitura + auditoria): IN elegível sem OUT após 2 min.
@@ -1089,9 +1342,10 @@ async function processTenant(empresa_id: string, batch: number): Promise<Record<
   return stats;
 }
 
-
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
   const authHeader = req.headers.get("Authorization") ?? "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -1107,7 +1361,9 @@ Deno.serve(async (req) => {
 
   try {
     let body: any = {};
-    try { body = await req.json(); } catch { /* empty */ }
+    try {
+      body = await req.json();
+    } catch { /* empty */ }
     const batchPerTenant = Math.max(1, Math.min(50, Number(body?.batch ?? 15)));
 
     // Modo dirigido: processa 1 item específico (usado por AI reply / manual imediato)
@@ -1118,7 +1374,12 @@ Deno.serve(async (req) => {
         .eq("id", body.outbox_id)
         .eq("empresa_id", body.empresa_id)
         .maybeSingle();
-      if (!single) return new Response(JSON.stringify({ ok: false, error: "not_found" }), { status: 200, headers: corsHeaders });
+      if (!single) {
+        return new Response(JSON.stringify({ ok: false, error: "not_found" }), {
+          status: 200,
+          headers: corsHeaders,
+        });
+      }
 
       // Fura-fila guard: se existe pending com prioridade maior nesse tenant e já elegível,
       // defer este item — nunca desrespeitar prioridade global.
@@ -1132,25 +1393,56 @@ Deno.serve(async (req) => {
         .lte("scheduled_for", nowIso)
         .limit(1);
       if (higher && higher.length > 0) {
-        return new Response(JSON.stringify({ ok: true, data: { deferred: true, reason: "higher_priority_pending" } }), {
-          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            data: { deferred: true, reason: "higher_priority_pending" },
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
       }
 
       // Reserva manualmente
       const { data: locked } = await supabase
         .from("orbit_whatsapp_outbox")
-        .update({ status: "processing", locked_at: new Date().toISOString(), locked_by: WORKER_ID, attempts: (single as any).attempts + 1 })
+        .update({
+          status: "processing",
+          locked_at: new Date().toISOString(),
+          locked_by: WORKER_ID,
+          attempts: (single as any).attempts + 1,
+        })
         .eq("id", single.id)
         .eq("status", "pending")
         .select("*")
         .maybeSingle();
-      if (!locked) return new Response(JSON.stringify({ ok: true, data: { skipped: true, status: (single as any).status } }), { status: 200, headers: corsHeaders });
+      if (!locked) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            data: { skipped: true, status: (single as any).status },
+          }),
+          { status: 200, headers: corsHeaders },
+        );
+      }
       const cfg = await getSendingConfig((locked as any).empresa_id);
       const r = await processItem(locked, cfg);
-      return new Response(JSON.stringify({ ok: true, data: { tick_id: tickId, outcome: r.outcome, reason: r.reason ?? null } }), {
-        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            tick_id: tickId,
+            outcome: r.outcome,
+            reason: r.reason ?? null,
+          },
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     // Modo cron: descobre tenants com itens pendentes
@@ -1160,7 +1452,11 @@ Deno.serve(async (req) => {
       .eq("status", "pending")
       .lte("scheduled_for", new Date().toISOString())
       .limit(500);
-    const empresaIds = Array.from(new Set(((tenants ?? []) as any[]).map((r) => r.empresa_id).filter(Boolean)));
+    const empresaIds = Array.from(
+      new Set(
+        ((tenants ?? []) as any[]).map((r) => r.empresa_id).filter(Boolean),
+      ),
+    );
 
     const results: Record<string, any> = {};
     for (const eid of empresaIds) {
@@ -1171,15 +1467,29 @@ Deno.serve(async (req) => {
       }
     }
 
-    const summary = { tick_id: tickId, tenants: empresaIds.length, results, duration_ms: Date.now() - t0 };
+    const summary = {
+      tick_id: tickId,
+      tenants: empresaIds.length,
+      results,
+      duration_ms: Date.now() - t0,
+    };
     console.log(JSON.stringify({ scope: "outbox_tick_summary", ...summary }));
     return new Response(JSON.stringify({ ok: true, data: summary }), {
-      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
     console.error("outbox-tick fatal", e);
-    return new Response(JSON.stringify({ ok: false, error: String(e?.message ?? e), tick_id: tickId }), {
-      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error: String(e?.message ?? e),
+        tick_id: tickId,
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   }
 });

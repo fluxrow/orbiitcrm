@@ -6,7 +6,9 @@ export const PROSPECTING_QUOTA_SOURCES = [
 
 const PROSPECTING_QUOTA_SOURCE_SET = new Set<string>(PROSPECTING_QUOTA_SOURCES);
 
-export function consumesProspectingQuota(sourceType: string | null | undefined): boolean {
+export function consumesProspectingQuota(
+  sourceType: string | null | undefined,
+): boolean {
   return PROSPECTING_QUOTA_SOURCE_SET.has(String(sourceType ?? ""));
 }
 
@@ -43,9 +45,9 @@ export function saoPauloDayStartIso(now = new Date()): string {
 //   • Quando o warm-up termina (D5+) o teto efetivo passa a ser
 //     min(60, daily_limit) se daily_limit >= 60, senão 60.
 //
-// A cota vale para TODAS as origens da fila (ai_reply, manual,
-// meeting_confirmation, flow_initial, flow_followup, flow_stage, campaign) e para
-// todos os payload_type. Não existe bypass por origem no warm-up.
+// A cota vale somente para prospecção iniciada pelo sistema: campaign,
+// flow_initial e flow_followup. Respostas reativas e mensagens operacionais não
+// consomem a rampa, embora continuem sujeitas aos seus próprios gates de segurança.
 
 export const WARMUP_RAMP = [10, 15, 25, 40, 60] as const;
 export const WARMUP_RAMP_CEILING = WARMUP_RAMP[WARMUP_RAMP.length - 1];
@@ -64,7 +66,11 @@ export interface EffectiveLimit {
   /** Dia da rampa em base 1 (D1, D2, ...). null quando warm-up desligado. */
   warmup_day: number | null;
   ramp_value: number | null;
-  source: "warmup_ramp" | "warmup_ramp_capped_by_daily_limit" | "daily_limit" | "unlimited";
+  source:
+    | "warmup_ramp"
+    | "warmup_ramp_capped_by_daily_limit"
+    | "daily_limit"
+    | "unlimited";
 }
 
 /** Dias corridos (America/Sao_Paulo) desde warmup_start_date. D1 = dia do início. */
@@ -85,7 +91,10 @@ export function saoPauloDate(now: Date = new Date()): string {
 }
 
 /** Limite diário efetivo do tenant, respeitando a rampa de warm-up. */
-export function effectiveDailyLimit(cfg: WarmupConfigInput, now: Date = new Date()): EffectiveLimit {
+export function effectiveDailyLimit(
+  cfg: WarmupConfigInput,
+  now: Date = new Date(),
+): EffectiveLimit {
   const dailyLimit = cfg.daily_limit == null ? null : Number(cfg.daily_limit);
   if (cfg.warmup_enabled !== true || !cfg.warmup_start_date) {
     return {
@@ -98,7 +107,8 @@ export function effectiveDailyLimit(cfg: WarmupConfigInput, now: Date = new Date
   const day = warmupDay(cfg.warmup_start_date, now);
   const ramp = WARMUP_RAMP[Math.min(day - 1, WARMUP_RAMP.length - 1)];
   // daily_limit só age como teto quando é um teto de verdade (>= topo da rampa).
-  const capped = dailyLimit != null && dailyLimit >= WARMUP_RAMP_CEILING && dailyLimit < ramp;
+  const capped = dailyLimit != null && dailyLimit >= WARMUP_RAMP_CEILING &&
+    dailyLimit < ramp;
   return {
     limit: capped ? dailyLimit! : ramp,
     warmup_day: day,
@@ -134,7 +144,7 @@ export interface SimInput {
 
 /**
  * Decide item a item, na ordem recebida, o que sai e o que fica retido.
- * Sem bypass por source_type/payload_type: a cota vale para todas as origens.
+ * Somente fontes de prospecção consomem cota e ritmo global.
  */
 export function simulateWarmupBatch(input: SimInput): {
   decisions: SimDecision[];
@@ -149,17 +159,37 @@ export function simulateWarmupBatch(input: SimInput): {
   const decisions: SimDecision[] = [];
 
   for (const item of input.items) {
-    if (effective.limit != null && used >= effective.limit) {
-      decisions.push({ id: item.id, source_type: item.source_type, decision: "retain", reason: RETAIN_REASON_DAILY });
+    const quotaControlled = consumesProspectingQuota(item.source_type);
+    if (quotaControlled && effective.limit != null && used >= effective.limit) {
+      decisions.push({
+        id: item.id,
+        source_type: item.source_type,
+        decision: "retain",
+        reason: RETAIN_REASON_DAILY,
+      });
       continue;
     }
-    if (perMinute != null && perMinute > 0 && minute >= perMinute) {
-      decisions.push({ id: item.id, source_type: item.source_type, decision: "retain", reason: RETAIN_REASON_RATE });
+    if (
+      quotaControlled && perMinute != null && perMinute > 0 &&
+      minute >= perMinute
+    ) {
+      decisions.push({
+        id: item.id,
+        source_type: item.source_type,
+        decision: "retain",
+        reason: RETAIN_REASON_RATE,
+      });
       continue;
     }
-    used++;
-    minute++;
-    decisions.push({ id: item.id, source_type: item.source_type, decision: "send" });
+    if (quotaControlled) {
+      used++;
+      minute++;
+    }
+    decisions.push({
+      id: item.id,
+      source_type: item.source_type,
+      decision: "send",
+    });
   }
 
   return {
@@ -171,8 +201,13 @@ export function simulateWarmupBatch(input: SimInput): {
 }
 
 /** Próxima janela para reprocessar um item retido. */
-export function nextAttemptForRetain(reason: string, now: Date = new Date()): string {
-  if (reason === RETAIN_REASON_RATE) return new Date(now.getTime() + 60_000).toISOString();
+export function nextAttemptForRetain(
+  reason: string,
+  now: Date = new Date(),
+): string {
+  if (reason === RETAIN_REASON_RATE) {
+    return new Date(now.getTime() + 60_000).toISOString();
+  }
   // Cota diária: reabre no início do próximo dia São Paulo (00:00 -03:00).
   const today = saoPauloDate(now);
   const nextDay = new Date(Date.parse(`${today}T00:00:00-03:00`) + 86400000);
