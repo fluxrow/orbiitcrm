@@ -48,6 +48,13 @@ import {
   pilotInboundBlockReason,
   VIVER_CONTROLLED_OUTBOX_GATE_VERSION,
 } from "../_shared/outbox-pilot.ts";
+import {
+  effectiveOutboxPriority,
+  FLOW_OUTBOX_MAX_AGE_MS,
+  isOutboxBusinessWindow,
+  nextOutboxBusinessOpening,
+  usesEssentialFlowDeliveryRepair,
+} from "../_shared/outbox-delivery-window.ts";
 
 console.log("[orbit-whatsapp-outbox-tick] boot version:", ZAPI_STACK_VERSION, VIVER_CONTROLLED_OUTBOX_GATE_VERSION);
 import {
@@ -79,21 +86,7 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
 const WORKER_ID = `outbox-${crypto.randomUUID().slice(0, 8)}`;
 const VIVER_SEMIJOIAS_EMPRESA_ID = "36f26579-66ad-4ef1-9788-141e4c727232";
 
-// Janela comercial para sources não urgentes
-const BUSINESS_TZ = "America/Sao_Paulo";
-const BUSINESS_HOUR_START = 8;
-const BUSINESS_HOUR_END = 20;
 const URGENT_SOURCES = new Set(["ai_reply", "meeting_confirmation", "manual", "mixed_payment_confirmation"]);
-
-function nowInBusinessWindow(): boolean {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: BUSINESS_TZ,
-    hour: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date());
-  const h = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
-  return h >= BUSINESS_HOUR_START && h < BUSINESS_HOUR_END;
-}
 
 interface SendingConfig {
   enabled: boolean;
@@ -507,6 +500,65 @@ async function deferHeldPendingForTenant(empresa_id: string): Promise<number> {
   return deferred;
 }
 
+// Follow-up e mensagem inicial perdem o contexto operacional depois de 24h.
+// Cancela somente pendentes sem provider id e reconcilia a action correlata.
+// Respostas, reuniões, lembretes, campanhas e itens manuais nunca entram aqui.
+async function expireStaleFlowPendingForTenant(empresa_id: string, max = 500): Promise<number> {
+  if (!usesEssentialFlowDeliveryRepair(empresa_id)) return 0;
+  const cutoffIso = new Date(Date.now() - FLOW_OUTBOX_MAX_AGE_MS).toISOString();
+  const { data: stale, error: staleError } = await supabase
+    .from("orbit_whatsapp_outbox")
+    .select("id, scheduled_action_id")
+    .eq("empresa_id", empresa_id)
+    .eq("status", "pending")
+    .in("source_type", ["flow_initial", "flow_followup"])
+    .is("provider_message_id", null)
+    .lte("scheduled_for", cutoffIso)
+    .limit(max);
+  if (staleError) throw new Error(`stale_flow_query_failed: ${staleError.message}`);
+  const ids = (stale ?? []).map((row: any) => row.id).filter(Boolean);
+  if (ids.length === 0) return 0;
+
+  const nowIso = new Date().toISOString();
+  const { data: canceled, error: cancelError } = await supabase
+    .from("orbit_whatsapp_outbox")
+    .update({
+      status: "canceled",
+      canceled_at: nowIso,
+      canceled_reason: "stale_delivery_window",
+      last_error: "stale_delivery_window",
+      locked_at: null,
+      locked_by: null,
+      next_attempt_at: null,
+    })
+    .eq("empresa_id", empresa_id)
+    .eq("status", "pending")
+    .in("id", ids)
+    .select("id, scheduled_action_id");
+  if (cancelError) throw new Error(`stale_flow_cancel_failed: ${cancelError.message}`);
+
+  const actionIds = (canceled ?? [])
+    .map((row: any) => row.scheduled_action_id)
+    .filter(Boolean);
+  if (actionIds.length > 0) {
+    const { error: actionError } = await supabase
+      .from("orbit_flow_scheduled_actions")
+      .update({
+        status: "canceled",
+        canceled_reason: "stale_delivery_window",
+        last_error: "stale_delivery_window",
+        locked_at: null,
+        locked_by: null,
+        updated_at: nowIso,
+      })
+      .eq("empresa_id", empresa_id)
+      .in("id", actionIds)
+      .in("status", ["pending", "processing", "success"]);
+    if (actionError) throw new Error(`stale_flow_action_reconcile_failed: ${actionError.message}`);
+  }
+  return (canceled ?? []).length;
+}
+
 async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaState): Promise<ProcessResult> {
   // ── GATE 1 (pós-claim, anti-corrida): hold explícito e cadência por recovery.
   // Roda ANTES de horário comercial, elegibilidade, cota e qualquer fetch externo.
@@ -536,14 +588,18 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
   }
 
   // Kill switch por tenant + horário comercial para não-urgentes
-  if (!URGENT_SOURCES.has(item.source_type) && !nowInBusinessWindow()) {
-    // reagenda para próxima janela (default: próximo horário 08:00)
-    const next = new Date();
-    next.setUTCHours(next.getUTCHours() + 1);
-    await supabase
-      .from("orbit_whatsapp_outbox")
-      .update({ status: "pending", locked_at: null, locked_by: null, next_attempt_at: next.toISOString(), last_error: "outside_business_hours" })
-      .eq("id", item.id);
+  if (!URGENT_SOURCES.has(item.source_type) && !isOutboxBusinessWindow()) {
+    if (usesEssentialFlowDeliveryRepair(item.empresa_id)) {
+      // Um único defer até 08:00 de São Paulo. Compensa attempts incrementado no
+      // claim, pois nenhuma tentativa externa ocorreu.
+      await releaseHeldItem(item, "outside_business_hours", nextOutboxBusinessOpening().toISOString());
+    } else {
+      const next = new Date(Date.now() + 60 * 60 * 1000);
+      await supabase
+        .from("orbit_whatsapp_outbox")
+        .update({ status: "pending", locked_at: null, locked_by: null, next_attempt_at: next.toISOString(), last_error: "outside_business_hours" })
+        .eq("id", item.id);
+    }
     return { outcome: "deferred", reason: "outside_business_hours" };
   }
 
@@ -916,10 +972,12 @@ async function processItem(item: any, cfg: SendingConfig | null, quota?: QuotaSt
 }
 
 function sortClaimed(items: any[]): any[] {
-  // Ordem determinística: priority DESC, scheduled_for ASC, created_at ASC, id ASC.
+  // Ordem determinística com aging limitado para follow-up válido.
+  // Reunião/ai_reply continuam acima; follow-up vencido nunca recebe boost.
   // Necessário porque RETURNING de UPDATE ... FROM não garante ordem do CTE.
+  const now = new Date();
   return [...items].sort((a, b) => {
-    const p = (Number(b.priority) || 0) - (Number(a.priority) || 0);
+    const p = effectiveOutboxPriority(b, now) - effectiveOutboxPriority(a, now);
     if (p !== 0) return p;
     const s = String(a.scheduled_for ?? "").localeCompare(String(b.scheduled_for ?? ""));
     if (s !== 0) return s;
@@ -930,8 +988,12 @@ function sortClaimed(items: any[]): any[] {
 }
 
 async function processTenant(empresa_id: string, batch: number): Promise<Record<string, number>> {
-  const stats = { claimed: 0, sent: 0, simulated: 0, canceled: 0, deferred: 0, failed: 0, blocked: 0, retained: 0, held: 0 };
+  const stats = { claimed: 0, sent: 0, simulated: 0, canceled: 0, expired: 0, deferred: 0, failed: 0, blocked: 0, retained: 0, held: 0 };
   const cfg = await getSendingConfig(empresa_id);
+
+  // Limpeza fail-closed antes de conexão/cota/claim: backlog vencido não pode
+  // ressurgir quando a instância volta ou a cota diária reinicia.
+  stats.expired = await expireStaleFlowPendingForTenant(empresa_id);
 
   // ── GATE 0 (fail-closed): instância offline/bloqueada pausa a fila do tenant.
   // Nunca falha item — apenas empurra a próxima tentativa.
