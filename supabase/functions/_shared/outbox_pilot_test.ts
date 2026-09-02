@@ -2,6 +2,7 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   PILOT_INBOUND_REQUIRED,
   PILOT_CAMPAIGN_EVIDENCE_REQUIRED,
+  PILOT_CAMPAIGN_MESSAGE_INVALID,
   PILOT_FOLLOWUP_EVIDENCE_REQUIRED,
   PILOT_MEETING_EVIDENCE_REQUIRED,
   PILOT_SOURCE_BLOCKED,
@@ -12,7 +13,7 @@ import {
 } from "./outbox-pilot.ts";
 
 Deno.test("controlled Viver outbox gate exposes the deploy version", () => {
-  assertEquals(VIVER_CONTROLLED_OUTBOX_GATE_VERSION, "2026-09-01-v2");
+  assertEquals(VIVER_CONTROLLED_OUTBOX_GATE_VERSION, "2026-09-02-v3");
 });
 
 Deno.test("pilot blocks every proactive source for Viver", () => {
@@ -26,6 +27,7 @@ Deno.test("pilot only admits explicitly marked controlled Viver operations to ev
     empresa_id: VIVER_SEMIJOIAS_EMPRESA_ID,
     source_type: "campaign",
     metadata: { viver_controlled_reengagement: true },
+    payload: { mensagem: "Olá. Posso continuar?" },
   }), null);
   assertEquals(pilotStaticBlockReason({
     empresa_id: VIVER_SEMIJOIAS_EMPRESA_ID,
@@ -40,6 +42,33 @@ Deno.test("pilot only admits explicitly marked controlled Viver operations to ev
   assertEquals(PILOT_CAMPAIGN_EVIDENCE_REQUIRED, "PILOT_CAMPAIGN_EVIDENCE_REQUIRED");
   assertEquals(PILOT_FOLLOWUP_EVIDENCE_REQUIRED, "PILOT_FOLLOWUP_EVIDENCE_REQUIRED");
   assertEquals(PILOT_MEETING_EVIDENCE_REQUIRED, "PILOT_MEETING_EVIDENCE_REQUIRED");
+});
+
+Deno.test("controlled Viver campaign requires exactly one question and no URL", () => {
+  const base = {
+    empresa_id: VIVER_SEMIJOIAS_EMPRESA_ID,
+    source_type: "campaign",
+    metadata: { viver_controlled_reengagement: true },
+  };
+
+  assertEquals(pilotStaticBlockReason({
+    ...base,
+    payload: { mensagem: "Tudo bem? Posso continuar?" },
+  }), PILOT_CAMPAIGN_MESSAGE_INVALID);
+  assertEquals(pilotStaticBlockReason({
+    ...base,
+    payload: { mensagem: "Posso continuar? https://example.invalid" },
+  }), PILOT_CAMPAIGN_MESSAGE_INVALID);
+  assertEquals(pilotStaticBlockReason({
+    ...base,
+    payload: { mensagem: "Posso continuar?" },
+  }), null);
+  assertEquals(pilotStaticBlockReason({
+    empresa_id: "other",
+    source_type: "campaign",
+    metadata: { viver_controlled_reengagement: true },
+    payload: { mensagem: "Tudo bem? Posso continuar?" },
+  }), null);
 });
 
 Deno.test("pilot permits only the explicitly marked Viver Typebot D0 action", () => {
