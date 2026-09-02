@@ -6,12 +6,13 @@
 import { evaluateViverMeetingReminder } from "./viver-meeting-lifecycle.ts";
 
 export const VIVER_SEMIJOIAS_EMPRESA_ID = "36f26579-66ad-4ef1-9788-141e4c727232";
-export const VIVER_CONTROLLED_OUTBOX_GATE_VERSION = "2026-09-01-v2";
+export const VIVER_CONTROLLED_OUTBOX_GATE_VERSION = "2026-09-02-v3";
 
 export const PILOT_SOURCE_BLOCKED = "PILOT_SOURCE_BLOCKED";
 export const PILOT_INBOUND_REQUIRED = "PILOT_INBOUND_REQUIRED";
 export const PILOT_TYPEBOT_EVIDENCE_REQUIRED = "PILOT_TYPEBOT_EVIDENCE_REQUIRED";
 export const PILOT_CAMPAIGN_EVIDENCE_REQUIRED = "PILOT_CAMPAIGN_EVIDENCE_REQUIRED";
+export const PILOT_CAMPAIGN_MESSAGE_INVALID = "PILOT_CAMPAIGN_MESSAGE_INVALID";
 export const PILOT_FOLLOWUP_EVIDENCE_REQUIRED = "PILOT_FOLLOWUP_EVIDENCE_REQUIRED";
 export const PILOT_MEETING_EVIDENCE_REQUIRED = "PILOT_MEETING_EVIDENCE_REQUIRED";
 
@@ -41,6 +42,23 @@ export function isControlledViverCampaign(item: any): boolean {
     item?.metadata?.viver_controlled_reengagement === true;
 }
 
+export function controlledViverCampaignMessageBlockReason(item: any): string | null {
+  if (!isControlledViverCampaign(item)) return null;
+
+  const message = item?.payload?.mensagem;
+  if (typeof message !== "string" || !message.trim()) {
+    return PILOT_CAMPAIGN_MESSAGE_INVALID;
+  }
+
+  const questionCount = (message.match(/\?/g) ?? []).length;
+  const hasUrl = /(?:https?:\/\/|www\.)/i.test(message);
+  if (questionCount !== 1 || hasUrl) {
+    return PILOT_CAMPAIGN_MESSAGE_INVALID;
+  }
+
+  return null;
+}
+
 export function isControlledViverFollowup(item: any): boolean {
   return isPilotTenant(item?.empresa_id) && item?.source_type === "flow_followup" &&
     item?.metadata?.viver_controlled_followup === true &&
@@ -57,7 +75,7 @@ export function pilotStaticBlockReason(item: any): string | null {
   if (!isPilotTenant(item?.empresa_id)) return null;
   if (isControlledCanary(item)) return null;
   if (isControlledTypebotD0(item)) return null;
-  if (isControlledViverCampaign(item)) return null;
+  if (isControlledViverCampaign(item)) return controlledViverCampaignMessageBlockReason(item);
   if (isControlledViverFollowup(item)) return null;
   if (isControlledViverMeetingReminder(item)) return null;
   if (item?.source_type !== "ai_reply") return PILOT_SOURCE_BLOCKED;

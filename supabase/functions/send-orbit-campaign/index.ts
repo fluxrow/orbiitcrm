@@ -8,6 +8,7 @@ import { signOrbitMediaUrl } from "../_shared/orbit-media.ts";
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 import { checkCampaignRecipientEligibility, markRecipientIgnorado } from "../_shared/campaign-safety.ts";
 import { claimCampaignDispatchAuthorization } from "../_shared/campaign-dispatch-authorization.ts";
+import { controlledViverCampaignMessageBlockReason } from "../_shared/outbox-pilot.ts";
 import {
   WARMUP_SCALE,
   getEffectiveDailyLimit,
@@ -545,6 +546,18 @@ const handler = async (req: Request): Promise<Response> => {
               controlled_reengagement_slot: controlledReengagement.slot ?? null,
             }
             : {};
+          const controlledMessageBlock = controlledViverCampaignMessageBlockReason({
+            empresa_id: campaign.empresa_id,
+            source_type: "campaign",
+            payload: { mensagem },
+            metadata,
+          });
+          if (controlledMessageBlock) {
+            await markRecipientIgnorado(supabase, recipient.id, controlledMessageBlock);
+            ignorados++;
+            adapterSkipped++;
+            continue;
+          }
           const routed = await enqueueOutbox(supabase, {
             empresa_id: campaign.empresa_id,
             campaign_id: campaign.id,
