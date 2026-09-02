@@ -511,7 +511,11 @@ Deno.test("Regressão Ivan 30/08: interesse no Curso não volta sozinho para a M
     inbound: "Interessante",
     response:
       "Quer seguir com a Mentoria completa ou prefere pensar mais um pouco?",
-    commercialState: { product_focus: "curso", budget_objection: true },
+    commercialState: {
+      product_focus: "curso",
+      budget_objection: true,
+      budget_objection_verified: true,
+    },
   });
   if (result.text !== BULLINK_COURSE_CONTINUITY_REPLY) {
     throw new Error(result.text);
@@ -538,6 +542,7 @@ Deno.test("Regressão Rogério 29/08: aceite do Curso entrega PIX sem ciclo de p
     commercialState: {
       product_focus: "curso",
       budget_objection: true,
+      budget_objection_verified: true,
       price_informed: { product: "curso" },
       awaiting_offer_confirmation: "curso",
     },
@@ -558,6 +563,32 @@ Deno.test("Regressão Rogério 29/08: aceite do Curso entrega PIX sem ciclo de p
   }
   if (/quer que eu|posso te passar/i.test(result.text)) {
     throw new Error(result.text);
+  }
+});
+
+Deno.test("Regressão 01/09: estado legado sem prova não libera Curso", () => {
+  const result = enforceBullinkConversationGuard({
+    empresaId: BULLINK_EMPRESA_ID,
+    inbound: "Quero avaliar com calma antes de decidir",
+    response:
+      "Tenho o Curso Gravado por R$ 997 à vista no PIX. Quer que eu explique?",
+    commercialState: {
+      product_focus: "curso",
+      budget_objection: true,
+      budget_objection_verified: false,
+    },
+    recentMessages: [
+      {
+        direcao: "IN",
+        mensagem: "Estou avaliando as condições e o retorno esperado.",
+      },
+    ],
+  });
+  if (!result.reasons.includes("unsolicited_recorded_course_offer")) {
+    throw new Error(JSON.stringify(result));
+  }
+  if (/curso|997/i.test(result.text)) {
+    throw new Error(`oferta secundária indevida: ${result.text}`);
   }
 });
 

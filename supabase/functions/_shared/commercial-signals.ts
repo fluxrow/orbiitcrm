@@ -307,6 +307,12 @@ export interface CommercialStateV2 {
   product_explained: boolean;
   price_informed: { product: string; at: string } | null;
   budget_objection: boolean;
+  /**
+   * Prova persistida de que a objeção financeira passou por um detector
+   * determinístico e tenant-scoped. Flags legadas sem esta marca não podem
+   * liberar uma oferta secundária por conta própria.
+   */
+  budget_objection_verified?: boolean;
   closing_intent_at: string | null;
   payment_method: "pix" | "cartao" | null;
   payment_details_sent_at: string | null;
@@ -324,6 +330,7 @@ export const EMPTY_COMMERCIAL_STATE: CommercialStateV2 = {
   product_explained: false,
   price_informed: null,
   budget_objection: false,
+  budget_objection_verified: false,
   closing_intent_at: null,
   payment_method: null,
   payment_details_sent_at: null,
@@ -347,6 +354,7 @@ export function readCommercialState(aiContexto: Record<string, unknown> | null |
     product_explained: raw.product_explained === true,
     price_informed: price,
     budget_objection: raw.budget_objection === true,
+    budget_objection_verified: raw.budget_objection_verified === true,
     closing_intent_at: typeof raw.closing_intent_at === "string" ? raw.closing_intent_at : null,
     payment_method: method,
     payment_details_sent_at: typeof raw.payment_details_sent_at === "string" ? raw.payment_details_sent_at : null,
@@ -734,6 +742,12 @@ export interface UpdateCommercialStateOptions {
    * comportamento legado byte-for-byte.
    */
   detectExplanationInReply?: boolean;
+  /**
+   * Quando informado, substitui a flag acumulada por uma decisão
+   * determinística. Usado pelo Bullink para limpar estado legado contaminado
+   * por sinais fracos (por exemplo, situação profissional sem objeção de preço).
+   */
+  authoritativeBudgetObjection?: boolean;
 }
 
 /** Atualização idempotente do estado, a partir do turno concluído. */
@@ -772,7 +786,10 @@ export function updateCommercialState(
     product_explained: (!switchedProduct && state.product_explained) || respondeuPreco || explicouNaResposta ||
       extracted.signals.has("informational_question"),
     price_informed: priceInformed,
-    budget_objection: state.budget_objection || extracted.signals.has("budget_objection"),
+    budget_objection: opts?.authoritativeBudgetObjection ??
+      (state.budget_objection || extracted.signals.has("budget_objection")),
+    budget_objection_verified: opts?.authoritativeBudgetObjection ??
+      (state.budget_objection_verified === true),
     closing_intent_at: perms.closingRecognized
       ? (switchedProduct ? nowISO : (state.closing_intent_at ?? nowISO))
       : (switchedProduct ? null : state.closing_intent_at),

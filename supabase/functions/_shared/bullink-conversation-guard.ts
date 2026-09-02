@@ -41,6 +41,7 @@ export interface BullinkConversationGuardInput {
   commercialState?: {
     product_focus?: unknown;
     budget_objection?: unknown;
+    budget_objection_verified?: unknown;
     price_informed?: { product?: unknown } | null;
     awaiting_offer_confirmation?: unknown;
     awaiting_payment_method?: unknown;
@@ -542,7 +543,8 @@ export function enforceBullinkConversationGuard(
   );
   const budgetObjection = isBudgetObjection(input.inbound);
   const historicalBudgetObjection =
-    input.commercialState?.budget_objection === true ||
+    (input.commercialState?.budget_objection === true &&
+      input.commercialState?.budget_objection_verified === true) ||
     (input.recentMessages ?? []).some((message) =>
       String(message?.direcao ?? "").toUpperCase() === "IN" &&
       isBudgetObjection(String(message?.mensagem ?? ""))

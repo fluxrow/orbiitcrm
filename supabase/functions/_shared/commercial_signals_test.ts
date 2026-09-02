@@ -63,6 +63,28 @@ Deno.test("A2: variações reais de preço curto e produto + valores são detect
   }
 });
 
+Deno.test("A3: decisão autoritativa limpa objeção financeira legada sem prova", () => {
+  const contaminated = state({
+    product_focus: "curso",
+    budget_objection: true,
+    budget_objection_verified: false,
+  });
+  const extracted = extractCommercialSignals(
+    "Estou avaliando as condições e o retorno esperado.",
+  );
+  const perms = computeCommercialPermissions(extracted, contaminated);
+  const next = updateCommercialState(
+    contaminated,
+    extracted,
+    "Posso esclarecer a estrutura da Mentoria.",
+    perms,
+    NOW,
+    { authoritativeBudgetObjection: false },
+  );
+  assertFalse(next.budget_objection);
+  assertFalse(next.budget_objection_verified === true);
+});
+
 // B — "quanto custa a mentoria?" responde preço sem iniciar pagamento
 Deno.test("B: quanto custa -> preço permitido, pagamento não", () => {
   const { perms } = run("quanto custa a mentoria?", state());

@@ -121,6 +121,7 @@ import {
   sanitizeSecondaryOfferV2,
   buildSecondaryOfferCorrectiveV2,
   buildPrimaryOfferPromptBlock,
+  detectBudgetObjection,
 } from "../_shared/primary-offer-guard.ts";
 
 
@@ -190,7 +191,7 @@ import { schedulingPolicy, isAmbiguousSlotAcceptance, selectExplicitSuggestion }
 // Persistido na metadata de cada ai_reply para comprovar qual barreira estava
 // realmente publicada quando uma resposta saiu. O monitor não precisa inferir
 // versão por horário de commit nem confiar no deploy do frontend.
-export const ORBIT_AI_AGENT_RUNTIME_VERSION = "2026-08-31-bullink-primary-offer-v3";
+export const ORBIT_AI_AGENT_RUNTIME_VERSION = "2026-09-01-bullink-budget-proof-v4";
 
 /**
  * Normalização final aplicada em TODOS os caminhos de saída do agente.
@@ -1644,11 +1645,34 @@ serve(async (req) => {
     const commercialExtracted = commercialV2Enabled
       ? extractCommercialSignals(mensagemAgregada)
       : { signals: new Set<never>(), paymentMethod: null, productMentioned: null } as any;
+    const bullinkVerifiedBudgetObjectionNow = isBullinkTenant(empresaId) &&
+      detectBudgetObjection(mensagemAgregada);
+    // O detector comercial genérico também usa contexto socioeconômico como
+    // sinal consultivo. No Bullink isso nunca pode liberar o downsell: apenas
+    // uma objeção financeira textual e determinística tem essa autoridade.
+    if (
+      isBullinkTenant(empresaId) &&
+      commercialExtracted.signals.has("budget_objection") &&
+      !bullinkVerifiedBudgetObjectionNow
+    ) {
+      commercialExtracted.signals.delete("budget_objection");
+    }
+    const bullinkVerifiedBudgetObjectionInHistory = isBullinkTenant(empresaId) &&
+      (mensagens || []).some((message) =>
+        String((message as any)?.direcao ?? "").toUpperCase() === "IN" &&
+        detectBudgetObjection(String((message as any)?.mensagem ?? ""))
+      );
+    const authoritativeBullinkBudgetObjection = isBullinkTenant(empresaId)
+      ? bullinkVerifiedBudgetObjectionNow ||
+        bullinkVerifiedBudgetObjectionInHistory ||
+        commercialState.budget_objection_verified === true
+      : undefined;
     const bullinkHistoryProductFocus = inferBullinkConversationProductFocus({
       empresaId,
       recentMessages: mensagens || [],
       stateFocus: commercialState.product_focus,
-      stateBudgetObjection: commercialState.budget_objection,
+      stateBudgetObjection: authoritativeBullinkBudgetObjection ??
+        commercialState.budget_objection,
     });
     const rawCommercialProductFocus = primaryOfferCfg &&
         (commercialExtracted.signals.has("budget_objection") || commercialExtracted.signals.has("discount_request"))
@@ -1663,7 +1687,9 @@ serve(async (req) => {
           inbound: mensagemAgregada,
           tags: Array.isArray((prospect as any)?.tags) ? ((prospect as any).tags as string[]) : [],
           stateFocus: rawCommercialProductFocus,
-          stateBudgetObjection: commercialState.budget_objection || commercialExtracted.signals?.has?.("budget_objection") === true,
+          stateBudgetObjection: authoritativeBullinkBudgetObjection ??
+            (commercialState.budget_objection ||
+              commercialExtracted.signals?.has?.("budget_objection") === true),
         })
       : null;
     const commercialProductInFocus = primaryOfferPerm?.effectiveFocus ?? rawCommercialProductFocus;
@@ -2372,7 +2398,11 @@ ${regrasBlock}`;
               commercialTurnTimestamp,
               // Tenant com identidade única: a explicação da oferta na própria
               // resposta do agente já marca product_explained (idempotente).
-              { detectExplanationInReply: blockIdentitySplit },
+              {
+                detectExplanationInReply: blockIdentitySplit,
+                authoritativeBudgetObjection:
+                  authoritativeBullinkBudgetObjection,
+              },
             ),
           }
         : {}),
@@ -2722,6 +2752,14 @@ ${regrasBlock}`;
       commercialState: {
         ...commercialState,
         product_focus: commercialProductInFocus ?? commercialState.product_focus,
+        ...(isBullinkTenant(empresaId)
+          ? {
+              budget_objection:
+                authoritativeBullinkBudgetObjection === true,
+              budget_objection_verified:
+                authoritativeBullinkBudgetObjection === true,
+            }
+          : {}),
       },
       officialPixKey: bullinkOfficialPixKey,
       officialCardUrl: bullinkOfficialCardUrl,
@@ -2759,7 +2797,10 @@ ${regrasBlock}`;
         resposta,
         commercialPerms,
         commercialTurnTimestamp,
-        { detectExplanationInReply: blockIdentitySplit },
+        {
+          detectExplanationInReply: blockIdentitySplit,
+          authoritativeBudgetObjection: authoritativeBullinkBudgetObjection,
+        },
       );
       const persistedCommercialState = (novoContexto as any).commercial_v2;
       if (JSON.stringify(finalCommercialState) !== JSON.stringify(persistedCommercialState)) {
