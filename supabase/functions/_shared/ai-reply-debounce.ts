@@ -168,3 +168,24 @@ export function evaluateReplySla(
   candidates.sort((a, b) => b[1] - a[1]);
   return { totalMs, withinSla: false, breachReason: candidates[0][0], legs };
 }
+
+// ── Espera de agregação do agente (tenant-scoped) ──
+
+/** Espera legada de agregação antes da geração (preservada por default). */
+export const DEFAULT_AGENT_AGGREGATION_WAIT_MS = 10_000;
+
+/**
+ * Lê `ai_reply_debounce.agent_aggregation_wait_ms`. Ausência/valor inválido
+ * mantém exatamente o comportamento legado (10.000 ms). Valores válidos são
+ * arredondados e limitados entre 0 e 30.000 ms.
+ */
+export function readAgentAggregationWaitMs(
+  aiConfig: Record<string, unknown> | null | undefined,
+): number {
+  const raw = (aiConfig as any)?.ai_reply_debounce?.agent_aggregation_wait_ms;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (raw === null || raw === undefined || raw === "" || !Number.isFinite(n)) {
+    return DEFAULT_AGENT_AGGREGATION_WAIT_MS;
+  }
+  return Math.min(30_000, Math.max(0, Math.round(n)));
+}
