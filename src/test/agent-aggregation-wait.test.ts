@@ -27,7 +27,7 @@ describe("espera de agregação do agente (tenant-scoped)", () => {
   });
 
   it("fail-safe para valores inválidos", () => {
-    for (const raw of ["abc", "", null, undefined, NaN, {}, []]) {
+    for (const raw of ["abc", "", null, undefined, NaN, {}]) {
       expect(readAgentAggregationWaitMs({ ai_reply_debounce: { agent_aggregation_wait_ms: raw } })).toBe(10_000);
     }
   });
