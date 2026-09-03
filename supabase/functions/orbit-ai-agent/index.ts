@@ -994,8 +994,22 @@ serve(async (req) => {
       .eq("empresa_id", empresaId);
 
     // ── DEBOUNCE: claim persistente já protege execuções concorrentes ──
-    console.log("[orbit-ai-agent] Aguardando 10s para agregar mensagens...");
-    await new Promise(r => setTimeout(r, 10000));
+    // Espera de agregação tenant-scoped: sem configuração mantém 10s (legado).
+    let agentAggregationWaitMs = DEFAULT_AGENT_AGGREGATION_WAIT_MS;
+    try {
+      const { data: debounceCfgRow } = await supabase
+        .from("orbit_ai_config")
+        .select("ai_reply_debounce")
+        .eq("empresa_id", empresaId)
+        .maybeSingle();
+      agentAggregationWaitMs = readAgentAggregationWaitMs(debounceCfgRow ?? null);
+    } catch (_e) {
+      agentAggregationWaitMs = DEFAULT_AGENT_AGGREGATION_WAIT_MS;
+    }
+    console.log(`[orbit-ai-agent] Aguardando ${agentAggregationWaitMs}ms para agregar mensagens...`);
+    if (agentAggregationWaitMs > 0) {
+      await new Promise(r => setTimeout(r, agentAggregationWaitMs));
+    }
     if (!await renewExecutionLease()) {
       return leaseLostResponse();
     }
