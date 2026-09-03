@@ -55,6 +55,10 @@ import {
 } from "../_shared/immediate-outbox-dispatch.ts";
 
 import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
+import {
+  DEFAULT_AGENT_AGGREGATION_WAIT_MS,
+  readAgentAggregationWaitMs,
+} from "../_shared/ai-reply-debounce.ts";
 
 import {
   isProofRequest,
