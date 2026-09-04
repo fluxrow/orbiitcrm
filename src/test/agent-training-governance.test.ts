@@ -15,6 +15,10 @@ const bullinkSeed = fs.readFileSync(
   path.resolve(process.cwd(), "supabase/migrations/20260831133326_seed_bullink_training_draft.sql"),
   "utf8",
 );
+const selfServicePermission = fs.readFileSync(
+  path.resolve(process.cwd(), "supabase/migrations/20260904210545_bullink_agent_training_self_service_permission.sql"),
+  "utf8",
+);
 const sandbox = fs.readFileSync(
   path.resolve(process.cwd(), "supabase/functions/orbit-ai-sandbox/index.ts"),
   "utf8",
@@ -123,5 +127,16 @@ describe("agent training governance", () => {
     expect(bullinkSeed).toContain("d.content = ''");
     expect(bullinkSeed).toContain("d.fingerprint = md5('')");
     expect(bullinkSeed).toContain("'changes_runtime', false");
+  });
+
+  it("supports a narrow tenant-scoped self-service training permission", () => {
+    expect(selfServicePermission).toContain("'agent_training_manage'");
+    expect(selfServicePermission).toContain("public.user_has_empresa_access(p_empresa_id)");
+    expect(selfServicePermission).toContain("p.empresa_id = p_empresa_id");
+    expect(selfServicePermission).toContain("p.user_id = p_user_id");
+    expect(selfServicePermission).toContain("p.revoked_at IS NULL");
+    expect(selfServicePermission).toContain("REVOKE ALL ON FUNCTION public.orbit_agent_training_is_admin");
+    expect(selfServicePermission).not.toContain("campaign_dispatch' OR");
+    expect(selfServicePermission).not.toContain("UPDATE public.orbit_ai_config");
   });
 });
