@@ -11,7 +11,7 @@ import {
   testMetaWhatsAppConnection,
   useOrbitMetaWhatsAppConfig,
   useUpdateMetaWhatsAppConfig,
-} from "@/hooks/useOrbitConfig";
+} from "@/hooks/useOrbitMetaWhatsAppConfig";
 
 export function MetaWhatsAppConfigCard({ empresaId, disabled = false }: { empresaId: string; disabled?: boolean }) {
   const query = useOrbitMetaWhatsAppConfig(empresaId);
