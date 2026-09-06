@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
   getOrbitMetaWhatsAppRuntimeConfig,
-  isMetaWhatsAppReady,
+  hasCompleteMetaWhatsAppCredentials,
 } from "../_shared/meta-whatsapp.ts";
 import { getCorsHeaders } from "../_shared/cors.ts";
 
@@ -60,7 +60,8 @@ Deno.serve(async (req) => {
     auth: { autoRefreshToken: false, persistSession: false },
   });
   const config = await getOrbitMetaWhatsAppRuntimeConfig(service, empresaId);
-  if (!isMetaWhatsAppReady(config)) {
+  // A checagem de saude e somente leitura e deve funcionar antes da ativacao.
+  if (!hasCompleteMetaWhatsAppCredentials(config)) {
     return new Response(
       JSON.stringify({ ok: false, error: "configuration_incomplete" }),
       {

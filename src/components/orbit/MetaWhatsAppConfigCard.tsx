@@ -134,7 +134,7 @@ export function MetaWhatsAppConfigCard({ empresaId, disabled = false }: { empres
         {form.allow_proactive_messages && <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs"><ShieldAlert className="h-4 w-4 shrink-0 text-amber-600" />Mensagens fora da janela de 24h só saem com template aprovado pela Meta. Ativar esta opção não solta texto livre nem ignora cotas.</div>}
 
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={test} disabled={testing || !query.data?.ativo}>{testing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Testar sem enviar</Button>
+          <Button variant="outline" onClick={test} disabled={testing || !readyToActivate || update.isPending}>{testing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Testar sem enviar</Button>
           <Button onClick={save} disabled={disabled || update.isPending}>{update.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Salvar Meta</Button>
         </div>
       </CardContent>

@@ -72,8 +72,14 @@ export async function getOrbitMetaWhatsAppRuntimeConfig(
 export function isMetaWhatsAppReady(
   config: OrbitMetaWhatsAppRuntimeConfig | null | undefined,
 ): config is OrbitMetaWhatsAppRuntimeConfig {
+  return config?.ativo === true && hasCompleteMetaWhatsAppCredentials(config);
+}
+
+export function hasCompleteMetaWhatsAppCredentials(
+  config: OrbitMetaWhatsAppRuntimeConfig | null | undefined,
+): config is OrbitMetaWhatsAppRuntimeConfig {
   return !!(
-    config?.ativo === true &&
+    config?.waba_id &&
     config.phone_number_id &&
     config.access_token &&
     config.app_secret
