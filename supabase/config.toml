@@ -39,6 +39,12 @@ verify_jwt = false
 [functions.orbit-meta-webhook]
 verify_jwt = false
 
+[functions.orbit-meta-whatsapp-webhook]
+verify_jwt = false
+
+[functions.orbit-meta-whatsapp-health]
+verify_jwt = false
+
 [functions.orbit-lead-ingest]
 verify_jwt = false
 
