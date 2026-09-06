@@ -45,6 +45,7 @@ import { KnowledgeBaseManager } from "@/components/orbit/KnowledgeBaseManager";
 import { Database, Sparkles } from "lucide-react";
 import { AgentSandbox } from "@/components/orbit/AgentSandbox";
 import { AgentTrainingGovernanceCard } from "@/components/orbit/AgentTrainingGovernanceCard";
+import { MetaWhatsAppConfigCard } from "@/components/orbit/MetaWhatsAppConfigCard";
 import { useAgentTrainingGovernance } from "@/hooks/useAgentTrainingGovernance";
 
 interface ParsedProspect {
@@ -877,6 +878,7 @@ const [zapiForm, setZapiForm] = useState({ nome_instancia: "", instance_id: "", 
         </TabsContent>
         <TabsContent value="zapi">
             <div className="space-y-6">
+            {empresaId && <MetaWhatsAppConfigCard empresaId={empresaId} disabled={isDemo} />}
             <ZapiConnectionAlert />
             {isDemo && (
               <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">

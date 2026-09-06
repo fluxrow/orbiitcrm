@@ -282,6 +282,7 @@ serve(async (req) => {
 
   // 1) Auth shared-secret (fast, sync — sempre antes do ACK)
   const webhookSecret = Deno.env.get("ORBIT_WEBHOOK_SECRET");
+  let webhookAuthenticated = false;
   if (webhookSecret) {
     const provided = req.headers.get("x-webhook-secret") || "";
     const a = new TextEncoder().encode(provided);
@@ -297,6 +298,18 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    webhookAuthenticated = true;
+  }
+
+  // Marcadores internos de provedor só são aceitos quando o segredo dedicado
+  // existe e foi validado. Sem isso, um cliente externo poderia tentar forçar
+  // resolução por outro cadastro de tenant.
+  const internalProvider = req.headers.get("x-orbit-provider") || null;
+  if (internalProvider && (!webhookSecret || !webhookAuthenticated)) {
+    return new Response(JSON.stringify({ error: "internal_provider_unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   // 2) Parse + validação rápida do payload (ainda síncrono para responder 400 cedo)
@@ -330,7 +343,7 @@ serve(async (req) => {
   // 3) Dispara processamento pesado em background e ACK em <1s.
   //    EdgeRuntime.waitUntil mantém o worker vivo até o processInboundZapi resolver,
   //    sem bloquear a resposta para o provedor (Z-API).
-  const processor = processInboundZapi(payload, eventType, corsHeaders).catch((e) => {
+  const processor = processInboundZapi(payload, eventType, corsHeaders, internalProvider).catch((e) => {
     console.error("[orbit-webhook] background error:", e instanceof Error ? e.message : String(e));
   });
   // @ts-ignore — EdgeRuntime é um global do runtime do Supabase Edge
@@ -351,7 +364,12 @@ serve(async (req) => {
  * Idempotência garantida pelo índice único parcial em orbit_mensagens(empresa_id, provider_message_id).
  * Retorna Response apenas por compat de código legado — o valor é ignorado pelo waitUntil.
  */
-async function processInboundZapi(payload: any, eventType: string, corsHeaders: Record<string, string>): Promise<Response> {
+async function processInboundZapi(
+  payload: any,
+  eventType: string,
+  corsHeaders: Record<string, string>,
+  internalProvider: string | null = null,
+): Promise<Response> {
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -506,22 +524,39 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
       });
     }
 
-    const { data: zapiRows } = await supabase
-      .from("orbit_zapi_config")
-      .select("empresa_id, notificar_enviadas_por_mim")
-      .eq("instance_id", payloadInstanceId);
-
-    const resolved = resolveEmpresaByInstance(zapiRows);
-    const empresaId: string | null = resolved.empresaId;
+    let zapiRows: Array<{ empresa_id: string | null; notificar_enviadas_por_mim: boolean | null }> = [];
+    let empresaId: string | null = null;
+    let resolveReason: string | null = null;
+    if (internalProvider === "meta_whatsapp") {
+      const { data: metaConfig, error: metaError } = await supabase.rpc(
+        "get_orbit_meta_whatsapp_runtime_config_by_phone_id",
+        { p_phone_number_id: payloadInstanceId },
+      );
+      empresaId = (metaConfig as any)?.empresa_id ?? null;
+      resolveReason = metaError
+        ? "meta_phone_lookup_failed"
+        : empresaId
+        ? null
+        : "meta_phone_not_mapped";
+    } else {
+      const { data } = await supabase
+        .from("orbit_zapi_config")
+        .select("empresa_id, notificar_enviadas_por_mim")
+        .eq("instance_id", payloadInstanceId);
+      zapiRows = (data ?? []) as typeof zapiRows;
+      const resolved = resolveEmpresaByInstance(zapiRows);
+      empresaId = resolved.empresaId;
+      resolveReason = resolved.reason ?? null;
+    }
     if (!empresaId) {
-      console.error("[orbit-webhook] instance não resolvida:", resolved.reason);
-      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "failed", error_message: resolved.reason ?? "instance_unresolved" }).eq("id", logId);
-      return new Response(JSON.stringify({ ok: false, reason: resolved.reason }), {
+      console.error("[orbit-webhook] instance não resolvida:", resolveReason);
+      if (logId) await supabase.from("orbit_webhook_logs").update({ status: "failed", error_message: resolveReason ?? "instance_unresolved" }).eq("id", logId);
+      return new Response(JSON.stringify({ ok: false, reason: resolveReason }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    if (eventType === "on-send" && !zapiRows?.[0]?.notificar_enviadas_por_mim) {
+    if (eventType === "on-send" && internalProvider !== "meta_whatsapp" && !zapiRows?.[0]?.notificar_enviadas_por_mim) {
       if (logId) await supabase.from("orbit_webhook_logs").update({ status: "ignored", error_message: "own messages disabled" }).eq("id", logId);
       return new Response(JSON.stringify({ ok: true, skipped: true, reason: "own messages disabled" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -530,7 +565,7 @@ async function processInboundZapi(payload: any, eventType: string, corsHeaders: 
 
     console.log("[orbit-webhook] Resolved empresa_id:", empresaId);
 
-    const notifyOwnMessages = zapiRows?.[0]?.notificar_enviadas_por_mim === true;
+    const notifyOwnMessages = internalProvider !== "meta_whatsapp" && zapiRows?.[0]?.notificar_enviadas_por_mim === true;
     const isOnSend = eventType === "on-send";
 
     // ── Classificação (helpers puros, cobertos por testes) ──

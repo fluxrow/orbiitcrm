@@ -50,6 +50,18 @@ import {
 } from "../_shared/zapi-connection.ts";
 import { sendViaZapiUnified } from "../_shared/zapi-send.ts";
 import {
+  getOrbitMetaWhatsAppRuntimeConfig,
+  isInsideMetaCustomerServiceWindow,
+  isMetaPreActivationBacklog,
+  isMetaWhatsAppReady,
+  META_WHATSAPP_BLOCK_PRE_ACTIVATION,
+  META_WHATSAPP_BLOCK_PROACTIVE,
+  META_WHATSAPP_BLOCK_TEMPLATE_REQUIRED,
+  metaWhatsAppSendBlockReason,
+  sendViaMetaWhatsApp,
+  type OrbitMetaWhatsAppRuntimeConfig,
+} from "../_shared/meta-whatsapp.ts";
+import {
   pilotInboundBlockReason,
   VIVER_CONTROLLED_OUTBOX_GATE_VERSION,
 } from "../_shared/outbox-pilot.ts";
@@ -225,6 +237,41 @@ async function sendViaZapi(
     providerId: result.providerId ?? null,
     error: result.error,
   };
+}
+
+async function latestInboundAt(item: any): Promise<string | null> {
+  if (!item.conversa_id) return null;
+  const { data, error } = await supabase
+    .from("orbit_mensagens")
+    .select("timestamp")
+    .eq("empresa_id", item.empresa_id)
+    .eq("conversa_id", item.conversa_id)
+    .eq("direcao", "IN")
+    .order("timestamp", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`meta_customer_window_lookup_failed:${error.code ?? "unknown"}`);
+  return (data as any)?.timestamp ?? null;
+}
+
+async function auditMetaWhatsAppSend(
+  item: any,
+  config: OrbitMetaWhatsAppRuntimeConfig,
+  outcome: "sent" | "blocked" | "failed",
+  reason?: string | null,
+): Promise<void> {
+  await supabase.from("orbit_audit_log").insert({
+    empresa_id: item.empresa_id,
+    acao: `meta_whatsapp_outbox_${outcome}`,
+    entidade: "orbit_whatsapp_outbox",
+    entidade_id: item.id,
+    detalhes: {
+      provider_config_id: config.id,
+      source_type: item.source_type ?? null,
+      payload_type: item.payload_type ?? null,
+      reason: reason ?? null,
+    },
+  });
 }
 
 // ── Persistência unificada em orbit_mensagens ──
@@ -1030,6 +1077,136 @@ async function processItem(
     return { outcome: "simulated" };
   }
 
+  // Provedor oficial Meta WhatsApp Cloud. Só assume quando a configuração do
+  // tenant está ativa e completa; caso contrário, o caminho Z-API permanece
+  // inalterado. Campanhas/flows ficam fail-closed até liberação explícita.
+  const metaCfg = await getOrbitMetaWhatsAppRuntimeConfig(supabase, item.empresa_id);
+  if (isMetaWhatsAppReady(metaCfg)) {
+    if (isMetaPreActivationBacklog(item.created_at, metaCfg.activated_at)) {
+      await supabase.from("orbit_whatsapp_outbox").update({
+        status: "canceled",
+        canceled_at: new Date().toISOString(),
+        canceled_reason: META_WHATSAPP_BLOCK_PRE_ACTIVATION,
+        locked_at: null,
+        locked_by: null,
+      }).eq("id", item.id);
+      await upsertVisualMensagem(item, {
+        status: "cancelada",
+        erro: META_WHATSAPP_BLOCK_PRE_ACTIVATION,
+      });
+      await updateCampaignRecipient(item, {
+        status: "ignorado",
+        motivo: META_WHATSAPP_BLOCK_PRE_ACTIVATION,
+      });
+      await auditMetaWhatsAppSend(
+        item,
+        metaCfg,
+        "blocked",
+        META_WHATSAPP_BLOCK_PRE_ACTIVATION,
+      );
+      return { outcome: "canceled", reason: META_WHATSAPP_BLOCK_PRE_ACTIVATION };
+    }
+    const providerBlock = metaWhatsAppSendBlockReason(
+      metaCfg,
+      telefone,
+      item.source_type,
+    );
+    if (providerBlock) {
+      await releaseHeldItem(
+        item,
+        providerBlock,
+        new Date(Date.now() + 60 * 60_000).toISOString(),
+      );
+      await auditMetaWhatsAppSend(item, metaCfg, "blocked", providerBlock);
+      return { outcome: "deferred", reason: providerBlock };
+    }
+
+    const insideCustomerWindow = isInsideMetaCustomerServiceWindow(
+      await latestInboundAt(item),
+    );
+    const result = await sendViaMetaWhatsApp(metaCfg, {
+      phone: telefone,
+      sourceType: item.source_type,
+      payloadType: item.payload_type,
+      message: item.payload?.mensagem ?? "",
+      template: item.payload?.meta_template ?? item.payload?.template ?? null,
+      insideCustomerWindow,
+    });
+
+    if (result.ok) {
+      const sentAt = new Date().toISOString();
+      await supabase.from("orbit_whatsapp_outbox").update({
+        status: "sent",
+        sent_at: sentAt,
+        provider_message_id: result.providerId ?? null,
+        locked_at: null,
+        locked_by: null,
+        last_error: null,
+      }).eq("id", item.id);
+
+      if (item.conversa_id) {
+        const preview = String(item.payload?.mensagem || `📎 ${item.payload_type}`).slice(0, 100);
+        await upsertVisualMensagem(item, {
+          status: "enviada",
+          provider_message_id: result.providerId ?? null,
+        });
+        await supabase.from("orbit_conversas").update({
+          ultima_mensagem_at: sentAt,
+          ultima_mensagem_preview: preview,
+        }).eq("id", item.conversa_id);
+      }
+      await updateCampaignRecipient(item, { status: "enviado" });
+      if (usedReserve) q.remainingReserve = Math.max(0, (q.remainingReserve ?? 0) - 1);
+      else if (quotaControlled) q.remainingDaily -= 1;
+      if (quotaControlled) {
+        q.remainingMinute -= 1;
+        await bumpDailyUsage(item.empresa_id, 1);
+      }
+      await auditMetaWhatsAppSend(item, metaCfg, "sent");
+      return { outcome: "sent", provider_message_id: result.providerId };
+    }
+
+    const reason = result.error ?? "META_WHATSAPP_SEND_FAILED";
+    // Ausência de template ou liberação proativa é configuração, não tentativa
+    // de rede: mantém o item retido sem consumir retries nem gerar rajada.
+    if (
+      reason === META_WHATSAPP_BLOCK_TEMPLATE_REQUIRED ||
+      reason === META_WHATSAPP_BLOCK_PROACTIVE
+    ) {
+      await releaseHeldItem(
+        item,
+        reason,
+        new Date(Date.now() + 60 * 60_000).toISOString(),
+      );
+      await auditMetaWhatsAppSend(item, metaCfg, "blocked", reason);
+      return { outcome: "deferred", reason };
+    }
+
+    const maxAttempts = Number(item.max_attempts ?? 5);
+    if (Number(item.attempts) >= maxAttempts) {
+      await supabase.from("orbit_whatsapp_outbox").update({
+        status: "failed",
+        last_error: reason.slice(0, 500),
+        locked_at: null,
+        locked_by: null,
+      }).eq("id", item.id);
+      await upsertVisualMensagem(item, { status: "falhou", erro: reason.slice(0, 500) });
+      await updateCampaignRecipient(item, { status: "falhou", erro: reason.slice(0, 500) });
+      await auditMetaWhatsAppSend(item, metaCfg, "failed", reason);
+      return { outcome: "failed", reason };
+    }
+    const backoff = Math.min(30 * 60_000, 60_000 * Math.pow(2, Number(item.attempts) - 1));
+    await supabase.from("orbit_whatsapp_outbox").update({
+      status: "pending",
+      locked_at: null,
+      locked_by: null,
+      next_attempt_at: new Date(Date.now() + backoff).toISOString(),
+      last_error: reason.slice(0, 500),
+    }).eq("id", item.id);
+    await auditMetaWhatsAppSend(item, metaCfg, "failed", reason);
+    return { outcome: "deferred", reason };
+  }
+
   // Z-API config + kill switch
   const zcfg = await getOrbitZapiRuntimeConfig(supabase, item.empresa_id);
   const block = getOrbitZapiRealSendBlockReason(zcfg, telefone);
@@ -1232,6 +1409,7 @@ async function processTenant(
     held: 0,
   };
   const cfg = await getSendingConfig(empresa_id);
+  const metaCfg = await getOrbitMetaWhatsAppRuntimeConfig(supabase, empresa_id);
 
   // Limpeza fail-closed antes de conexão/cota/claim: backlog vencido não pode
   // ressurgir quando a instância volta ou a cota diária reinicia.
@@ -1239,11 +1417,13 @@ async function processTenant(
 
   // ── GATE 0 (fail-closed): instância offline/bloqueada pausa a fila do tenant.
   // Nunca falha item — apenas empurra a próxima tentativa.
-  const connState = await fetchZapiConnectionState(supabase, empresa_id);
-  const connBlock = zapiInstanceBlockReason(connState);
-  if (connBlock) {
-    stats.retained += await pauseTenantOutbox(supabase, empresa_id, connBlock);
-    return stats;
+  if (!isMetaWhatsAppReady(metaCfg)) {
+    const connState = await fetchZapiConnectionState(supabase, empresa_id);
+    const connBlock = zapiInstanceBlockReason(connState);
+    if (connBlock) {
+      stats.retained += await pauseTenantOutbox(supabase, empresa_id, connBlock);
+      return stats;
+    }
   }
 
   // ── Hold/cadência ANTES de qualquer contagem de cota, claim ou fetch externo ──
