@@ -6,6 +6,7 @@ Deno.test("meeting reminders are always routed as meeting_confirmation", () => {
     const triggerType of [
       "meeting_reminder_24h",
       "meeting_reminder_1h",
+      "meeting_reminder_15m",
       "meeting_reminder_5m",
     ]
   ) {

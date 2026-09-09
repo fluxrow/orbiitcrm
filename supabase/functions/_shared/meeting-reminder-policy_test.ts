@@ -6,15 +6,24 @@ import {
 
 const now = new Date("2026-08-26T18:00:00.000Z");
 
-Deno.test("scheduler exposes exactly 24h, 1h and 5m reminders", () => {
+Deno.test("scheduler exposes exactly 24h, 1h, 15m and 5m reminders", () => {
   assertEquals(MEETING_REMINDER_WINDOWS.map((item) => item.kind), [
     "meeting_reminder_24h",
     "meeting_reminder_1h",
+    "meeting_reminder_15m",
     "meeting_reminder_5m",
   ]);
 });
 
 Deno.test("each reminder is accepted only inside its own delivery window", () => {
+  assertEquals(
+    evaluateReminderDeliveryTime(
+      "meeting_reminder_15m",
+      "2026-08-26T18:15:00.000Z",
+      now,
+    ).allowed,
+    true,
+  );
   assertEquals(
     evaluateReminderDeliveryTime(
       "meeting_reminder_24h",

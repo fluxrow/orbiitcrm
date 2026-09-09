@@ -1,6 +1,7 @@
 export type MeetingReminderKind =
   | "meeting_reminder_24h"
   | "meeting_reminder_1h"
+  | "meeting_reminder_15m"
   | "meeting_reminder_5m";
 
 export const MEETING_REMINDER_WINDOWS: ReadonlyArray<{
@@ -17,6 +18,11 @@ export const MEETING_REMINDER_WINDOWS: ReadonlyArray<{
     kind: "meeting_reminder_1h",
     offsetMs: 60 * 60 * 1000,
     toleranceMs: 10 * 60 * 1000,
+  },
+  {
+    kind: "meeting_reminder_15m",
+    offsetMs: 15 * 60 * 1000,
+    toleranceMs: 2 * 60 * 1000,
   },
   {
     kind: "meeting_reminder_5m",

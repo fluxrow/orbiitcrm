@@ -171,6 +171,9 @@ Deno.test("aceite natural após oferta explícita da aula", () => {
   assertEquals(isExplicitClassAcceptance("Sim, quero que libere o acesso."), true);
   assertEquals(isExplicitClassAcceptance("Quero participar da aula"), true);
   assertEquals(isExplicitClassAcceptance("Pode me enviar o acesso"), true);
+  assertEquals(isExplicitClassAcceptance("Ah, obrigada, vou sim."), true);
+  assertEquals(isExplicitClassAcceptance("Obrigada, eu vou participar"), true);
+  assertEquals(isExplicitClassAcceptance("Obrigada, mas não vou"), false);
 });
 
 Deno.test("confirmação de participação no horário é oferta explícita de aula", () => {

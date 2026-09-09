@@ -4,6 +4,7 @@ export type ReleaseKind =
   | "meeting_confirmation"
   | "meeting_reminder_24h"
   | "meeting_reminder_1h"
+  | "meeting_reminder_15m"
   | "meeting_reminder_5m"
   | "weekly_reminder"
   | "follow_up";
@@ -130,6 +131,14 @@ export const RELEASE_WINDOW_POLICY: Record<ReleaseKind, WindowPolicy> = {
     linkRequired: true,
   },
   meeting_reminder_5m: {
+    minPreflightLeadMs: 8 * minute,
+    maxPreflightLeadMs: 12 * minute,
+    maxReleaseGraceMs: 2 * minute,
+    maxDeliveryGraceMs: 2 * minute,
+    meetingRequired: true,
+    linkRequired: true,
+  },
+  meeting_reminder_15m: {
     minPreflightLeadMs: 8 * minute,
     maxPreflightLeadMs: 12 * minute,
     maxReleaseGraceMs: 2 * minute,

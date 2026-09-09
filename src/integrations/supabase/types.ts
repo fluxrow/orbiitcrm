@@ -9851,6 +9851,7 @@ export type Database = {
         | "conversa_no_reply"
         | "meeting_reminder_24h"
         | "meeting_reminder_1h"
+        | "meeting_reminder_15m"
         | "lead_recebido"
         | "lead_replied"
         | "meeting_reminder_5m"
@@ -10010,6 +10011,7 @@ export const Constants = {
         "conversa_no_reply",
         "meeting_reminder_24h",
         "meeting_reminder_1h",
+        "meeting_reminder_15m",
         "lead_recebido",
         "lead_replied",
         "meeting_reminder_5m",

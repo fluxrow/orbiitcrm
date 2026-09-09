@@ -57,6 +57,25 @@ Deno.test("5m reminder is prepared ten minutes before its official release", asy
   assertEquals(validateDescriptor(d, now), []);
 });
 
+Deno.test("15m reminder uses the same tight preflight and delivery window", async () => {
+  const d = await buildMeetingReminderDescriptor({
+    tenantId: TENANTS.viver,
+    meetingId: "11111111-1111-4111-8111-111111111111",
+    prospectId: "22222222-2222-4222-8222-222222222222",
+    conversationId: "33333333-3333-4333-8333-333333333333",
+    templateId: "44444444-4444-4444-8444-444444444444",
+    scheduledAt: "2026-09-02T00:25:00Z",
+    kind: "meeting_reminder_15m",
+    recipientAuthority: "recipient",
+    contentAuthority: { template: "body" },
+    canonicalLinkAuthority: "canonical-authority",
+  }, now);
+  assert(d);
+  assertEquals(d.releaseAt, "2026-09-02T00:10:00.000Z");
+  assertEquals(d.deliveryDeadline, "2026-09-02T00:12:00.000Z");
+  assertEquals(validateDescriptor(d, now), []);
+});
+
 Deno.test("candidates outside the preflight horizon are ignored", async () => {
   const d = await buildFollowUpDescriptor({
     tenantId: TENANTS.bullink,

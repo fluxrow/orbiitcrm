@@ -18,6 +18,7 @@ import { getTokenForEmpresa, ensureFreshAccessToken, checkAvailability } from ".
 import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
 import { isMeetingReminderKind } from "../_shared/meeting-reminder-policy.ts";
+import { matchesMeetingKindPolicy } from "../_shared/meeting-kind-policy.ts";
 import {
   VIVER_EMPRESA_ID,
   meetingIdFromFlowContext,
@@ -112,7 +113,7 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
   if (run.empresa_id === VIVER_EMPRESA_ID && isMeetingReminderKind(triggerType)) {
     const meetingLookup = meetingId ? await supabase
       .from("orbit_meetings")
-      .select("id, empresa_id, prospect_id, conversa_id, scheduled_at, duration_minutes, status, meeting_url, titulo")
+      .select("id, empresa_id, prospect_id, conversa_id, scheduled_at, duration_minutes, status, meeting_url, titulo, metadata")
       .eq("empresa_id", VIVER_EMPRESA_ID)
       .eq("id", meetingId)
       .maybeSingle() : { data: null, error: null };
@@ -128,6 +129,9 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
         ok: false,
         error: reminderGuard.allowed ? "meeting_reminder_prospect_mismatch" : reminderGuard.reason,
       };
+    }
+    if (!matchesMeetingKindPolicy(cfg, authoritativeMeeting?.metadata ?? {})) {
+      return { ok: false, error: "meeting_reminder_kind_policy_mismatch" };
     }
   }
 
