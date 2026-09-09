@@ -54,6 +54,12 @@ export const TRIGGER_CATALOG: Array<{
     entityType: "meeting",
   },
   {
+    type: "meeting_reminder_15m" as FlowTriggerType,
+    label: "Lembrete 15min antes da reunião",
+    description: "Disparado na janela segura de 15 minutos antes da reunião. Eventos atrasados são cancelados, nunca compensados.",
+    entityType: "meeting",
+  },
+  {
     type: "meeting_reminder_5m" as FlowTriggerType,
     label: "Lembrete 5min antes da reunião",
     description: "Disparado somente na janela segura imediatamente anterior à reunião. Eventos atrasados são cancelados, nunca compensados.",

@@ -5,6 +5,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
 import { isMeetingReminderKind } from "../_shared/meeting-reminder-policy.ts";
+import { matchesMeetingKindPolicy } from "../_shared/meeting-kind-policy.ts";
 import { isFlowTriggerActiveForEvent } from "../_shared/flow-trigger-activation.ts";
 
 
@@ -32,6 +33,7 @@ function matchesConditions(condicoes: Json, payload: Json, triggerConfig: Json, 
   }
 
   const c = (condicoes ?? {}) as Record<string, any>;
+  if (!matchesMeetingKindPolicy(c, payload)) return false;
 
   // lead_recebido: filtros específicos da Etapa B
   if (eventType === "lead_recebido") {

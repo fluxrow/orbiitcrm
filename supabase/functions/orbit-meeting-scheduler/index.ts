@@ -1,5 +1,5 @@
 // orbit-meeting-scheduler
-// Cron-driven scheduler that emits meeting_reminder_24h / 1h / 5m
+// Cron-driven scheduler that emits meeting_reminder_24h / 1h / 15m / 5m
 // events into orbit_flow_events. Idempotent via dedupe_key (meeting_id + kind).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -34,7 +34,7 @@ async function emitForWindow(
   const { data: meetings, error } = await supabase
     .from("orbit_meetings")
     .select(
-      "id, empresa_id, deal_id, prospect_id, conversa_id, scheduled_at, titulo, meeting_url, duration_minutes",
+      "id, empresa_id, deal_id, prospect_id, conversa_id, scheduled_at, titulo, meeting_url, duration_minutes, metadata",
     )
     .eq("status", "scheduled")
     .gte("scheduled_at", lower)
@@ -61,6 +61,9 @@ async function emitForWindow(
       meeting_url: m.meeting_url,
       duration_minutes: m.duration_minutes,
       reminder_kind: kind,
+      meeting_kind: typeof m.metadata?.meeting_kind === "string"
+        ? m.metadata.meeting_kind
+        : null,
     };
 
     const { error: insErr } = await supabase.from("orbit_flow_events").insert({

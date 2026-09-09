@@ -29,6 +29,7 @@ import {
   verifyDelivery,
 } from "../_shared/remediation-release.ts";
 import type { MeetingReminderKind } from "../_shared/meeting-reminder-policy.ts";
+import { matchesMeetingKindPolicy } from "../_shared/meeting-kind-policy.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -225,13 +226,14 @@ async function scanFollowUps(now: Date, limit: number) {
 
 async function activeReminderDefinitions() {
   const { data: flows, error } = await supabase.from("orbit_flows")
-    .select("id,empresa_id,trigger_type")
+    .select("id,empresa_id,trigger_type,condicoes")
     .in("empresa_id", TENANT_IDS)
     .eq("ativo", true)
     .is("deleted_at", null)
     .in("trigger_type", [
       "meeting_reminder_24h",
       "meeting_reminder_1h",
+      "meeting_reminder_15m",
       "meeting_reminder_5m",
     ]);
   if (error) throw new Error(`reminder_flow_scan_failed:${error.message}`);
@@ -252,6 +254,7 @@ async function activeReminderDefinitions() {
       tenantId: String(flow.empresa_id),
       flowId: String(flow.id),
       kind: String(flow.trigger_type),
+      conditionPolicy: (flow.condicoes as Json) ?? {},
       actionId: String(enabled[0].id),
       actionConfig: enabled[0].action_config,
       templateId: templateIdOf((enabled[0].action_config as Json) ?? {}),
@@ -274,7 +277,7 @@ async function scanMeetingReminders(now: Date, limit: number) {
   const upper = new Date(now.getTime() + 25 * 60 * 60_000).toISOString();
   const { data: meetings, error } = await supabase.from("orbit_meetings")
     .select(
-      "id,empresa_id,deal_id,prospect_id,conversa_id,scheduled_at,meeting_url,status",
+      "id,empresa_id,deal_id,prospect_id,conversa_id,scheduled_at,meeting_url,status,metadata",
     )
     .in("empresa_id", TENANT_IDS)
     .eq("status", "scheduled")
@@ -304,6 +307,17 @@ async function scanMeetingReminders(now: Date, limit: number) {
     for (
       const definition of definitions.filter((d) => d.tenantId === tenantId)
     ) {
+      if (
+        !matchesMeetingKindPolicy(
+          definition.conditionPolicy as Json,
+          (meeting.metadata as Json) ?? {},
+        ) || !matchesMeetingKindPolicy(
+          definition.actionConfig as Json,
+          (meeting.metadata as Json) ?? {},
+        )
+      ) {
+        continue;
+      }
       const template = await loadTemplate(tenantId, definition.templateId);
       if (!template) {
         skipped++;
@@ -425,7 +439,7 @@ async function authoritativeFingerprint(d: IncidentDescriptor) {
   if (d.meetingId) {
     const { data: meeting } = await supabase.from("orbit_meetings")
       .select(
-        "id,empresa_id,deal_id,prospect_id,conversa_id,scheduled_at,meeting_url,status",
+        "id,empresa_id,deal_id,prospect_id,conversa_id,scheduled_at,meeting_url,status,metadata",
       )
       .eq("empresa_id", d.tenantId)
       .eq("id", d.meetingId)
@@ -433,7 +447,14 @@ async function authoritativeFingerprint(d: IncidentDescriptor) {
     if (!meeting?.meeting_url) return null;
     const definitions = await activeReminderDefinitions();
     const definition = definitions.find((item) =>
-      item.tenantId === d.tenantId && item.kind === d.kind
+      item.tenantId === d.tenantId && item.kind === d.kind &&
+      matchesMeetingKindPolicy(
+        item.conditionPolicy as Json,
+        (meeting.metadata as Json) ?? {},
+      ) && matchesMeetingKindPolicy(
+        item.actionConfig as Json,
+        (meeting.metadata as Json) ?? {},
+      )
     );
     if (!definition) return null;
     const template = await loadTemplate(d.tenantId, definition.templateId);

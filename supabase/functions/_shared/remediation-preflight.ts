@@ -169,11 +169,13 @@ export async function buildMeetingReminderDescriptor(
   if (!window) return null;
   const releaseAt = meetingAt - window.offsetMs;
   const lead = releaseAt - now.getTime();
-  const requiredLead = input.kind === "meeting_reminder_5m"
+  const isTightReminder = input.kind === "meeting_reminder_5m" ||
+    input.kind === "meeting_reminder_15m";
+  const requiredLead = isTightReminder
     ? [8 * minute, 12 * minute]
     : [10 * minute, 20 * minute];
   if (lead < requiredLead[0] || lead > requiredLead[1]) return null;
-  const grace = input.kind === "meeting_reminder_5m" ? 2 * minute : 10 * minute;
+  const grace = isTightReminder ? 2 * minute : 10 * minute;
   const eventId = `${input.meetingId}:${input.kind}`;
   const descriptor = descriptorBase({
     tenantId: input.tenantId,

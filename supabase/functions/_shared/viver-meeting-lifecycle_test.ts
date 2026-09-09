@@ -110,7 +110,7 @@ Deno.test("reunião iniciada ou encerrada nunca recebe lembrete", () => {
 
 Deno.test("tipo de lembrete desconhecido falha fechado", () => {
   const result = evaluateViverMeetingReminder({
-    reminderKind: "meeting_reminder_15m",
+    reminderKind: "meeting_reminder_2m" as any,
     meetingId: authoritativeMeeting.id,
     meeting: authoritativeMeeting,
   }, new Date("2026-08-26T18:45:00.000Z"));

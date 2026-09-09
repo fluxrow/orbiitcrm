@@ -57,6 +57,7 @@ export function acceptDescriptor(
     ![
       "meeting_reminder_24h",
       "meeting_reminder_1h",
+      "meeting_reminder_15m",
       "meeting_reminder_5m",
       "weekly_reminder",
       "follow_up",
