@@ -52,7 +52,7 @@ export function useOrbitCampaigns(filters?: CampaignFilters) {
     queryFn: async () => {
       let query = supabase
         .from("orbit_campaigns")
-        .select("*, template:orbit_message_templates(id, nome, canal, corpo_texto, imagem_url, assunto_email)")
+        .select("*, template:orbit_message_templates(id, nome, canal, corpo_texto, imagem_url, audio_url, assunto_email)")
         .eq("empresa_id", empresaId!)
         .order("created_at", { ascending: false });
 

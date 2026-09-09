@@ -4814,6 +4814,7 @@ export type Database = {
           empresa_id: string | null
           id: string
           imagem_url: string | null
+          audio_url: string | null
           nome: string
           updated_at: string | null
           variaveis: string[] | null
@@ -4834,6 +4835,7 @@ export type Database = {
           empresa_id?: string | null
           id?: string
           imagem_url?: string | null
+          audio_url?: string | null
           nome: string
           updated_at?: string | null
           variaveis?: string[] | null
@@ -4854,6 +4856,7 @@ export type Database = {
           empresa_id?: string | null
           id?: string
           imagem_url?: string | null
+          audio_url?: string | null
           nome?: string
           updated_at?: string | null
           variaveis?: string[] | null

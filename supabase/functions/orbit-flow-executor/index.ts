@@ -30,6 +30,8 @@ import { computeCadenceKey } from "./cadence-key.ts";
 import { isActionDisabled } from "./action-guards.ts";
 import { buildMeetingTemplateVars } from "./template-vars.ts";
 import { deriveOutboxSourceType } from "./outbox-source.ts";
+import { resolveTemplateIdFromPayload } from "./template-selector.ts";
+import { buildTemplateOutboxPayload, templatePayloadType } from "../_shared/message-template-media.ts";
 
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -98,7 +100,8 @@ async function findOrCreateConversa(empresaId: string, prospectId: string, telef
 
 async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepResult> {
   const templateSlug = cfg.template_slug || cfg.template_nome || (!cfg.template_id ? cfg.template : undefined);
-  if (!cfg.template_id && !templateSlug) return { ok: false, error: "template ausente" };
+  const selectedTemplateId = resolveTemplateIdFromPayload(cfg, run.context?.payload ?? {});
+  if (!selectedTemplateId && !templateSlug) return { ok: false, error: "template ausente" };
 
   const prospectId = await resolveProspectId(run);
   if (!prospectId) return { ok: false, error: "prospect não identificado" };
@@ -139,10 +142,10 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
 
   let tplQuery = supabase
     .from("orbit_message_templates")
-    .select("id, corpo_texto, nome, imagem_url")
+    .select("id, corpo_texto, nome, imagem_url, audio_url")
     .eq("empresa_id", run.empresa_id)
     .limit(1);
-  if (cfg.template_id) tplQuery = tplQuery.eq("id", cfg.template_id);
+  if (selectedTemplateId) tplQuery = tplQuery.eq("id", selectedTemplateId);
   else tplQuery = tplQuery.ilike("nome", `%${templateSlug}%`);
   const { data: tpls } = await tplQuery;
   const tpl = tpls?.[0] as any;
@@ -269,13 +272,11 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
       event_created: eventCreated,
       meeting_id: sourceType === "meeting_confirmation" ? meetingId : null,
       idempotency_scope: sourceType === "meeting_confirmation" ? String(triggerType) : null,
-      payload_type: tpl.imagem_url ? "image" : "text",
-      payload: {
-        mensagem,
-        url_midia: tpl.imagem_url ?? null,
+      payload_type: templatePayloadType(tpl),
+      payload: buildTemplateOutboxPayload(tpl, mensagem, {
         template_id: tpl.id,
         template_nome: tpl.nome,
-      },
+      }),
       metadata,
     } as any);
     return {
@@ -292,6 +293,7 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
         allow_terminal_stage_message: allowTerminal,
         template_id: tpl.id,
         template_nome: tpl.nome,
+        payload_type: templatePayloadType(tpl),
         conversa_id: conversaId,
         telefone,
         mensagem,
