@@ -5,7 +5,7 @@
 DO $setup$
 DECLARE
   v_empresa_id CONSTANT uuid := '36f26579-66ad-4ef1-9788-141e4c727232'::uuid;
-  v_template_10 CONSTANT uuid := 'f8d144b9-8275-4c7a-8484-7bfdb35dc87'::uuid;
+  v_template_10 CONSTANT uuid := 'f8d144b9-8275-4c7a-8484-7bfbdb35dc87'::uuid;
   v_audio_08 CONSTANT uuid := '099885b8-6759-4666-ab8e-ba60fa29e406'::uuid;
   v_audio_09 CONSTANT uuid := 'e7a42dcc-a0bf-466e-8e8e-18b9204dae05'::uuid;
   v_qualified_flow uuid;
