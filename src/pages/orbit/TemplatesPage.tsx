@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Sparkles, Copy, Trash2, Pencil, MessageSquare, Mail, Loader2, ImagePlus, X, Link } from "lucide-react";
+import { Plus, Sparkles, Copy, Trash2, Pencil, MessageSquare, Mail, Loader2, ImagePlus, X, Link, Volume2 } from "lucide-react";
 import { useOrbitTemplates, useCreateTemplate, useDeleteTemplate } from "@/hooks/useOrbitTemplates";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/contexts/TenantContext";
@@ -33,9 +33,10 @@ interface TemplateForm {
   assunto_email: string;
   corpo_texto: string;
   imagem_url: string;
+  audio_url: string;
 }
 
-const emptyForm: TemplateForm = { nome: "", categoria: "geral", assunto_email: "", corpo_texto: "", imagem_url: "" };
+const emptyForm: TemplateForm = { nome: "", categoria: "geral", assunto_email: "", corpo_texto: "", imagem_url: "", audio_url: "" };
 
 export default function TemplatesPage() {
   const navigate = useNavigate();
@@ -72,7 +73,7 @@ export default function TemplatesPage() {
         empresaId: tenantEmpresaId,
         context: "template",
       });
-      setForm({ ...form, imagem_url: public_url });
+      setForm({ ...form, imagem_url: public_url, audio_url: "" });
       toast.success("Imagem carregada!");
     } catch (err: any) {
       toast.error(err.message || "Erro ao fazer upload");
@@ -105,6 +106,7 @@ export default function TemplatesPage() {
         assunto_email: t.assunto_email || "",
         corpo_texto: t.corpo_texto || "",
         imagem_url: t.imagem_url || "",
+        audio_url: t.audio_url || "",
       });
       setImageMode(t.imagem_url ? "url" : "upload");
       setShowDialog(true);
@@ -137,6 +139,7 @@ export default function TemplatesPage() {
         assunto_email: null,
         corpo_texto: form.corpo_texto,
         imagem_url: form.imagem_url || null,
+        audio_url: form.audio_url || null,
         empresa_id: profile.empresa_id,
         ativo: true,
       });
@@ -166,6 +169,7 @@ export default function TemplatesPage() {
         assunto_email: data.data.assunto_email || "",
         corpo_texto: data.data.corpo_texto || "",
         imagem_url: "",
+        audio_url: "",
       });
     } catch (error: any) {
       toast.error(error.message || "Erro ao gerar template com IA");
@@ -226,8 +230,11 @@ export default function TemplatesPage() {
                     <h3 className="font-semibold">{t.nome}</h3>
                     <Badge variant="secondary">{t.categoria}</Badge>
                   </div>
-                  {(t as any).imagem_url && (
-                    <img src={(t as any).imagem_url} alt="Template" className="w-full h-32 object-cover rounded mb-3" />
+                  {t.imagem_url && (
+                    <img src={t.imagem_url} alt="Template" className="w-full h-32 object-cover rounded mb-3" />
+                  )}
+                  {t.audio_url && (
+                    <audio src={t.audio_url} controls preload="none" className="w-full mb-3" />
                   )}
                   {t.assunto_email && (
                     <p className="text-xs text-muted-foreground mb-2">Assunto: {t.assunto_email}</p>
@@ -287,6 +294,19 @@ export default function TemplatesPage() {
               <Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Boas-vindas novo lead" />
             </div>
             <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label>Áudio (opcional)</Label>
+                <Volume2 className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <Input
+                placeholder="https://exemplo.com/audio.mp3"
+                value={form.audio_url}
+                onChange={(e) => setForm({ ...form, audio_url: e.target.value, imagem_url: e.target.value ? "" : form.imagem_url })}
+              />
+              {form.audio_url && <audio src={form.audio_url} controls preload="none" className="w-full mt-2" />}
+              <p className="text-xs text-muted-foreground mt-1">Use MP3 público. Um template envia áudio ou imagem, nunca os dois.</p>
+            </div>
+            <div>
               <Label>Categoria</Label>
               <Select value={form.categoria} onValueChange={(v) => setForm({ ...form, categoria: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -323,7 +343,7 @@ export default function TemplatesPage() {
                 </div>
               )}
               {!form.imagem_url && imageMode === "url" && (
-                <Input placeholder="https://exemplo.com/imagem.jpg" value={form.imagem_url} onChange={(e) => setForm({ ...form, imagem_url: e.target.value })} />
+                <Input placeholder="https://exemplo.com/imagem.jpg" value={form.imagem_url} onChange={(e) => setForm({ ...form, imagem_url: e.target.value, audio_url: e.target.value ? "" : form.audio_url })} />
               )}
               <p className="text-xs text-muted-foreground mt-1">A imagem aparecerá antes do texto na mensagem</p>
             </div>

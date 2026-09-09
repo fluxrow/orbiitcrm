@@ -69,6 +69,15 @@ Deno.test("controlled Viver campaign requires exactly one question and no URL", 
     metadata: { viver_controlled_reengagement: true },
     payload: { mensagem: "Tudo bem? Posso continuar?" },
   }), null);
+
+  assertEquals(pilotStaticBlockReason({
+    ...base,
+    payload_type: "audio",
+    payload: {
+      mensagem: "Vi sua resposta no formulário. Qual é seu maior desafio?",
+      url_midia: "https://example.invalid/fernanda.mp3",
+    },
+  }), null);
 });
 
 Deno.test("pilot permits only the explicitly marked Viver Typebot D0 action", () => {

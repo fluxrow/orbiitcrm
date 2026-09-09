@@ -9,6 +9,7 @@ import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbo
 import { checkCampaignRecipientEligibility, markRecipientIgnorado } from "../_shared/campaign-safety.ts";
 import { claimCampaignDispatchAuthorization } from "../_shared/campaign-dispatch-authorization.ts";
 import { controlledViverCampaignMessageBlockReason } from "../_shared/outbox-pilot.ts";
+import { buildTemplateOutboxPayload, templatePayloadType } from "../_shared/message-template-media.ts";
 import {
   WARMUP_SCALE,
   getEffectiveDailyLimit,
@@ -415,7 +416,9 @@ const handler = async (req: Request): Promise<Response> => {
       "Client-Token": zapiConfig?.client_token || "",
     };
 
+    const campaignTemplatePayloadType = templatePayloadType(campaign.template ?? {});
     const templateImageUrl = campaign.template?.imagem_url || null;
+    const templateAudioUrl = campaign.template?.audio_url || null;
 
     // ── Pré-check da instância Z-API (apenas WhatsApp) ──
     if (campaign.canal === "whatsapp" && zapiConfig?.instance_id && zapiConfig?.token) {
@@ -564,8 +567,8 @@ const handler = async (req: Request): Promise<Response> => {
             prospect_id: prospect.id,
             source_type: "campaign",
             source_id: recipient.id,
-            payload_type: templateImageUrl ? "image" : "text",
-            payload: { mensagem, url_midia: templateImageUrl ?? null },
+            payload_type: campaignTemplatePayloadType,
+            payload: buildTemplateOutboxPayload(campaign.template ?? {}, mensagem),
             metadata,
           });
           if (routed.enqueued) adapterQueued++; else adapterSkipped++;
@@ -801,8 +804,9 @@ const handler = async (req: Request): Promise<Response> => {
           // 5. Rate-limited delay before sending
           await delayMs(randomDelay(effectiveMinDelay, effectiveMaxDelay));
 
-          // 6. Send WhatsApp message
-          if (templateImageUrl) {
+          // 6. Send WhatsApp message. Audio templates send only the native
+          // recording; corpo_texto remains an auditable transcript/gate input.
+          if (!templateAudioUrl && templateImageUrl) {
             try {
               const imgRes = await fetch(`${zapiBaseUrl}/send-image`, {
                 method: "POST",
@@ -822,10 +826,12 @@ const handler = async (req: Request): Promise<Response> => {
           }
 
 
-          const zapiRes = await fetch(`${zapiBaseUrl}/send-text`, {
+          const zapiRes = await fetch(`${zapiBaseUrl}/${templateAudioUrl ? "send-audio" : "send-text"}`, {
             method: "POST",
             headers: zapiHeaders,
-            body: JSON.stringify({ phone: validatedPhone, message: mensagem }),
+            body: JSON.stringify(templateAudioUrl
+              ? { phone: validatedPhone, audio: templateAudioUrl }
+              : { phone: validatedPhone, message: mensagem }),
           });
 
           if (!zapiRes.ok) {

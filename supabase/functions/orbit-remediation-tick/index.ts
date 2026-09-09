@@ -3,6 +3,7 @@
 // delivery is then verified asynchronously from the canonical outbox.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { templateMediaAuthority } from "../_shared/message-template-media.ts";
 import { checkEligibility } from "../_shared/orbit-whatsapp-outbox.ts";
 import {
   buildFollowUpDescriptor,
@@ -72,7 +73,7 @@ function recipientAuthority(row: Json): string | null {
 
 async function loadTemplate(tenantId: string, templateId: string) {
   const { data, error } = await supabase.from("orbit_message_templates")
-    .select("id,corpo_texto,imagem_url")
+    .select("id,corpo_texto,imagem_url,audio_url")
     .eq("empresa_id", tenantId)
     .eq("id", templateId)
     .maybeSingle();
@@ -209,7 +210,7 @@ async function scanFollowUps(now: Date, limit: number) {
       contentAuthority: {
         actionConfig: action.action_config,
         templateBody: template.corpo_texto,
-        templateMedia: template.imagem_url,
+        templateMedia: templateMediaAuthority(template),
       },
     }, now);
     if (!descriptor) {
@@ -321,7 +322,7 @@ async function scanMeetingReminders(now: Date, limit: number) {
         contentAuthority: {
           actionConfig: definition.actionConfig,
           templateBody: template.corpo_texto,
-          templateMedia: template.imagem_url,
+          templateMedia: templateMediaAuthority(template),
         },
         canonicalLinkAuthority: String(meeting.meeting_url),
       }, now);
@@ -414,7 +415,7 @@ async function authoritativeFingerprint(d: IncidentDescriptor) {
       contentHash: await fingerprintContent(templateId, {
         actionConfig: action.action_config,
         templateBody: template.corpo_texto,
-        templateMedia: template.imagem_url,
+        templateMedia: templateMediaAuthority(template),
       }),
       linkHash: null,
       templateId,
@@ -448,7 +449,7 @@ async function authoritativeFingerprint(d: IncidentDescriptor) {
       contentHash: await fingerprintContent(definition.templateId, {
         actionConfig: definition.actionConfig,
         templateBody: template.corpo_texto,
-        templateMedia: template.imagem_url,
+        templateMedia: templateMediaAuthority(template),
       }),
       linkHash: await sha256(String(meeting.meeting_url)),
       templateId: definition.templateId,
