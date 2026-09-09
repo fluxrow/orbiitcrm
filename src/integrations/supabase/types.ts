@@ -4806,6 +4806,7 @@ export type Database = {
         Row: {
           assunto_email: string | null
           ativo: boolean | null
+          audio_url: string | null
           canal: string
           categoria: string | null
           corpo_html: string | null
@@ -4814,7 +4815,6 @@ export type Database = {
           empresa_id: string | null
           id: string
           imagem_url: string | null
-          audio_url: string | null
           nome: string
           updated_at: string | null
           variaveis: string[] | null
@@ -4827,6 +4827,7 @@ export type Database = {
         Insert: {
           assunto_email?: string | null
           ativo?: boolean | null
+          audio_url?: string | null
           canal: string
           categoria?: string | null
           corpo_html?: string | null
@@ -4835,7 +4836,6 @@ export type Database = {
           empresa_id?: string | null
           id?: string
           imagem_url?: string | null
-          audio_url?: string | null
           nome: string
           updated_at?: string | null
           variaveis?: string[] | null
@@ -4848,6 +4848,7 @@ export type Database = {
         Update: {
           assunto_email?: string | null
           ativo?: boolean | null
+          audio_url?: string | null
           canal?: string
           categoria?: string | null
           corpo_html?: string | null
@@ -4856,7 +4857,6 @@ export type Database = {
           empresa_id?: string | null
           id?: string
           imagem_url?: string | null
-          audio_url?: string | null
           nome?: string
           updated_at?: string | null
           variaveis?: string[] | null
@@ -4943,6 +4943,85 @@ export type Database = {
             foreignKeyName: "orbit_meta_config_empresa_id_fkey"
             columns: ["empresa_id"]
             isOneToOne: false
+            referencedRelation: "orbit_tenant_ops_queue_v"
+            referencedColumns: ["empresa_id"]
+          },
+        ]
+      }
+      orbit_meta_whatsapp_config: {
+        Row: {
+          access_token_secret_id: string | null
+          activated_at: string | null
+          allow_proactive_messages: boolean
+          app_secret_secret_id: string | null
+          ativo: boolean
+          canary_mode_enabled: boolean
+          canary_phone_numbers: string[]
+          created_at: string
+          empresa_id: string
+          envio_real_liberado: boolean
+          graph_api_version: string
+          id: string
+          phone_number_id: string | null
+          updated_at: string
+          waba_id: string | null
+          webhook_verify_token: string
+        }
+        Insert: {
+          access_token_secret_id?: string | null
+          activated_at?: string | null
+          allow_proactive_messages?: boolean
+          app_secret_secret_id?: string | null
+          ativo?: boolean
+          canary_mode_enabled?: boolean
+          canary_phone_numbers?: string[]
+          created_at?: string
+          empresa_id: string
+          envio_real_liberado?: boolean
+          graph_api_version?: string
+          id?: string
+          phone_number_id?: string | null
+          updated_at?: string
+          waba_id?: string | null
+          webhook_verify_token?: string
+        }
+        Update: {
+          access_token_secret_id?: string | null
+          activated_at?: string | null
+          allow_proactive_messages?: boolean
+          app_secret_secret_id?: string | null
+          ativo?: boolean
+          canary_mode_enabled?: boolean
+          canary_phone_numbers?: string[]
+          created_at?: string
+          empresa_id?: string
+          envio_real_liberado?: boolean
+          graph_api_version?: string
+          id?: string
+          phone_number_id?: string | null
+          updated_at?: string
+          waba_id?: string | null
+          webhook_verify_token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orbit_meta_whatsapp_config_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "orbit_empresas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orbit_meta_whatsapp_config_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
+            referencedRelation: "orbit_tenant_ops_media_v"
+            referencedColumns: ["empresa_id"]
+          },
+          {
+            foreignKeyName: "orbit_meta_whatsapp_config_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: true
             referencedRelation: "orbit_tenant_ops_queue_v"
             referencedColumns: ["empresa_id"]
           },
@@ -8750,6 +8829,14 @@ export type Database = {
       }
     }
     Functions: {
+      _build_orbit_meta_whatsapp_public_response: {
+        Args: { p_config_id: string }
+        Returns: Json
+      }
+      _build_orbit_meta_whatsapp_runtime_response: {
+        Args: { p_config_id: string }
+        Returns: Json
+      }
       _build_orbit_zapi_public_response: {
         Args: { p_config_id: string }
         Returns: Json
@@ -8978,6 +9065,18 @@ export type Database = {
       get_onboarding_by_token: { Args: { p_token: string }; Returns: Json }
       get_orbit_analytics_summary: {
         Args: { p_empresa_id: string }
+        Returns: Json
+      }
+      get_orbit_meta_whatsapp_config_public: {
+        Args: { p_empresa_id: string }
+        Returns: Json
+      }
+      get_orbit_meta_whatsapp_runtime_config: {
+        Args: { p_empresa_id: string }
+        Returns: Json
+      }
+      get_orbit_meta_whatsapp_runtime_config_by_phone_id: {
+        Args: { p_phone_number_id: string }
         Returns: Json
       }
       get_orbit_zapi_config_public: {
@@ -9691,6 +9790,22 @@ export type Database = {
       }
       super_admin_exists: { Args: never; Returns: boolean }
       switch_active_empresa: { Args: { p_empresa_id: string }; Returns: Json }
+      upsert_orbit_meta_whatsapp_config_secure: {
+        Args: {
+          p_access_token?: string
+          p_allow_proactive_messages?: boolean
+          p_app_secret?: string
+          p_ativo?: boolean
+          p_canary_mode_enabled?: boolean
+          p_canary_phone_numbers?: string[]
+          p_empresa_id: string
+          p_envio_real_liberado?: boolean
+          p_graph_api_version?: string
+          p_phone_number_id?: string
+          p_waba_id?: string
+        }
+        Returns: Json
+      }
       upsert_orbit_zapi_config_secure: {
         Args: {
           p_ativo?: boolean
@@ -9710,6 +9825,10 @@ export type Database = {
         Returns: boolean
       }
       validate_documento: { Args: { p_doc: string }; Returns: Json }
+      verify_orbit_meta_whatsapp_webhook_token: {
+        Args: { p_token: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "super_admin" | "admin" | "vendedor" | "visualizador"
