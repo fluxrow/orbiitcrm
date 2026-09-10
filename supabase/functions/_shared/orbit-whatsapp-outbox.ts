@@ -19,9 +19,9 @@
 
 import { AUTOMATION_CUTOFF_REASON, evaluateAutomationCutoff } from "./automation-cutoff.ts";
 import {
-  isViverControlledReengagement,
-  VIVER_CONTROLLED_REENGAGEMENT_METADATA_KEY,
-} from "./viver-controlled-reengagement.ts";
+  isViverControlledInboundReply,
+  VIVER_CONTROLLED_INBOUND_METADATA_KEY,
+} from "./viver-controlled-inbound-reply.ts";
 import { mixedPaymentIdempotencyKey } from "./mixed-payment-handoff.ts";
 import { looksLikeInternalPayload, sanitizedLeakSummary } from "./ai-output-guard.ts";
 
@@ -83,8 +83,8 @@ export interface OutboxContext {
   action_id?: string | null;
   // Se true, testes/rotinas usam prefixo idempotente próprio
   idempotency_scope?: string | null;
-  // Reengajamento controlado (tenant-scoped, apenas campanha Viver com marcador):
-  // ignora EXCLUSIVAMENTE o corte temporal auto_reply_new_leads_from.
+  // Reengajamento controlado (tenant-scoped, apenas ai_reply Viver validado pelo
+  // guard inbound): ignora EXCLUSIVAMENTE o corte temporal auto_reply_new_leads_from.
   controlled_reengagement?: boolean | null;
   // Metadata do item (worker propaga no re-check; fonte alternativa do marcador).
   metadata?: Record<string, unknown> | null;
@@ -190,11 +190,13 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
     if (!cutoffDecision.allowed && cutoffDecision.reason) {
       const isHumanReason = cutoffDecision.reason === "human_talk";
       const isTemporalCutoff = cutoffDecision.reason === AUTOMATION_CUTOFF_REASON;
-      const cutoffExempt = isTemporalCutoff && isViverControlledReengagement({
+      // Isenção do corte temporal APENAS para a resposta de IA (ai_reply) do tenant
+      // Viver já validada deterministicamente pelo guard inbound. Campanhas não têm
+      // qualquer isenção aqui.
+      const cutoffExempt = isTemporalCutoff && isViverControlledInboundReply({
         empresa_id: ctx.empresa_id,
         source_type: ctx.source_type,
         controlled_reengagement: ctx.controlled_reengagement ?? null,
-        metadata: ctx.metadata ?? null,
       });
       if (!(isHumanReason && humanOwnershipExempt) && !cutoffExempt) {
         reasons.push(isHumanReason ? "human_handoff" : cutoffDecision.reason);
@@ -438,9 +440,9 @@ export async function enqueueOutbox(supabase: any, input: EnqueueInput): Promise
   if (input.inbound_message_id != null) ctxMeta.inbound_message_id = input.inbound_message_id;
   if (input.meeting_id != null) ctxMeta.meeting_id = input.meeting_id;
   // Marcador de reengajamento controlado: persistido para que o re-check do worker
-  // avalie exatamente a mesma isenção (apenas corte temporal, apenas campanha Viver).
-  if (isViverControlledReengagement(input)) {
-    ctxMeta[VIVER_CONTROLLED_REENGAGEMENT_METADATA_KEY] = true;
+  // avalie exatamente a mesma isenção (apenas corte temporal, apenas ai_reply Viver).
+  if (isViverControlledInboundReply(input)) {
+    ctxMeta[VIVER_CONTROLLED_INBOUND_METADATA_KEY] = true;
   }
   const mergedMetadata = { ...(input.metadata ?? {}), ...ctxMeta };
   const { data: row, error } = await supabase

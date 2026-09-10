@@ -14,7 +14,7 @@ import {
 } from "../_shared/orbit-zapi.ts";
 import { auditZapiSendAttempt } from "../_shared/zapi-audit.ts";
 import { checkEligibility } from "../_shared/orbit-whatsapp-outbox.ts";
-import { controlledReengagementFromMetadata } from "../_shared/viver-controlled-reengagement.ts";
+import { controlledReengagementFromMetadata } from "../_shared/viver-controlled-inbound-reply.ts";
 import { checkCampaignRecipientEligibility } from "../_shared/campaign-safety.ts";
 import {
   consumesProspectingQuota,
@@ -760,9 +760,10 @@ async function processItem(
       null,
     event_id: item.metadata?.event_id ?? null,
     action_id: item.metadata?.action_id ?? null,
-    // Reengajamento controlado (Viver): preserva o marcador no re-check para que a
-    // isenção do corte temporal seja idêntica à do enqueue. Demais gates intactos.
-    controlled_reengagement: controlledReengagementFromMetadata(item.metadata),
+    // Reengajamento controlado (Viver, apenas ai_reply): preserva o marcador no
+    // re-check para que a isenção do corte temporal seja idêntica à do enqueue.
+    controlled_reengagement: item.source_type === "ai_reply" &&
+      controlledReengagementFromMetadata(item.metadata),
     metadata: item.metadata ?? null,
   });
   if (!elig.eligible) {

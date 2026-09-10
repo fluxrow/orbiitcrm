@@ -166,19 +166,22 @@ Deno.test("inbound inválido bloqueia (direção OUT ou outra conversa)", () => 
 });
 
 // ── Integração com o gate de elegibilidade do outbox (ai_reply) ──
-import { isViverControlledReengagement } from "./viver-controlled-reengagement.ts";
+import { isViverControlledInboundReply } from "./viver-controlled-inbound-reply.ts";
 
 Deno.test("ai_reply Viver com marcador tipado dispensa só o corte temporal", () => {
-  assertEquals(isViverControlledReengagement({
+  assertEquals(isViverControlledInboundReply({
     empresa_id: VIVER, source_type: "ai_reply", controlled_reengagement: true,
   }), true);
-  // metadata sozinha nunca abre exceção para ai_reply
-  assertEquals(isViverControlledReengagement({
-    empresa_id: VIVER, source_type: "ai_reply",
-    metadata: { viver_controlled_reengagement: true },
+  // sem marcador tipado não há exceção
+  assertEquals(isViverControlledInboundReply({
+    empresa_id: VIVER, source_type: "ai_reply", controlled_reengagement: null,
+  }), false);
+  // campanha NUNCA recebe isenção do corte temporal
+  assertEquals(isViverControlledInboundReply({
+    empresa_id: VIVER, source_type: "campaign", controlled_reengagement: true,
   }), false);
   // outro tenant permanece bloqueado
-  assertEquals(isViverControlledReengagement({
+  assertEquals(isViverControlledInboundReply({
     empresa_id: OTHER, source_type: "ai_reply", controlled_reengagement: true,
   }), false);
 });
