@@ -56,6 +56,10 @@ import {
 
 import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
 import {
+  evaluateViverControlledInboundReply,
+  TEMPORAL_CUTOFF_REASON,
+} from "../_shared/viver-controlled-inbound-reply.ts";
+import {
   DEFAULT_AGENT_AGGREGATION_WAIT_MS,
   readAgentAggregationWaitMs,
 } from "../_shared/ai-reply-debounce.ts";
