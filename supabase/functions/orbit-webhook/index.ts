@@ -563,18 +563,32 @@ async function processInboundZapi(
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
 
-      case "message-status":
       case "message-status": {
         // Aceita `messageId`, `zaapId` e `ids[]` (Z-API usa array em batch).
         // Idempotente e tenant-scoped: nunca reenvia, apenas atualiza status.
         const statusIds = extractProviderMessageIds(payload);
-        if (statusIds.length > 0) {
+        let statusEmpresaId: string | null = null;
+        if (payloadInstanceId && internalProvider !== "meta_whatsapp") {
+          const { data: cfgRows } = await supabase
+            .from("orbit_zapi_config")
+            .select("empresa_id, notificar_enviadas_por_mim")
+            .eq("instance_id", payloadInstanceId);
+          statusEmpresaId = resolveEmpresaByInstance((cfgRows ?? []) as any).empresaId;
+        } else if (payloadInstanceId) {
+          const { data: metaCfg } = await supabase.rpc(
+            "get_orbit_meta_whatsapp_runtime_config_by_phone_id",
+            { p_phone_number_id: payloadInstanceId },
+          );
+          statusEmpresaId = (metaCfg as any)?.empresa_id ?? null;
+        }
+        if (statusIds.length > 0 && statusEmpresaId) {
           await supabase
             .from("orbit_mensagens")
             .update({ status: payload.status || "delivered" })
-            .eq("empresa_id", statusEmpresaId ?? "")
+            .eq("empresa_id", statusEmpresaId)
             .in("provider_message_id", statusIds);
         }
+
         if (logId) await supabase.from("orbit_webhook_logs").update({ status: "processed" }).eq("id", logId);
         return new Response(JSON.stringify({ ok: true, event: "message-status", ids: statusIds.length }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
