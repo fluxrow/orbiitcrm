@@ -760,9 +760,11 @@ async function processItem(
       null,
     event_id: item.metadata?.event_id ?? null,
     action_id: item.metadata?.action_id ?? null,
-    // Reengajamento controlado (Viver, apenas ai_reply): preserva o marcador no
-    // re-check para que a isenção do corte temporal seja idêntica à do enqueue.
-    controlled_reengagement: item.source_type === "ai_reply" &&
+    // Reengajamento controlado (Viver): preserva o marcador no re-check para que a
+    // isenção do corte temporal seja idêntica à do enqueue — vale para `ai_reply`
+    // (guard inbound) e para `campaign` das ondas controladas 5/8/10.
+    controlled_reengagement:
+      (item.source_type === "ai_reply" || item.source_type === "campaign") &&
       controlledReengagementFromMetadata(item.metadata),
     metadata: item.metadata ?? null,
   });
