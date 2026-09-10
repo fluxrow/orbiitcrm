@@ -24,11 +24,19 @@ export interface ControlledReengagementInput {
   metadata?: Record<string, unknown> | null;
 }
 
-/** True somente para campanha controlada do tenant Viver com marcador explícito. */
+/**
+ * True somente para o tenant Viver com marcador explícito, em duas origens:
+ *  • `campaign` — campanha controlada (marcador tipado ou persistido na metadata);
+ *  • `ai_reply` — resposta a inbound real já validado deterministicamente pelo
+ *    guard `viver-controlled-inbound-reply.ts` (exige marcador TIPADO; a metadata
+ *    sozinha nunca abre exceção para ai_reply).
+ * Em ambos os casos apenas o motivo temporal `automation_cutoff` é dispensado.
+ */
 export function isViverControlledReengagement(
   input: ControlledReengagementInput,
 ): boolean {
   if (input.empresa_id !== VIVER_CONTROLLED_REENGAGEMENT_EMPRESA_ID) return false;
+  if (input.source_type === "ai_reply") return input.controlled_reengagement === true;
   if (input.source_type !== "campaign") return false;
   if (input.controlled_reengagement === true) return true;
   return input.metadata?.[VIVER_CONTROLLED_REENGAGEMENT_METADATA_KEY] === true;

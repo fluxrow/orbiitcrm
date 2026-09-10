@@ -56,6 +56,10 @@ import {
 
 import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
 import {
+  evaluateViverControlledInboundReply,
+  TEMPORAL_CUTOFF_REASON,
+} from "../_shared/viver-controlled-inbound-reply.ts";
+import {
   DEFAULT_AGENT_AGGREGATION_WAIT_MS,
   readAgentAggregationWaitMs,
 } from "../_shared/ai-reply-debounce.ts";
@@ -781,6 +785,7 @@ async function sendWhatsAppAudio(
         // Chave única = inbound + tipo + identificador do áudio (permite texto+áudio no mesmo turn).
         inbound_message_id: `${inboundId}:audio:${audioKey}`,
         source_id: audioKey,
+        controlled_reengagement: CONTROLLED_REENGAGEMENT_REPLIES.has(conversa_id),
         payload_type: "audio",
         payload: {
           storage_path: isPath ? audioSource : null,
@@ -1026,7 +1031,32 @@ serve(async (req) => {
       prospect,
       conversa_id: conversa_id ?? null,
     });
-    if (!cutoff.allowed) {
+    // Exceção determinística e tenant-scoped (Viver Semijoias): inbound real vindo de
+    // OUT de campanha controlada aprovada ignora EXCLUSIVAMENTE o corte temporal.
+    let controlledInbound: { allowed: boolean; reason: string } = { allowed: false, reason: "not_evaluated" };
+    if (!cutoff.allowed && cutoff.reason === TEMPORAL_CUTOFF_REASON) {
+      controlledInbound = await evaluateViverControlledInboundReply(supabase, {
+        empresa_id: empresaId ?? null,
+        prospect_id: prospect_id ?? null,
+        conversa_id: conversa_id ?? null,
+        inbound_message_id: normativeInbound.id,
+        cutoff_reason: cutoff.reason,
+        prospect,
+      });
+      if (controlledInbound.allowed) {
+        console.log("[orbit-ai-agent] corte temporal dispensado (reengajamento controlado):", {
+          empresa_id: empresaId, conversa_id, reason: controlledInbound.reason,
+        });
+        await supabase
+          .from("orbit_conversas")
+          .update({ human_talk: false })
+          .eq("id", conversa_id)
+          .eq("empresa_id", empresaId)
+          .is("human_user_id", null);
+        CONTROLLED_REENGAGEMENT_REPLIES.add(conversa_id);
+      }
+    }
+    if (!cutoff.allowed && !controlledInbound.allowed) {
       console.log("[orbit-ai-agent] bloqueado pelo corte de automação:", {
         empresa_id: empresaId, prospect_id, conversa_id, reason: cutoff.reason, cutoff: cutoff.cutoff,
       });
@@ -2974,6 +3004,7 @@ ${regrasBlock}`;
     if (conversaIdForCleanup) {
       RECOVERY_TAGS.delete(conversaIdForCleanup);
       OUTBOX_HOLDS.delete(conversaIdForCleanup);
+      CONTROLLED_REENGAGEMENT_REPLIES.delete(conversaIdForCleanup);
     }
   }
 });
@@ -3150,6 +3181,14 @@ export function sanitizeRecoveryTag(tag: unknown): string | null {
  * Limite máximo: 24h à frente. Escopo por conversa; limpo no finally.
  */
 const OUTBOX_HOLDS = new Map<string, string>();
+
+/**
+ * Conversas (escopo Viver Semijoias) em que o inbound atual foi validado como
+ * resposta real à rampa de reengajamento controlado. Marca APENAS a dispensa do
+ * corte temporal no enqueue de ai_reply; nenhum outro gate é relaxado.
+ * Escopo por conversa; limpo no finally.
+ */
+const CONTROLLED_REENGAGEMENT_REPLIES = new Set<string>();
 export function sanitizeOutboxHoldUntil(value: unknown, nowMs = Date.now()): string | null {
   if (typeof value !== "string") return null;
   const ms = Date.parse(value.trim());
@@ -3243,6 +3282,7 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw:
         payload_type: "text",
         payload: { mensagem },
         idempotency_scope: recoveryTag,
+        controlled_reengagement: CONTROLLED_REENGAGEMENT_REPLIES.has(conversa_id),
         ...(holdUntilQueued ? { scheduled_for: holdUntilQueued } : {}),
         metadata: {
           orbit_message_id: novaTxt?.id ?? null,
