@@ -1026,7 +1026,31 @@ serve(async (req) => {
       prospect,
       conversa_id: conversa_id ?? null,
     });
-    if (!cutoff.allowed) {
+    // Exceção determinística e tenant-scoped (Viver Semijoias): inbound real vindo de
+    // OUT de campanha controlada aprovada ignora EXCLUSIVAMENTE o corte temporal.
+    let controlledInbound: { allowed: boolean; reason: string } = { allowed: false, reason: "not_evaluated" };
+    if (!cutoff.allowed && cutoff.reason === TEMPORAL_CUTOFF_REASON) {
+      controlledInbound = await evaluateViverControlledInboundReply(supabase, {
+        empresa_id: empresaId ?? null,
+        prospect_id: prospect_id ?? null,
+        conversa_id: conversa_id ?? null,
+        inbound_message_id: normativeInbound.id,
+        cutoff_reason: cutoff.reason,
+        prospect,
+      });
+      if (controlledInbound.allowed) {
+        console.log("[orbit-ai-agent] corte temporal dispensado (reengajamento controlado):", {
+          empresa_id: empresaId, conversa_id, reason: controlledInbound.reason,
+        });
+        await supabase
+          .from("orbit_conversas")
+          .update({ human_talk: false })
+          .eq("id", conversa_id)
+          .eq("empresa_id", empresaId)
+          .is("human_user_id", null);
+      }
+    }
+    if (!cutoff.allowed && !controlledInbound.allowed) {
       console.log("[orbit-ai-agent] bloqueado pelo corte de automação:", {
         empresa_id: empresaId, prospect_id, conversa_id, reason: cutoff.reason, cutoff: cutoff.cutoff,
       });
