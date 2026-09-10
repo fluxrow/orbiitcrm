@@ -397,6 +397,68 @@ async function processInboundZapi(
       "NotificationCallback",
     ]);
 
+    // ── Falso positivo de entrega assíncrona (Z-API) ──────────────────────────
+    // Precisa rodar ANTES do early-return de STATUS_ONLY_CALLBACKS: o callback
+    // `on-send`/`message-status` com payload.error conhecido é a única evidência
+    // de que o envio marcado como "sent" na verdade falhou.
+    // Zero reenvio: apenas reconciliação de estado, tenant-scoped pelo instanceId.
+    {
+      const asyncCheck = shouldReconcileAsyncError({ eventType, payload });
+      if (asyncCheck.reconcile && asyncCheck.classification) {
+        let asyncEmpresaId: string | null = null;
+        if (payloadInstanceId) {
+          if (internalProvider === "meta_whatsapp") {
+            const { data: metaCfg } = await supabase.rpc(
+              "get_orbit_meta_whatsapp_runtime_config_by_phone_id",
+              { p_phone_number_id: payloadInstanceId },
+            );
+            asyncEmpresaId = (metaCfg as any)?.empresa_id ?? null;
+          } else {
+            const { data: cfgRows } = await supabase
+              .from("orbit_zapi_config")
+              .select("empresa_id, notificar_enviadas_por_mim")
+              .eq("instance_id", payloadInstanceId);
+            // Sem fallback para "primeiro tenant": instance ambígua → não reconcilia.
+            asyncEmpresaId = resolveEmpresaByInstance((cfgRows ?? []) as any).empresaId;
+          }
+        }
+
+        if (!asyncEmpresaId) {
+          console.warn("[orbit-webhook] async_error sem tenant resolvido pelo instanceId");
+        } else {
+          const reconciled = await reconcileAsyncSendError(supabase, {
+            empresa_id: asyncEmpresaId,
+            provider_message_ids: asyncCheck.ids,
+            classification: asyncCheck.classification,
+          });
+          console.log("[orbit-webhook] async_error reconciliado", JSON.stringify({
+            code: asyncCheck.classification.code,
+            ids: asyncCheck.ids.length,
+            ...reconciled,
+          }));
+          await supabase.from("orbit_webhook_logs").insert({
+            event_type: eventType,
+            instance_id: payloadInstanceId,
+            phone: payloadPhone,
+            payload,
+            status: reconciled.already_reconciled ? "ignored" : "processed",
+            error_message: `${asyncCheck.classification.sanitized}${
+              reconciled.already_reconciled ? ":duplicate_callback" : ""
+            }`,
+          });
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              event: eventType,
+              async_error: asyncCheck.classification.code,
+              ...reconciled,
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+      }
+    }
+
     if (payloadType && STATUS_ONLY_CALLBACKS.has(payloadType) && eventType !== "message-status" && eventType !== "presence" && eventType !== "on-connect" && eventType !== "on-disconnect" && eventType !== "phone-disconnected") {
       console.log(`[orbit-webhook] Ignorando callback de status: ${payloadType}`);
       const { data: logRow } = await supabase
