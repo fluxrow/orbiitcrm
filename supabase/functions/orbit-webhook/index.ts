@@ -564,16 +564,23 @@ async function processInboundZapi(
         });
 
       case "message-status":
-        if (payload.messageId) {
+      case "message-status": {
+        // Aceita `messageId`, `zaapId` e `ids[]` (Z-API usa array em batch).
+        // Idempotente e tenant-scoped: nunca reenvia, apenas atualiza status.
+        const statusIds = extractProviderMessageIds(payload);
+        if (statusIds.length > 0) {
           await supabase
             .from("orbit_mensagens")
             .update({ status: payload.status || "delivered" })
-            .eq("provider_message_id", payload.messageId);
+            .eq("empresa_id", statusEmpresaId ?? "")
+            .in("provider_message_id", statusIds);
         }
         if (logId) await supabase.from("orbit_webhook_logs").update({ status: "processed" }).eq("id", logId);
-        return new Response(JSON.stringify({ ok: true, event: "message-status" }), {
+        return new Response(JSON.stringify({ ok: true, event: "message-status", ids: statusIds.length }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
+      }
+
 
       case "on-send":
       case "on-receive":
