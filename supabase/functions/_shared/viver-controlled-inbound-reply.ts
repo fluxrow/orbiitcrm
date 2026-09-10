@@ -8,9 +8,12 @@
 // Esta exceção ignora EXCLUSIVAMENTE o motivo temporal `automation_cutoff` e só
 // quando TODAS as condições abaixo são verdadeiras:
 //   • empresa_id == Viver Semijoias;
-//   • existe OUT REAL de campanha da mesma conversa/prospect (source_type=campaign,
-//     status=sent, provider_message_id não nulo, metadata.viver_controlled_reengagement=true)
-//     enviada ANTES do inbound atual;
+//   • existe OUT REAL em orbit_mensagens da mesma empresa/conversa, ANTERIOR ao
+//     inbound, com campaign_id presente, status enviada/sent e provider_message_id;
+//   • existe orbit_whatsapp_outbox da mesma empresa + prospect + campaign_id, com
+//     source_type=campaign, status=sent, provider_message_id EXATAMENTE igual ao da
+//     OUT e metadata.viver_controlled_reengagement=true (conversa_id do outbox pode
+//     ser NULL; se existir, precisa coincidir);
 //   • a campanha vinculada está aprovada e pertence a um dos batches autorizados;
 //   • não há humano/handoff/atendimento externo, opt-out, prospect deletado,
 //     conversa arquivada/quarentenada/fechada, reunião futura, nem OUT/ai_reply
@@ -31,6 +34,8 @@ export const VIVER_CONTROLLED_INBOUND_BATCH_LABELS: readonly string[] = [
 ];
 
 export const TEMPORAL_CUTOFF_REASON = "automation_cutoff";
+
+const SENT_OUT_STATUS = new Set(["enviada", "enviado", "sent"]);
 
 export interface ViverControlledInboundDecision {
   allowed: boolean;
@@ -65,6 +70,18 @@ export interface ViverControlledInboundFacts {
     direcao?: string | null;
     timestamp?: string | null;
   } | null;
+  /** OUT REAL registrada em orbit_mensagens (fonte forte de correlação). */
+  campaign_out_message?: {
+    id?: string | null;
+    empresa_id?: string | null;
+    conversa_id?: string | null;
+    campaign_id?: string | null;
+    direcao?: string | null;
+    status?: string | null;
+    provider_message_id?: string | null;
+    timestamp?: string | null;
+  } | null;
+  /** Outbox correlacionado por provider_message_id + campaign_id + prospect_id. */
   campaign_outbox?: {
     empresa_id?: string | null;
     conversa_id?: string | null;
@@ -144,22 +161,38 @@ export function decideViverControlledInboundReply(
   const inboundMs = Date.parse(String(inb.timestamp ?? ""));
   if (Number.isNaN(inboundMs)) return block("inbound_timestamp_invalid");
 
-  // ── OUT real de campanha controlada
+  // ── OUT REAL da campanha em orbit_mensagens (correlação forte)
+  const outMsg = f.campaign_out_message ?? null;
+  if (!outMsg) return block("controlled_campaign_out_missing");
+  if (outMsg.empresa_id && outMsg.empresa_id !== empresaId) return block("cross_tenant");
+  if (outMsg.conversa_id !== c.id) return block("out_other_conversation");
+  if (String(outMsg.direcao ?? "OUT").toUpperCase() !== "OUT") return block("out_not_outbound");
+  if (!outMsg.campaign_id) return block("out_without_campaign");
+  if (!SENT_OUT_STATUS.has(String(outMsg.status ?? "").toLowerCase())) {
+    return block("out_not_sent");
+  }
+  if (!outMsg.provider_message_id) return block("out_without_provider_message_id");
+  const outMs = Date.parse(String(outMsg.timestamp ?? ""));
+  if (Number.isNaN(outMs)) return block("out_sent_at_invalid");
+  if (!(inboundMs >= outMs)) return block("inbound_before_campaign_out");
+
+  // ── Outbox correlacionado (conversa_id pode ser NULL no caso real)
   const out = f.campaign_outbox ?? null;
   if (!out) return block("controlled_campaign_out_missing");
   if (out.empresa_id && out.empresa_id !== empresaId) return block("cross_tenant");
   if (out.source_type !== "campaign") return block("out_not_campaign");
   if (out.status !== "sent") return block("out_not_sent");
   if (!out.provider_message_id) return block("out_without_provider_message_id");
+  if (out.provider_message_id !== outMsg.provider_message_id) {
+    return block("out_provider_message_id_mismatch");
+  }
   if (!out.campaign_id) return block("out_without_campaign");
+  if (out.campaign_id !== outMsg.campaign_id) return block("campaign_mismatch");
   if (out.metadata?.[VIVER_CONTROLLED_INBOUND_METADATA_KEY] !== true) {
     return block("out_without_controlled_marker");
   }
   if (out.conversa_id && c.id && out.conversa_id !== c.id) return block("out_other_conversation");
-  if (out.prospect_id && p.id && out.prospect_id !== p.id) return block("out_other_prospect");
-  const sentMs = Date.parse(String(out.sent_at ?? ""));
-  if (Number.isNaN(sentMs)) return block("out_sent_at_invalid");
-  if (!(inboundMs >= sentMs)) return block("inbound_before_campaign_out");
+  if (out.prospect_id !== p.id) return block("out_other_prospect");
 
   // ── Campanha aprovada e batch autorizado
   const camp = f.campaign ?? null;
@@ -238,25 +271,41 @@ export async function evaluateViverControlledInboundReply(
 
     const inboundTs = inbound?.timestamp ?? null;
 
-    // Última OUT real de campanha controlada anterior ao inbound.
-    let outboxRow: ViverControlledInboundFacts["campaign_outbox"] = null;
+    // 1) OUT REAL de campanha na conversa, anterior ao inbound.
+    let outMessage: ViverControlledInboundFacts["campaign_out_message"] = null;
     {
       let q = supabase
+        .from("orbit_mensagens")
+        .select("id, empresa_id, conversa_id, campaign_id, direcao, status, provider_message_id, timestamp")
+        .eq("empresa_id", empresaId)
+        .eq("conversa_id", input.conversa_id)
+        .eq("direcao", "OUT")
+        .not("campaign_id", "is", null)
+        .not("provider_message_id", "is", null)
+        .order("timestamp", { ascending: false })
+        .limit(20);
+      if (inboundTs) q = q.lte("timestamp", inboundTs);
+      const { data: rows } = await q;
+      const list = (rows ?? []) as any[];
+      outMessage = list.find((r) =>
+        SENT_OUT_STATUS.has(String(r?.status ?? "").toLowerCase())
+      ) ?? list[0] ?? null;
+    }
+
+    // 2) Outbox correlacionado por provider_message_id + campaign_id + prospect_id.
+    let outboxRow: ViverControlledInboundFacts["campaign_outbox"] = null;
+    if (outMessage?.provider_message_id && outMessage?.campaign_id) {
+      const { data } = await supabase
         .from("orbit_whatsapp_outbox")
         .select("empresa_id, conversa_id, prospect_id, campaign_id, source_type, status, provider_message_id, sent_at, metadata")
         .eq("empresa_id", empresaId)
-        .eq("conversa_id", input.conversa_id)
+        .eq("prospect_id", input.prospect_id)
+        .eq("campaign_id", outMessage.campaign_id)
         .eq("source_type", "campaign")
         .eq("status", "sent")
-        .not("provider_message_id", "is", null)
-        .order("sent_at", { ascending: false })
-        .limit(20);
-      if (inboundTs) q = q.lte("sent_at", inboundTs);
-      const { data: rows } = await q;
-      const list = (rows ?? []) as any[];
-      outboxRow = list.find((r) =>
-        r?.metadata?.[VIVER_CONTROLLED_INBOUND_METADATA_KEY] === true && !!r?.campaign_id
-      ) ?? list[0] ?? null;
+        .eq("provider_message_id", outMessage.provider_message_id)
+        .limit(5);
+      outboxRow = ((data ?? []) as any[])[0] ?? null;
     }
 
     let campaign: ViverControlledInboundFacts["campaign"] = null;
@@ -323,6 +372,7 @@ export async function evaluateViverControlledInboundReply(
       prospect,
       conversa: conversa ?? null,
       inbound: inbound ?? null,
+      campaign_out_message: outMessage,
       campaign_outbox: outboxRow,
       campaign,
       later_out_count: laterOutCount,
@@ -336,14 +386,18 @@ export async function evaluateViverControlledInboundReply(
 }
 
 // ── Integração com o gate de elegibilidade do outbox ────────────────────────────
-// Escopo MÍNIMO: apenas a resposta da IA (`ai_reply`) do tenant Viver, com o
-// marcador TIPADO propagado por este guard, dispensa EXCLUSIVAMENTE o motivo
-// temporal `automation_cutoff`. Campanhas NÃO recebem nenhuma isenção aqui.
+// Duas exceções distintas, ambas ignorando EXCLUSIVAMENTE o motivo temporal
+// `automation_cutoff`, ambas restritas ao tenant Viver:
+//   • `ai_reply`  → marcador tipado propagado pelo guard inbound (acima);
+//   • `campaign`  → ondas controladas 5/8/10, marcador na metadata da campanha
+//     validado no produtor (campanha aprovada + batch allowlisted).
+// Nenhum outro tenant, origem ou motivo de bloqueio é afetado.
 
 export interface ControlledInboundOutboxContext {
   empresa_id?: string | null;
   source_type?: string | null;
   controlled_reengagement?: boolean | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export function isViverControlledInboundReply(
@@ -354,7 +408,44 @@ export function isViverControlledInboundReply(
     ctx.controlled_reengagement === true;
 }
 
-/** Lê o marcador persistido na metadata (re-check do worker para ai_reply). */
+/** Envio de campanha controlada (ondas 5/8/10) do tenant Viver. */
+export function isViverControlledCampaignSend(
+  ctx: ControlledInboundOutboxContext,
+): boolean {
+  if (ctx.empresa_id !== VIVER_CONTROLLED_INBOUND_EMPRESA_ID) return false;
+  if (ctx.source_type !== "campaign") return false;
+  return ctx.controlled_reengagement === true ||
+    controlledReengagementFromMetadata(ctx.metadata);
+}
+
+/** Qualquer uma das duas exceções tenant-scoped do corte temporal. */
+export function isViverControlledCutoffExempt(
+  ctx: ControlledInboundOutboxContext,
+): boolean {
+  return isViverControlledInboundReply(ctx) || isViverControlledCampaignSend(ctx);
+}
+
+/**
+ * Produtor de campanha: só autoriza propagar o marcador controlado quando a
+ * campanha é do tenant Viver, está aprovada, tem batch_label allowlisted e traz o
+ * bloco `controlled_reengagement` esperado (Typebot + revisão de fechamento).
+ */
+export function isAuthorizedViverControlledCampaign(campaign: {
+  empresa_id?: string | null;
+  aprovacao_status?: string | null;
+  filtros_json?: Record<string, any> | null;
+} | null | undefined): boolean {
+  if (!campaign) return false;
+  if (campaign.empresa_id !== VIVER_CONTROLLED_INBOUND_EMPRESA_ID) return false;
+  if (String(campaign.aprovacao_status ?? "") !== "aprovada") return false;
+  const batchLabel = campaign.filtros_json?.batch_label;
+  if (typeof batchLabel !== "string" ||
+    !VIVER_CONTROLLED_INBOUND_BATCH_LABELS.includes(batchLabel)) return false;
+  const cr = campaign.filtros_json?.controlled_reengagement;
+  return cr?.source_form === "typebot" && cr?.requires_day_close_review === true;
+}
+
+/** Lê o marcador persistido na metadata (re-check do worker). */
 export function controlledReengagementFromMetadata(
   metadata: Record<string, unknown> | null | undefined,
 ): boolean {

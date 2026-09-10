@@ -19,7 +19,7 @@
 
 import { AUTOMATION_CUTOFF_REASON, evaluateAutomationCutoff } from "./automation-cutoff.ts";
 import {
-  isViverControlledInboundReply,
+  isViverControlledCutoffExempt,
   VIVER_CONTROLLED_INBOUND_METADATA_KEY,
 } from "./viver-controlled-inbound-reply.ts";
 import { mixedPaymentIdempotencyKey } from "./mixed-payment-handoff.ts";
@@ -190,13 +190,15 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
     if (!cutoffDecision.allowed && cutoffDecision.reason) {
       const isHumanReason = cutoffDecision.reason === "human_talk";
       const isTemporalCutoff = cutoffDecision.reason === AUTOMATION_CUTOFF_REASON;
-      // Isenção do corte temporal APENAS para a resposta de IA (ai_reply) do tenant
-      // Viver já validada deterministicamente pelo guard inbound. Campanhas não têm
-      // qualquer isenção aqui.
-      const cutoffExempt = isTemporalCutoff && isViverControlledInboundReply({
+      // Isenção do corte temporal restrita ao tenant Viver, em dois caminhos
+      // distintos: `ai_reply` validado pelo guard inbound e `campaign` das ondas
+      // controladas 5/8/10 (marcador validado no produtor). Nenhum outro motivo
+      // de bloqueio é dispensado.
+      const cutoffExempt = isTemporalCutoff && isViverControlledCutoffExempt({
         empresa_id: ctx.empresa_id,
         source_type: ctx.source_type,
         controlled_reengagement: ctx.controlled_reengagement ?? null,
+        metadata: ctx.metadata ?? null,
       });
       if (!(isHumanReason && humanOwnershipExempt) && !cutoffExempt) {
         reasons.push(isHumanReason ? "human_handoff" : cutoffDecision.reason);
@@ -441,7 +443,7 @@ export async function enqueueOutbox(supabase: any, input: EnqueueInput): Promise
   if (input.meeting_id != null) ctxMeta.meeting_id = input.meeting_id;
   // Marcador de reengajamento controlado: persistido para que o re-check do worker
   // avalie exatamente a mesma isenção (apenas corte temporal, apenas ai_reply Viver).
-  if (isViverControlledInboundReply(input)) {
+  if (isViverControlledCutoffExempt(input)) {
     ctxMeta[VIVER_CONTROLLED_INBOUND_METADATA_KEY] = true;
   }
   const mergedMetadata = { ...(input.metadata ?? {}), ...ctxMeta };
