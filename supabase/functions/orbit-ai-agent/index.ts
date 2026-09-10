@@ -3178,6 +3178,14 @@ export function sanitizeRecoveryTag(tag: unknown): string | null {
  * Limite máximo: 24h à frente. Escopo por conversa; limpo no finally.
  */
 const OUTBOX_HOLDS = new Map<string, string>();
+
+/**
+ * Conversas (escopo Viver Semijoias) em que o inbound atual foi validado como
+ * resposta real à rampa de reengajamento controlado. Marca APENAS a dispensa do
+ * corte temporal no enqueue de ai_reply; nenhum outro gate é relaxado.
+ * Escopo por conversa; limpo no finally.
+ */
+const CONTROLLED_REENGAGEMENT_REPLIES = new Set<string>();
 export function sanitizeOutboxHoldUntil(value: unknown, nowMs = Date.now()): string | null {
   if (typeof value !== "string") return null;
   const ms = Date.parse(value.trim());
