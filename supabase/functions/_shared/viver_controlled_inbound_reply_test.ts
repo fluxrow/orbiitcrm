@@ -172,10 +172,13 @@ Deno.test("ai_reply Viver com marcador tipado dispensa só o corte temporal", ()
   assertEquals(isViverControlledInboundReply({
     empresa_id: VIVER, source_type: "ai_reply", controlled_reengagement: true,
   }), true);
-  // metadata sozinha nunca abre exceção para ai_reply
+  // sem marcador tipado não há exceção
   assertEquals(isViverControlledInboundReply({
-    empresa_id: VIVER, source_type: "ai_reply",
-    metadata: { viver_controlled_reengagement: true },
+    empresa_id: VIVER, source_type: "ai_reply", controlled_reengagement: null,
+  }), false);
+  // campanha NUNCA recebe isenção do corte temporal
+  assertEquals(isViverControlledInboundReply({
+    empresa_id: VIVER, source_type: "campaign", controlled_reengagement: true,
   }), false);
   // outro tenant permanece bloqueado
   assertEquals(isViverControlledInboundReply({
