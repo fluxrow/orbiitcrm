@@ -785,6 +785,7 @@ async function sendWhatsAppAudio(
         // Chave única = inbound + tipo + identificador do áudio (permite texto+áudio no mesmo turn).
         inbound_message_id: `${inboundId}:audio:${audioKey}`,
         source_id: audioKey,
+        controlled_reengagement: CONTROLLED_REENGAGEMENT_REPLIES.has(conversa_id),
         payload_type: "audio",
         payload: {
           storage_path: isPath ? audioSource : null,
@@ -1052,6 +1053,7 @@ serve(async (req) => {
           .eq("id", conversa_id)
           .eq("empresa_id", empresaId)
           .is("human_user_id", null);
+        CONTROLLED_REENGAGEMENT_REPLIES.add(conversa_id);
       }
     }
     if (!cutoff.allowed && !controlledInbound.allowed) {
@@ -3002,6 +3004,7 @@ ${regrasBlock}`;
     if (conversaIdForCleanup) {
       RECOVERY_TAGS.delete(conversaIdForCleanup);
       OUTBOX_HOLDS.delete(conversaIdForCleanup);
+      CONTROLLED_REENGAGEMENT_REPLIES.delete(conversaIdForCleanup);
     }
   }
 });
@@ -3279,6 +3282,7 @@ async function sendWhatsAppMessage(supabase: any, telefone: string, mensagemRaw:
         payload_type: "text",
         payload: { mensagem },
         idempotency_scope: recoveryTag,
+        controlled_reengagement: CONTROLLED_REENGAGEMENT_REPLIES.has(conversa_id),
         ...(holdUntilQueued ? { scheduled_for: holdUntilQueued } : {}),
         metadata: {
           orbit_message_id: novaTxt?.id ?? null,
