@@ -9,6 +9,7 @@ import { isAdapterEnabled, enqueueOutbox } from "../_shared/orbit-whatsapp-outbo
 import { checkCampaignRecipientEligibility, markRecipientIgnorado } from "../_shared/campaign-safety.ts";
 import { claimCampaignDispatchAuthorization } from "../_shared/campaign-dispatch-authorization.ts";
 import { controlledViverCampaignMessageBlockReason } from "../_shared/outbox-pilot.ts";
+import { isAuthorizedViverControlledCampaign } from "../_shared/viver-controlled-inbound-reply.ts";
 import { buildTemplateOutboxPayload, templatePayloadType } from "../_shared/message-template-media.ts";
 import {
   WARMUP_SCALE,
