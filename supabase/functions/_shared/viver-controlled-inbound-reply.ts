@@ -334,3 +334,29 @@ export async function evaluateViverControlledInboundReply(
     return block("controlled_inbound_check_failed");
   }
 }
+
+// ── Integração com o gate de elegibilidade do outbox ────────────────────────────
+// Escopo MÍNIMO: apenas a resposta da IA (`ai_reply`) do tenant Viver, com o
+// marcador TIPADO propagado por este guard, dispensa EXCLUSIVAMENTE o motivo
+// temporal `automation_cutoff`. Campanhas NÃO recebem nenhuma isenção aqui.
+
+export interface ControlledInboundOutboxContext {
+  empresa_id?: string | null;
+  source_type?: string | null;
+  controlled_reengagement?: boolean | null;
+}
+
+export function isViverControlledInboundReply(
+  ctx: ControlledInboundOutboxContext,
+): boolean {
+  return ctx.empresa_id === VIVER_CONTROLLED_INBOUND_EMPRESA_ID &&
+    ctx.source_type === "ai_reply" &&
+    ctx.controlled_reengagement === true;
+}
+
+/** Lê o marcador persistido na metadata (re-check do worker para ai_reply). */
+export function controlledReengagementFromMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+): boolean {
+  return metadata?.[VIVER_CONTROLLED_INBOUND_METADATA_KEY] === true;
+}
