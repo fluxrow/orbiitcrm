@@ -250,6 +250,7 @@ export async function evaluateViverControlledInboundReply(
         .from("orbit_prospects")
         .select("id, empresa_id, deleted_at, optout_whatsapp")
         .eq("id", input.prospect_id)
+        .eq("empresa_id", empresaId)
         .maybeSingle();
       prospect = data ?? null;
     }
