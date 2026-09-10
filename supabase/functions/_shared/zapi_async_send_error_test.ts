@@ -115,7 +115,7 @@ function makeSupabase(seed: { outbox: Row[]; mensagens: Row[]; recipients: Row[]
   };
 }
 
-function seedCampaign() {
+function seedCampaign(): { outbox: Row[]; mensagens: Row[]; recipients: Row[]; prospects: Row[] } {
   return {
     outbox: [{
       id: "o1", empresa_id: EMPRESA, status: "sent", provider_message_id: "M1",
