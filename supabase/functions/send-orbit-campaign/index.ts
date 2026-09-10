@@ -541,12 +541,14 @@ const handler = async (req: Request): Promise<Response> => {
         // já foi feito acima; o worker re-valida no momento do envio Z-API.
         if (adapterEnabled && campaign.canal === "whatsapp" && recipient.status === "pendente") {
           const controlledReengagement = campaign.filtros_json?.controlled_reengagement;
-          const metadata = controlledReengagement?.source_form === "typebot" &&
-              controlledReengagement?.requires_day_close_review === true
+          // Marcador controlado (Viver): apenas campanha aprovada e com batch_label
+          // allowlisted propaga a isenção do corte temporal para as ondas 5/8/10.
+          const controlledAuthorized = isAuthorizedViverControlledCampaign(campaign);
+          const metadata = controlledAuthorized
             ? {
               viver_controlled_reengagement: true,
-              controlled_reengagement_wave: controlledReengagement.wave ?? null,
-              controlled_reengagement_slot: controlledReengagement.slot ?? null,
+              controlled_reengagement_wave: controlledReengagement?.wave ?? null,
+              controlled_reengagement_slot: controlledReengagement?.slot ?? null,
             }
             : {};
           const controlledMessageBlock = controlledViverCampaignMessageBlockReason({
@@ -569,6 +571,7 @@ const handler = async (req: Request): Promise<Response> => {
             source_id: recipient.id,
             payload_type: campaignTemplatePayloadType,
             payload: buildTemplateOutboxPayload(campaign.template ?? {}, mensagem),
+            controlled_reengagement: controlledAuthorized,
             metadata,
           });
           if (routed.enqueued) adapterQueued++; else adapterSkipped++;

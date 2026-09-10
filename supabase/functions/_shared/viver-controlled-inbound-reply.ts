@@ -425,6 +425,26 @@ export function isViverControlledCutoffExempt(
   return isViverControlledInboundReply(ctx) || isViverControlledCampaignSend(ctx);
 }
 
+/**
+ * Produtor de campanha: só autoriza propagar o marcador controlado quando a
+ * campanha é do tenant Viver, está aprovada, tem batch_label allowlisted e traz o
+ * bloco `controlled_reengagement` esperado (Typebot + revisão de fechamento).
+ */
+export function isAuthorizedViverControlledCampaign(campaign: {
+  empresa_id?: string | null;
+  aprovacao_status?: string | null;
+  filtros_json?: Record<string, any> | null;
+} | null | undefined): boolean {
+  if (!campaign) return false;
+  if (campaign.empresa_id !== VIVER_CONTROLLED_INBOUND_EMPRESA_ID) return false;
+  if (String(campaign.aprovacao_status ?? "") !== "aprovada") return false;
+  const batchLabel = campaign.filtros_json?.batch_label;
+  if (typeof batchLabel !== "string" ||
+    !VIVER_CONTROLLED_INBOUND_BATCH_LABELS.includes(batchLabel)) return false;
+  const cr = campaign.filtros_json?.controlled_reengagement;
+  return cr?.source_form === "typebot" && cr?.requires_day_close_review === true;
+}
+
 /** Lê o marcador persistido na metadata (re-check do worker). */
 export function controlledReengagementFromMetadata(
   metadata: Record<string, unknown> | null | undefined,
