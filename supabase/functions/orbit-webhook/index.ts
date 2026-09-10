@@ -230,6 +230,11 @@ import {
   safePreview,
 } from "../_shared/inbound-zapi.ts";
 import {
+  extractProviderMessageIds,
+  reconcileAsyncSendError,
+  shouldReconcileAsyncError,
+} from "../_shared/zapi-async-send-error.ts";
+import {
   classifyZapiInbound,
   extractLid,
   extractTrustedPhone,
