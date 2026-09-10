@@ -437,6 +437,11 @@ export async function enqueueOutbox(supabase: any, input: EnqueueInput): Promise
   if (input.event_created != null) ctxMeta.event_created = input.event_created;
   if (input.inbound_message_id != null) ctxMeta.inbound_message_id = input.inbound_message_id;
   if (input.meeting_id != null) ctxMeta.meeting_id = input.meeting_id;
+  // Marcador de reengajamento controlado: persistido para que o re-check do worker
+  // avalie exatamente a mesma isenção (apenas corte temporal, apenas campanha Viver).
+  if (isViverControlledReengagement(input)) {
+    ctxMeta[VIVER_CONTROLLED_REENGAGEMENT_METADATA_KEY] = true;
+  }
   const mergedMetadata = { ...(input.metadata ?? {}), ...ctxMeta };
   const { data: row, error } = await supabase
     .from("orbit_whatsapp_outbox")
