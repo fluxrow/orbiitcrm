@@ -184,9 +184,17 @@ export interface FollowupFacts {
   existing_cadence_keys?: string[];
   /** action_ids já agendados para o prospect (fallback de dedupe). */
   existing_action_ids?: string[];
-  /** template_ids com OUT/outbox real já aceito para este prospect. */
+  /** template_ids com envio REAL já aceito para este prospect. */
   accepted_template_ids?: string[];
+  /**
+   * Ordens já ocupadas no MESMO run (UNIQUE parcial run_id+ordem em
+   * pending/running/success). `status` preservado para relatar o motivo exato.
+   */
+  existing_run_ordens?: Array<{ ordem: number; status?: string | null }>;
+  /** Houve toque D1 REAL com template legado (individual ou grupo). */
+  legacy_d1_touch_sent?: boolean;
 }
+
 
 function blocked(reason: string): FollowupDecision {
   return {
