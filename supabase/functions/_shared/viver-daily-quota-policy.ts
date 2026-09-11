@@ -101,6 +101,25 @@ export function dailyUsageDate(now: Date = new Date()): string {
   return saoPauloDate(now);
 }
 
+/** Data legada (UTC) usada historicamente pelos demais tenants. */
+export function legacyDailyUsageDate(now: Date = new Date()): string {
+  return now.toISOString().slice(0, 10);
+}
+
+/**
+ * Data do contador diário por tenant: Viver usa America/Sao_Paulo (política
+ * aprovada das 15 vagas); os demais tenants preservam a data legada em UTC.
+ */
+export function dailyUsageDateFor(
+  empresaId: unknown,
+  now: Date = new Date(),
+): string {
+  return isViverTenant(empresaId)
+    ? dailyUsageDate(now)
+    : legacyDailyUsageDate(now);
+}
+
+
 /** Teto aceito para o piloto controlado (15 apenas Viver, 10 nos demais). */
 export function maxControlledDailyCap(empresaId: unknown): number {
   return isViverTenant(empresaId) ? VIVER_CONTROLLED_DAILY_CAP_MAX : 10;
