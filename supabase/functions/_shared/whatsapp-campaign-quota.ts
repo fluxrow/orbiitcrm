@@ -30,6 +30,12 @@ export const DEFAULT_CAMPAIGN_CONFIG: CampaignSendingConfig = {
   enabled: true,
 };
 
+import {
+  dailyUsageDate,
+  isViverTenant,
+  VIVER_DAILY_FIRST_CONTACT_LIMIT,
+} from "./viver-daily-quota-policy.ts";
+
 export const WARMUP_SCALE = [50, 80, 120, 200, 300, 500];
 
 /**
@@ -61,8 +67,13 @@ export function canResumePausadaPorLimite(params: {
   config: CampaignSendingConfig;
   dailySentCount: number;
   now?: Date;
+  empresaId?: string | null;
 }): { resume: boolean; effectiveLimit: number; remaining: number } {
-  const { limit } = getEffectiveDailyLimit(params.config, params.now ?? new Date());
+  const base = getEffectiveDailyLimit(params.config, params.now ?? new Date());
+  // Viver: teto duro de 15 primeiros contatos diários da lista antiga.
+  const limit = isViverTenant(params.empresaId)
+    ? Math.min(base.limit, VIVER_DAILY_FIRST_CONTACT_LIMIT)
+    : base.limit;
   const remaining = limit - (params.dailySentCount ?? 0);
   return { resume: remaining > 0, effectiveLimit: limit, remaining };
 }
@@ -103,7 +114,8 @@ export async function loadCampaignDailyUsage(
   empresaId: string,
   now: Date = new Date(),
 ): Promise<{ usageDate: string; sentCount: number }> {
-  const usageDate = now.toISOString().split("T")[0];
+  // Data de referência America/Sao_Paulo, coerente com o worker do outbox.
+  const usageDate = dailyUsageDate(now);
   const { data } = await supabase
     .from("orbit_whatsapp_daily_usage")
     .select("sent_count")

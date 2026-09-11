@@ -215,6 +215,7 @@ Deno.serve(async (req) => {
         const { resume, effectiveLimit, remaining } = canResumePausadaPorLimite({
           config: cfg,
           dailySentCount: sentCount,
+          empresaId: c.empresa_id,
         });
 
         if (!resume) {

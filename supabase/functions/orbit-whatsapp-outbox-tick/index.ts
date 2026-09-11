@@ -67,6 +67,14 @@ import {
   VIVER_CONTROLLED_OUTBOX_GATE_VERSION,
 } from "../_shared/outbox-pilot.ts";
 import {
+  consumesDailyQuotaFor,
+  dailyQuotaSourcesFor,
+  dailyUsageDate,
+  effectiveDailyLimitFor,
+  RETAIN_REASON_VIVER_CAMPAIGN_SPACING,
+  viverCampaignSpacingWaitMs,
+} from "../_shared/viver-daily-quota-policy.ts";
+import {
   effectiveOutboxPriority,
   FLOW_OUTBOX_MAX_AGE_MS,
   isOutboxBusinessWindow,
@@ -140,22 +148,40 @@ async function getSendingConfig(
 async function getDailyUsage(empresa_id: string): Promise<number> {
   // A rampa protege exclusivamente a prospecção iniciada pelo sistema.
   // Respostas reativas e mensagens operacionais nunca entram nesta contagem.
+  // Viver: somente `campaign` (primeiro contato da lista antiga) consome as 15 vagas.
   const { count, error } = await supabase
     .from("orbit_whatsapp_outbox")
     .select("id", { count: "exact", head: true })
     .eq("empresa_id", empresa_id)
     .eq("status", "sent")
-    .in("source_type", [...PROSPECTING_QUOTA_SOURCES])
+    .in("source_type", dailyQuotaSourcesFor(empresa_id))
     .gte("sent_at", saoPauloDayStartIso());
   if (error) throw new Error(`daily_usage_query_failed: ${error.message}`);
   return Number(count ?? 0);
+}
+
+// Último envio REAL de campanha do tenant — base do espaçamento mínimo.
+async function lastCampaignSentAtMs(empresa_id: string): Promise<number | null> {
+  const { data } = await supabase
+    .from("orbit_whatsapp_outbox")
+    .select("sent_at")
+    .eq("empresa_id", empresa_id)
+    .eq("status", "sent")
+    .eq("source_type", "campaign")
+    .not("sent_at", "is", null)
+    .order("sent_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const ts = Date.parse(String((data as any)?.sent_at ?? ""));
+  return Number.isFinite(ts) ? ts : null;
 }
 
 async function bumpDailyUsage(
   empresa_id: string,
   delta: number,
 ): Promise<void> {
-  const today = new Date().toISOString().slice(0, 10);
+  // Data de referência sempre America/Sao_Paulo (coerente com a contagem real).
+  const today = dailyUsageDate();
   const { data: existing } = await supabase
     .from("orbit_whatsapp_daily_usage")
     .select("id, sent_count")
@@ -517,7 +543,11 @@ async function retainPendingForTenant(
     .limit(max);
   let retained = 0;
   for (const row of (pend ?? []) as any[]) {
-    if (!consumesProspectingQuota(row.source_type)) continue;
+    // Cota diária usa a política do tenant; ritmo por minuto continua global.
+    const consumes = reason === RETAIN_REASON_DAILY
+      ? consumesDailyQuotaFor(empresa_id, row.source_type)
+      : consumesProspectingQuota(row.source_type);
+    if (!consumes) continue;
     if (engagedReplyUncapped(empresa_id) && isEngagedReserveCandidate(row)) {
       continue;
     }
@@ -865,11 +895,15 @@ async function processItem(
   // Ao atingir o limite o item NÃO falha: continua queued (status=pending) com
   // next_attempt_at na próxima janela e last_error/metadata estruturados.
   const q: QuotaState = quota ?? {
-    limitInfo: effectiveDailyLimit(cfg ?? {}),
+    limitInfo: effectiveDailyLimitFor(item.empresa_id, cfg ?? {}),
     remainingDaily: Number.POSITIVE_INFINITY,
     remainingMinute: Number.POSITIVE_INFINITY,
   };
-  const quotaControlled = consumesProspectingQuota(item.source_type);
+  // Cota diária: política do tenant (Viver conta somente `campaign`).
+  const quotaDaily = consumesDailyQuotaFor(item.empresa_id, item.source_type);
+  // Ritmo por minuto: inalterado, vale para toda prospecção iniciada pelo sistema.
+  const quotaRate = consumesProspectingQuota(item.source_type);
+  const quotaControlled = quotaDaily;
   if (!quota) {
     const usedNow = await getDailyUsage(item.empresa_id);
     q.remainingDaily = q.limitInfo.limit == null
@@ -986,10 +1020,31 @@ async function processItem(
 
   // Ritmo por minuto: é gate anti-banimento de PROSPECÇÃO. Resposta engajada isenta
   // usa o espaçamento por conversa (já aplicado acima) em vez da janela global.
-  if (quotaControlled && !engagedExempt && q.remainingMinute <= 0) {
+  if (quotaRate && !engagedExempt && q.remainingMinute <= 0) {
     await retainItem(item, RETAIN_REASON_RATE, q.limitInfo);
     return { outcome: "retained", reason: RETAIN_REASON_RATE };
   }
+
+  // ── Espaçamento mínimo entre primeiros contatos da lista (somente Viver) ──
+  // Medido pelo ÚLTIMO ENVIO REAL de campanha. Hold legítimo: reagenda para
+  // último_envio + 30min, sem acúmulo compensatório e sem rajada de backlog.
+  const spacingWaitMs = viverCampaignSpacingWaitMs({
+    empresaId: item.empresa_id,
+    sourceType: item.source_type,
+    lastCampaignSentAtMs: await lastCampaignSentAtMs(item.empresa_id),
+  });
+  if (spacingWaitMs > 0) {
+    await releaseHeldItem(
+      item,
+      RETAIN_REASON_VIVER_CAMPAIGN_SPACING,
+      new Date(Date.now() + spacingWaitMs).toISOString(),
+    );
+    return {
+      outcome: "deferred",
+      reason: RETAIN_REASON_VIVER_CAMPAIGN_SPACING,
+    };
+  }
+
 
   // Resolver telefone
   let telefone: string | null = item.payload?.telefone ?? null;
@@ -1078,10 +1133,8 @@ async function processItem(
       .eq("id", item.id);
     await upsertVisualMensagem(item, { status: "simulated" });
     await updateCampaignRecipient(item, { status: "simulated" });
-    if (quotaControlled) {
-      q.remainingDaily -= 1;
-      q.remainingMinute -= 1;
-    }
+    if (quotaDaily) q.remainingDaily -= 1;
+    if (quotaRate) q.remainingMinute -= 1;
     return { outcome: "simulated" };
   }
 
@@ -1165,11 +1218,9 @@ async function processItem(
       }
       await updateCampaignRecipient(item, { status: "enviado" });
       if (usedReserve) q.remainingReserve = Math.max(0, (q.remainingReserve ?? 0) - 1);
-      else if (quotaControlled) q.remainingDaily -= 1;
-      if (quotaControlled) {
-        q.remainingMinute -= 1;
-        await bumpDailyUsage(item.empresa_id, 1);
-      }
+      else if (quotaDaily) q.remainingDaily -= 1;
+      if (quotaRate) q.remainingMinute -= 1;
+      if (quotaDaily && !usedReserve) await bumpDailyUsage(item.empresa_id, 1);
       await auditMetaWhatsAppSend(item, metaCfg, "sent");
       return { outcome: "sent", provider_message_id: result.providerId };
     }
@@ -1319,13 +1370,11 @@ async function processItem(
 
     if (usedReserve) {
       q.remainingReserve = Math.max(0, (q.remainingReserve ?? 0) - 1);
-    } else if (quotaControlled) {
+    } else if (quotaDaily) {
       q.remainingDaily -= 1;
     }
-    if (quotaControlled) {
-      q.remainingMinute -= 1;
-      await bumpDailyUsage(item.empresa_id, 1);
-    }
+    if (quotaRate) q.remainingMinute -= 1;
+    if (quotaDaily && !usedReserve) await bumpDailyUsage(item.empresa_id, 1);
 
     await auditZapiSendAttempt(supabase, {
       empresa_id: item.empresa_id,
@@ -1438,7 +1487,7 @@ async function processTenant(
   stats.held = await deferHeldPendingForTenant(empresa_id);
 
   // ── Contagem e decisão de cota ANTES de qualquer claim ou fetch externo ──
-  const limitInfo = effectiveDailyLimit(cfg ?? {});
+  const limitInfo = effectiveDailyLimitFor(empresa_id, cfg ?? {});
   const usedToday = await getDailyUsage(empresa_id);
   const remainingDaily = limitInfo.limit == null
     ? Number.POSITIVE_INFINITY

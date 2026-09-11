@@ -4,6 +4,7 @@
 // marcado; o gate final da Z-API ainda restringe o telefone à allowlist canário.
 
 import { evaluateViverMeetingReminder } from "./viver-meeting-lifecycle.ts";
+import { isControlledDailyCapAccepted } from "./viver-daily-quota-policy.ts";
 
 export const VIVER_SEMIJOIAS_EMPRESA_ID = "36f26579-66ad-4ef1-9788-141e4c727232";
 export const VIVER_CONTROLLED_OUTBOX_GATE_VERSION = "2026-09-02-v3";
@@ -159,7 +160,8 @@ export async function pilotInboundBlockReason(supabase: any, item: any): Promise
       campaign.canal !== "whatsapp" || campaign.aprovacao_status !== "aprovada" ||
       !["agendada", "enviando", "aprovada"].includes(String(campaign.status)) ||
       controlled?.source_form !== "typebot" || controlled?.requires_day_close_review !== true ||
-      !Number.isInteger(cap) || cap < 1 || cap > 10 || !Number.isInteger(slot) || slot < 1 || slot > cap ||
+      !isControlledDailyCapAccepted(item.empresa_id, cap) ||
+      !Number.isInteger(slot) || slot < 1 || slot > cap ||
       !Array.isArray(selected) || selected.length !== 1 || String(selected[0]) !== String(item.prospect_id) ||
       !recipient || String(recipient.campaign_id) !== String(item.campaign_id) ||
       String(recipient.prospect_id) !== String(item.prospect_id) || !["pendente", "enviando"].includes(String(recipient.status)) ||
