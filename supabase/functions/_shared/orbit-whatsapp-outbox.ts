@@ -22,6 +22,10 @@ import {
   isViverControlledCutoffExempt,
   VIVER_CONTROLLED_INBOUND_METADATA_KEY,
 } from "./viver-controlled-inbound-reply.ts";
+import {
+  proveViverControlledFollowup,
+  VIVER_FOLLOWUP_EMPRESA_ID,
+} from "./viver-followup-reconstitution.ts";
 import { mixedPaymentIdempotencyKey } from "./mixed-payment-handoff.ts";
 import { looksLikeInternalPayload, sanitizedLeakSummary } from "./ai-output-guard.ts";
 
@@ -194,12 +198,29 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
       // distintos: `ai_reply` validado pelo guard inbound e `campaign` das ondas
       // controladas 5/8/10 (marcador validado no produtor). Nenhum outro motivo
       // de bloqueio é dispensado.
-      const cutoffExempt = isTemporalCutoff && isViverControlledCutoffExempt({
+      let cutoffExempt = isTemporalCutoff && isViverControlledCutoffExempt({
         empresa_id: ctx.empresa_id,
         source_type: ctx.source_type,
         controlled_reengagement: ctx.controlled_reengagement ?? null,
         metadata: ctx.metadata ?? null,
       });
+      // Terceira exceção, também restrita ao corte temporal e ao tenant Viver:
+      // follow-up reconstituído da lista já autorizada. Aqui o marcador booleano
+      // NÃO basta — exige-se prova server-side (campanha aprovada de batch
+      // allowlisted + outbox `sent` correlacionado + OUT real + run lead_recebido).
+      if (
+        !cutoffExempt && isTemporalCutoff &&
+        ctx.empresa_id === VIVER_FOLLOWUP_EMPRESA_ID &&
+        ctx.source_type === "flow_followup" &&
+        (ctx.metadata as any)?.viver_followup_reconstitution === true
+      ) {
+        const proof = await proveViverControlledFollowup(supabase, {
+          empresa_id: ctx.empresa_id,
+          prospect_id: ctx.prospect_id ?? null,
+          conversa_id: ctx.conversa_id ?? null,
+        });
+        cutoffExempt = proof.allowed;
+      }
       if (!(isHumanReason && humanOwnershipExempt) && !cutoffExempt) {
         reasons.push(isHumanReason ? "human_handoff" : cutoffDecision.reason);
       }

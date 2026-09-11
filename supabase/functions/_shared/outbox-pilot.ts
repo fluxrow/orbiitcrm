@@ -5,6 +5,7 @@
 
 import { evaluateViverMeetingReminder } from "./viver-meeting-lifecycle.ts";
 import { isControlledDailyCapAccepted } from "./viver-daily-quota-policy.ts";
+import { proveViverControlledFollowup } from "./viver-followup-reconstitution.ts";
 
 export const VIVER_SEMIJOIAS_EMPRESA_ID = "36f26579-66ad-4ef1-9788-141e4c727232";
 export const VIVER_CONTROLLED_OUTBOX_GATE_VERSION = "2026-09-02-v3";
@@ -195,6 +196,17 @@ export async function pilotInboundBlockReason(supabase: any, item: any): Promise
       !run || String(run.empresa_id) !== String(item.empresa_id) ||
       String(run.flow_id) !== String(scheduled.flow_id) || String(run.entity_id) !== String(item.prospect_id)) {
       return PILOT_FOLLOWUP_EVIDENCE_REQUIRED;
+    }
+    // Follow-up reconstituído da lista antiga: revalidação no worker exige a mesma
+    // prova server-side do produtor (campanha aprovada + outbox sent correlacionado
+    // + OUT real + run lead_recebido). Marcador em metadata nunca basta.
+    if (item?.metadata?.viver_followup_reconstitution === true) {
+      const proof = await proveViverControlledFollowup(supabase, {
+        empresa_id: item.empresa_id,
+        prospect_id: item.prospect_id,
+        conversa_id: item.conversa_id ?? null,
+      });
+      if (!proof.allowed) return PILOT_FOLLOWUP_EVIDENCE_REQUIRED;
     }
     return null;
   }
