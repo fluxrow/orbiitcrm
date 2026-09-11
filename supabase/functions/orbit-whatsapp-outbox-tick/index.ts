@@ -72,6 +72,16 @@ import {
   VIVER_FOLLOWUP_EMPRESA_ID,
 } from "../_shared/viver-followup-reconstitution.ts";
 import {
+  VIVER_OPERATIONAL_DATE_EMPRESA_ID,
+  VIVER_OPERATIONAL_DATE_INVALID_REASON,
+  viverOperationalDateDecision,
+} from "../_shared/viver-campaign-operational-date.ts";
+
+function isViverOperationalTenant(empresaId: unknown): boolean {
+  return String(empresaId ?? "") === VIVER_OPERATIONAL_DATE_EMPRESA_ID;
+}
+
+import {
   consumesDailyQuotaFor,
   dailyQuotaSourcesFor,
   dailyUsageDateFor,
