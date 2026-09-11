@@ -615,6 +615,9 @@ async function loadFacts(
       ...acceptedActionIds,
     ],
     accepted_template_ids: acceptedTemplates,
+    existing_run_ordens: runOrdens,
+    legacy_d1_touch_sent: legacyD1Sent,
+
   };
 }
 
