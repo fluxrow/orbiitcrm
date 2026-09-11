@@ -10,6 +10,8 @@ import { checkCampaignRecipientEligibility, markRecipientIgnorado } from "../_sh
 import { claimCampaignDispatchAuthorization } from "../_shared/campaign-dispatch-authorization.ts";
 import { controlledViverCampaignMessageBlockReason } from "../_shared/outbox-pilot.ts";
 import { isAuthorizedViverControlledCampaign } from "../_shared/viver-controlled-inbound-reply.ts";
+import { viverOperationalDateDecision } from "../_shared/viver-campaign-operational-date.ts";
+
 import { buildTemplateOutboxPayload, templatePayloadType } from "../_shared/message-template-media.ts";
 import {
   dailyUsageDateFor,
