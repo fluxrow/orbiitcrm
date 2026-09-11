@@ -216,7 +216,7 @@ async function bumpDailyUsage(
   delta: number,
 ): Promise<void> {
   // Data de referência sempre America/Sao_Paulo (coerente com a contagem real).
-  const today = dailyUsageDate();
+  const today = dailyUsageDateFor(empresa_id);
   const { data: existing } = await supabase
     .from("orbit_whatsapp_daily_usage")
     .select("id, sent_count")
