@@ -43,6 +43,15 @@ export const VIVER_DAILY_QUOTA_SOURCES = ["campaign"] as const;
 export const RETAIN_REASON_VIVER_CAMPAIGN_SPACING =
   "VIVER_CAMPAIGN_MIN_GAP";
 
+/** Leitura do último envio real falhou: fail-closed (adia, nunca libera). */
+export const RETAIN_REASON_VIVER_SPACING_UNKNOWN =
+  "VIVER_CAMPAIGN_GAP_UNKNOWN";
+
+/** Outro tick já detém a vaga de primeiro contato do tenant. */
+export const RETAIN_REASON_VIVER_SLOT_LOCK =
+  "VIVER_CAMPAIGN_SLOT_LOCKED";
+
+
 export function isViverTenant(empresaId: unknown): boolean {
   return String(empresaId ?? "") === VIVER_SEMIJOIAS_EMPRESA_ID;
 }
@@ -92,6 +101,25 @@ export function dailyUsageDate(now: Date = new Date()): string {
   return saoPauloDate(now);
 }
 
+/** Data legada (UTC) usada historicamente pelos demais tenants. */
+export function legacyDailyUsageDate(now: Date = new Date()): string {
+  return now.toISOString().slice(0, 10);
+}
+
+/**
+ * Data do contador diário por tenant: Viver usa America/Sao_Paulo (política
+ * aprovada das 15 vagas); os demais tenants preservam a data legada em UTC.
+ */
+export function dailyUsageDateFor(
+  empresaId: unknown,
+  now: Date = new Date(),
+): string {
+  return isViverTenant(empresaId)
+    ? dailyUsageDate(now)
+    : legacyDailyUsageDate(now);
+}
+
+
 /** Teto aceito para o piloto controlado (15 apenas Viver, 10 nos demais). */
 export function maxControlledDailyCap(empresaId: unknown): number {
   return isViverTenant(empresaId) ? VIVER_CONTROLLED_DAILY_CAP_MAX : 10;
@@ -125,4 +153,54 @@ export function viverCampaignSpacingWaitMs(params: {
   const elapsed = nowMs - params.lastCampaignSentAtMs;
   if (elapsed >= VIVER_CAMPAIGN_MIN_GAP_MS) return 0;
   return VIVER_CAMPAIGN_MIN_GAP_MS - elapsed;
+}
+
+/**
+ * A leitura do último envio real só é necessária para primeiro contato da lista
+ * antiga da Viver. Nenhum outro tenant e nenhuma outra origem (`ai_reply`,
+ * `flow_initial`, `flow_followup`, lembretes…) consulta esse dado.
+ */
+export function needsViverCampaignSpacingCheck(
+  empresaId: unknown,
+  sourceType: string | null | undefined,
+): boolean {
+  return isViverTenant(empresaId) &&
+    String(sourceType ?? "") === "campaign";
+}
+
+export interface ViverInflightClaim {
+  id: string;
+  locked_by?: string | null;
+}
+
+/**
+ * Trava tenant-scoped de vaga, sem migração e sem cron novo: usa o próprio
+ * claim atômico do outbox (`outbox_claim_batch` já marca `processing` +
+ * `locked_at`/`locked_by`). Dois ticks concorrentes podem reivindicar itens
+ * DIFERENTES de campanha da Viver; nesse caso somente o menor `id` prossegue e
+ * os demais são adiados — decisão determinística, testável e sem risco de
+ * aceitar dois primeiros contatos dentro dos 30 min ou de ultrapassar as 15.
+ */
+export function viverCampaignSlotDecision(params: {
+  empresaId: unknown;
+  sourceType: string | null | undefined;
+  itemId: string;
+  inflight: ViverInflightClaim[];
+}): { proceed: boolean; reason?: string; blocked_by?: string } {
+  if (!needsViverCampaignSpacingCheck(params.empresaId, params.sourceType)) {
+    return { proceed: true };
+  }
+  const others = (params.inflight ?? [])
+    .map((r) => String(r?.id ?? ""))
+    .filter((id) => id && id !== params.itemId)
+    .sort();
+  const winner = others.find((id) => id < params.itemId);
+  if (winner) {
+    return {
+      proceed: false,
+      reason: RETAIN_REASON_VIVER_SLOT_LOCK,
+      blocked_by: winner,
+    };
+  }
+  return { proceed: true };
 }

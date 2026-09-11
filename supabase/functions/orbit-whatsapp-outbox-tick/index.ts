@@ -74,11 +74,17 @@ import {
 import {
   consumesDailyQuotaFor,
   dailyQuotaSourcesFor,
-  dailyUsageDate,
+  dailyUsageDateFor,
   effectiveDailyLimitFor,
+  needsViverCampaignSpacingCheck,
   RETAIN_REASON_VIVER_CAMPAIGN_SPACING,
+  RETAIN_REASON_VIVER_SLOT_LOCK,
+  RETAIN_REASON_VIVER_SPACING_UNKNOWN,
+  type ViverInflightClaim,
+  viverCampaignSlotDecision,
   viverCampaignSpacingWaitMs,
 } from "../_shared/viver-daily-quota-policy.ts";
+
 import {
   effectiveOutboxPriority,
   FLOW_OUTBOX_MAX_AGE_MS,
@@ -166,8 +172,11 @@ async function getDailyUsage(empresa_id: string): Promise<number> {
 }
 
 // Último envio REAL de campanha do tenant — base do espaçamento mínimo.
-async function lastCampaignSentAtMs(empresa_id: string): Promise<number | null> {
-  const { data } = await supabase
+// FAIL-CLOSED: erro de consulta NUNCA libera envio (retorna ok:false).
+async function lastCampaignSentAtMs(
+  empresa_id: string,
+): Promise<{ ok: boolean; ms: number | null; error?: string }> {
+  const { data, error } = await supabase
     .from("orbit_whatsapp_outbox")
     .select("sent_at")
     .eq("empresa_id", empresa_id)
@@ -177,16 +186,57 @@ async function lastCampaignSentAtMs(empresa_id: string): Promise<number | null> 
     .order("sent_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (error) return { ok: false, ms: null, error: error.message };
   const ts = Date.parse(String((data as any)?.sent_at ?? ""));
-  return Number.isFinite(ts) ? ts : null;
+  return { ok: true, ms: Number.isFinite(ts) ? ts : null };
+}
+
+// Claims concorrentes de campanha da Viver (trava tenant-scoped de vaga).
+// FAIL-CLOSED: erro de consulta adia o item.
+async function inflightViverCampaignClaims(
+  empresa_id: string,
+): Promise<{ ok: boolean; rows: ViverInflightClaim[]; error?: string }> {
+  const since = new Date(Date.now() - 120_000).toISOString();
+  const { data, error } = await supabase
+    .from("orbit_whatsapp_outbox")
+    .select("id, locked_by")
+    .eq("empresa_id", empresa_id)
+    .eq("source_type", "campaign")
+    .eq("status", "processing")
+    .not("locked_at", "is", null)
+    .gte("locked_at", since)
+    .limit(50);
+  if (error) return { ok: false, rows: [], error: error.message };
+  return { ok: true, rows: (data ?? []) as ViverInflightClaim[] };
+}
+
+
+// Auditoria do fail-closed do espaçamento/vaga (somente Viver campaign).
+async function auditViverSpacingFailClosed(
+  item: any,
+  reason: string,
+  detail?: string,
+): Promise<void> {
+  try {
+    await supabase.from("orbit_audit_log").insert({
+      empresa_id: item.empresa_id,
+      acao: "viver_campaign_spacing_fail_closed",
+      entidade: "orbit_whatsapp_outbox",
+      entidade_id: item.id,
+      detalhes: { reason, detail: detail ?? null, worker: WORKER_ID },
+    });
+  } catch (_e) {
+    console.warn("[outbox] auditoria fail-closed falhou", reason);
+  }
 }
 
 async function bumpDailyUsage(
   empresa_id: string,
   delta: number,
 ): Promise<void> {
-  // Data de referência sempre America/Sao_Paulo (coerente com a contagem real).
-  const today = dailyUsageDate();
+  // Data por tenant: Viver em America/Sao_Paulo; demais tenants preservam UTC legado.
+  const today = dailyUsageDateFor(empresa_id);
+
   const { data: existing } = await supabase
     .from("orbit_whatsapp_daily_usage")
     .select("id, sent_count")
@@ -1060,22 +1110,62 @@ async function processItem(
   // ── Espaçamento mínimo entre primeiros contatos da lista (somente Viver) ──
   // Medido pelo ÚLTIMO ENVIO REAL de campanha. Hold legítimo: reagenda para
   // último_envio + 30min, sem acúmulo compensatório e sem rajada de backlog.
-  const spacingWaitMs = viverCampaignSpacingWaitMs({
-    empresaId: item.empresa_id,
-    sourceType: item.source_type,
-    lastCampaignSentAtMs: await lastCampaignSentAtMs(item.empresa_id),
-  });
-  if (spacingWaitMs > 0) {
-    await releaseHeldItem(
-      item,
-      RETAIN_REASON_VIVER_CAMPAIGN_SPACING,
-      new Date(Date.now() + spacingWaitMs).toISOString(),
-    );
-    return {
-      outcome: "deferred",
-      reason: RETAIN_REASON_VIVER_CAMPAIGN_SPACING,
-    };
+  // A consulta só acontece para Viver + `campaign`; qualquer erro de leitura
+  // ADIA o item (fail-closed) e é auditado, nunca libera envio.
+  if (needsViverCampaignSpacingCheck(item.empresa_id, item.source_type)) {
+    const slotLock = await inflightViverCampaignClaims(item.empresa_id);
+    if (!slotLock.ok) {
+      await auditViverSpacingFailClosed(item, "slot_lock_query_failed", slotLock.error);
+      await releaseHeldItem(
+        item,
+        RETAIN_REASON_VIVER_SLOT_LOCK,
+        new Date(Date.now() + 60_000).toISOString(),
+      );
+      return { outcome: "deferred", reason: RETAIN_REASON_VIVER_SLOT_LOCK };
+    }
+    const slot = viverCampaignSlotDecision({
+      empresaId: item.empresa_id,
+      sourceType: item.source_type,
+      itemId: String(item.id),
+      inflight: slotLock.rows,
+    });
+    if (!slot.proceed) {
+      await releaseHeldItem(
+        item,
+        RETAIN_REASON_VIVER_SLOT_LOCK,
+        new Date(Date.now() + 60_000).toISOString(),
+      );
+      return { outcome: "deferred", reason: RETAIN_REASON_VIVER_SLOT_LOCK };
+    }
+
+    const last = await lastCampaignSentAtMs(item.empresa_id);
+    if (!last.ok) {
+      await auditViverSpacingFailClosed(item, "last_sent_query_failed", last.error);
+      await releaseHeldItem(
+        item,
+        RETAIN_REASON_VIVER_SPACING_UNKNOWN,
+        new Date(Date.now() + 5 * 60_000).toISOString(),
+      );
+      return { outcome: "deferred", reason: RETAIN_REASON_VIVER_SPACING_UNKNOWN };
+    }
+    const spacingWaitMs = viverCampaignSpacingWaitMs({
+      empresaId: item.empresa_id,
+      sourceType: item.source_type,
+      lastCampaignSentAtMs: last.ms,
+    });
+    if (spacingWaitMs > 0) {
+      await releaseHeldItem(
+        item,
+        RETAIN_REASON_VIVER_CAMPAIGN_SPACING,
+        new Date(Date.now() + spacingWaitMs).toISOString(),
+      );
+      return {
+        outcome: "deferred",
+        reason: RETAIN_REASON_VIVER_CAMPAIGN_SPACING,
+      };
+    }
   }
+
 
 
   // Resolver telefone

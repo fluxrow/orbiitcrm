@@ -306,3 +306,52 @@ Deno.test("apenas ações aprovadas da cadência controlada são elegíveis", ()
     false,
   );
 });
+
+Deno.test("D1 legado (individual) já enviado não repete com o template de áudio novo", () => {
+  const d = decideViverFollowupReconstitution(facts({
+    accepted_template_ids: ["5a9ecae4-5212-4e46-a612-f394a48d7f7e"],
+  }));
+  assertEquals(d.allowed, true);
+  assertEquals(d.plan.map((p) => p.action_id), [D3, D7]);
+  assertEquals(d.skipped[0], { action_id: D1, reason: "legacy_d1_already_sent" });
+});
+
+Deno.test("D1 legado (grupo) já enviado bloqueia o único toque do flow de grupo", () => {
+  const d = decideViverFollowupReconstitution(facts({
+    actions: [action(D1, 1)],
+    legacy_d1_touch_sent: true,
+  }));
+  assertEquals(d.allowed, false);
+  assertEquals(d.reason, "nothing_to_schedule");
+  assertEquals(d.skipped[0], { action_id: D1, reason: "legacy_d1_already_sent" });
+});
+
+Deno.test("ordem já ocupada no mesmo run (UNIQUE parcial) não é reinserida", () => {
+  const pending = decideViverFollowupReconstitution(facts({
+    existing_run_ordens: [{ ordem: 3, status: "pending" }],
+  }));
+  assertEquals(pending.plan.map((p) => p.action_id), [D1, D7]);
+  assertEquals(
+    pending.skipped.find((s) => s.action_id === D3)?.reason,
+    "run_ordem_occupied_pending",
+  );
+
+  // `success` pode ser skip (missing_prior_real_outbound): motivo exato, evidência preservada.
+  const success = decideViverFollowupReconstitution(facts({
+    existing_run_ordens: [{ ordem: 1, status: "success" }],
+  }));
+  assertEquals(success.plan.map((p) => p.action_id), [D3, D7]);
+  assertEquals(
+    success.skipped.find((s) => s.action_id === D1)?.reason,
+    "run_ordem_success_without_real_send",
+  );
+});
+
+Deno.test("ordem cancelada/erro não bloqueia reagendamento", () => {
+  for (const status of ["canceled", "error", "skipped"]) {
+    const d = decideViverFollowupReconstitution(facts({
+      existing_run_ordens: [{ ordem: 1, status }],
+    }));
+    assertEquals(d.plan.length, 3);
+  }
+});

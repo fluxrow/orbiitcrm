@@ -46,6 +46,28 @@ const CLOSED_CONVERSA_STATUS = new Set([
   "fechada", "fechado", "closed", "encerrada", "encerrado", "arquivada", "archived",
 ]);
 
+/**
+ * Templates LEGADOS do toque D1 (individual e grupo) já enviados antes da troca
+ * pelo áudio novo. O template atual difere, mas o TOQUE é o mesmo: nunca repetir
+ * D1 só porque o template mudou.
+ */
+export const VIVER_LEGACY_D1_TEMPLATE_IDS = new Set([
+  "5a9ecae4-5212-4e46-a612-f394a48d7f7e", // individual
+  "d6307e57-9e08-437a-9a93-2181ab0bde60", // grupo
+]);
+
+/** Janela do toque D1: até 48h após o envio real da campanha. */
+const D1_MAX_DELAY_SECONDS = 48 * 3600;
+
+/**
+ * Status que ocupam o UNIQUE parcial (run_id, ordem) em
+ * orbit_flow_scheduled_actions. `success` NÃO significa envio real: pode ser
+ * skip/`missing_prior_real_outbound`. Nunca apagamos essa evidência; apenas
+ * relatamos o motivo exato e não reinserimos a mesma ordem.
+ */
+const ACTIVE_SCHEDULED_STATUS = new Set(["pending", "running", "success"]);
+
+
 export interface FollowupActionRow {
   id?: string | null;
   flow_id?: string | null;
@@ -162,9 +184,17 @@ export interface FollowupFacts {
   existing_cadence_keys?: string[];
   /** action_ids já agendados para o prospect (fallback de dedupe). */
   existing_action_ids?: string[];
-  /** template_ids com OUT/outbox real já aceito para este prospect. */
+  /** template_ids com envio REAL já aceito para este prospect. */
   accepted_template_ids?: string[];
+  /**
+   * Ordens já ocupadas no MESMO run (UNIQUE parcial run_id+ordem em
+   * pending/running/success). `status` preservado para relatar o motivo exato.
+   */
+  existing_run_ordens?: Array<{ ordem: number; status?: string | null }>;
+  /** Houve toque D1 REAL com template legado (individual ou grupo). */
+  legacy_d1_touch_sent?: boolean;
 }
+
 
 function blocked(reason: string): FollowupDecision {
   return {
@@ -285,6 +315,16 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
   const existingKeys = new Set(f.existing_cadence_keys ?? []);
   const existingActions = new Set((f.existing_action_ids ?? []).map(String));
   const acceptedTemplates = new Set((f.accepted_template_ids ?? []).map(String));
+  // UNIQUE parcial (run_id, ordem): ordem ocupada não pode ser reinserida.
+  const occupiedOrdens = new Map<number, string>();
+  for (const row of f.existing_run_ordens ?? []) {
+    const status = String(row?.status ?? "").toLowerCase();
+    if (!ACTIVE_SCHEDULED_STATUS.has(status)) continue;
+    occupiedOrdens.set(Number(row.ordem), status);
+  }
+  // Toque D1 já enviado com template legado (individual/grupo).
+  const legacyD1Sent = f.legacy_d1_touch_sent === true ||
+    [...acceptedTemplates].some((t) => VIVER_LEGACY_D1_TEMPLATE_IDS.has(t));
 
   const plan: FollowupPlanItem[] = [];
   const skipped: FollowupSkip[] = [];
@@ -318,12 +358,31 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
       skipped.push({ action_id: actionId, reason: "already_scheduled" });
       continue;
     }
+    const ordem = Number(action.ordem ?? 0);
+    const occupied = occupiedOrdens.get(ordem);
+    if (occupied) {
+      // `success` pode ser skip (ex.: missing_prior_real_outbound). Evidência
+      // preservada; apenas não reinserimos a mesma ordem do mesmo run.
+      skipped.push({
+        action_id: actionId,
+        reason: occupied === "success"
+          ? "run_ordem_success_without_real_send"
+          : `run_ordem_occupied_${occupied}`,
+      });
+      continue;
+    }
     const cfg = action.action_config ?? {};
     const templateId = cfg.template_id == null ? null : String(cfg.template_id);
     if (templateId && acceptedTemplates.has(templateId)) {
       skipped.push({ action_id: actionId, reason: "touch_already_sent" });
       continue;
     }
+    // Mesmo toque D1, template novo (áudio): não repetir.
+    if (legacyD1Sent && delaySeconds <= D1_MAX_DELAY_SECONDS) {
+      skipped.push({ action_id: actionId, reason: "legacy_d1_already_sent" });
+      continue;
+    }
+
     plan.push({
       action_id: actionId,
       flow_id: String(run.flow_id),
@@ -496,18 +555,24 @@ async function loadFacts(
     ["won", "lost", "ganho", "perdido", "deleted"].includes(String(d?.status ?? "").toLowerCase())
   );
 
-  // Dedupe: agendamentos já existentes do prospect (qualquer status).
+  // Dedupe: agendamentos já existentes do prospect (qualquer status) e ordens
+  // ocupadas no MESMO run (UNIQUE parcial run_id+ordem).
   const { data: scheduled } = await supabase
     .from("orbit_flow_scheduled_actions")
-    .select("id, action_id, cadence_key, status")
+    .select("id, run_id, action_id, ordem, cadence_key, status")
     .eq("empresa_id", empresaId)
     .eq("prospect_id", prospectId)
     .limit(200);
+  const runOrdens = ((scheduled ?? []) as any[])
+    .filter((r) => run?.id && String(r?.run_id ?? "") === String(run.id))
+    .map((r) => ({ ordem: Number(r?.ordem ?? -1), status: r?.status ?? null }))
+    .filter((r) => Number.isFinite(r.ordem) && r.ordem >= 0);
 
-  // Dedupe por toque real já aceito (OUT/outbox do mesmo template).
+  // Dedupe por TOQUE REAL já aceito: somente outbox efetivamente `sent` com
+  // confirmação do provedor. Pendentes/failed/canceled não contam como toque.
   const { data: followupOutbox } = await supabase
     .from("orbit_whatsapp_outbox")
-    .select("id, status, source_id, payload")
+    .select("id, status, source_id, provider_message_id, payload")
     .eq("empresa_id", empresaId)
     .eq("prospect_id", prospectId)
     .in("source_type", ["flow_followup", "flow_initial"])
@@ -515,11 +580,17 @@ async function loadFacts(
   const acceptedTemplates: string[] = [];
   const acceptedActionIds: string[] = [];
   for (const row of (followupOutbox ?? []) as any[]) {
-    if (DEAD_OUTBOX_STATUS.has(String(row?.status ?? ""))) continue;
+    const status = String(row?.status ?? "").toLowerCase();
+    if (DEAD_OUTBOX_STATUS.has(status)) continue;
+    if (status !== "sent" || !row?.provider_message_id) continue;
     const tpl = row?.payload?.template_id;
     if (tpl) acceptedTemplates.push(String(tpl));
     if (row?.source_id) acceptedActionIds.push(String(row.source_id));
   }
+  const legacyD1Sent = acceptedTemplates.some((t) =>
+    VIVER_LEGACY_D1_TEMPLATE_IDS.has(t)
+  );
+
 
   return {
     empresa_id: empresaId,
@@ -544,6 +615,9 @@ async function loadFacts(
       ...acceptedActionIds,
     ],
     accepted_template_ids: acceptedTemplates,
+    existing_run_ordens: runOrdens,
+    legacy_d1_touch_sent: legacyD1Sent,
+
   };
 }
 
