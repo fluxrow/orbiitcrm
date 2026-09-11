@@ -315,6 +315,16 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
   const existingKeys = new Set(f.existing_cadence_keys ?? []);
   const existingActions = new Set((f.existing_action_ids ?? []).map(String));
   const acceptedTemplates = new Set((f.accepted_template_ids ?? []).map(String));
+  // UNIQUE parcial (run_id, ordem): ordem ocupada não pode ser reinserida.
+  const occupiedOrdens = new Map<number, string>();
+  for (const row of f.existing_run_ordens ?? []) {
+    const status = String(row?.status ?? "").toLowerCase();
+    if (!ACTIVE_SCHEDULED_STATUS.has(status)) continue;
+    occupiedOrdens.set(Number(row.ordem), status);
+  }
+  // Toque D1 já enviado com template legado (individual/grupo).
+  const legacyD1Sent = f.legacy_d1_touch_sent === true ||
+    [...acceptedTemplates].some((t) => VIVER_LEGACY_D1_TEMPLATE_IDS.has(t));
 
   const plan: FollowupPlanItem[] = [];
   const skipped: FollowupSkip[] = [];
@@ -348,12 +358,31 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
       skipped.push({ action_id: actionId, reason: "already_scheduled" });
       continue;
     }
+    const ordem = Number(action.ordem ?? 0);
+    const occupied = occupiedOrdens.get(ordem);
+    if (occupied) {
+      // `success` pode ser skip (ex.: missing_prior_real_outbound). Evidência
+      // preservada; apenas não reinserimos a mesma ordem do mesmo run.
+      skipped.push({
+        action_id: actionId,
+        reason: occupied === "success"
+          ? "run_ordem_success_without_real_send"
+          : `run_ordem_occupied_${occupied}`,
+      });
+      continue;
+    }
     const cfg = action.action_config ?? {};
     const templateId = cfg.template_id == null ? null : String(cfg.template_id);
     if (templateId && acceptedTemplates.has(templateId)) {
       skipped.push({ action_id: actionId, reason: "touch_already_sent" });
       continue;
     }
+    // Mesmo toque D1, template novo (áudio): não repetir.
+    if (legacyD1Sent && delaySeconds <= D1_MAX_DELAY_SECONDS) {
+      skipped.push({ action_id: actionId, reason: "legacy_d1_already_sent" });
+      continue;
+    }
+
     plan.push({
       action_id: actionId,
       flow_id: String(run.flow_id),
