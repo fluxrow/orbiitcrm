@@ -194,7 +194,15 @@ import {
   canonicalFactsToCollectedFields,
   resolveCanonicalKey,
 } from "../_shared/agent-memory.ts";
-import { schedulingPolicy, isAmbiguousSlotAcceptance, selectExplicitSuggestion } from "../_shared/tenant-scheduling-policy.ts";
+import {
+  schedulingPolicy,
+  isAmbiguousSlotAcceptance,
+  selectExplicitSuggestion,
+  detectsViverDayChangeIntent,
+  isUnequivocalPreviouslyProposedDateSelection,
+  shouldClarifyViverReschedule,
+  type ViverRescheduleState,
+} from "../_shared/tenant-scheduling-policy.ts";
 
 // Persistido na metadata de cada ai_reply para comprovar qual barreira estava
 // realmente publicada quando uma resposta saiu. O monitor não precisa inferir
@@ -2230,6 +2238,14 @@ ${regrasBlock}`;
     // Handoff APENAS quando há sinal comercial real: agendamento de call, venda ou pedido explícito de humano.
     let intencaoNormalizada = String(parsed.intencao || "outro");
     if (
+      empresaId === VIVER_EMPRESA_ID &&
+      (detectsViverDayChangeIntent(mensagemAgregada) || aiContexto?.agendamento_remarcacao?.active === true)
+    ) {
+      // A decisão de remarcação não depende do classificador: respostas curtas
+      // durante o esclarecimento precisam alcançar a guarda determinística.
+      intencaoNormalizada = "agendar_call";
+    }
+    if (
       aiConfig.scheduling_mode === "human_handoff_after_period" &&
       aiContexto?.agendamento_aguardando_periodo === true &&
       normalizePreferredPeriod(parsed.agendamento?.periodo_preferido || mensagemAgregada)
@@ -2294,6 +2310,7 @@ ${regrasBlock}`;
       awaiting_period?: boolean;
       preferred_period?: string | null;
       handoff_ready?: boolean;
+      reschedule_state?: ViverRescheduleState | null;
     } = { handled: false };
     if (intencaoNormalizada === "agendar_call" && empresaId) {
       const schedulingDecision = resolveTenantSchedulingDecision({
@@ -2316,6 +2333,7 @@ ${regrasBlock}`;
             telefone,
             mensagem_cliente: mensagemAgregada,
             sugestoes_anteriores: Array.isArray(aiContexto?.agendamento_sugestoes) ? aiContexto.agendamento_sugestoes : [],
+            remarcacao_estado: aiContexto?.agendamento_remarcacao ?? null,
             agendamento: {
               ...(parsed.agendamento || {}),
               duracao_min: parsed.agendamento?.duracao_min || aiConfig.scheduling_meeting_duration_minutes || 60,
@@ -2435,6 +2453,22 @@ ${regrasBlock}`;
       agendamento_ultimo_meeting_id: scheduleOutcome.meeting_id || aiContexto.agendamento_ultimo_meeting_id || null,
       agendamento_aguardando_periodo: scheduleOutcome.awaiting_period === true,
       agendamento_periodo_preferido: scheduleOutcome.preferred_period || aiContexto.agendamento_periodo_preferido || null,
+      agendamento_remarcacao: empresaId === VIVER_EMPRESA_ID
+        ? (scheduleOutcome.reschedule_state !== undefined
+          ? scheduleOutcome.reschedule_state
+          : (aiContexto.agendamento_remarcacao?.active === true &&
+              !shouldClarifyViverReschedule({
+                empresaId,
+                message: mensagemAgregada,
+                state: aiContexto.agendamento_remarcacao,
+                selectedPreviouslyProposedSlot: isUnequivocalPreviouslyProposedDateSelection(
+                  mensagemAgregada,
+                  Array.isArray(aiContexto?.agendamento_sugestoes) ? aiContexto.agendamento_sugestoes : [],
+                ),
+              }).blocked
+            ? null
+            : (aiContexto.agendamento_remarcacao ?? null)))
+        : aiContexto.agendamento_remarcacao,
       // Estado flexível da condução comercial v2 (sem PII: apenas rótulos e timestamps)
       ...(commercialV2Enabled && commercialPerms
         ? {
@@ -4069,6 +4103,7 @@ export interface AutoScheduleParams {
   telefone: string;
   mensagem_cliente?: string;
   sugestoes_anteriores?: Array<{ start?: string; end?: string; label?: string; label_full?: string }>;
+  remarcacao_estado?: ViverRescheduleState | null;
   agendamento: any;
 }
 
@@ -4302,6 +4337,7 @@ export async function tryAutoScheduleMeeting(
   meeting_id?: string | null;
   not_connected?: boolean;
   error?: string;
+  reschedule_state?: ViverRescheduleState | null;
 }> {
   const deps: AutoScheduleDeps = {
     getTokenForEmpresa: depsIn?.getTokenForEmpresa ?? getTokenForEmpresa,
@@ -4322,6 +4358,28 @@ export async function tryAutoScheduleMeeting(
 
   const tz = token.timezone || "America/Sao_Paulo";
   const previousSuggestions = Array.isArray(params.sugestoes_anteriores) ? params.sugestoes_anteriores : [];
+  const selectedBeforeRescheduleGuard = selectExplicitSuggestion(params.mensagem_cliente || "", previousSuggestions);
+  const rescheduleDecision = shouldClarifyViverReschedule({
+    empresaId: params.empresaId,
+    message: params.mensagem_cliente || "",
+    state: params.remarcacao_estado,
+    selectedPreviouslyProposedSlot: isUnequivocalPreviouslyProposedDateSelection(
+      params.mensagem_cliente || "",
+      previousSuggestions,
+    ),
+  });
+  if (rescheduleDecision.blocked) {
+    return {
+      handled: true,
+      created: false,
+      response_override: "Claro. Qual data e horário ficam melhores para você?",
+      suggestions: [],
+      reschedule_state: {
+        ...rescheduleDecision.nextState,
+        requested_at: rescheduleDecision.nextState?.requested_at ?? deps.now().toISOString(),
+      } as ViverRescheduleState,
+    };
+  }
   if (isAmbiguousSlotAcceptance(params.mensagem_cliente || "", previousSuggestions.length)) {
     return {
       handled: true,
@@ -4330,7 +4388,7 @@ export async function tryAutoScheduleMeeting(
       suggestions: previousSuggestions,
     };
   }
-  let selectedSuggestion = selectExplicitSuggestion(params.mensagem_cliente || "", previousSuggestions);
+  let selectedSuggestion = selectedBeforeRescheduleGuard;
 
   const calId = token.calendar_id;
   const duracaoMin = Math.max(15, Math.min(240, Number(ag.duracao_min) || 60));
