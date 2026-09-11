@@ -12,6 +12,11 @@ import { controlledViverCampaignMessageBlockReason } from "../_shared/outbox-pil
 import { isAuthorizedViverControlledCampaign } from "../_shared/viver-controlled-inbound-reply.ts";
 import { buildTemplateOutboxPayload, templatePayloadType } from "../_shared/message-template-media.ts";
 import {
+  dailyUsageDate,
+  isViverTenant,
+  VIVER_DAILY_FIRST_CONTACT_LIMIT,
+} from "../_shared/viver-daily-quota-policy.ts";
+import {
   WARMUP_SCALE,
   getEffectiveDailyLimit,
   type CampaignSendingConfig,
@@ -344,7 +349,7 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    const { limit: effectiveDailyLimit, delayMultiplier } = getEffectiveLimit(sendingConfig);
+    const { limit: effectiveDailyLimit, delayMultiplier } = getEffectiveLimit(sendingConfig, campaign.empresa_id);
     const {
       minDelay: effectiveMinDelay,
       maxDelay: effectiveMaxDelay,
@@ -378,7 +383,7 @@ const handler = async (req: Request): Promise<Response> => {
     // ── Load/create daily usage ──
     let dailySentCount = 0;
     if (campaign.canal === "whatsapp" && campaign.empresa_id) {
-      const today = new Date().toISOString().split("T")[0];
+      const today = dailyUsageDate();
       const { data: usageRow } = await supabase
         .from("orbit_whatsapp_daily_usage")
         .select("sent_count")
@@ -873,7 +878,7 @@ const handler = async (req: Request): Promise<Response> => {
           batchSentCount++;
 
           if (campaign.empresa_id) {
-            const today = new Date().toISOString().split("T")[0];
+            const today = dailyUsageDate();
             await supabase
               .from("orbit_whatsapp_daily_usage")
               .upsert(
