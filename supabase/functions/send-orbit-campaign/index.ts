@@ -568,6 +568,24 @@ const handler = async (req: Request): Promise<Response> => {
               controlled_reengagement_slot: controlledReengagement?.slot ?? null,
             }
             : {};
+          // Dia operacional (somente Viver + batches autorizados): vencido não
+          // atravessa a virada do dia SP; futuro espera a própria data.
+          const opDay = viverOperationalDateDecision({
+            empresa_id: campaign.empresa_id,
+            source_type: "campaign",
+            campaign,
+          });
+          if (opDay.verdict === "expire") {
+            await markRecipientIgnorado(supabase, recipient.id, opDay.reason);
+            ignorados++;
+            adapterSkipped++;
+            continue;
+          }
+          if (opDay.verdict === "wait" || opDay.verdict === "fail_closed") {
+            adapterSkipped++;
+            continue;
+          }
+
           const controlledMessageBlock = controlledViverCampaignMessageBlockReason({
             empresa_id: campaign.empresa_id,
             source_type: "campaign",
