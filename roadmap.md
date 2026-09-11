@@ -9,17 +9,17 @@
 - Testes: interleaving real (A antes, B com ID menor depois), IDs invertidos, lease ativo/expirado, 2 workers, lote > 1, `ai_reply` livre, outro tenant idêntico.
 - Testar migration com rollback antes de aplicar via Lovable Cloud.
 
-## 2. Novo ciclo de follow-up autorizado (Viver) — pendente
-- Novo ciclo somente após `campaign` real da programação `viver_list15_followups_separate_2026-09-11` (2 batches allowlisted mantidos).
-- Não ressuscitar rows antigas; `success` sem outbox/provider não conta como envio, mas histórico não é reescrito.
-- Âncora nova auditável e idempotente por campanha/outbox, com ID determinístico/unicidade real, evitando colisão com `UNIQUE(run_id, ordem)` antigo.
-- Dedupe conta pendentes/running e envio aceito real, incluindo toques legados aceitos.
-- Somente os 3 motivos históricos (`qr_reconnect_safety_no_backfill`, `pre_go_live_dry_run_queue_quarantined`, `pre_zapi_reconnect_safety_reset_2026_08_18`) são desconsiderados no novo ciclo, sem reativação.
-- Cancelamentos por resposta, opt-out, humano, reunião, manual e número inválido seguem bloqueantes.
-- `context.event_id`/payload usam o evento âncora real, inclusive no fallback.
-- Corrigir starvation da reconciliação: priorizar candidatos faltantes/com erro em vez de sempre os 5 mais recentes.
-- Fixture realista com `success` sem envio em todas as ordens e demais casos positivos/negativos.
-- Publicar todos os consumidores atuais do helper (executor, outbox-pilot e demais), não apenas duas funções.
+## 2. Novo ciclo de follow-up autorizado (Viver) — concluído
+- Gate por `filtros_json.quota_policy = viver_list15_followups_separate_2026-09-11`; batches allowlisted mantidos.
+- `success` sem outbox/provider deixou de contar como envio; nenhuma row antiga foi reescrita ou reativada.
+- Âncora nova por (campanha, outbox) com UUID determinístico → dois ticks convergem em um único run; `UNIQUE(run_id, ordem)` antigo não colide.
+- Dedupe: pendentes/running, toques aceitos reais (inclusive legados) e toques de resultado incerto.
+- Os 3 motivos históricos deixaram de bloquear (sem reativação); cancelamentos legítimos seguem bloqueantes.
+- `context.event_id` e `payload.event_id` usam o evento âncora real, inclusive no fallback.
+- Reconciliação sem starvation: prioriza erro e cadência ausente, com rotação determinística; janela 60 candidatos / 8 execuções.
+- Testes: 10 de integração com banco em memória (índices únicos reais) + 27 de decisão pura, todos verdes.
+- Publicados os 7 consumidores transitivos do helper.
+
 
 ## Restrições permanentes
 - Sem criar/enviar dados de teste em produção, sem backfill manual, sem desativar gates.

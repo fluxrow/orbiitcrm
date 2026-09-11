@@ -36,9 +36,84 @@ import {
   VIVER_CONTROLLED_INBOUND_METADATA_KEY,
 } from "./viver-controlled-inbound-reply.ts";
 
-export const VIVER_FOLLOWUP_RECONSTITUTION_VERSION = "2026-09-11-v1";
+export const VIVER_FOLLOWUP_RECONSTITUTION_VERSION = "2026-09-11-v2";
 export const VIVER_FOLLOWUP_EMPRESA_ID = VIVER_CONTROLLED_INBOUND_EMPRESA_ID;
 export { VIVER_CONTROLLED_INBOUND_BATCH_LABELS };
+
+/**
+ * NOVO CICLO AUTORIZADO (2026-09-11)
+ *
+ * O histórico da lista tem 67 `orbit_flow_scheduled_actions` com
+ * status=success/last_error=null que NUNCA produziram envio real, além de rows
+ * canceladas por três motivos puramente operacionais. Com o dedupe antigo
+ * (qualquer status ocupava a ordem/ação) esses prospects nunca voltariam a
+ * receber D1/D3/D7.
+ *
+ * Correção, restrita a campanhas desta programação:
+ *   • dedupe conta apenas agendamento ATIVO (pending/running), toque REAL aceito
+ *     e toque de resultado INCERTO — `success` sem outbox/provider não conta;
+ *   • os três motivos históricos abaixo deixam de bloquear (sem reativar nada);
+ *   • os agendamentos novos usam um run ÂNCORA determinístico por
+ *     (campanha, outbox), o que evita o UNIQUE(run_id, ordem) antigo e garante
+ *     que dois ticks concorrentes não criem dois runs;
+ *   • nada do histórico é reescrito, ressuscitado ou compensado.
+ *
+ * Campanhas fora desta programação seguem exatamente a regra anterior.
+ */
+export const VIVER_FOLLOWUP_CYCLE_QUOTA_POLICY =
+  "viver_list15_followups_separate_2026-09-11";
+
+export const VIVER_FOLLOWUP_CYCLE_ID = "list15_separate_2026_09_11";
+
+/** Únicos motivos históricos de cancelamento desconsiderados no novo ciclo. */
+export const VIVER_HISTORICAL_OPERATIONAL_CANCEL_REASONS: readonly string[] = [
+  "qr_reconnect_safety_no_backfill",
+  "pre_go_live_dry_run_queue_quarantined",
+  "pre_zapi_reconnect_safety_reset_2026_08_18",
+];
+
+export function isHistoricalOperationalCancelReason(
+  reason: unknown,
+): boolean {
+  const r = String(reason ?? "").trim().toLowerCase();
+  if (!r) return false;
+  return VIVER_HISTORICAL_OPERATIONAL_CANCEL_REASONS.some((allowed) =>
+    r === allowed || r.includes(allowed)
+  );
+}
+
+/** A campanha pertence à programação autorizada do novo ciclo? */
+export function isViverFollowupCycleCampaign(
+  campaign: { filtros_json?: Record<string, any> | null } | null | undefined,
+): boolean {
+  return String(campaign?.filtros_json?.quota_policy ?? "") ===
+    VIVER_FOLLOWUP_CYCLE_QUOTA_POLICY;
+}
+
+/** Chave estável da âncora do novo ciclo (uma por campanha + envio real). */
+export function viverFollowupAnchorRunKey(
+  campaignId: string,
+  outboxId: string,
+): string {
+  return `viver-followup-anchor:${VIVER_FOLLOWUP_CYCLE_ID}:${campaignId}:${outboxId}`;
+}
+
+/**
+ * UUID determinístico (SHA-256 truncado, bits de versão/variante normalizados).
+ * Dois ticks concorrentes derivam o MESMO id → o segundo insert colide na PK e
+ * é deduplicado, sem criar um segundo run âncora.
+ */
+export async function viverFollowupAnchorRunId(key: string): Promise<string> {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key)),
+  );
+  const b = digest.slice(0, 16);
+  b[6] = (b[6] & 0x0f) | 0x50; // versão 5-like (derivado de nome)
+  b[8] = (b[8] & 0x3f) | 0x80; // variante RFC 4122
+  const hex = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 
 const REAL_OUT_STATUS = new Set(["enviada", "enviado", "sent", "entregue", "delivered", "read", "lida"]);
 const DEAD_OUTBOX_STATUS = new Set(["canceled", "cancelled", "failed"]);
@@ -161,9 +236,29 @@ export interface FollowupDecision {
     flow_id: string;
     reason: "no_prior_lead_recebido_run";
   } | null;
+  /** Programação da campanha: novo ciclo autorizado ou regra legada. */
+  cycle?: "legacy" | typeof VIVER_FOLLOWUP_CYCLE_ID;
+  /** Evento `lead_recebido` REAL usado como âncora (inclusive no fallback). */
+  anchor_event_id?: string | null;
+  /**
+   * Âncora do novo ciclo: run determinístico por (campanha, envio real). Não
+   * reaproveita run antigo, então o UNIQUE(run_id, ordem) histórico não bloqueia
+   * e nenhuma evidência anterior é alterada.
+   */
+  cycle_anchor?: {
+    key: string;
+    flow_id: string;
+    event_id: string;
+    campaign_id: string;
+    outbox_id: string;
+    prior_run_id: string | null;
+  } | null;
+  /** Cancelamentos históricos operacionais desconsiderados (nunca reativados). */
+  ignored_historical_cancellations?: string[];
   /** Lembretes de reunião nunca são tocados por esta rotina. */
   preserve_meeting_reminders: true;
 }
+
 
 export interface FollowupFacts {
   empresa_id?: string | null;
@@ -257,6 +352,24 @@ export interface FollowupFacts {
   read_error?: string | null;
   /** action_ids com agendamento CANCELADO: nunca reativados. */
   cancelled_action_ids?: string[];
+
+  // ── Novo ciclo autorizado (usados apenas quando a campanha pertence a ele) ──
+  /** cadence_keys de agendamentos ATIVOS (pending/running). */
+  active_cadence_keys?: string[];
+  /** action_ids de agendamentos ATIVOS (pending/running). */
+  active_action_ids?: string[];
+  /** action_ids com toque REAL aceito (outbox sent + provider_message_id). */
+  accepted_action_ids?: string[];
+  /** Toques cujo resultado é INCERTO (outbox pendente/processing/sem provider). */
+  uncertain_touch_action_ids?: string[];
+  uncertain_touch_template_ids?: string[];
+  /** Cancelamentos com motivo, para separar operacional histórico de legítimo. */
+  cancelled_actions?: Array<{
+    action_id?: string | null;
+    reason?: string | null;
+    status?: string | null;
+  }>;
+
   /**
    * Fallback explícito: usado SOMENTE quando não existe run `lead_recebido`
    * antigo. Exige evento REAL do prospect + flow aprovado cujas regras atuais
@@ -446,21 +559,63 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
   // ── 6. Plano: somente ações aprovadas do flow original, ancoradas no sent_at
   const actions = (f.actions ?? []).filter((a) => a && a.id);
   if (actions.length === 0) return blocked("flow_actions_missing");
-  const existingKeys = new Set(f.existing_cadence_keys ?? []);
-  const existingActions = new Set((f.existing_action_ids ?? []).map(String));
+
+  // Novo ciclo autorizado (quota_policy da programação) muda SOMENTE o dedupe e
+  // a âncora. Todos os gates de segurança acima permanecem idênticos.
+  const newCycle = isViverFollowupCycleCampaign(camp);
+  const cycleId: "legacy" | typeof VIVER_FOLLOWUP_CYCLE_ID = newCycle
+    ? VIVER_FOLLOWUP_CYCLE_ID
+    : "legacy";
+
   const acceptedTemplates = new Set((f.accepted_template_ids ?? []).map(String));
-  // Cancelamento legítimo nunca é reativado.
-  const cancelledActions = new Set((f.cancelled_action_ids ?? []).map(String));
-  // UNIQUE parcial (run_id, ordem): ordem ocupada não pode ser reinserida.
+  const ignoredHistoricalCancellations: string[] = [];
+
+  let existingKeys: Set<string>;
+  let existingActions: Set<string>;
+  let cancelledActions: Set<string>;
+  let uncertainActions: Set<string>;
+  let uncertainTemplates: Set<string>;
   const occupiedOrdens = new Map<number, string>();
-  for (const row of f.existing_run_ordens ?? []) {
-    const status = String(row?.status ?? "").toLowerCase();
-    if (!ACTIVE_SCHEDULED_STATUS.has(status)) continue;
-    occupiedOrdens.set(Number(row.ordem), status);
+
+  if (newCycle) {
+    // `success` sem outbox/provider NÃO é envio: não ocupa ordem nem ação.
+    existingKeys = new Set((f.active_cadence_keys ?? []).map(String));
+    existingActions = new Set([
+      ...(f.active_action_ids ?? []).map(String),
+      ...(f.accepted_action_ids ?? []).map(String),
+    ]);
+    uncertainActions = new Set((f.uncertain_touch_action_ids ?? []).map(String));
+    uncertainTemplates = new Set((f.uncertain_touch_template_ids ?? []).map(String));
+    cancelledActions = new Set<string>();
+    for (const row of f.cancelled_actions ?? []) {
+      const id = row?.action_id ? String(row.action_id) : "";
+      if (!id) continue;
+      if (isHistoricalOperationalCancelReason(row?.reason)) {
+        // Desconsiderado no novo ciclo — a row antiga permanece cancelada.
+        ignoredHistoricalCancellations.push(id);
+        continue;
+      }
+      cancelledActions.add(id);
+    }
+    // Run âncora novo por (campanha, envio): nenhuma ordem histórica bloqueia.
+  } else {
+    existingKeys = new Set((f.existing_cadence_keys ?? []).map(String));
+    existingActions = new Set((f.existing_action_ids ?? []).map(String));
+    cancelledActions = new Set((f.cancelled_action_ids ?? []).map(String));
+    uncertainActions = new Set<string>();
+    uncertainTemplates = new Set<string>();
+    // UNIQUE parcial (run_id, ordem): ordem ocupada não pode ser reinserida.
+    for (const row of f.existing_run_ordens ?? []) {
+      const status = String(row?.status ?? "").toLowerCase();
+      if (!ACTIVE_SCHEDULED_STATUS.has(status)) continue;
+      occupiedOrdens.set(Number(row.ordem), status);
+    }
   }
+
   // Toque D1 já enviado com template legado (individual/grupo).
   const legacyD1Sent = f.legacy_d1_touch_sent === true ||
     [...acceptedTemplates].some((t) => VIVER_LEGACY_D1_TEMPLATE_IDS.has(t));
+
 
   const plan: FollowupPlanItem[] = [];
   const skipped: FollowupSkip[] = [];
@@ -517,11 +672,21 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
       skipped.push({ action_id: actionId, reason: "touch_already_sent" });
       continue;
     }
+    // Outbox antiga pendente/processing/sem confirmação: resultado INCERTO.
+    // Nunca repetir o toque — pode ter saído de fato.
+    if (
+      uncertainActions.has(actionId) ||
+      (templateId && uncertainTemplates.has(templateId))
+    ) {
+      skipped.push({ action_id: actionId, reason: "touch_outcome_uncertain" });
+      continue;
+    }
     // Mesmo toque D1, template novo (áudio): não repetir.
     if (legacyD1Sent && delaySeconds <= D1_MAX_DELAY_SECONDS) {
       skipped.push({ action_id: actionId, reason: "legacy_d1_already_sent" });
       continue;
     }
+
 
     plan.push({
       action_id: actionId,
@@ -537,19 +702,46 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
     });
   }
 
+  // Evento âncora REAL — inclusive no fallback (nunca null no contexto gravado).
+  const anchorEventId = f.event?.id
+    ? String(f.event.id)
+    : (fallbackAnchor?.event_id ?? null);
+  if (newCycle && !anchorEventId) return blocked("anchor_event_missing");
+  if (newCycle && !out.id) return blocked("outbox_missing");
+
+  const cycleAnchor: FollowupDecision["cycle_anchor"] = newCycle
+    ? {
+      key: viverFollowupAnchorRunKey(String(camp.id), String(out.id)),
+      flow_id: anchorFlowId,
+      event_id: String(anchorEventId),
+      campaign_id: String(camp.id),
+      outbox_id: String(out.id),
+      prior_run_id: effectiveRunId,
+    }
+    : null;
+
+  const common = {
+    campaign_id: camp.id,
+    batch_label: batchLabel,
+    flow_id: anchorFlowId,
+    // Novo ciclo nunca reaproveita run antigo (evidência preservada intacta).
+    run_id: newCycle ? null : effectiveRunId,
+    anchor_sent_at: new Date(anchorMs).toISOString(),
+    fallback_anchor: fallbackAnchor,
+    cycle: cycleId,
+    anchor_event_id: anchorEventId,
+    cycle_anchor: cycleAnchor,
+    ignored_historical_cancellations: ignoredHistoricalCancellations,
+    preserve_meeting_reminders: true as const,
+  };
+
   if (plan.length === 0) {
     return {
       allowed: false,
       reason: "nothing_to_schedule",
       plan: [],
       skipped,
-      campaign_id: camp.id,
-      batch_label: batchLabel,
-      flow_id: anchorFlowId,
-      run_id: effectiveRunId,
-      anchor_sent_at: new Date(anchorMs).toISOString(),
-      fallback_anchor: fallbackAnchor,
-      preserve_meeting_reminders: true,
+      ...common,
     };
   }
 
@@ -562,15 +754,10 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
     reason: "viver_followup_reconstitution",
     plan,
     skipped,
-    campaign_id: camp.id,
-    batch_label: batchLabel,
-    flow_id: anchorFlowId,
-    run_id: effectiveRunId,
-    anchor_sent_at: new Date(anchorMs).toISOString(),
-    fallback_anchor: fallbackAnchor,
-    preserve_meeting_reminders: true,
+    ...common,
   };
 }
+
 
 // ─────────────────────────────────────────────────────────────
 // Coleta de evidências (somente o necessário) + execução idempotente
@@ -785,30 +972,42 @@ async function loadFacts(
     ["won", "lost", "ganho", "perdido", "deleted"].includes(String(d?.status ?? "").toLowerCase())
   );
 
-  // Dedupe: agendamentos já existentes do prospect (qualquer status) e ordens
-  // ocupadas no MESMO run (UNIQUE parcial run_id+ordem).
+  // Dedupe: agendamentos existentes do prospect. O ciclo legado usa qualquer
+  // status; o novo ciclo separa ATIVO (pending/running) de `success` histórico
+  // sem envio real, e lê o motivo do cancelamento.
   const scheduled = take<any[]>(
     "scheduled_actions",
     await supabase
       .from("orbit_flow_scheduled_actions")
-      .select("id, run_id, action_id, ordem, cadence_key, status")
+      .select("id, run_id, action_id, ordem, cadence_key, status, canceled_reason, last_error")
       .eq("empresa_id", empresaId)
       .eq("prospect_id", prospectId)
-      .limit(200),
+      .limit(500),
     [],
   );
   const runOrdens = (scheduled ?? [])
     .filter((r: any) => run?.id && String(r?.run_id ?? "") === String(run.id))
     .map((r: any) => ({ ordem: Number(r?.ordem ?? -1), status: r?.status ?? null }))
     .filter((r: any) => Number.isFinite(r.ordem) && r.ordem >= 0);
-  const cancelledActionIds = (scheduled ?? [])
-    .filter((r: any) => CANCELLED_SCHEDULED_STATUS.has(String(r?.status ?? "").toLowerCase()))
+  const cancelledRows = (scheduled ?? [])
+    .filter((r: any) => CANCELLED_SCHEDULED_STATUS.has(String(r?.status ?? "").toLowerCase()));
+  const cancelledActionIds = cancelledRows
     .map((r: any) => r?.action_id)
     .filter(Boolean)
     .map(String);
+  const cancelledActions = cancelledRows.map((r: any) => ({
+    action_id: r?.action_id ? String(r.action_id) : null,
+    reason: r?.canceled_reason ?? r?.last_error ?? null,
+    status: r?.status ?? null,
+  }));
+  const activeRows = (scheduled ?? [])
+    .filter((r: any) => ["pending", "running"].includes(String(r?.status ?? "").toLowerCase()));
+  const activeCadenceKeys = activeRows.map((r: any) => r?.cadence_key).filter(Boolean).map(String);
+  const activeActionIds = activeRows.map((r: any) => r?.action_id).filter(Boolean).map(String);
 
   // Dedupe por TOQUE REAL já aceito: somente outbox efetivamente `sent` com
-  // confirmação do provedor. Pendentes/failed/canceled não contam como toque.
+  // confirmação do provedor. Pendentes/sem provider entram como INCERTOS —
+  // nunca repetimos um toque que pode ter saído.
   const followupOutbox = take<any[]>(
     "followup_outbox",
     await supabase
@@ -822,17 +1021,25 @@ async function loadFacts(
   );
   const acceptedTemplates: string[] = [];
   const acceptedActionIds: string[] = [];
+  const uncertainTemplates: string[] = [];
+  const uncertainActionIds: string[] = [];
   for (const row of followupOutbox ?? []) {
     const status = String(row?.status ?? "").toLowerCase();
     if (DEAD_OUTBOX_STATUS.has(status)) continue;
-    if (status !== "sent" || !row?.provider_message_id) continue;
     const tpl = row?.payload?.template_id;
-    if (tpl) acceptedTemplates.push(String(tpl));
-    if (row?.source_id) acceptedActionIds.push(String(row.source_id));
+    if (status === "sent" && row?.provider_message_id) {
+      if (tpl) acceptedTemplates.push(String(tpl));
+      if (row?.source_id) acceptedActionIds.push(String(row.source_id));
+      continue;
+    }
+    // pending / processing / sent sem provider → resultado incerto.
+    if (tpl) uncertainTemplates.push(String(tpl));
+    if (row?.source_id) uncertainActionIds.push(String(row.source_id));
   }
   const legacyD1Sent = acceptedTemplates.some((t) =>
     VIVER_LEGACY_D1_TEMPLATE_IDS.has(t)
   );
+
 
   return {
     empresa_id: empresaId,
@@ -861,7 +1068,14 @@ async function loadFacts(
     accepted_template_ids: acceptedTemplates,
     existing_run_ordens: runOrdens,
     legacy_d1_touch_sent: legacyD1Sent,
+    active_cadence_keys: activeCadenceKeys,
+    active_action_ids: activeActionIds,
+    accepted_action_ids: acceptedActionIds,
+    uncertain_touch_action_ids: uncertainActionIds,
+    uncertain_touch_template_ids: uncertainTemplates,
+    cancelled_actions: cancelledActions,
     read_error: readErrors.length > 0 ? readErrors.join(",") : null,
+
   };
 }
 
@@ -922,10 +1136,62 @@ export async function reconstituteViverControlledFollowups(
       };
     }
 
-    // Fallback auditável: sem run antigo, criamos um run ÂNCORA. Status
-    // `skipped` deixa explícito que NADA foi executado (D0 não é reexecutado e
-    // nenhuma ação recebe status falso de envio).
+    // Âncora do NOVO CICLO: run determinístico por (campanha, envio real). O id
+    // derivado da chave garante que dois ticks concorrentes convirjam no MESMO
+    // run (o segundo insert colide na PK). Runs antigos ficam intactos.
     let runId = decision.run_id ?? null;
+    const cycleAnchor = decision.cycle_anchor ?? null;
+    if (!runId && cycleAnchor) {
+      const anchorId = await viverFollowupAnchorRunId(cycleAnchor.key);
+      const { error: anchorError } = await supabase
+        .from("orbit_flow_runs")
+        .insert({
+          id: anchorId,
+          empresa_id: VIVER_FOLLOWUP_EMPRESA_ID,
+          flow_id: cycleAnchor.flow_id,
+          event_id: cycleAnchor.event_id,
+          entity_type: "prospect",
+          entity_id: facts.prospect?.id ?? null,
+          status: "skipped",
+          context: {
+            viver_followup_cycle_anchor: {
+              version: VIVER_FOLLOWUP_RECONSTITUTION_VERSION,
+              cycle: decision.cycle,
+              quota_policy: VIVER_FOLLOWUP_CYCLE_QUOTA_POLICY,
+              anchor_key: cycleAnchor.key,
+              event_id: cycleAnchor.event_id,
+              campaign_id: cycleAnchor.campaign_id,
+              outbox_id: cycleAnchor.outbox_id,
+              prior_run_id: cycleAnchor.prior_run_id,
+              batch_label: decision.batch_label,
+              anchor_sent_at: decision.anchor_sent_at,
+              ignored_historical_cancellations:
+                decision.ignored_historical_cancellations ?? [],
+              d0_not_executed: true,
+              actions_not_executed: true,
+              history_preserved: true,
+            },
+          },
+        });
+      if (anchorError && String((anchorError as any).code) !== "23505") {
+        return empty("anchor_run_insert_failed");
+      }
+      // 23505 → outro tick já criou a MESMA âncora: reutilizamos o id.
+      const { data: existingAnchor, error: anchorReadError } = await supabase
+        .from("orbit_flow_runs")
+        .select("id")
+        .eq("id", anchorId)
+        .eq("empresa_id", VIVER_FOLLOWUP_EMPRESA_ID)
+        .maybeSingle();
+      if (anchorReadError || !(existingAnchor as any)?.id) {
+        return empty("anchor_run_insert_failed");
+      }
+      runId = String((existingAnchor as any).id);
+    }
+
+    // Fallback legado: sem run antigo, criamos um run ÂNCORA. Status `skipped`
+    // deixa explícito que NADA foi executado (D0 não é reexecutado e nenhuma
+    // ação recebe status falso de envio).
     if (!runId) {
       const anchor = decision.fallback_anchor;
       if (!anchor) return empty("anchor_run_unavailable");
@@ -957,6 +1223,7 @@ export async function reconstituteViverControlledFollowups(
       runId = String((newRun as any).id);
     }
 
+
     const scheduledIds: string[] = [];
     let deduped = 0;
     for (const item of decision.plan) {
@@ -971,12 +1238,18 @@ export async function reconstituteViverControlledFollowups(
           action_type: item.action_type,
           action_config: item.action_config,
           context: {
-            payload: { prospect_id: facts.prospect?.id ?? null },
+            payload: {
+              prospect_id: facts.prospect?.id ?? null,
+              // Evento âncora REAL também no fallback (nunca null).
+              event_id: decision.anchor_event_id ?? null,
+            },
             entity_type: "prospect",
             entity_id: facts.prospect?.id ?? null,
-            event_id: facts.event?.id ?? null,
+            event_id: decision.anchor_event_id ?? null,
             viver_followup_reconstitution: {
               version: VIVER_FOLLOWUP_RECONSTITUTION_VERSION,
+              cycle: decision.cycle ?? "legacy",
+              anchor_key: cycleAnchor?.key ?? null,
               outbox_id: outboxRow.id,
               campaign_id: decision.campaign_id,
               batch_label: decision.batch_label,
@@ -984,6 +1257,7 @@ export async function reconstituteViverControlledFollowups(
               provider_message_id: outboxRow.provider_message_id,
             },
           },
+
           prospect_id: facts.prospect?.id ?? null,
           scheduled_for: item.scheduled_for,
           status: "pending",
@@ -1010,15 +1284,21 @@ export async function reconstituteViverControlledFollowups(
         entidade_id: outboxRow.id,
         detalhes: {
           version: VIVER_FOLLOWUP_RECONSTITUTION_VERSION,
+          cycle: decision.cycle ?? "legacy",
           campaign_id: decision.campaign_id,
           batch_label: decision.batch_label,
           flow_id: decision.flow_id,
           run_id: runId,
+          cycle_anchor: cycleAnchor ?? null,
+          anchor_event_id: decision.anchor_event_id ?? null,
+          ignored_historical_cancellations:
+            decision.ignored_historical_cancellations ?? [],
           fallback_anchor: decision.fallback_anchor ?? null,
           anchor_sent_at: decision.anchor_sent_at,
           scheduled_ids: scheduledIds,
           deduped,
           skipped: decision.skipped,
+
         },
       });
     } catch (_e) { /* auditoria best-effort */ }
@@ -1040,6 +1320,50 @@ export async function reconstituteViverControlledFollowups(
   }
 }
 
+export interface ReconcileCandidate {
+  id: string;
+  prospect_id: string;
+  sent_at?: string | null;
+}
+
+/**
+ * Ordem de reconciliação SEM starvation. Antes o tick processava sempre os 5
+ * candidatos mais recentes, então quem ficou incompleto no fim da fila nunca era
+ * reavaliado. Agora:
+ *   1. rotação determinística pelo minuto → nenhum prefixo fixo monopoliza;
+ *   2. ordenação ESTÁVEL por prioridade: erro primeiro, depois quem não tem
+ *      nenhum agendamento ativo (cadência faltando), por fim os já ativos.
+ */
+export function rankViverReconcileCandidates(
+  candidates: ReconcileCandidate[],
+  scheduled: Array<{ prospect_id?: string | null; status?: string | null }>,
+  nowMs: number = Date.now(),
+): ReconcileCandidate[] {
+  const active = new Set<string>();
+  const errored = new Set<string>();
+  for (const row of scheduled ?? []) {
+    const pid = row?.prospect_id ? String(row.prospect_id) : "";
+    if (!pid) continue;
+    const status = String(row?.status ?? "").toLowerCase();
+    if (status === "pending" || status === "running") active.add(pid);
+    if (status === "error" || status === "failed") errored.add(pid);
+  }
+  const list = [...(candidates ?? [])];
+  if (list.length === 0) return [];
+  const offset = Math.floor(nowMs / 60_000) % list.length;
+  const rotated = [...list.slice(offset), ...list.slice(0, offset)];
+  const priority = (c: ReconcileCandidate): number => {
+    const pid = String(c.prospect_id);
+    if (errored.has(pid)) return 0;
+    if (!active.has(pid)) return 1;
+    return 2;
+  };
+  return rotated
+    .map((c, i) => ({ c, i, p: priority(c) }))
+    .sort((a, b) => a.p - b.p || a.i - b.i)
+    .map((x) => x.c);
+}
+
 /**
  * Reconciliação idempotente executada pelo tick existente (sem cron novo):
  * cobre falha entre o envio confirmado e o agendamento.
@@ -1051,8 +1375,8 @@ export async function reconcileViverControlledFollowups(
 ): Promise<{ candidates: number; reconstituted: number }> {
   if (empresa_id !== VIVER_FOLLOWUP_EMPRESA_ID) return { candidates: 0, reconstituted: 0 };
   const lookback = opts.lookbackMs ?? 14 * 24 * 60 * 60 * 1000;
-  const maxCandidates = opts.maxCandidates ?? 20;
-  const maxRuns = opts.maxRuns ?? 5;
+  const maxCandidates = opts.maxCandidates ?? 60;
+  const maxRuns = opts.maxRuns ?? 8;
 
   try {
     const { data: rows, error } = await supabase
@@ -1069,14 +1393,28 @@ export async function reconcileViverControlledFollowups(
     const candidates = ((rows ?? []) as any[]).filter((r) => r?.prospect_id);
     if (candidates.length === 0) return { candidates: 0, reconstituted: 0 };
 
+    // Estado dos agendamentos dos candidatos: usado só para PRIORIZAR quem está
+    // com erro ou sem cadência ativa. Nada é reativado aqui.
+    const { data: schedRows } = await supabase
+      .from("orbit_flow_scheduled_actions")
+      .select("prospect_id, status")
+      .eq("empresa_id", empresa_id)
+      .in("prospect_id", candidates.map((r) => String(r.prospect_id)))
+      .limit(1000);
+
+    const ordered = rankViverReconcileCandidates(
+      candidates as ReconcileCandidate[],
+      (schedRows ?? []) as any[],
+    );
+
     // A existência de QUALQUER agendamento não significa cadência completa:
     // sucesso parcial (D1 gravado, D3 falhou) precisa ser reparado. Por isso
     // cada candidato é reavaliado ação por ação — o dedupe por
-    // cadence_key/action_id/ordem/toque real evita qualquer repetição, e
+    // cadence_key/action_id/toque real evita qualquer repetição, e
     // cancelamentos legítimos nunca são reativados.
     let reconstituted = 0;
     let runs = 0;
-    for (const row of candidates) {
+    for (const row of ordered) {
       if (runs >= maxRuns) break;
       runs++;
       const r = await reconstituteViverControlledFollowups(supabase, {
@@ -1086,6 +1424,7 @@ export async function reconcileViverControlledFollowups(
       if (r.ok) reconstituted++;
     }
     return { candidates: candidates.length, reconstituted };
+
   } catch (e) {
     console.warn(
       "[viver-followup] reconciliação falhou",
