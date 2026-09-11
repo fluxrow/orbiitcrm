@@ -455,27 +455,56 @@ async function updateCampaignRecipient(
 // Reconstituição da cadência de follow-up da Viver após um PRIMEIRO CONTATO real
 // de campanha controlada. Best-effort e idempotente: nunca falha o envio já
 // concluído e nunca cria toque duplicado (dedupe por cadence_key).
+//
+// A prova exige a OUT correlacionada em orbit_mensagens. Quando o item não tem
+// conversa_id, o worker NÃO grava a mensagem visual: ela chega segundos depois
+// pelo callback do provedor. Por isso a primeira tentativa pode legitimamente
+// falhar por evidência ainda ausente — repetimos algumas vezes na mesma execução
+// (sem criar nada) e, se ainda faltar, a reconciliação idempotente do tick cobre.
+const VIVER_FOLLOWUP_EVIDENCE_PENDING_REASONS = new Set([
+  "out_message_missing",
+  "conversa_missing",
+  "outbox_not_eligible",
+  "evidence_read_failed",
+  "out_not_sent",
+  "out_provider_message_id_mismatch",
+]);
+
 async function maybeReconstituteViverFollowup(item: any): Promise<void> {
   if (
     String(item?.empresa_id ?? "") !== VIVER_FOLLOWUP_EMPRESA_ID ||
     String(item?.source_type ?? "") !== "campaign"
   ) return;
-  try {
-    const r = await reconstituteViverControlledFollowups(supabase, {
-      empresa_id: VIVER_FOLLOWUP_EMPRESA_ID,
-      outbox_id: item.id,
-    });
-    console.log(JSON.stringify({
-      scope: "viver_followup_reconstitution",
-      outbox_id: item.id,
-      ok: r.ok,
-      reason: r.reason,
-      planned: r.planned,
-      scheduled: r.scheduled_ids.length,
-      deduped: r.deduped,
-    }));
-  } catch (e: any) {
-    console.warn("[outbox] reconstituição de follow-up falhou", String(e?.message ?? e));
+  const waits = [0, 2_500, 7_000];
+  for (let attempt = 0; attempt < waits.length; attempt++) {
+    if (waits[attempt] > 0) {
+      await new Promise((resolve) => setTimeout(resolve, waits[attempt]));
+    }
+    try {
+      const r = await reconstituteViverControlledFollowups(supabase, {
+        empresa_id: VIVER_FOLLOWUP_EMPRESA_ID,
+        outbox_id: item.id,
+      });
+      const retry = !r.ok &&
+        VIVER_FOLLOWUP_EVIDENCE_PENDING_REASONS.has(String(r.reason ?? "")) &&
+        attempt < waits.length - 1;
+      console.log(JSON.stringify({
+        scope: "viver_followup_reconstitution",
+        outbox_id: item.id,
+        campaign_id: item.campaign_id ?? null,
+        attempt: attempt + 1,
+        ok: r.ok,
+        reason: r.reason,
+        planned: r.planned,
+        scheduled: r.scheduled_ids.length,
+        deduped: r.deduped,
+        will_retry: retry,
+      }));
+      if (!retry) return;
+    } catch (e: any) {
+      console.warn("[outbox] reconstituição de follow-up falhou", String(e?.message ?? e));
+      return;
+    }
   }
 }
 

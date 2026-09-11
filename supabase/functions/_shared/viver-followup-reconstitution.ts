@@ -115,7 +115,21 @@ export async function viverFollowupAnchorRunId(key: string): Promise<string> {
 }
 
 
-const REAL_OUT_STATUS = new Set(["enviada", "enviado", "sent", "entregue", "delivered", "read", "lida"]);
+// Status de OUT REAL. Inclui os rótulos que o callback do provedor grava por
+// cima do "enviada" inicial (Z-API: SENT / RECEIVED / READ). Sem "received" a
+// própria confirmação de entrega bloqueava o follow-up ("out_not_sent").
+const REAL_OUT_STATUS = new Set([
+  "enviada",
+  "enviado",
+  "sent",
+  "entregue",
+  "delivered",
+  "received",
+  "recebida",
+  "recebido",
+  "read",
+  "lida",
+]);
 const DEAD_OUTBOX_STATUS = new Set(["canceled", "cancelled", "failed"]);
 const CLOSED_CONVERSA_STATUS = new Set([
   "fechada", "fechado", "closed", "encerrada", "encerrado", "arquivada", "archived",

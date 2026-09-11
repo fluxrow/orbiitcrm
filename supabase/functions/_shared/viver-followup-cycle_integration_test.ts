@@ -480,3 +480,47 @@ Deno.test("reconciliação prioriza erro e cadência ausente, sem prefixo fixo",
   const b = rankViverReconcileCandidates(cands, scheduled, 3 * 60_000).slice(5, 10);
   assert(a.map((c) => c.prospect_id).join() !== b.map((c) => c.prospect_id).join());
 });
+
+// ───────────── incidente 2026-09-11: callback do provedor + retenção ─────────────
+
+Deno.test("incidente real: OUT com status RECEIVED do callback + retained WARMUP_RATE_LIMIT ainda agenda D1/D3/D7", async () => {
+  const db = seed({
+    scheduled: [
+      scheduledSuccessNoDelivery(D1, 1),
+      scheduledSuccessNoDelivery(D3, 3),
+      scheduledSuccessNoDelivery(D7, 7),
+    ],
+  });
+  // Estado REAL de produção: o callback da Z-API sobrescreveu o status da OUT,
+  // e o ritmo registrou `retained: WARMUP_RATE_LIMIT` antes do sent.
+  db.rows("orbit_mensagens")[0].status = "RECEIVED";
+  const outbox = db.rows("orbit_whatsapp_outbox")[0];
+  outbox.conversa_id = null; // worker não gravou a mensagem: veio do callback
+  outbox.metadata = {
+    ...outbox.metadata,
+    retained: {
+      reason: "WARMUP_RATE_LIMIT",
+      at: "2026-09-11T13:06:03.719Z",
+      effective_daily_limit: 15,
+      warmup_day: 40,
+    },
+  };
+
+  const r = await call(db);
+  assertEquals(r.ok, true);
+  assertEquals(r.planned, 3);
+
+  const novos = pending(db);
+  assertEquals(novos.length, 3);
+  // Exatamente UMA âncora determinística nova; os runs antigos ficam intactos.
+  const anchors = db.rows("orbit_flow_runs").filter((x) => x.id !== OLD_RUN);
+  assertEquals(anchors.length, 1);
+  assert(novos.every((x) => x.run_id === anchors[0].id));
+  assertEquals(new Set(novos.map((x) => x.action_id)), new Set([D1, D3, D7]));
+
+  // Segunda execução: zero novos agendamentos e nenhuma âncora extra.
+  const again = await call(db);
+  assertEquals(again.scheduled_ids.length, 0);
+  assertEquals(pending(db).length, 3);
+  assertEquals(db.rows("orbit_flow_runs").filter((x) => x.id !== OLD_RUN).length, 1);
+});
