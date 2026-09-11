@@ -10,6 +10,8 @@ import { checkCampaignRecipientEligibility, markRecipientIgnorado } from "../_sh
 import { claimCampaignDispatchAuthorization } from "../_shared/campaign-dispatch-authorization.ts";
 import { controlledViverCampaignMessageBlockReason } from "../_shared/outbox-pilot.ts";
 import { isAuthorizedViverControlledCampaign } from "../_shared/viver-controlled-inbound-reply.ts";
+import { viverOperationalDateDecision } from "../_shared/viver-campaign-operational-date.ts";
+
 import { buildTemplateOutboxPayload, templatePayloadType } from "../_shared/message-template-media.ts";
 import {
   dailyUsageDateFor,
@@ -568,6 +570,24 @@ const handler = async (req: Request): Promise<Response> => {
               controlled_reengagement_slot: controlledReengagement?.slot ?? null,
             }
             : {};
+          // Dia operacional (somente Viver + batches autorizados): vencido não
+          // atravessa a virada do dia SP; futuro espera a própria data.
+          const opDay = viverOperationalDateDecision({
+            empresa_id: campaign.empresa_id,
+            source_type: "campaign",
+            campaign,
+          });
+          if (opDay.verdict === "expire") {
+            await markRecipientIgnorado(supabase, recipient.id, opDay.reason);
+            ignorados++;
+            adapterSkipped++;
+            continue;
+          }
+          if (opDay.verdict === "wait" || opDay.verdict === "fail_closed") {
+            adapterSkipped++;
+            continue;
+          }
+
           const controlledMessageBlock = controlledViverCampaignMessageBlockReason({
             empresa_id: campaign.empresa_id,
             source_type: "campaign",
