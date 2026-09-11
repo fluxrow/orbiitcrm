@@ -672,11 +672,21 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
       skipped.push({ action_id: actionId, reason: "touch_already_sent" });
       continue;
     }
+    // Outbox antiga pendente/processing/sem confirmação: resultado INCERTO.
+    // Nunca repetir o toque — pode ter saído de fato.
+    if (
+      uncertainActions.has(actionId) ||
+      (templateId && uncertainTemplates.has(templateId))
+    ) {
+      skipped.push({ action_id: actionId, reason: "touch_outcome_uncertain" });
+      continue;
+    }
     // Mesmo toque D1, template novo (áudio): não repetir.
     if (legacyD1Sent && delaySeconds <= D1_MAX_DELAY_SECONDS) {
       skipped.push({ action_id: actionId, reason: "legacy_d1_already_sent" });
       continue;
     }
+
 
     plan.push({
       action_id: actionId,
