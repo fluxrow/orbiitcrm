@@ -74,11 +74,17 @@ import {
 import {
   consumesDailyQuotaFor,
   dailyQuotaSourcesFor,
-  dailyUsageDate,
+  dailyUsageDateFor,
   effectiveDailyLimitFor,
+  needsViverCampaignSpacingCheck,
   RETAIN_REASON_VIVER_CAMPAIGN_SPACING,
+  RETAIN_REASON_VIVER_SLOT_LOCK,
+  RETAIN_REASON_VIVER_SPACING_UNKNOWN,
+  type ViverInflightClaim,
+  viverCampaignSlotDecision,
   viverCampaignSpacingWaitMs,
 } from "../_shared/viver-daily-quota-policy.ts";
+
 import {
   effectiveOutboxPriority,
   FLOW_OUTBOX_MAX_AGE_MS,
