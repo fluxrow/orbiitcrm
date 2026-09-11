@@ -1284,15 +1284,21 @@ export async function reconstituteViverControlledFollowups(
         entidade_id: outboxRow.id,
         detalhes: {
           version: VIVER_FOLLOWUP_RECONSTITUTION_VERSION,
+          cycle: decision.cycle ?? "legacy",
           campaign_id: decision.campaign_id,
           batch_label: decision.batch_label,
           flow_id: decision.flow_id,
           run_id: runId,
+          cycle_anchor: cycleAnchor ?? null,
+          anchor_event_id: decision.anchor_event_id ?? null,
+          ignored_historical_cancellations:
+            decision.ignored_historical_cancellations ?? [],
           fallback_anchor: decision.fallback_anchor ?? null,
           anchor_sent_at: decision.anchor_sent_at,
           scheduled_ids: scheduledIds,
           deduped,
           skipped: decision.skipped,
+
         },
       });
     } catch (_e) { /* auditoria best-effort */ }
