@@ -90,10 +90,15 @@ import {
   RETAIN_REASON_VIVER_CAMPAIGN_SPACING,
   RETAIN_REASON_VIVER_SLOT_LOCK,
   RETAIN_REASON_VIVER_SPACING_UNKNOWN,
-  type ViverInflightClaim,
-  viverCampaignSlotDecision,
   viverCampaignSpacingWaitMs,
 } from "../_shared/viver-daily-quota-policy.ts";
+
+import {
+  acquireViverCampaignSlot,
+  refuseTargetedViverCampaign,
+  RETAIN_REASON_VIVER_TARGETED_CAMPAIGN,
+} from "../_shared/viver-campaign-slot-lock.ts";
+
 
 import {
   effectiveOutboxPriority,
