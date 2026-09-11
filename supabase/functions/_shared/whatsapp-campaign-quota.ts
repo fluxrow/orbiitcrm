@@ -31,7 +31,7 @@ export const DEFAULT_CAMPAIGN_CONFIG: CampaignSendingConfig = {
 };
 
 import {
-  dailyUsageDate,
+  dailyUsageDateFor,
   isViverTenant,
   VIVER_DAILY_FIRST_CONTACT_LIMIT,
 } from "./viver-daily-quota-policy.ts";
@@ -114,8 +114,8 @@ export async function loadCampaignDailyUsage(
   empresaId: string,
   now: Date = new Date(),
 ): Promise<{ usageDate: string; sentCount: number }> {
-  // Data de referência America/Sao_Paulo, coerente com o worker do outbox.
-  const usageDate = dailyUsageDate(now);
+  // Data por tenant: Viver em America/Sao_Paulo; demais preservam UTC legado.
+  const usageDate = dailyUsageDateFor(empresaId, now);
   const { data } = await supabase
     .from("orbit_whatsapp_daily_usage")
     .select("sent_count")

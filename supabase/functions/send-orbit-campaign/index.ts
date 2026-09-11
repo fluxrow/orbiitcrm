@@ -12,7 +12,7 @@ import { controlledViverCampaignMessageBlockReason } from "../_shared/outbox-pil
 import { isAuthorizedViverControlledCampaign } from "../_shared/viver-controlled-inbound-reply.ts";
 import { buildTemplateOutboxPayload, templatePayloadType } from "../_shared/message-template-media.ts";
 import {
-  dailyUsageDate,
+  dailyUsageDateFor,
   isViverTenant,
   VIVER_DAILY_FIRST_CONTACT_LIMIT,
 } from "../_shared/viver-daily-quota-policy.ts";
@@ -383,7 +383,7 @@ const handler = async (req: Request): Promise<Response> => {
     // ── Load/create daily usage ──
     let dailySentCount = 0;
     if (campaign.canal === "whatsapp" && campaign.empresa_id) {
-      const today = dailyUsageDate();
+      const today = dailyUsageDateFor(campaign.empresa_id);
       const { data: usageRow } = await supabase
         .from("orbit_whatsapp_daily_usage")
         .select("sent_count")
@@ -878,7 +878,7 @@ const handler = async (req: Request): Promise<Response> => {
           batchSentCount++;
 
           if (campaign.empresa_id) {
-            const today = dailyUsageDate();
+            const today = dailyUsageDateFor(campaign.empresa_id);
             await supabase
               .from("orbit_whatsapp_daily_usage")
               .upsert(
