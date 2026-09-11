@@ -4,6 +4,7 @@
 // marcado; o gate final da Z-API ainda restringe o telefone à allowlist canário.
 
 import { evaluateViverMeetingReminder } from "./viver-meeting-lifecycle.ts";
+import { isControlledDailyCapAccepted } from "./viver-daily-quota-policy.ts";
 
 export const VIVER_SEMIJOIAS_EMPRESA_ID = "36f26579-66ad-4ef1-9788-141e4c727232";
 export const VIVER_CONTROLLED_OUTBOX_GATE_VERSION = "2026-09-02-v3";
