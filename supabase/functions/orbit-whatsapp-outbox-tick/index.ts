@@ -1084,22 +1084,62 @@ async function processItem(
   // ── Espaçamento mínimo entre primeiros contatos da lista (somente Viver) ──
   // Medido pelo ÚLTIMO ENVIO REAL de campanha. Hold legítimo: reagenda para
   // último_envio + 30min, sem acúmulo compensatório e sem rajada de backlog.
-  const spacingWaitMs = viverCampaignSpacingWaitMs({
-    empresaId: item.empresa_id,
-    sourceType: item.source_type,
-    lastCampaignSentAtMs: await lastCampaignSentAtMs(item.empresa_id),
-  });
-  if (spacingWaitMs > 0) {
-    await releaseHeldItem(
-      item,
-      RETAIN_REASON_VIVER_CAMPAIGN_SPACING,
-      new Date(Date.now() + spacingWaitMs).toISOString(),
-    );
-    return {
-      outcome: "deferred",
-      reason: RETAIN_REASON_VIVER_CAMPAIGN_SPACING,
-    };
+  // A consulta só acontece para Viver + `campaign`; qualquer erro de leitura
+  // ADIA o item (fail-closed) e é auditado, nunca libera envio.
+  if (needsViverCampaignSpacingCheck(item.empresa_id, item.source_type)) {
+    const slotLock = await inflightViverCampaignClaims(item.empresa_id);
+    if (!slotLock.ok) {
+      await auditViverSpacingFailClosed(item, "slot_lock_query_failed", slotLock.error);
+      await releaseHeldItem(
+        item,
+        RETAIN_REASON_VIVER_SLOT_LOCK,
+        new Date(Date.now() + 60_000).toISOString(),
+      );
+      return { outcome: "deferred", reason: RETAIN_REASON_VIVER_SLOT_LOCK };
+    }
+    const slot = viverCampaignSlotDecision({
+      empresaId: item.empresa_id,
+      sourceType: item.source_type,
+      itemId: String(item.id),
+      inflight: slotLock.rows,
+    });
+    if (!slot.proceed) {
+      await releaseHeldItem(
+        item,
+        RETAIN_REASON_VIVER_SLOT_LOCK,
+        new Date(Date.now() + 60_000).toISOString(),
+      );
+      return { outcome: "deferred", reason: RETAIN_REASON_VIVER_SLOT_LOCK };
+    }
+
+    const last = await lastCampaignSentAtMs(item.empresa_id);
+    if (!last.ok) {
+      await auditViverSpacingFailClosed(item, "last_sent_query_failed", last.error);
+      await releaseHeldItem(
+        item,
+        RETAIN_REASON_VIVER_SPACING_UNKNOWN,
+        new Date(Date.now() + 5 * 60_000).toISOString(),
+      );
+      return { outcome: "deferred", reason: RETAIN_REASON_VIVER_SPACING_UNKNOWN };
+    }
+    const spacingWaitMs = viverCampaignSpacingWaitMs({
+      empresaId: item.empresa_id,
+      sourceType: item.source_type,
+      lastCampaignSentAtMs: last.ms,
+    });
+    if (spacingWaitMs > 0) {
+      await releaseHeldItem(
+        item,
+        RETAIN_REASON_VIVER_CAMPAIGN_SPACING,
+        new Date(Date.now() + spacingWaitMs).toISOString(),
+      );
+      return {
+        outcome: "deferred",
+        reason: RETAIN_REASON_VIVER_CAMPAIGN_SPACING,
+      };
+    }
   }
+
 
 
   // Resolver telefone
