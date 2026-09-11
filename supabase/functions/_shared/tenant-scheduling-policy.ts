@@ -23,7 +23,7 @@ export function declinesViverCurrentDay(message: string): boolean {
 
 export function hasExplicitSchedulingDate(message: string): boolean {
   const text = normalizeSchedulingText(message);
-  return /\bamanha\b|\b(?:domingo|segunda(?:-feira)?|terca(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|sabado)\b|\bdia\s+(?:[0-3]?\d)\b|\b(?:0?[1-9]|[12]\d|3[01])[\/.\-](?:0?[1-9]|1[0-2])(?:[\/.\-]\d{2,4})?\b/.test(text);
+  return /\bamanha\b|\b(?:domingo|segunda(?:-feira)?|terca(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|sabado)\b|\bdia\s+(?:[0-3]?\d)\b|\b(?:0?[1-9]|[12]\d|3[01])[/.\-](?:0?[1-9]|1[0-2])(?:[/.\-]\d{2,4})?\b/.test(text);
 }
 
 export function hasExplicitSchedulingTime(message: string): boolean {
@@ -55,6 +55,18 @@ export function shouldClarifyViverReschedule(input: {
     },
     reason: changeIntent ? "viver_reschedule_requested" : "viver_reschedule_awaiting_explicit_date_time",
   };
+}
+
+export function isUnequivocalPreviouslyProposedDateSelection(
+  message: string,
+  suggestions: Array<{ label?: string; label_full?: string; start?: string }>,
+): boolean {
+  const text = normalizeSchedulingText(message);
+  if (/\b(?:primeir[oa]|segund[oa]|opcao\s*[12]|[12]\s*[ªa])\b/.test(text)) return suggestions.length > 0;
+  return suggestions.some((suggestion) => {
+    const full = normalizeSchedulingText(String(suggestion.label_full ?? ""));
+    return full.length >= 6 && text.includes(full) && hasExplicitSchedulingDate(full);
+  });
 }
 
 export function schedulingPolicy<T extends object>(empresaId: string | null | undefined, token: T): T {

@@ -5,6 +5,7 @@ import {
   hasExplicitSchedulingDate,
   hasExplicitSchedulingTime,
   isAmbiguousSlotAcceptance,
+  isUnequivocalPreviouslyProposedDateSelection,
   schedulingPolicy,
   selectExplicitSuggestion,
   shouldClarifyViverReschedule,
@@ -57,4 +58,14 @@ Deno.test("guarda de remarcação não altera outros tenants", () => {
     message: "16",
     state: { active: true, reason: "change_day" },
   }).blocked, false);
+});
+
+Deno.test("número isolado não confirma data proposta durante remarcação", () => {
+  const suggestions = [{
+    label: "16:00",
+    label_full: "quarta-feira, 16 de setembro às 16:00",
+    start: "2026-09-16T19:00:00Z",
+  }];
+  assertEquals(isUnequivocalPreviouslyProposedDateSelection("16", suggestions), false);
+  assertEquals(isUnequivocalPreviouslyProposedDateSelection("a primeira opção", suggestions), true);
 });

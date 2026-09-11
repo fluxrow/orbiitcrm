@@ -253,6 +253,9 @@ Deno.test("Viver: 'outro dia' seguido de '16' pede data e cria zero meetings", a
   second.empresaId = VIVER_EMPRESA_ID;
   second.mensagem_cliente = "16";
   second.remarcacao_estado = firstResult.reschedule_state;
+  second.sugestoes_anteriores = [
+    { label: "16:00", label_full: "quarta-feira, 16 de setembro às 16:00", start: "2026-09-16T19:00:00Z" },
+  ];
   const secondResult = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, second, deps);
   assertEquals(secondResult.created, false);
   assertEquals(secondResult.reschedule_state?.active, true);

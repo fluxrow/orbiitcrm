@@ -199,6 +199,7 @@ import {
   isAmbiguousSlotAcceptance,
   selectExplicitSuggestion,
   detectsViverDayChangeIntent,
+  isUnequivocalPreviouslyProposedDateSelection,
   shouldClarifyViverReschedule,
   type ViverRescheduleState,
 } from "../_shared/tenant-scheduling-policy.ts";
@@ -2460,10 +2461,10 @@ ${regrasBlock}`;
                 empresaId,
                 message: mensagemAgregada,
                 state: aiContexto.agendamento_remarcacao,
-                selectedPreviouslyProposedSlot: Boolean(selectExplicitSuggestion(
+                selectedPreviouslyProposedSlot: isUnequivocalPreviouslyProposedDateSelection(
                   mensagemAgregada,
                   Array.isArray(aiContexto?.agendamento_sugestoes) ? aiContexto.agendamento_sugestoes : [],
-                )?.start),
+                ),
               }).blocked
             ? null
             : (aiContexto.agendamento_remarcacao ?? null)))
@@ -4362,7 +4363,10 @@ export async function tryAutoScheduleMeeting(
     empresaId: params.empresaId,
     message: params.mensagem_cliente || "",
     state: params.remarcacao_estado,
-    selectedPreviouslyProposedSlot: Boolean(selectedBeforeRescheduleGuard?.start),
+    selectedPreviouslyProposedSlot: isUnequivocalPreviouslyProposedDateSelection(
+      params.mensagem_cliente || "",
+      previousSuggestions,
+    ),
   });
   if (rescheduleDecision.blocked) {
     return {
