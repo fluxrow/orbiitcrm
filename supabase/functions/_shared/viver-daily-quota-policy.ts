@@ -43,6 +43,15 @@ export const VIVER_DAILY_QUOTA_SOURCES = ["campaign"] as const;
 export const RETAIN_REASON_VIVER_CAMPAIGN_SPACING =
   "VIVER_CAMPAIGN_MIN_GAP";
 
+/** Leitura do último envio real falhou: fail-closed (adia, nunca libera). */
+export const RETAIN_REASON_VIVER_SPACING_UNKNOWN =
+  "VIVER_CAMPAIGN_GAP_UNKNOWN";
+
+/** Outro tick já detém a vaga de primeiro contato do tenant. */
+export const RETAIN_REASON_VIVER_SLOT_LOCK =
+  "VIVER_CAMPAIGN_SLOT_LOCKED";
+
+
 export function isViverTenant(empresaId: unknown): boolean {
   return String(empresaId ?? "") === VIVER_SEMIJOIAS_EMPRESA_ID;
 }
