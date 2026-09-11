@@ -1122,7 +1122,7 @@ export async function proveViverControlledFollowup(
   if (!input.prospect_id) return { allowed: false, reason: "context_incomplete" };
 
   try {
-    const { data: rows } = await supabase
+    const { data: rows, error } = await supabase
       .from("orbit_whatsapp_outbox")
       .select("id, empresa_id, prospect_id, conversa_id, campaign_id, source_type, status, provider_message_id, sent_at, metadata")
       .eq("empresa_id", VIVER_FOLLOWUP_EMPRESA_ID)
@@ -1132,6 +1132,8 @@ export async function proveViverControlledFollowup(
       .not("provider_message_id", "is", null)
       .order("sent_at", { ascending: false })
       .limit(5);
+    // Fail-closed: leitura de evidência que falha nunca prova nada.
+    if (error) return { allowed: false, reason: "controlled_followup_proof_failed" };
 
     for (const outboxRow of (rows ?? []) as any[]) {
       const facts = await loadFacts(supabase, outboxRow);
@@ -1139,14 +1141,28 @@ export async function proveViverControlledFollowup(
       // ações restantes) não é requisito para autorizar o toque já agendado.
       const decision = decideViverFollowupReconstitution(facts);
       const proven = decision.allowed || decision.reason === "nothing_to_schedule";
-      if (proven) {
-        return {
-          allowed: true,
-          reason: "viver_controlled_followup_proven",
-          campaign_id: decision.campaign_id ?? null,
-          batch_label: decision.batch_label ?? null,
-        };
+      if (!proven) continue;
+      // A conversa recebida no contexto DEVE coincidir com a conversa da OUT /
+      // do prospect provado. Contexto de outra conversa nunca é autorizado.
+      if (input.conversa_id) {
+        const provenConversas = [
+          facts.outbox?.conversa_id,
+          facts.out_message?.conversa_id,
+          facts.conversa?.id,
+        ].filter(Boolean).map(String);
+        if (provenConversas.length === 0) continue;
+        if (!provenConversas.includes(String(input.conversa_id))) continue;
       }
+      if (facts.conversa?.prospect_id &&
+        String(facts.conversa.prospect_id) !== String(input.prospect_id)) {
+        continue;
+      }
+      return {
+        allowed: true,
+        reason: "viver_controlled_followup_proven",
+        campaign_id: decision.campaign_id ?? null,
+        batch_label: decision.batch_label ?? null,
+      };
     }
     return { allowed: false, reason: "controlled_campaign_proof_missing" };
   } catch (_e) {
