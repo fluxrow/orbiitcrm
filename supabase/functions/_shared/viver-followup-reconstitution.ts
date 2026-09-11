@@ -1136,10 +1136,62 @@ export async function reconstituteViverControlledFollowups(
       };
     }
 
-    // Fallback auditável: sem run antigo, criamos um run ÂNCORA. Status
-    // `skipped` deixa explícito que NADA foi executado (D0 não é reexecutado e
-    // nenhuma ação recebe status falso de envio).
+    // Âncora do NOVO CICLO: run determinístico por (campanha, envio real). O id
+    // derivado da chave garante que dois ticks concorrentes convirjam no MESMO
+    // run (o segundo insert colide na PK). Runs antigos ficam intactos.
     let runId = decision.run_id ?? null;
+    const cycleAnchor = decision.cycle_anchor ?? null;
+    if (!runId && cycleAnchor) {
+      const anchorId = await viverFollowupAnchorRunId(cycleAnchor.key);
+      const { error: anchorError } = await supabase
+        .from("orbit_flow_runs")
+        .insert({
+          id: anchorId,
+          empresa_id: VIVER_FOLLOWUP_EMPRESA_ID,
+          flow_id: cycleAnchor.flow_id,
+          event_id: cycleAnchor.event_id,
+          entity_type: "prospect",
+          entity_id: facts.prospect?.id ?? null,
+          status: "skipped",
+          context: {
+            viver_followup_cycle_anchor: {
+              version: VIVER_FOLLOWUP_RECONSTITUTION_VERSION,
+              cycle: decision.cycle,
+              quota_policy: VIVER_FOLLOWUP_CYCLE_QUOTA_POLICY,
+              anchor_key: cycleAnchor.key,
+              event_id: cycleAnchor.event_id,
+              campaign_id: cycleAnchor.campaign_id,
+              outbox_id: cycleAnchor.outbox_id,
+              prior_run_id: cycleAnchor.prior_run_id,
+              batch_label: decision.batch_label,
+              anchor_sent_at: decision.anchor_sent_at,
+              ignored_historical_cancellations:
+                decision.ignored_historical_cancellations ?? [],
+              d0_not_executed: true,
+              actions_not_executed: true,
+              history_preserved: true,
+            },
+          },
+        });
+      if (anchorError && String((anchorError as any).code) !== "23505") {
+        return empty("anchor_run_insert_failed");
+      }
+      // 23505 → outro tick já criou a MESMA âncora: reutilizamos o id.
+      const { data: existingAnchor, error: anchorReadError } = await supabase
+        .from("orbit_flow_runs")
+        .select("id")
+        .eq("id", anchorId)
+        .eq("empresa_id", VIVER_FOLLOWUP_EMPRESA_ID)
+        .maybeSingle();
+      if (anchorReadError || !(existingAnchor as any)?.id) {
+        return empty("anchor_run_insert_failed");
+      }
+      runId = String((existingAnchor as any).id);
+    }
+
+    // Fallback legado: sem run antigo, criamos um run ÂNCORA. Status `skipped`
+    // deixa explícito que NADA foi executado (D0 não é reexecutado e nenhuma
+    // ação recebe status falso de envio).
     if (!runId) {
       const anchor = decision.fallback_anchor;
       if (!anchor) return empty("anchor_run_unavailable");
@@ -1170,6 +1222,7 @@ export async function reconstituteViverControlledFollowups(
       if (runError || !(newRun as any)?.id) return empty("anchor_run_insert_failed");
       runId = String((newRun as any).id);
     }
+
 
     const scheduledIds: string[] = [];
     let deduped = 0;
