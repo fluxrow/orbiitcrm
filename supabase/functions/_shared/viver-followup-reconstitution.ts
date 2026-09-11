@@ -1068,7 +1068,14 @@ async function loadFacts(
     accepted_template_ids: acceptedTemplates,
     existing_run_ordens: runOrdens,
     legacy_d1_touch_sent: legacyD1Sent,
+    active_cadence_keys: activeCadenceKeys,
+    active_action_ids: activeActionIds,
+    accepted_action_ids: acceptedActionIds,
+    uncertain_touch_action_ids: uncertainActionIds,
+    uncertain_touch_template_ids: uncertainTemplates,
+    cancelled_actions: cancelledActions,
     read_error: readErrors.length > 0 ? readErrors.join(",") : null,
+
   };
 }
 
