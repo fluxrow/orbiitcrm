@@ -166,8 +166,11 @@ async function getDailyUsage(empresa_id: string): Promise<number> {
 }
 
 // Último envio REAL de campanha do tenant — base do espaçamento mínimo.
-async function lastCampaignSentAtMs(empresa_id: string): Promise<number | null> {
-  const { data } = await supabase
+// FAIL-CLOSED: erro de consulta NUNCA libera envio (retorna ok:false).
+async function lastCampaignSentAtMs(
+  empresa_id: string,
+): Promise<{ ok: boolean; ms: number | null; error?: string }> {
+  const { data, error } = await supabase
     .from("orbit_whatsapp_outbox")
     .select("sent_at")
     .eq("empresa_id", empresa_id)
@@ -177,9 +180,30 @@ async function lastCampaignSentAtMs(empresa_id: string): Promise<number | null> 
     .order("sent_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (error) return { ok: false, ms: null, error: error.message };
   const ts = Date.parse(String((data as any)?.sent_at ?? ""));
-  return Number.isFinite(ts) ? ts : null;
+  return { ok: true, ms: Number.isFinite(ts) ? ts : null };
 }
+
+// Claims concorrentes de campanha da Viver (trava tenant-scoped de vaga).
+// FAIL-CLOSED: erro de consulta adia o item.
+async function inflightViverCampaignClaims(
+  empresa_id: string,
+): Promise<{ ok: boolean; rows: ViverInflightClaim[]; error?: string }> {
+  const since = new Date(Date.now() - 120_000).toISOString();
+  const { data, error } = await supabase
+    .from("orbit_whatsapp_outbox")
+    .select("id, locked_by")
+    .eq("empresa_id", empresa_id)
+    .eq("source_type", "campaign")
+    .eq("status", "processing")
+    .not("locked_at", "is", null)
+    .gte("locked_at", since)
+    .limit(50);
+  if (error) return { ok: false, rows: [], error: error.message };
+  return { ok: true, rows: (data ?? []) as ViverInflightClaim[] };
+}
+
 
 async function bumpDailyUsage(
   empresa_id: string,
