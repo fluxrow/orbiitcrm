@@ -702,19 +702,46 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
     });
   }
 
+  // Evento âncora REAL — inclusive no fallback (nunca null no contexto gravado).
+  const anchorEventId = f.event?.id
+    ? String(f.event.id)
+    : (fallbackAnchor?.event_id ?? null);
+  if (newCycle && !anchorEventId) return blocked("anchor_event_missing");
+  if (newCycle && !out.id) return blocked("outbox_missing");
+
+  const cycleAnchor: FollowupDecision["cycle_anchor"] = newCycle
+    ? {
+      key: viverFollowupAnchorRunKey(String(camp.id), String(out.id)),
+      flow_id: anchorFlowId,
+      event_id: String(anchorEventId),
+      campaign_id: String(camp.id),
+      outbox_id: String(out.id),
+      prior_run_id: effectiveRunId,
+    }
+    : null;
+
+  const common = {
+    campaign_id: camp.id,
+    batch_label: batchLabel,
+    flow_id: anchorFlowId,
+    // Novo ciclo nunca reaproveita run antigo (evidência preservada intacta).
+    run_id: newCycle ? null : effectiveRunId,
+    anchor_sent_at: new Date(anchorMs).toISOString(),
+    fallback_anchor: fallbackAnchor,
+    cycle: cycleId,
+    anchor_event_id: anchorEventId,
+    cycle_anchor: cycleAnchor,
+    ignored_historical_cancellations: ignoredHistoricalCancellations,
+    preserve_meeting_reminders: true as const,
+  };
+
   if (plan.length === 0) {
     return {
       allowed: false,
       reason: "nothing_to_schedule",
       plan: [],
       skipped,
-      campaign_id: camp.id,
-      batch_label: batchLabel,
-      flow_id: anchorFlowId,
-      run_id: effectiveRunId,
-      anchor_sent_at: new Date(anchorMs).toISOString(),
-      fallback_anchor: fallbackAnchor,
-      preserve_meeting_reminders: true,
+      ...common,
     };
   }
 
@@ -727,15 +754,10 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
     reason: "viver_followup_reconstitution",
     plan,
     skipped,
-    campaign_id: camp.id,
-    batch_label: batchLabel,
-    flow_id: anchorFlowId,
-    run_id: effectiveRunId,
-    anchor_sent_at: new Date(anchorMs).toISOString(),
-    fallback_anchor: fallbackAnchor,
-    preserve_meeting_reminders: true,
+    ...common,
   };
 }
+
 
 // ─────────────────────────────────────────────────────────────
 // Coleta de evidências (somente o necessário) + execução idempotente
