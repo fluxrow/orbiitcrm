@@ -893,12 +893,13 @@ export async function reconstituteViverControlledFollowups(
   if (params.empresa_id !== VIVER_FOLLOWUP_EMPRESA_ID) return empty("not_viver_tenant");
 
   try {
-    const { data: outboxRow } = await supabase
+    const { data: outboxRow, error: outboxError } = await supabase
       .from("orbit_whatsapp_outbox")
       .select("id, empresa_id, prospect_id, conversa_id, campaign_id, source_type, status, provider_message_id, sent_at, metadata")
       .eq("id", params.outbox_id)
       .eq("empresa_id", params.empresa_id)
       .maybeSingle();
+    if (outboxError) return empty("evidence_read_failed");
     if (!outboxRow) return empty("outbox_missing");
     if (
       String(outboxRow.source_type ?? "") !== "campaign" ||
