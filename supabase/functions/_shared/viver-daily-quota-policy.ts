@@ -174,13 +174,14 @@ export interface ViverInflightClaim {
 }
 
 /**
- * Trava tenant-scoped de vaga, sem migração e sem cron novo: usa o próprio
- * claim atômico do outbox (`outbox_claim_batch` já marca `processing` +
- * `locked_at`/`locked_by`). Dois ticks concorrentes podem reivindicar itens
- * DIFERENTES de campanha da Viver; nesse caso somente o menor `id` prossegue e
- * os demais são adiados — decisão determinística, testável e sem risco de
- * aceitar dois primeiros contatos dentro dos 30 min ou de ultrapassar as 15.
+ * @deprecated NÃO é exclusão mútua e não é mais usada no caminho de envio.
+ * O worker A (id maior) podia consultar quando só A estava `processing`, iniciar
+ * o HTTP, e o worker B (id menor), reivindicado depois, também prosseguia.
+ * A enforcement passou para a trava atômica no banco
+ * (`viver_campaign_slot_try_acquire` + `outbox_claim_batch`), exposta em
+ * `viver-campaign-slot-lock.ts`. Mantida apenas como referência histórica.
  */
+
 export function viverCampaignSlotDecision(params: {
   empresaId: unknown;
   sourceType: string | null | undefined;

@@ -90,10 +90,15 @@ import {
   RETAIN_REASON_VIVER_CAMPAIGN_SPACING,
   RETAIN_REASON_VIVER_SLOT_LOCK,
   RETAIN_REASON_VIVER_SPACING_UNKNOWN,
-  type ViverInflightClaim,
-  viverCampaignSlotDecision,
   viverCampaignSpacingWaitMs,
 } from "../_shared/viver-daily-quota-policy.ts";
+
+import {
+  acquireViverCampaignSlot,
+  refuseTargetedViverCampaign,
+  RETAIN_REASON_VIVER_TARGETED_CAMPAIGN,
+} from "../_shared/viver-campaign-slot-lock.ts";
+
 
 import {
   effectiveOutboxPriority,
@@ -201,24 +206,12 @@ async function lastCampaignSentAtMs(
   return { ok: true, ms: Number.isFinite(ts) ? ts : null };
 }
 
-// Claims concorrentes de campanha da Viver (trava tenant-scoped de vaga).
-// FAIL-CLOSED: erro de consulta adia o item.
-async function inflightViverCampaignClaims(
-  empresa_id: string,
-): Promise<{ ok: boolean; rows: ViverInflightClaim[]; error?: string }> {
-  const since = new Date(Date.now() - 120_000).toISOString();
-  const { data, error } = await supabase
-    .from("orbit_whatsapp_outbox")
-    .select("id, locked_by")
-    .eq("empresa_id", empresa_id)
-    .eq("source_type", "campaign")
-    .eq("status", "processing")
-    .not("locked_at", "is", null)
-    .gte("locked_at", since)
-    .limit(50);
-  if (error) return { ok: false, rows: [], error: error.message };
-  return { ok: true, rows: (data ?? []) as ViverInflightClaim[] };
-}
+// A exclusão mútua de campanha da Viver é decidida atomicamente no banco
+// (`viver_campaign_slot_try_acquire`, advisory lock por tenant). A leitura
+// simples de claims em voo foi removida: ela permitia que dois workers
+// passassem pela verificação na mesma janela.
+
+
 
 
 // Auditoria do fail-closed do espaçamento/vaga (somente Viver campaign).
@@ -1192,31 +1185,26 @@ async function processItem(
   // A consulta só acontece para Viver + `campaign`; qualquer erro de leitura
   // ADIA o item (fail-closed) e é auditado, nunca libera envio.
   if (needsViverCampaignSpacingCheck(item.empresa_id, item.source_type)) {
-    const slotLock = await inflightViverCampaignClaims(item.empresa_id);
-    if (!slotLock.ok) {
-      await auditViverSpacingFailClosed(item, "slot_lock_query_failed", slotLock.error);
+    // Trava ATÔMICA no banco (advisory lock por tenant, mesma transação da
+    // verificação): substitui a eleição pelo menor id, que não era exclusão
+    // mútua. Erro de RPC adia (fail-closed) e é auditado.
+    const slot = await acquireViverCampaignSlot(supabase, item);
+    if (!slot.acquired) {
+      if (slot.reason === "slot_rpc_failed") {
+        await auditViverSpacingFailClosed(item, "slot_lock_rpc_failed");
+      }
+      const retainReason = slot.retain_reason ?? RETAIN_REASON_VIVER_SLOT_LOCK;
+      const waitMs = slot.wait_ms ?? 60_000;
       await releaseHeldItem(
         item,
-        RETAIN_REASON_VIVER_SLOT_LOCK,
-        new Date(Date.now() + 60_000).toISOString(),
+        retainReason,
+        new Date(Date.now() + waitMs).toISOString(),
       );
-      return { outcome: "deferred", reason: RETAIN_REASON_VIVER_SLOT_LOCK };
-    }
-    const slot = viverCampaignSlotDecision({
-      empresaId: item.empresa_id,
-      sourceType: item.source_type,
-      itemId: String(item.id),
-      inflight: slotLock.rows,
-    });
-    if (!slot.proceed) {
-      await releaseHeldItem(
-        item,
-        RETAIN_REASON_VIVER_SLOT_LOCK,
-        new Date(Date.now() + 60_000).toISOString(),
-      );
-      return { outcome: "deferred", reason: RETAIN_REASON_VIVER_SLOT_LOCK };
+      return { outcome: "deferred", reason: retainReason };
     }
 
+    // Defesa em profundidade: o espaçamento real de 30 min continua verificado
+    // pelo último envio aceito. Erro de leitura adia (fail-closed).
     const last = await lastCampaignSentAtMs(item.empresa_id);
     if (!last.ok) {
       await auditViverSpacingFailClosed(item, "last_sent_query_failed", last.error);
@@ -1244,6 +1232,7 @@ async function processItem(
       };
     }
   }
+
 
 
 
@@ -1820,6 +1809,32 @@ Deno.serve(async (req) => {
           headers: corsHeaders,
         });
       }
+
+      // A execução dirigida NÃO pode contornar a reserva atômica de vaga:
+      // campanha da Viver é recusada e segue pelo claim normal do lote.
+      // `ai_reply` dirigido continua inalterado.
+      if (
+        refuseTargetedViverCampaign(
+          (single as any).empresa_id,
+          (single as any).source_type,
+        )
+      ) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            data: {
+              deferred: true,
+              reason: RETAIN_REASON_VIVER_TARGETED_CAMPAIGN,
+            },
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
+      }
+
+
 
       // Fura-fila guard: se existe pending com prioridade maior nesse tenant e já elegível,
       // defer este item — nunca desrespeitar prioridade global.

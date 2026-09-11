@@ -9829,6 +9829,15 @@ export type Database = {
         Args: { p_token: string }
         Returns: boolean
       }
+      viver_campaign_slot_try_acquire: {
+        Args: {
+          _empresa_id: string
+          _lease_seconds?: number
+          _min_gap_seconds?: number
+          _outbox_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "super_admin" | "admin" | "vendedor" | "visualizador"
