@@ -56,6 +56,20 @@ export const VIVER_LEGACY_D1_TEMPLATE_IDS = new Set([
   "d6307e57-9e08-437a-9a93-2181ab0bde60", // grupo
 ]);
 
+/**
+ * Flows Typebot APROVADOS da Viver (individual e grupo). Nenhum outro flow
+ * `lead_recebido` do tenant autoriza reconstituição de cadência.
+ */
+export const VIVER_APPROVED_TYPEBOT_FLOW_IDS = new Set([
+  "0da4e8dc-05ee-4faa-b4ca-4b359ae5feb7", // VIVER - Qualificado -> Call Individual
+  "9f20eab5-abfe-4998-a8ac-a7afa616f1e6", // VIVER - Baixo capital -> Aula Grupo
+]);
+
+/** WhatsApp inválido/bloqueado: nunca agenda follow-up. */
+const INVALID_WHATSAPP_STATUS = new Set([
+  "invalido", "invalid", "inexistente", "bloqueado", "blocked", "banido",
+]);
+
 /** Janela do toque D1: até 48h após o envio real da campanha. */
 const D1_MAX_DELAY_SECONDS = 48 * 3600;
 
@@ -66,6 +80,38 @@ const D1_MAX_DELAY_SECONDS = 48 * 3600;
  * relatamos o motivo exato e não reinserimos a mesma ordem.
  */
 const ACTIVE_SCHEDULED_STATUS = new Set(["pending", "running", "success"]);
+
+/** Cancelamentos legítimos NUNCA são reativados nem reinseridos. */
+const CANCELLED_SCHEDULED_STATUS = new Set(["cancelled", "canceled", "cancelado"]);
+
+/**
+ * Regras ATUAIS do flow aprovado (`orbit_flows.condicoes`) aplicadas ao payload
+ * do evento REAL. Mesma semântica do dispatcher para `lead_recebido`.
+ */
+export function matchesApprovedTypebotFlowConditions(
+  condicoes: Record<string, any> | null | undefined,
+  payload: Record<string, any> | null | undefined,
+): boolean {
+  const c = condicoes ?? {};
+  const p = payload ?? {};
+  if (!c.source_id || !c.source_tipo) return false;
+  if (p.source_id !== c.source_id) return false;
+  if (p.source_tipo !== c.source_tipo) return false;
+  const match = c.payload_match;
+  if (!match || typeof match !== "object") return false;
+  const raw = (p.raw ?? {}) as Record<string, any>;
+  for (const [rawKey, expected] of Object.entries(match)) {
+    const key = rawKey.startsWith("raw.") ? rawKey.slice(4) : rawKey;
+    const actual = raw[key];
+    if (Array.isArray(expected)) {
+      if (!expected.includes(actual)) return false;
+    } else if (String(actual ?? "") !== String(expected)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 
 
 export interface FollowupActionRow {
@@ -105,6 +151,16 @@ export interface FollowupDecision {
   flow_id?: string | null;
   run_id?: string | null;
   anchor_sent_at?: string | null;
+  /**
+   * Fallback auditável: nenhum run antigo existe, mas o EVENTO real do prospect
+   * casa com as regras atuais do flow aprovado. Um novo run é criado apenas
+   * como ÂNCORA (D0 nunca é reexecutado, nenhuma ação recebe status falso).
+   */
+  fallback_anchor?: {
+    event_id: string;
+    flow_id: string;
+    reason: "no_prior_lead_recebido_run";
+  } | null;
   /** Lembretes de reunião nunca são tocados por esta rotina. */
   preserve_meeting_reminders: true;
 }
@@ -144,6 +200,7 @@ export interface FollowupFacts {
     empresa_id?: string | null;
     deleted_at?: string | null;
     optout_whatsapp?: boolean | null;
+    whatsapp_status?: string | null;
   } | null;
   conversa?: {
     id?: string | null;
@@ -193,6 +250,35 @@ export interface FollowupFacts {
   existing_run_ordens?: Array<{ ordem: number; status?: string | null }>;
   /** Houve toque D1 REAL com template legado (individual ou grupo). */
   legacy_d1_touch_sent?: boolean;
+  /**
+   * FAIL-CLOSED: qualquer leitura de segurança que falhou (erro de query).
+   * Preenchido, a reconstituição inteira é negada/adiada.
+   */
+  read_error?: string | null;
+  /** action_ids com agendamento CANCELADO: nunca reativados. */
+  cancelled_action_ids?: string[];
+  /**
+   * Fallback explícito: usado SOMENTE quando não existe run `lead_recebido`
+   * antigo. Exige evento REAL do prospect + flow aprovado cujas regras atuais
+   * casem exatamente com o payload do evento.
+   */
+  fallback_candidate?: {
+    event?: {
+      id?: string | null;
+      empresa_id?: string | null;
+      event_type?: string | null;
+      entity_type?: string | null;
+      entity_id?: string | null;
+      payload?: Record<string, any> | null;
+    } | null;
+    flow?: {
+      id?: string | null;
+      empresa_id?: string | null;
+      ativo?: boolean | null;
+      trigger_type?: string | null;
+      condicoes?: Record<string, any> | null;
+    } | null;
+  } | null;
 }
 
 
@@ -234,6 +320,9 @@ export function isApprovedControlledFollowupAction(action: FollowupActionRow): b
 export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDecision {
   const empresaId = f.empresa_id ?? null;
   if (empresaId !== VIVER_FOLLOWUP_EMPRESA_ID) return blocked("not_viver_tenant");
+
+  // ── 0. FAIL-CLOSED: leitura de segurança que falhou nega/adia tudo.
+  if (f.read_error) return blocked("evidence_read_failed");
 
   // ── 1. Envio REAL de campanha controlada (outbox)
   const out = f.outbox ?? null;
@@ -278,6 +367,9 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
   if (p.empresa_id && p.empresa_id !== empresaId) return blocked("cross_tenant");
   if (p.deleted_at) return blocked("prospect_deleted");
   if (p.optout_whatsapp === true) return blocked("opt_out");
+  if (INVALID_WHATSAPP_STATUS.has(String(p.whatsapp_status ?? "").toLowerCase())) {
+    return blocked("prospect_whatsapp_invalid");
+  }
   if (f.terminal_deal === true) return blocked("terminal_deal");
 
   const c = f.conversa ?? null;
@@ -296,18 +388,60 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
   // Reunião: para sem tocar em nenhum lembrete já agendado.
   if ((f.future_meeting_count ?? 0) > 0) return blocked("meeting_scheduled");
 
-  // ── 5. Run/event `lead_recebido` já existentes (flow original do prospect)
+  // ── 5. Run/event `lead_recebido` do flow Typebot APROVADO (ou fallback ancorado)
+  let effectiveRunId: string | null = null;
+  let effectiveFlowId: string | null = null;
+  let fallbackAnchor: FollowupDecision["fallback_anchor"] = null;
+
   const run = f.run ?? null;
-  if (!run?.id || !run.flow_id) return blocked("lead_recebido_run_missing");
-  if (run.empresa_id && run.empresa_id !== empresaId) return blocked("cross_tenant");
-  if (String(run.entity_type ?? "prospect") !== "prospect") return blocked("run_entity_invalid");
-  if (String(run.entity_id ?? "") !== String(p.id)) return blocked("run_other_prospect");
-  const ev = f.event ?? null;
-  if (!ev?.id) return blocked("lead_recebido_event_missing");
-  if (run.event_id && String(run.event_id) !== String(ev.id)) return blocked("event_mismatch");
-  if (ev.empresa_id && ev.empresa_id !== empresaId) return blocked("cross_tenant");
-  if (String(ev.event_type ?? "") !== "lead_recebido") return blocked("event_not_lead_recebido");
-  if (String(ev.entity_id ?? "") !== String(p.id)) return blocked("event_other_prospect");
+  if (run?.id && run.flow_id) {
+    if (run.empresa_id && run.empresa_id !== empresaId) return blocked("cross_tenant");
+    if (String(run.entity_type ?? "prospect") !== "prospect") return blocked("run_entity_invalid");
+    if (String(run.entity_id ?? "") !== String(p.id)) return blocked("run_other_prospect");
+    if (!VIVER_APPROVED_TYPEBOT_FLOW_IDS.has(String(run.flow_id))) {
+      return blocked("run_flow_not_approved_typebot");
+    }
+    const ev = f.event ?? null;
+    if (!ev?.id) return blocked("lead_recebido_event_missing");
+    if (run.event_id && String(run.event_id) !== String(ev.id)) return blocked("event_mismatch");
+    if (ev.empresa_id && ev.empresa_id !== empresaId) return blocked("cross_tenant");
+    if (String(ev.event_type ?? "") !== "lead_recebido") return blocked("event_not_lead_recebido");
+    if (String(ev.entity_type ?? "prospect") !== "prospect") return blocked("event_entity_invalid");
+    if (String(ev.entity_id ?? "") !== String(p.id)) return blocked("event_other_prospect");
+    effectiveRunId = String(run.id);
+    effectiveFlowId = String(run.flow_id);
+  } else {
+    // Fallback auditável: sem run antigo, exige EVENTO real + flow aprovado
+    // cujas regras ATUAIS casem exatamente com o payload do evento. Nenhum run
+    // antigo é inventado; nenhuma ação recebe status de executada.
+    const fb = f.fallback_candidate ?? null;
+    const fev = fb?.event ?? null;
+    const fflow = fb?.flow ?? null;
+    if (!fev?.id || !fflow?.id) return blocked("lead_recebido_run_missing");
+    if (fev.empresa_id && fev.empresa_id !== empresaId) return blocked("cross_tenant");
+    if (String(fev.event_type ?? "") !== "lead_recebido") return blocked("event_not_lead_recebido");
+    if (String(fev.entity_type ?? "") !== "prospect") return blocked("event_entity_invalid");
+    if (String(fev.entity_id ?? "") !== String(p.id)) return blocked("event_other_prospect");
+    if (fflow.empresa_id && fflow.empresa_id !== empresaId) return blocked("cross_tenant");
+    if (!VIVER_APPROVED_TYPEBOT_FLOW_IDS.has(String(fflow.id))) {
+      return blocked("fallback_flow_not_approved_typebot");
+    }
+    if (fflow.ativo !== true) return blocked("fallback_flow_inactive");
+    if (fflow.trigger_type && String(fflow.trigger_type) !== "lead_recebido") {
+      return blocked("fallback_flow_trigger_invalid");
+    }
+    if (!matchesApprovedTypebotFlowConditions(fflow.condicoes, fev.payload)) {
+      return blocked("fallback_flow_rules_mismatch");
+    }
+    effectiveRunId = null; // run âncora criado na execução, sem reexecutar D0
+    effectiveFlowId = String(fflow.id);
+    fallbackAnchor = {
+      event_id: String(fev.id),
+      flow_id: String(fflow.id),
+      reason: "no_prior_lead_recebido_run",
+    };
+  }
+  const anchorFlowId = String(effectiveFlowId);
 
   // ── 6. Plano: somente ações aprovadas do flow original, ancoradas no sent_at
   const actions = (f.actions ?? []).filter((a) => a && a.id);
@@ -315,6 +449,8 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
   const existingKeys = new Set(f.existing_cadence_keys ?? []);
   const existingActions = new Set((f.existing_action_ids ?? []).map(String));
   const acceptedTemplates = new Set((f.accepted_template_ids ?? []).map(String));
+  // Cancelamento legítimo nunca é reativado.
+  const cancelledActions = new Set((f.cancelled_action_ids ?? []).map(String));
   // UNIQUE parcial (run_id, ordem): ordem ocupada não pode ser reinserida.
   const occupiedOrdens = new Map<number, string>();
   for (const row of f.existing_run_ordens ?? []) {
@@ -331,7 +467,7 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
 
   for (const action of actions) {
     const actionId = String(action.id);
-    if (String(action.flow_id ?? run.flow_id) !== String(run.flow_id)) {
+    if (String(action.flow_id ?? anchorFlowId) !== anchorFlowId) {
       skipped.push({ action_id: actionId, reason: "action_other_flow" });
       continue;
     }
@@ -347,11 +483,15 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
     const cadenceKey = followupCadenceKey({
       empresa_id: empresaId,
       prospect_id: p.id,
-      flow_id: run.flow_id,
+      flow_id: anchorFlowId,
       action_id: actionId,
     });
     if (!cadenceKey) {
       skipped.push({ action_id: actionId, reason: "cadence_key_unavailable" });
+      continue;
+    }
+    if (cancelledActions.has(actionId)) {
+      skipped.push({ action_id: actionId, reason: "cancelled_not_reactivated" });
       continue;
     }
     if (existingKeys.has(cadenceKey) || existingActions.has(actionId)) {
@@ -385,7 +525,7 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
 
     plan.push({
       action_id: actionId,
-      flow_id: String(run.flow_id),
+      flow_id: anchorFlowId,
       ordem: Number(action.ordem ?? 0),
       action_type: "send_whatsapp_template",
       action_config: cfg,
@@ -405,9 +545,10 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
       skipped,
       campaign_id: camp.id,
       batch_label: batchLabel,
-      flow_id: String(run.flow_id),
-      run_id: String(run.id),
+      flow_id: anchorFlowId,
+      run_id: effectiveRunId,
       anchor_sent_at: new Date(anchorMs).toISOString(),
+      fallback_anchor: fallbackAnchor,
       preserve_meeting_reminders: true,
     };
   }
@@ -423,9 +564,10 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
     skipped,
     campaign_id: camp.id,
     batch_label: batchLabel,
-    flow_id: String(run.flow_id),
-    run_id: String(run.id),
+    flow_id: anchorFlowId,
+    run_id: effectiveRunId,
     anchor_sent_at: new Date(anchorMs).toISOString(),
+    fallback_anchor: fallbackAnchor,
     preserve_meeting_reminders: true,
   };
 }
@@ -440,8 +582,18 @@ async function loadFacts(
 ): Promise<FollowupFacts> {
   const empresaId = VIVER_FOLLOWUP_EMPRESA_ID;
   const prospectId = outboxRow?.prospect_id ?? null;
+  // FAIL-CLOSED: qualquer leitura de segurança que falhe é registrada e faz a
+  // decisão negar/adiar. Nunca liberamos agendamento com evidência incompleta.
+  const readErrors: string[] = [];
+  const take = <T>(label: string, res: any, fallback: T): T => {
+    if (res?.error) {
+      readErrors.push(label);
+      return fallback;
+    }
+    return (res?.data ?? fallback) as T;
+  };
 
-  const [{ data: outMsgs }, { data: campaign }, { data: prospect }] = await Promise.all([
+  const [outMsgsRes, campaignRes, prospectRes] = await Promise.all([
     supabase
       .from("orbit_mensagens")
       .select("id, empresa_id, conversa_id, campaign_id, direcao, status, provider_message_id, timestamp")
@@ -458,44 +610,60 @@ async function loadFacts(
       .maybeSingle(),
     supabase
       .from("orbit_prospects")
-      .select("id, empresa_id, deleted_at, optout_whatsapp")
+      .select("id, empresa_id, deleted_at, optout_whatsapp, whatsapp_status")
       .eq("id", prospectId)
       .eq("empresa_id", empresaId)
       .maybeSingle(),
   ]);
+  const outMsgs = take<any[]>("out_messages", outMsgsRes, []);
+  const campaign = take<any>("campaign", campaignRes, null);
+  const prospect = take<any>("prospect", prospectRes, null);
 
-  const outMessage = ((outMsgs ?? []) as any[])[0] ?? null;
+  const outMessage = (outMsgs ?? [])[0] ?? null;
   const conversaId = outboxRow.conversa_id ?? outMessage?.conversa_id ?? null;
 
-  const { data: conversa } = conversaId
-    ? await supabase
-      .from("orbit_conversas")
-      .select("id, empresa_id, prospect_id, human_talk, human_user_id, handoff_sent_at, archived_at, quarantine_reason, status")
-      .eq("id", conversaId)
-      .eq("empresa_id", empresaId)
-      .maybeSingle()
-    : { data: null };
+  const conversa = conversaId
+    ? take<any>(
+      "conversa",
+      await supabase
+        .from("orbit_conversas")
+        .select("id, empresa_id, prospect_id, human_talk, human_user_id, handoff_sent_at, archived_at, quarantine_reason, status")
+        .eq("id", conversaId)
+        .eq("empresa_id", empresaId)
+        .maybeSingle(),
+      null,
+    )
+    : null;
 
   // Run lead_recebido existente da mesma empresa/prospect (flow original).
-  const { data: runs } = await supabase
-    .from("orbit_flow_runs")
-    .select("id, empresa_id, flow_id, event_id, entity_type, entity_id, created_at")
-    .eq("empresa_id", empresaId)
-    .eq("entity_type", "prospect")
-    .eq("entity_id", prospectId)
-    .order("created_at", { ascending: false })
-    .limit(10);
+  const runs = take<any[]>(
+    "flow_runs",
+    await supabase
+      .from("orbit_flow_runs")
+      .select("id, empresa_id, flow_id, event_id, entity_type, entity_id, created_at")
+      .eq("empresa_id", empresaId)
+      .eq("entity_type", "prospect")
+      .eq("entity_id", prospectId)
+      .order("created_at", { ascending: false })
+      .limit(10),
+    [],
+  );
 
   let run: any = null;
   let event: any = null;
-  for (const candidate of (runs ?? []) as any[]) {
+  for (const candidate of runs ?? []) {
     if (!candidate?.event_id || !candidate?.flow_id) continue;
-    const { data: ev } = await supabase
-      .from("orbit_flow_events")
-      .select("id, empresa_id, event_type, entity_type, entity_id")
-      .eq("id", candidate.event_id)
-      .eq("empresa_id", empresaId)
-      .maybeSingle();
+    if (!VIVER_APPROVED_TYPEBOT_FLOW_IDS.has(String(candidate.flow_id))) continue;
+    const ev = take<any>(
+      "flow_event",
+      await supabase
+        .from("orbit_flow_events")
+        .select("id, empresa_id, event_type, entity_type, entity_id")
+        .eq("id", candidate.event_id)
+        .eq("empresa_id", empresaId)
+        .maybeSingle(),
+      null,
+    );
     if (ev?.event_type === "lead_recebido") {
       run = candidate;
       event = ev;
@@ -503,83 +671,158 @@ async function loadFacts(
     }
   }
 
-  const { data: actions } = run?.flow_id
-    ? await supabase
-      .from("orbit_flow_actions")
-      .select("id, flow_id, ordem, action_type, action_config, delay_seconds")
-      .eq("flow_id", run.flow_id)
-      .order("ordem", { ascending: true })
-    : { data: [] };
+  // Fallback auditável: sem run antigo de flow aprovado, procuramos o EVENTO
+  // REAL `lead_recebido` do prospect e o flow aprovado cujas regras atuais
+  // casem exatamente com o payload. Nenhum run antigo é inventado.
+  let fallbackCandidate: FollowupFacts["fallback_candidate"] = null;
+  if (!run) {
+    const events = take<any[]>(
+      "fallback_events",
+      await supabase
+        .from("orbit_flow_events")
+        .select("id, empresa_id, event_type, entity_type, entity_id, payload, created_at")
+        .eq("empresa_id", empresaId)
+        .eq("event_type", "lead_recebido")
+        .eq("entity_type", "prospect")
+        .eq("entity_id", prospectId)
+        .order("created_at", { ascending: false })
+        .limit(5),
+      [],
+    );
+    const flows = events.length > 0
+      ? take<any[]>(
+        "fallback_flows",
+        await supabase
+          .from("orbit_flows")
+          .select("id, empresa_id, ativo, trigger_type, condicoes")
+          .eq("empresa_id", empresaId)
+          .in("id", [...VIVER_APPROVED_TYPEBOT_FLOW_IDS]),
+        [],
+      )
+      : [];
+    outer: for (const ev of events) {
+      for (const flow of flows) {
+        if (flow?.ativo !== true) continue;
+        if (String(flow?.trigger_type ?? "lead_recebido") !== "lead_recebido") continue;
+        if (matchesApprovedTypebotFlowConditions(flow?.condicoes, ev?.payload)) {
+          fallbackCandidate = { event: ev, flow };
+          break outer;
+        }
+      }
+    }
+  }
+
+  const anchorFlowId = run?.flow_id ?? fallbackCandidate?.flow?.id ?? null;
+  const actions = anchorFlowId
+    ? take<any[]>(
+      "flow_actions",
+      await supabase
+        .from("orbit_flow_actions")
+        .select("id, flow_id, ordem, action_type, action_config, delay_seconds")
+        .eq("flow_id", anchorFlowId)
+        .order("ordem", { ascending: true }),
+      [],
+    )
+    : [];
 
   // Resposta do lead posterior ao envio real.
-  const { data: inbound } = conversaId
-    ? await supabase
-      .from("orbit_mensagens")
-      .select("id")
-      .eq("empresa_id", empresaId)
-      .eq("conversa_id", conversaId)
-      .eq("direcao", "IN")
-      .gt("timestamp", outboxRow.sent_at)
-      .limit(1)
-    : { data: [] };
+  const inbound = conversaId
+    ? take<any[]>(
+      "inbound_after_send",
+      await supabase
+        .from("orbit_mensagens")
+        .select("id")
+        .eq("empresa_id", empresaId)
+        .eq("conversa_id", conversaId)
+        .eq("direcao", "IN")
+        .gt("timestamp", outboxRow.sent_at)
+        .limit(1),
+      [],
+    )
+    : [];
 
-  const { data: humanMsgs } = conversaId
-    ? await supabase
-      .from("orbit_mensagens")
-      .select("id")
-      .eq("empresa_id", empresaId)
-      .eq("conversa_id", conversaId)
-      .in("sender_type", ["human_phone", "human_orbit"])
-      .limit(1)
-    : { data: [] };
+  const humanMsgs = conversaId
+    ? take<any[]>(
+      "human_messages",
+      await supabase
+        .from("orbit_mensagens")
+        .select("id")
+        .eq("empresa_id", empresaId)
+        .eq("conversa_id", conversaId)
+        .in("sender_type", ["human_phone", "human_orbit"])
+        .limit(1),
+      [],
+    )
+    : [];
 
-  const { data: meetings } = await supabase
-    .from("orbit_meetings")
-    .select("id, status, scheduled_at")
-    .eq("empresa_id", empresaId)
-    .eq("prospect_id", prospectId)
-    .gte("scheduled_at", new Date().toISOString())
-    .limit(10);
-  const futureMeetingCount = ((meetings ?? []) as any[])
-    .filter((m) => !["cancelled", "canceled", "cancelada"].includes(String(m?.status ?? "").toLowerCase()))
+  const meetings = take<any[]>(
+    "meetings",
+    await supabase
+      .from("orbit_meetings")
+      .select("id, status, scheduled_at")
+      .eq("empresa_id", empresaId)
+      .eq("prospect_id", prospectId)
+      .gte("scheduled_at", new Date().toISOString())
+      .limit(10),
+    [],
+  );
+  const futureMeetingCount = (meetings ?? [])
+    .filter((m: any) => !["cancelled", "canceled", "cancelada"].includes(String(m?.status ?? "").toLowerCase()))
     .length;
 
-  const { data: deals } = await supabase
-    .from("orbit_deals")
-    .select("id, status, deleted_at")
-    .eq("empresa_id", empresaId)
-    .eq("prospect_id", prospectId)
-    .limit(10);
-  const terminalDeal = ((deals ?? []) as any[]).some((d) =>
+  const deals = take<any[]>(
+    "deals",
+    await supabase
+      .from("orbit_deals")
+      .select("id, status, deleted_at")
+      .eq("empresa_id", empresaId)
+      .eq("prospect_id", prospectId)
+      .limit(10),
+    [],
+  );
+  const terminalDeal = (deals ?? []).some((d: any) =>
     d?.deleted_at ||
     ["won", "lost", "ganho", "perdido", "deleted"].includes(String(d?.status ?? "").toLowerCase())
   );
 
   // Dedupe: agendamentos já existentes do prospect (qualquer status) e ordens
   // ocupadas no MESMO run (UNIQUE parcial run_id+ordem).
-  const { data: scheduled } = await supabase
-    .from("orbit_flow_scheduled_actions")
-    .select("id, run_id, action_id, ordem, cadence_key, status")
-    .eq("empresa_id", empresaId)
-    .eq("prospect_id", prospectId)
-    .limit(200);
-  const runOrdens = ((scheduled ?? []) as any[])
-    .filter((r) => run?.id && String(r?.run_id ?? "") === String(run.id))
-    .map((r) => ({ ordem: Number(r?.ordem ?? -1), status: r?.status ?? null }))
-    .filter((r) => Number.isFinite(r.ordem) && r.ordem >= 0);
+  const scheduled = take<any[]>(
+    "scheduled_actions",
+    await supabase
+      .from("orbit_flow_scheduled_actions")
+      .select("id, run_id, action_id, ordem, cadence_key, status")
+      .eq("empresa_id", empresaId)
+      .eq("prospect_id", prospectId)
+      .limit(200),
+    [],
+  );
+  const runOrdens = (scheduled ?? [])
+    .filter((r: any) => run?.id && String(r?.run_id ?? "") === String(run.id))
+    .map((r: any) => ({ ordem: Number(r?.ordem ?? -1), status: r?.status ?? null }))
+    .filter((r: any) => Number.isFinite(r.ordem) && r.ordem >= 0);
+  const cancelledActionIds = (scheduled ?? [])
+    .filter((r: any) => CANCELLED_SCHEDULED_STATUS.has(String(r?.status ?? "").toLowerCase()))
+    .map((r: any) => r?.action_id)
+    .filter(Boolean)
+    .map(String);
 
   // Dedupe por TOQUE REAL já aceito: somente outbox efetivamente `sent` com
   // confirmação do provedor. Pendentes/failed/canceled não contam como toque.
-  const { data: followupOutbox } = await supabase
-    .from("orbit_whatsapp_outbox")
-    .select("id, status, source_id, provider_message_id, payload")
-    .eq("empresa_id", empresaId)
-    .eq("prospect_id", prospectId)
-    .in("source_type", ["flow_followup", "flow_initial"])
-    .limit(200);
+  const followupOutbox = take<any[]>(
+    "followup_outbox",
+    await supabase
+      .from("orbit_whatsapp_outbox")
+      .select("id, status, source_id, provider_message_id, payload")
+      .eq("empresa_id", empresaId)
+      .eq("prospect_id", prospectId)
+      .in("source_type", ["flow_followup", "flow_initial"])
+      .limit(200),
+    [],
+  );
   const acceptedTemplates: string[] = [];
   const acceptedActionIds: string[] = [];
-  for (const row of (followupOutbox ?? []) as any[]) {
+  for (const row of followupOutbox ?? []) {
     const status = String(row?.status ?? "").toLowerCase();
     if (DEAD_OUTBOX_STATUS.has(status)) continue;
     if (status !== "sent" || !row?.provider_message_id) continue;
@@ -591,7 +834,6 @@ async function loadFacts(
     VIVER_LEGACY_D1_TEMPLATE_IDS.has(t)
   );
 
-
   return {
     empresa_id: empresaId,
     outbox: outboxRow,
@@ -601,23 +843,25 @@ async function loadFacts(
     conversa: conversa ?? null,
     run,
     event,
+    fallback_candidate: fallbackCandidate,
     actions: (actions ?? []) as FollowupActionRow[],
     inbound_after_send_count: (inbound ?? []).length,
     external_human_message_count: (humanMsgs ?? []).length,
     future_meeting_count: futureMeetingCount,
     terminal_deal: terminalDeal,
-    existing_cadence_keys: ((scheduled ?? []) as any[])
-      .map((r) => r?.cadence_key)
+    existing_cadence_keys: (scheduled ?? [])
+      .map((r: any) => r?.cadence_key)
       .filter(Boolean)
       .map(String),
     existing_action_ids: [
-      ...((scheduled ?? []) as any[]).map((r) => r?.action_id).filter(Boolean).map(String),
+      ...(scheduled ?? []).map((r: any) => r?.action_id).filter(Boolean).map(String),
       ...acceptedActionIds,
     ],
+    cancelled_action_ids: cancelledActionIds,
     accepted_template_ids: acceptedTemplates,
     existing_run_ordens: runOrdens,
     legacy_d1_touch_sent: legacyD1Sent,
-
+    read_error: readErrors.length > 0 ? readErrors.join(",") : null,
   };
 }
 
@@ -649,12 +893,13 @@ export async function reconstituteViverControlledFollowups(
   if (params.empresa_id !== VIVER_FOLLOWUP_EMPRESA_ID) return empty("not_viver_tenant");
 
   try {
-    const { data: outboxRow } = await supabase
+    const { data: outboxRow, error: outboxError } = await supabase
       .from("orbit_whatsapp_outbox")
       .select("id, empresa_id, prospect_id, conversa_id, campaign_id, source_type, status, provider_message_id, sent_at, metadata")
       .eq("id", params.outbox_id)
       .eq("empresa_id", params.empresa_id)
       .maybeSingle();
+    if (outboxError) return empty("evidence_read_failed");
     if (!outboxRow) return empty("outbox_missing");
     if (
       String(outboxRow.source_type ?? "") !== "campaign" ||
@@ -677,6 +922,41 @@ export async function reconstituteViverControlledFollowups(
       };
     }
 
+    // Fallback auditável: sem run antigo, criamos um run ÂNCORA. Status
+    // `skipped` deixa explícito que NADA foi executado (D0 não é reexecutado e
+    // nenhuma ação recebe status falso de envio).
+    let runId = decision.run_id ?? null;
+    if (!runId) {
+      const anchor = decision.fallback_anchor;
+      if (!anchor) return empty("anchor_run_unavailable");
+      const { data: newRun, error: runError } = await supabase
+        .from("orbit_flow_runs")
+        .insert({
+          empresa_id: VIVER_FOLLOWUP_EMPRESA_ID,
+          flow_id: anchor.flow_id,
+          event_id: anchor.event_id,
+          entity_type: "prospect",
+          entity_id: facts.prospect?.id ?? null,
+          status: "skipped",
+          context: {
+            viver_followup_fallback_anchor: {
+              version: VIVER_FOLLOWUP_RECONSTITUTION_VERSION,
+              reason: anchor.reason,
+              event_id: anchor.event_id,
+              campaign_id: decision.campaign_id,
+              batch_label: decision.batch_label,
+              anchor_sent_at: decision.anchor_sent_at,
+              d0_not_executed: true,
+              actions_not_executed: true,
+            },
+          },
+        })
+        .select("id")
+        .maybeSingle();
+      if (runError || !(newRun as any)?.id) return empty("anchor_run_insert_failed");
+      runId = String((newRun as any).id);
+    }
+
     const scheduledIds: string[] = [];
     let deduped = 0;
     for (const item of decision.plan) {
@@ -684,7 +964,7 @@ export async function reconstituteViverControlledFollowups(
         .from("orbit_flow_scheduled_actions")
         .insert({
           empresa_id: VIVER_FOLLOWUP_EMPRESA_ID,
-          run_id: decision.run_id,
+          run_id: runId,
           flow_id: item.flow_id,
           action_id: item.action_id,
           ordem: item.ordem,
@@ -733,7 +1013,8 @@ export async function reconstituteViverControlledFollowups(
           campaign_id: decision.campaign_id,
           batch_label: decision.batch_label,
           flow_id: decision.flow_id,
-          run_id: decision.run_id,
+          run_id: runId,
+          fallback_anchor: decision.fallback_anchor ?? null,
           anchor_sent_at: decision.anchor_sent_at,
           scheduled_ids: scheduledIds,
           deduped,
@@ -774,7 +1055,7 @@ export async function reconcileViverControlledFollowups(
   const maxRuns = opts.maxRuns ?? 5;
 
   try {
-    const { data: rows } = await supabase
+    const { data: rows, error } = await supabase
       .from("orbit_whatsapp_outbox")
       .select("id, prospect_id, sent_at")
       .eq("empresa_id", empresa_id)
@@ -784,25 +1065,19 @@ export async function reconcileViverControlledFollowups(
       .gte("sent_at", new Date(Date.now() - lookback).toISOString())
       .order("sent_at", { ascending: false })
       .limit(maxCandidates);
+    if (error) return { candidates: 0, reconstituted: 0 };
     const candidates = ((rows ?? []) as any[]).filter((r) => r?.prospect_id);
     if (candidates.length === 0) return { candidates: 0, reconstituted: 0 };
 
-    // Uma única leitura para descartar prospects que já possuem cadência.
-    const { data: scheduled } = await supabase
-      .from("orbit_flow_scheduled_actions")
-      .select("prospect_id")
-      .eq("empresa_id", empresa_id)
-      .in("prospect_id", candidates.map((r) => r.prospect_id))
-      .limit(500);
-    const already = new Set(
-      ((scheduled ?? []) as any[]).map((r) => String(r?.prospect_id ?? "")),
-    );
-
+    // A existência de QUALQUER agendamento não significa cadência completa:
+    // sucesso parcial (D1 gravado, D3 falhou) precisa ser reparado. Por isso
+    // cada candidato é reavaliado ação por ação — o dedupe por
+    // cadence_key/action_id/ordem/toque real evita qualquer repetição, e
+    // cancelamentos legítimos nunca são reativados.
     let reconstituted = 0;
     let runs = 0;
     for (const row of candidates) {
       if (runs >= maxRuns) break;
-      if (already.has(String(row.prospect_id))) continue;
       runs++;
       const r = await reconstituteViverControlledFollowups(supabase, {
         empresa_id,
@@ -847,7 +1122,7 @@ export async function proveViverControlledFollowup(
   if (!input.prospect_id) return { allowed: false, reason: "context_incomplete" };
 
   try {
-    const { data: rows } = await supabase
+    const { data: rows, error } = await supabase
       .from("orbit_whatsapp_outbox")
       .select("id, empresa_id, prospect_id, conversa_id, campaign_id, source_type, status, provider_message_id, sent_at, metadata")
       .eq("empresa_id", VIVER_FOLLOWUP_EMPRESA_ID)
@@ -857,6 +1132,8 @@ export async function proveViverControlledFollowup(
       .not("provider_message_id", "is", null)
       .order("sent_at", { ascending: false })
       .limit(5);
+    // Fail-closed: leitura de evidência que falha nunca prova nada.
+    if (error) return { allowed: false, reason: "controlled_followup_proof_failed" };
 
     for (const outboxRow of (rows ?? []) as any[]) {
       const facts = await loadFacts(supabase, outboxRow);
@@ -864,14 +1141,28 @@ export async function proveViverControlledFollowup(
       // ações restantes) não é requisito para autorizar o toque já agendado.
       const decision = decideViverFollowupReconstitution(facts);
       const proven = decision.allowed || decision.reason === "nothing_to_schedule";
-      if (proven) {
-        return {
-          allowed: true,
-          reason: "viver_controlled_followup_proven",
-          campaign_id: decision.campaign_id ?? null,
-          batch_label: decision.batch_label ?? null,
-        };
+      if (!proven) continue;
+      // A conversa recebida no contexto DEVE coincidir com a conversa da OUT /
+      // do prospect provado. Contexto de outra conversa nunca é autorizado.
+      if (input.conversa_id) {
+        const provenConversas = [
+          facts.outbox?.conversa_id,
+          facts.out_message?.conversa_id,
+          facts.conversa?.id,
+        ].filter(Boolean).map(String);
+        if (provenConversas.length === 0) continue;
+        if (!provenConversas.includes(String(input.conversa_id))) continue;
       }
+      if (facts.conversa?.prospect_id &&
+        String(facts.conversa.prospect_id) !== String(input.prospect_id)) {
+        continue;
+      }
+      return {
+        allowed: true,
+        reason: "viver_controlled_followup_proven",
+        campaign_id: decision.campaign_id ?? null,
+        batch_label: decision.batch_label ?? null,
+      };
     }
     return { allowed: false, reason: "controlled_campaign_proof_missing" };
   } catch (_e) {
