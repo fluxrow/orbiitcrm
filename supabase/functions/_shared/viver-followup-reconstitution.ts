@@ -1013,7 +1013,8 @@ export async function reconstituteViverControlledFollowups(
           campaign_id: decision.campaign_id,
           batch_label: decision.batch_label,
           flow_id: decision.flow_id,
-          run_id: decision.run_id,
+          run_id: runId,
+          fallback_anchor: decision.fallback_anchor ?? null,
           anchor_sent_at: decision.anchor_sent_at,
           scheduled_ids: scheduledIds,
           deduped,
@@ -1054,7 +1055,7 @@ export async function reconcileViverControlledFollowups(
   const maxRuns = opts.maxRuns ?? 5;
 
   try {
-    const { data: rows } = await supabase
+    const { data: rows, error } = await supabase
       .from("orbit_whatsapp_outbox")
       .select("id, prospect_id, sent_at")
       .eq("empresa_id", empresa_id)
@@ -1064,25 +1065,19 @@ export async function reconcileViverControlledFollowups(
       .gte("sent_at", new Date(Date.now() - lookback).toISOString())
       .order("sent_at", { ascending: false })
       .limit(maxCandidates);
+    if (error) return { candidates: 0, reconstituted: 0 };
     const candidates = ((rows ?? []) as any[]).filter((r) => r?.prospect_id);
     if (candidates.length === 0) return { candidates: 0, reconstituted: 0 };
 
-    // Uma única leitura para descartar prospects que já possuem cadência.
-    const { data: scheduled } = await supabase
-      .from("orbit_flow_scheduled_actions")
-      .select("prospect_id")
-      .eq("empresa_id", empresa_id)
-      .in("prospect_id", candidates.map((r) => r.prospect_id))
-      .limit(500);
-    const already = new Set(
-      ((scheduled ?? []) as any[]).map((r) => String(r?.prospect_id ?? "")),
-    );
-
+    // A existência de QUALQUER agendamento não significa cadência completa:
+    // sucesso parcial (D1 gravado, D3 falhou) precisa ser reparado. Por isso
+    // cada candidato é reavaliado ação por ação — o dedupe por
+    // cadence_key/action_id/ordem/toque real evita qualquer repetição, e
+    // cancelamentos legítimos nunca são reativados.
     let reconstituted = 0;
     let runs = 0;
     for (const row of candidates) {
       if (runs >= maxRuns) break;
-      if (already.has(String(row.prospect_id))) continue;
       runs++;
       const r = await reconstituteViverControlledFollowups(supabase, {
         empresa_id,
