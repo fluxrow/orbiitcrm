@@ -1752,6 +1752,7 @@ Deno.serve(async (req) => {
       tick_id: tickId,
       tenants: empresaIds.length,
       results,
+      viver_followup_reconcile: viverFollowupReconcile,
       duration_ms: Date.now() - t0,
     };
     console.log(JSON.stringify({ scope: "outbox_tick_summary", ...summary }));
