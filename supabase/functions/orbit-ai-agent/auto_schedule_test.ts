@@ -270,7 +270,7 @@ Deno.test("Viver: remarcação com 'dia 16 às 16h' cria uma meeting na data exp
   params.empresaId = VIVER_EMPRESA_ID;
   params.mensagem_cliente = "dia 16 às 16h";
   params.remarcacao_estado = { active: true, reason: "change_day", requested_at: FROZEN_NOW.toISOString() };
-  params.agendamento = { ...params.agendamento, data_iso: "2026-08-16T19:00:00.000Z", tem_horario: true };
+  params.agendamento = { ...params.agendamento, data_iso: "2026-09-16T19:00:00.000Z", tem_horario: true };
   const res = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, params, {
     getTokenForEmpresa: async () => TOKEN,
     ensureFreshAccessToken: async () => "at",
@@ -281,7 +281,7 @@ Deno.test("Viver: remarcação com 'dia 16 às 16h' cria uma meeting na data exp
   assertEquals(res.created, true);
   assertEquals(res.reschedule_state, undefined);
   assertEquals(state.meetings.length, 1);
-  assertEquals(state.meetings[0].scheduled_at, "2026-08-16T19:00:00.000Z");
+  assertEquals(state.meetings[0].scheduled_at, "2026-09-16T19:00:00.000Z");
 });
 
 Deno.test("Viver: '16' sem intenção anterior mantém comportamento atual", async () => {

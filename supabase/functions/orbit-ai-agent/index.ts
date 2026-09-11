@@ -2309,6 +2309,7 @@ ${regrasBlock}`;
       awaiting_period?: boolean;
       preferred_period?: string | null;
       handoff_ready?: boolean;
+      reschedule_state?: ViverRescheduleState | null;
     } = { handled: false };
     if (intencaoNormalizada === "agendar_call" && empresaId) {
       const schedulingDecision = resolveTenantSchedulingDecision({
@@ -2452,7 +2453,20 @@ ${regrasBlock}`;
       agendamento_aguardando_periodo: scheduleOutcome.awaiting_period === true,
       agendamento_periodo_preferido: scheduleOutcome.preferred_period || aiContexto.agendamento_periodo_preferido || null,
       agendamento_remarcacao: empresaId === VIVER_EMPRESA_ID
-        ? (scheduleOutcome.reschedule_state ?? aiContexto.agendamento_remarcacao ?? null)
+        ? (scheduleOutcome.reschedule_state !== undefined
+          ? scheduleOutcome.reschedule_state
+          : (aiContexto.agendamento_remarcacao?.active === true &&
+              !shouldClarifyViverReschedule({
+                empresaId,
+                message: mensagemAgregada,
+                state: aiContexto.agendamento_remarcacao,
+                selectedPreviouslyProposedSlot: Boolean(selectExplicitSuggestion(
+                  mensagemAgregada,
+                  Array.isArray(aiContexto?.agendamento_sugestoes) ? aiContexto.agendamento_sugestoes : [],
+                )?.start),
+              }).blocked
+            ? null
+            : (aiContexto.agendamento_remarcacao ?? null)))
         : aiContexto.agendamento_remarcacao,
       // Estado flexível da condução comercial v2 (sem PII: apenas rótulos e timestamps)
       ...(commercialV2Enabled && commercialPerms
