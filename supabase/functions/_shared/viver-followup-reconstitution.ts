@@ -922,6 +922,41 @@ export async function reconstituteViverControlledFollowups(
       };
     }
 
+    // Fallback auditável: sem run antigo, criamos um run ÂNCORA. Status
+    // `skipped` deixa explícito que NADA foi executado (D0 não é reexecutado e
+    // nenhuma ação recebe status falso de envio).
+    let runId = decision.run_id ?? null;
+    if (!runId) {
+      const anchor = decision.fallback_anchor;
+      if (!anchor) return empty("anchor_run_unavailable");
+      const { data: newRun, error: runError } = await supabase
+        .from("orbit_flow_runs")
+        .insert({
+          empresa_id: VIVER_FOLLOWUP_EMPRESA_ID,
+          flow_id: anchor.flow_id,
+          event_id: anchor.event_id,
+          entity_type: "prospect",
+          entity_id: facts.prospect?.id ?? null,
+          status: "skipped",
+          context: {
+            viver_followup_fallback_anchor: {
+              version: VIVER_FOLLOWUP_RECONSTITUTION_VERSION,
+              reason: anchor.reason,
+              event_id: anchor.event_id,
+              campaign_id: decision.campaign_id,
+              batch_label: decision.batch_label,
+              anchor_sent_at: decision.anchor_sent_at,
+              d0_not_executed: true,
+              actions_not_executed: true,
+            },
+          },
+        })
+        .select("id")
+        .maybeSingle();
+      if (runError || !(newRun as any)?.id) return empty("anchor_run_insert_failed");
+      runId = String((newRun as any).id);
+    }
+
     const scheduledIds: string[] = [];
     let deduped = 0;
     for (const item of decision.plan) {
@@ -929,7 +964,7 @@ export async function reconstituteViverControlledFollowups(
         .from("orbit_flow_scheduled_actions")
         .insert({
           empresa_id: VIVER_FOLLOWUP_EMPRESA_ID,
-          run_id: decision.run_id,
+          run_id: runId,
           flow_id: item.flow_id,
           action_id: item.action_id,
           ordem: item.ordem,
