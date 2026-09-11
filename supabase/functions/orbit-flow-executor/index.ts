@@ -254,6 +254,15 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
     if (cfg?.viver_controlled_followup === true) {
       metadata.viver_controlled_followup = true;
       metadata.pilot_not_before = cfg?.pilot_not_before;
+      // Cadência reconstituída após primeiro contato real de campanha controlada:
+      // propaga o marcador e ancora o gate do piloto no sent_at REAL da campanha.
+      // A isenção do corte temporal ainda exige prova server-side (produtor e worker).
+      const reconstitution = (run as any).context?.viver_followup_reconstitution ?? null;
+      if (reconstitution?.anchor_sent_at) {
+        metadata.viver_followup_reconstitution = true;
+        metadata.pilot_not_before = reconstitution.anchor_sent_at;
+        metadata.viver_followup_campaign_id = reconstitution.campaign_id ?? null;
+      }
     }
     if (sourceType === "meeting_confirmation") {
       metadata.meeting_id = meetingId;
