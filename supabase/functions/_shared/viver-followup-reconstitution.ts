@@ -559,21 +559,63 @@ export function decideViverFollowupReconstitution(f: FollowupFacts): FollowupDec
   // ── 6. Plano: somente ações aprovadas do flow original, ancoradas no sent_at
   const actions = (f.actions ?? []).filter((a) => a && a.id);
   if (actions.length === 0) return blocked("flow_actions_missing");
-  const existingKeys = new Set(f.existing_cadence_keys ?? []);
-  const existingActions = new Set((f.existing_action_ids ?? []).map(String));
+
+  // Novo ciclo autorizado (quota_policy da programação) muda SOMENTE o dedupe e
+  // a âncora. Todos os gates de segurança acima permanecem idênticos.
+  const newCycle = isViverFollowupCycleCampaign(camp);
+  const cycleId: "legacy" | typeof VIVER_FOLLOWUP_CYCLE_ID = newCycle
+    ? VIVER_FOLLOWUP_CYCLE_ID
+    : "legacy";
+
   const acceptedTemplates = new Set((f.accepted_template_ids ?? []).map(String));
-  // Cancelamento legítimo nunca é reativado.
-  const cancelledActions = new Set((f.cancelled_action_ids ?? []).map(String));
-  // UNIQUE parcial (run_id, ordem): ordem ocupada não pode ser reinserida.
+  const ignoredHistoricalCancellations: string[] = [];
+
+  let existingKeys: Set<string>;
+  let existingActions: Set<string>;
+  let cancelledActions: Set<string>;
+  let uncertainActions: Set<string>;
+  let uncertainTemplates: Set<string>;
   const occupiedOrdens = new Map<number, string>();
-  for (const row of f.existing_run_ordens ?? []) {
-    const status = String(row?.status ?? "").toLowerCase();
-    if (!ACTIVE_SCHEDULED_STATUS.has(status)) continue;
-    occupiedOrdens.set(Number(row.ordem), status);
+
+  if (newCycle) {
+    // `success` sem outbox/provider NÃO é envio: não ocupa ordem nem ação.
+    existingKeys = new Set((f.active_cadence_keys ?? []).map(String));
+    existingActions = new Set([
+      ...(f.active_action_ids ?? []).map(String),
+      ...(f.accepted_action_ids ?? []).map(String),
+    ]);
+    uncertainActions = new Set((f.uncertain_touch_action_ids ?? []).map(String));
+    uncertainTemplates = new Set((f.uncertain_touch_template_ids ?? []).map(String));
+    cancelledActions = new Set<string>();
+    for (const row of f.cancelled_actions ?? []) {
+      const id = row?.action_id ? String(row.action_id) : "";
+      if (!id) continue;
+      if (isHistoricalOperationalCancelReason(row?.reason)) {
+        // Desconsiderado no novo ciclo — a row antiga permanece cancelada.
+        ignoredHistoricalCancellations.push(id);
+        continue;
+      }
+      cancelledActions.add(id);
+    }
+    // Run âncora novo por (campanha, envio): nenhuma ordem histórica bloqueia.
+  } else {
+    existingKeys = new Set((f.existing_cadence_keys ?? []).map(String));
+    existingActions = new Set((f.existing_action_ids ?? []).map(String));
+    cancelledActions = new Set((f.cancelled_action_ids ?? []).map(String));
+    uncertainActions = new Set<string>();
+    uncertainTemplates = new Set<string>();
+    // UNIQUE parcial (run_id, ordem): ordem ocupada não pode ser reinserida.
+    for (const row of f.existing_run_ordens ?? []) {
+      const status = String(row?.status ?? "").toLowerCase();
+      if (!ACTIVE_SCHEDULED_STATUS.has(status)) continue;
+      occupiedOrdens.set(Number(row.ordem), status);
+    }
   }
+
   // Toque D1 já enviado com template legado (individual/grupo).
   const legacyD1Sent = f.legacy_d1_touch_sent === true ||
     [...acceptedTemplates].some((t) => VIVER_LEGACY_D1_TEMPLATE_IDS.has(t));
+
 
   const plan: FollowupPlanItem[] = [];
   const skipped: FollowupSkip[] = [];
