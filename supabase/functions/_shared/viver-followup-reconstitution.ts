@@ -972,30 +972,42 @@ async function loadFacts(
     ["won", "lost", "ganho", "perdido", "deleted"].includes(String(d?.status ?? "").toLowerCase())
   );
 
-  // Dedupe: agendamentos já existentes do prospect (qualquer status) e ordens
-  // ocupadas no MESMO run (UNIQUE parcial run_id+ordem).
+  // Dedupe: agendamentos existentes do prospect. O ciclo legado usa qualquer
+  // status; o novo ciclo separa ATIVO (pending/running) de `success` histórico
+  // sem envio real, e lê o motivo do cancelamento.
   const scheduled = take<any[]>(
     "scheduled_actions",
     await supabase
       .from("orbit_flow_scheduled_actions")
-      .select("id, run_id, action_id, ordem, cadence_key, status")
+      .select("id, run_id, action_id, ordem, cadence_key, status, canceled_reason, last_error")
       .eq("empresa_id", empresaId)
       .eq("prospect_id", prospectId)
-      .limit(200),
+      .limit(500),
     [],
   );
   const runOrdens = (scheduled ?? [])
     .filter((r: any) => run?.id && String(r?.run_id ?? "") === String(run.id))
     .map((r: any) => ({ ordem: Number(r?.ordem ?? -1), status: r?.status ?? null }))
     .filter((r: any) => Number.isFinite(r.ordem) && r.ordem >= 0);
-  const cancelledActionIds = (scheduled ?? [])
-    .filter((r: any) => CANCELLED_SCHEDULED_STATUS.has(String(r?.status ?? "").toLowerCase()))
+  const cancelledRows = (scheduled ?? [])
+    .filter((r: any) => CANCELLED_SCHEDULED_STATUS.has(String(r?.status ?? "").toLowerCase()));
+  const cancelledActionIds = cancelledRows
     .map((r: any) => r?.action_id)
     .filter(Boolean)
     .map(String);
+  const cancelledActions = cancelledRows.map((r: any) => ({
+    action_id: r?.action_id ? String(r.action_id) : null,
+    reason: r?.canceled_reason ?? r?.last_error ?? null,
+    status: r?.status ?? null,
+  }));
+  const activeRows = (scheduled ?? [])
+    .filter((r: any) => ["pending", "running"].includes(String(r?.status ?? "").toLowerCase()));
+  const activeCadenceKeys = activeRows.map((r: any) => r?.cadence_key).filter(Boolean).map(String);
+  const activeActionIds = activeRows.map((r: any) => r?.action_id).filter(Boolean).map(String);
 
   // Dedupe por TOQUE REAL já aceito: somente outbox efetivamente `sent` com
-  // confirmação do provedor. Pendentes/failed/canceled não contam como toque.
+  // confirmação do provedor. Pendentes/sem provider entram como INCERTOS —
+  // nunca repetimos um toque que pode ter saído.
   const followupOutbox = take<any[]>(
     "followup_outbox",
     await supabase
@@ -1009,17 +1021,25 @@ async function loadFacts(
   );
   const acceptedTemplates: string[] = [];
   const acceptedActionIds: string[] = [];
+  const uncertainTemplates: string[] = [];
+  const uncertainActionIds: string[] = [];
   for (const row of followupOutbox ?? []) {
     const status = String(row?.status ?? "").toLowerCase();
     if (DEAD_OUTBOX_STATUS.has(status)) continue;
-    if (status !== "sent" || !row?.provider_message_id) continue;
     const tpl = row?.payload?.template_id;
-    if (tpl) acceptedTemplates.push(String(tpl));
-    if (row?.source_id) acceptedActionIds.push(String(row.source_id));
+    if (status === "sent" && row?.provider_message_id) {
+      if (tpl) acceptedTemplates.push(String(tpl));
+      if (row?.source_id) acceptedActionIds.push(String(row.source_id));
+      continue;
+    }
+    // pending / processing / sent sem provider → resultado incerto.
+    if (tpl) uncertainTemplates.push(String(tpl));
+    if (row?.source_id) uncertainActionIds.push(String(row.source_id));
   }
   const legacyD1Sent = acceptedTemplates.some((t) =>
     VIVER_LEGACY_D1_TEMPLATE_IDS.has(t)
   );
+
 
   return {
     empresa_id: empresaId,
