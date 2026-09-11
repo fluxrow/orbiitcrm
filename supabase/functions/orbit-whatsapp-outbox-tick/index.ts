@@ -206,24 +206,12 @@ async function lastCampaignSentAtMs(
   return { ok: true, ms: Number.isFinite(ts) ? ts : null };
 }
 
-// Claims concorrentes de campanha da Viver (trava tenant-scoped de vaga).
-// FAIL-CLOSED: erro de consulta adia o item.
-async function inflightViverCampaignClaims(
-  empresa_id: string,
-): Promise<{ ok: boolean; rows: ViverInflightClaim[]; error?: string }> {
-  const since = new Date(Date.now() - 120_000).toISOString();
-  const { data, error } = await supabase
-    .from("orbit_whatsapp_outbox")
-    .select("id, locked_by")
-    .eq("empresa_id", empresa_id)
-    .eq("source_type", "campaign")
-    .eq("status", "processing")
-    .not("locked_at", "is", null)
-    .gte("locked_at", since)
-    .limit(50);
-  if (error) return { ok: false, rows: [], error: error.message };
-  return { ok: true, rows: (data ?? []) as ViverInflightClaim[] };
-}
+// A exclusão mútua de campanha da Viver é decidida atomicamente no banco
+// (`viver_campaign_slot_try_acquire`, advisory lock por tenant). A leitura
+// simples de claims em voo foi removida: ela permitia que dois workers
+// passassem pela verificação na mesma janela.
+
+
 
 
 // Auditoria do fail-closed do espaçamento/vaga (somente Viver campaign).
