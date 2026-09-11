@@ -8,6 +8,7 @@
 
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { checkEligibility, type OutboxContext } from "./orbit-whatsapp-outbox.ts";
+import { checkCampaignRecipientEligibility } from "./campaign-safety.ts";
 import { VIVER_SEMIJOIAS_EMPRESA_ID } from "./viver-daily-quota-policy.ts";
 
 interface Fx {
@@ -143,7 +144,7 @@ Deno.test("VG2 handoff humano bloqueia o primeiro contato de campanha", async ()
   assertEquals(r.eligible, false);
 });
 
-Deno.test("VG3 resposta do lead bloqueia o primeiro contato de campanha", async () => {
+Deno.test("VG3 resposta do lead bloqueia o destinatário de campanha", async () => {
   const fx = baseFx({
     mensagens: [{
       id: "m-in",
@@ -152,9 +153,32 @@ Deno.test("VG3 resposta do lead bloqueia o primeiro contato de campanha", async 
       status: "recebida",
     }],
   });
-  const r = await checkEligibility(makeSupabase(fx), ctxCampaign());
-  assert(r.reasons.includes("lead_replied"), r.reasons.join(","));
+  const r = await checkCampaignRecipientEligibility(makeSupabase(fx), {
+    campaign: { filtros_json: { campaign_safety: { skip_if_replied: true } } },
+    empresa_id: EMP,
+    prospect: fx.prospects[0],
+  });
   assertEquals(r.eligible, false);
+  assertEquals(r.motivo, "lead_replied");
+});
+
+Deno.test("VG3b handoff humano bloqueia o destinatário de campanha", async () => {
+  const fx = baseFx({
+    conversas: [{
+      id: CONV,
+      empresa_id: EMP,
+      prospect_id: PRO,
+      human_talk: true,
+      human_user_id: "user-1",
+    }],
+  });
+  const r = await checkCampaignRecipientEligibility(makeSupabase(fx), {
+    campaign: { filtros_json: { campaign_safety: { skip_if_handoff: true } } },
+    empresa_id: EMP,
+    prospect: fx.prospects[0],
+  });
+  assertEquals(r.eligible, false);
+  assertEquals(r.motivo, "human_handoff");
 });
 
 Deno.test("VG4 reunião agendada bloqueia o primeiro contato de campanha", async () => {
