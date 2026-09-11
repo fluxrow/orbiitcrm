@@ -555,18 +555,24 @@ async function loadFacts(
     ["won", "lost", "ganho", "perdido", "deleted"].includes(String(d?.status ?? "").toLowerCase())
   );
 
-  // Dedupe: agendamentos já existentes do prospect (qualquer status).
+  // Dedupe: agendamentos já existentes do prospect (qualquer status) e ordens
+  // ocupadas no MESMO run (UNIQUE parcial run_id+ordem).
   const { data: scheduled } = await supabase
     .from("orbit_flow_scheduled_actions")
-    .select("id, action_id, cadence_key, status")
+    .select("id, run_id, action_id, ordem, cadence_key, status")
     .eq("empresa_id", empresaId)
     .eq("prospect_id", prospectId)
     .limit(200);
+  const runOrdens = ((scheduled ?? []) as any[])
+    .filter((r) => run?.id && String(r?.run_id ?? "") === String(run.id))
+    .map((r) => ({ ordem: Number(r?.ordem ?? -1), status: r?.status ?? null }))
+    .filter((r) => Number.isFinite(r.ordem) && r.ordem >= 0);
 
-  // Dedupe por toque real já aceito (OUT/outbox do mesmo template).
+  // Dedupe por TOQUE REAL já aceito: somente outbox efetivamente `sent` com
+  // confirmação do provedor. Pendentes/failed/canceled não contam como toque.
   const { data: followupOutbox } = await supabase
     .from("orbit_whatsapp_outbox")
-    .select("id, status, source_id, payload")
+    .select("id, status, source_id, provider_message_id, payload")
     .eq("empresa_id", empresaId)
     .eq("prospect_id", prospectId)
     .in("source_type", ["flow_followup", "flow_initial"])
@@ -574,11 +580,17 @@ async function loadFacts(
   const acceptedTemplates: string[] = [];
   const acceptedActionIds: string[] = [];
   for (const row of (followupOutbox ?? []) as any[]) {
-    if (DEAD_OUTBOX_STATUS.has(String(row?.status ?? ""))) continue;
+    const status = String(row?.status ?? "").toLowerCase();
+    if (DEAD_OUTBOX_STATUS.has(status)) continue;
+    if (status !== "sent" || !row?.provider_message_id) continue;
     const tpl = row?.payload?.template_id;
     if (tpl) acceptedTemplates.push(String(tpl));
     if (row?.source_id) acceptedActionIds.push(String(row.source_id));
   }
+  const legacyD1Sent = acceptedTemplates.some((t) =>
+    VIVER_LEGACY_D1_TEMPLATE_IDS.has(t)
+  );
+
 
   return {
     empresa_id: empresaId,
