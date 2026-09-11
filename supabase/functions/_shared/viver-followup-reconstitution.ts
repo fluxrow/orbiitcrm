@@ -36,9 +36,84 @@ import {
   VIVER_CONTROLLED_INBOUND_METADATA_KEY,
 } from "./viver-controlled-inbound-reply.ts";
 
-export const VIVER_FOLLOWUP_RECONSTITUTION_VERSION = "2026-09-11-v1";
+export const VIVER_FOLLOWUP_RECONSTITUTION_VERSION = "2026-09-11-v2";
 export const VIVER_FOLLOWUP_EMPRESA_ID = VIVER_CONTROLLED_INBOUND_EMPRESA_ID;
 export { VIVER_CONTROLLED_INBOUND_BATCH_LABELS };
+
+/**
+ * NOVO CICLO AUTORIZADO (2026-09-11)
+ *
+ * O histórico da lista tem 67 `orbit_flow_scheduled_actions` com
+ * status=success/last_error=null que NUNCA produziram envio real, além de rows
+ * canceladas por três motivos puramente operacionais. Com o dedupe antigo
+ * (qualquer status ocupava a ordem/ação) esses prospects nunca voltariam a
+ * receber D1/D3/D7.
+ *
+ * Correção, restrita a campanhas desta programação:
+ *   • dedupe conta apenas agendamento ATIVO (pending/running), toque REAL aceito
+ *     e toque de resultado INCERTO — `success` sem outbox/provider não conta;
+ *   • os três motivos históricos abaixo deixam de bloquear (sem reativar nada);
+ *   • os agendamentos novos usam um run ÂNCORA determinístico por
+ *     (campanha, outbox), o que evita o UNIQUE(run_id, ordem) antigo e garante
+ *     que dois ticks concorrentes não criem dois runs;
+ *   • nada do histórico é reescrito, ressuscitado ou compensado.
+ *
+ * Campanhas fora desta programação seguem exatamente a regra anterior.
+ */
+export const VIVER_FOLLOWUP_CYCLE_QUOTA_POLICY =
+  "viver_list15_followups_separate_2026-09-11";
+
+export const VIVER_FOLLOWUP_CYCLE_ID = "list15_separate_2026_09_11";
+
+/** Únicos motivos históricos de cancelamento desconsiderados no novo ciclo. */
+export const VIVER_HISTORICAL_OPERATIONAL_CANCEL_REASONS: readonly string[] = [
+  "qr_reconnect_safety_no_backfill",
+  "pre_go_live_dry_run_queue_quarantined",
+  "pre_zapi_reconnect_safety_reset_2026_08_18",
+];
+
+export function isHistoricalOperationalCancelReason(
+  reason: unknown,
+): boolean {
+  const r = String(reason ?? "").trim().toLowerCase();
+  if (!r) return false;
+  return VIVER_HISTORICAL_OPERATIONAL_CANCEL_REASONS.some((allowed) =>
+    r === allowed || r.includes(allowed)
+  );
+}
+
+/** A campanha pertence à programação autorizada do novo ciclo? */
+export function isViverFollowupCycleCampaign(
+  campaign: { filtros_json?: Record<string, any> | null } | null | undefined,
+): boolean {
+  return String(campaign?.filtros_json?.quota_policy ?? "") ===
+    VIVER_FOLLOWUP_CYCLE_QUOTA_POLICY;
+}
+
+/** Chave estável da âncora do novo ciclo (uma por campanha + envio real). */
+export function viverFollowupAnchorRunKey(
+  campaignId: string,
+  outboxId: string,
+): string {
+  return `viver-followup-anchor:${VIVER_FOLLOWUP_CYCLE_ID}:${campaignId}:${outboxId}`;
+}
+
+/**
+ * UUID determinístico (SHA-256 truncado, bits de versão/variante normalizados).
+ * Dois ticks concorrentes derivam o MESMO id → o segundo insert colide na PK e
+ * é deduplicado, sem criar um segundo run âncora.
+ */
+export async function viverFollowupAnchorRunId(key: string): Promise<string> {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key)),
+  );
+  const b = digest.slice(0, 16);
+  b[6] = (b[6] & 0x0f) | 0x50; // versão 5-like (derivado de nome)
+  b[8] = (b[8] & 0x3f) | 0x80; // variante RFC 4122
+  const hex = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 
 const REAL_OUT_STATUS = new Set(["enviada", "enviado", "sent", "entregue", "delivered", "read", "lida"]);
 const DEAD_OUTBOX_STATUS = new Set(["canceled", "cancelled", "failed"]);
