@@ -491,8 +491,7 @@ Deno.test("fallback: evento real + regras atuais do flow aprovado ancoram a recu
 });
 
 Deno.test("fallback: divergências negam a âncora", () => {
-  const base = fallbackFacts();
-  const fb = base.fallback_candidate!;
+  const fb = (fallbackFacts() as any).fallback_candidate as any;
   const cases: [Record<string, any>, string][] = [
     [{ fallback_candidate: null }, "lead_recebido_run_missing"],
     [{
