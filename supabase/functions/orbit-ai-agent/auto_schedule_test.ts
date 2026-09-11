@@ -235,6 +235,98 @@ Deno.test("Viver: aceite ambíguo de dois horários exige escolha e não toca ca
   assertEquals(calendarCalls, 0);
 });
 
+Deno.test("Viver: 'outro dia' seguido de '16' pede data e cria zero meetings", async () => {
+  const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
+  const first = baseParams() as any;
+  first.empresaId = VIVER_EMPRESA_ID;
+  first.mensagem_cliente = "Pode ser outro dia";
+  const deps = {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => { throw new Error("não deveria consultar calendário"); },
+    now: () => FROZEN_NOW,
+  };
+  const firstResult = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, first, deps);
+  assertEquals(firstResult.created, false);
+  assertEquals(firstResult.reschedule_state?.active, true);
+
+  const second = baseParams() as any;
+  second.empresaId = VIVER_EMPRESA_ID;
+  second.mensagem_cliente = "16";
+  second.remarcacao_estado = firstResult.reschedule_state;
+  const secondResult = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, second, deps);
+  assertEquals(secondResult.created, false);
+  assertEquals(secondResult.reschedule_state?.active, true);
+  assert(String(secondResult.response_override).includes("data e horário"));
+  assertEquals(state.meetings.length, 0);
+  assert(!state.order.includes("orbit_meetings.insert"));
+});
+
+Deno.test("Viver: remarcação com 'dia 16 às 16h' cria uma meeting na data explícita", async () => {
+  const state: FakeState = {
+    meetings: [], deals: [{ id: "deal-1", etapa_id: null }],
+    pipeline_stages: [], flow_events: [], order: [],
+  };
+  const params = baseParams() as any;
+  params.empresaId = VIVER_EMPRESA_ID;
+  params.mensagem_cliente = "dia 16 às 16h";
+  params.remarcacao_estado = { active: true, reason: "change_day", requested_at: FROZEN_NOW.toISOString() };
+  params.agendamento = { ...params.agendamento, data_iso: "2026-08-16T19:00:00.000Z", tem_horario: true };
+  const res = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, params, {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => "at",
+    checkAvailability: async () => ({ busy: [] }),
+    createCalendarEvent: async () => ({ id: "gev-remarcado" }),
+    now: () => FROZEN_NOW,
+  });
+  assertEquals(res.created, true);
+  assertEquals(res.reschedule_state, undefined);
+  assertEquals(state.meetings.length, 1);
+  assertEquals(state.meetings[0].scheduled_at, "2026-08-16T19:00:00.000Z");
+});
+
+Deno.test("Viver: '16' sem intenção anterior mantém comportamento atual", async () => {
+  const state: FakeState = {
+    meetings: [], deals: [{ id: "deal-1", etapa_id: null }], pipeline_stages: [], flow_events: [], order: [],
+  };
+  const params = baseParams() as any;
+  params.empresaId = VIVER_EMPRESA_ID;
+  params.mensagem_cliente = "16";
+  params.agendamento = { ...params.agendamento, data_iso: START, tem_horario: true };
+  const res = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, params, {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => "at",
+    checkAvailability: async () => ({ busy: [] }),
+    createCalendarEvent: async () => ({ id: "gev-current-behavior" }),
+    now: () => FROZEN_NOW,
+  });
+  assertEquals(res.created, true);
+  assertEquals(state.meetings.length, 1);
+});
+
+Deno.test("Viver: recusa explícita do dia atual bloqueia reconfirmação existente", async () => {
+  const state: FakeState = {
+    meetings: [{
+      id: "meeting-today", empresa_id: VIVER_EMPRESA_ID, prospect_id: "prospect-1",
+      scheduled_at: START, status: "scheduled", meeting_url: "https://meet/existing",
+    }],
+    deals: [], pipeline_stages: [], flow_events: [], order: [],
+  };
+  const params = baseParams() as any;
+  params.empresaId = VIVER_EMPRESA_ID;
+  params.mensagem_cliente = "Não posso hoje, preciso outro dia";
+  const res = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, params, {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => { throw new Error("não deveria consultar calendário"); },
+    now: () => FROZEN_NOW,
+  });
+  assertEquals(res.created, false);
+  assertEquals(res.meeting_id, undefined);
+  assertEquals(res.reschedule_state?.reason, "declined_today");
+  assert(String(res.response_override).includes("Qual data e horário"));
+  assert(!String(res.response_override).includes("15:00"));
+  assert(!String(res.response_override).includes("meet/existing"));
+});
+
 Deno.test("Viver: escolha explícita é revalidada e cria somente dentro de 13h-17h", async () => {
   const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
   const params = baseParams() as any;

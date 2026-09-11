@@ -1,5 +1,11 @@
 # Roadmap
 
+## 0. Guarda de remarcação Viver — em andamento
+- Persistir estado de esclarecimento quando a lead pedir outro dia/data.
+- Bloquear número/horário isolado enquanto faltar data explícita, sem criar meeting ou confirmação.
+- Liberar data + horário explícitos ou escolha inequívoca de sugestão anterior.
+- Preservar integralmente Bullink e demais tenants; validar idempotência sem envios reais.
+
 ## 1. Trava atômica de campanha (Viver) — em andamento
 - Substituir eleição por menor ID por exclusão mútua atômica no claim do outbox.
 - Migration versionada tenant-scoped com `pg_try_advisory_xact_lock`, definição anterior registrada para rollback.
