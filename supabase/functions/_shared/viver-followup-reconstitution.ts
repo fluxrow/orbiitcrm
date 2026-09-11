@@ -352,6 +352,24 @@ export interface FollowupFacts {
   read_error?: string | null;
   /** action_ids com agendamento CANCELADO: nunca reativados. */
   cancelled_action_ids?: string[];
+
+  // ── Novo ciclo autorizado (usados apenas quando a campanha pertence a ele) ──
+  /** cadence_keys de agendamentos ATIVOS (pending/running). */
+  active_cadence_keys?: string[];
+  /** action_ids de agendamentos ATIVOS (pending/running). */
+  active_action_ids?: string[];
+  /** action_ids com toque REAL aceito (outbox sent + provider_message_id). */
+  accepted_action_ids?: string[];
+  /** Toques cujo resultado é INCERTO (outbox pendente/processing/sem provider). */
+  uncertain_touch_action_ids?: string[];
+  uncertain_touch_template_ids?: string[];
+  /** Cancelamentos com motivo, para separar operacional histórico de legítimo. */
+  cancelled_actions?: Array<{
+    action_id?: string | null;
+    reason?: string | null;
+    status?: string | null;
+  }>;
+
   /**
    * Fallback explícito: usado SOMENTE quando não existe run `lead_recebido`
    * antigo. Exige evento REAL do prospect + flow aprovado cujas regras atuais
