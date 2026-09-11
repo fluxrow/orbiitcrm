@@ -1810,6 +1810,32 @@ Deno.serve(async (req) => {
         });
       }
 
+      // A execução dirigida NÃO pode contornar a reserva atômica de vaga:
+      // campanha da Viver é recusada e segue pelo claim normal do lote.
+      // `ai_reply` dirigido continua inalterado.
+      if (
+        refuseTargetedViverCampaign(
+          (single as any).empresa_id,
+          (single as any).source_type,
+        )
+      ) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            data: {
+              deferred: true,
+              reason: RETAIN_REASON_VIVER_TARGETED_CAMPAIGN,
+            },
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
+      }
+
+
+
       // Fura-fila guard: se existe pending com prioridade maior nesse tenant e já elegível,
       // defer este item — nunca desrespeitar prioridade global.
       const nowIso = new Date().toISOString();
