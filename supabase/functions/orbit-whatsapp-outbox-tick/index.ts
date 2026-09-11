@@ -67,6 +67,11 @@ import {
   VIVER_CONTROLLED_OUTBOX_GATE_VERSION,
 } from "../_shared/outbox-pilot.ts";
 import {
+  reconcileViverControlledFollowups,
+  reconstituteViverControlledFollowups,
+  VIVER_FOLLOWUP_EMPRESA_ID,
+} from "../_shared/viver-followup-reconstitution.ts";
+import {
   consumesDailyQuotaFor,
   dailyQuotaSourcesFor,
   dailyUsageDate,
@@ -391,6 +396,33 @@ async function updateCampaignRecipient(
     } catch (e) {
       console.warn("[outbox] reconcile falhou", (e as any)?.message);
     }
+  }
+}
+
+// Reconstituição da cadência de follow-up da Viver após um PRIMEIRO CONTATO real
+// de campanha controlada. Best-effort e idempotente: nunca falha o envio já
+// concluído e nunca cria toque duplicado (dedupe por cadence_key).
+async function maybeReconstituteViverFollowup(item: any): Promise<void> {
+  if (
+    String(item?.empresa_id ?? "") !== VIVER_FOLLOWUP_EMPRESA_ID ||
+    String(item?.source_type ?? "") !== "campaign"
+  ) return;
+  try {
+    const r = await reconstituteViverControlledFollowups(supabase, {
+      empresa_id: VIVER_FOLLOWUP_EMPRESA_ID,
+      outbox_id: item.id,
+    });
+    console.log(JSON.stringify({
+      scope: "viver_followup_reconstitution",
+      outbox_id: item.id,
+      ok: r.ok,
+      reason: r.reason,
+      planned: r.planned,
+      scheduled: r.scheduled_ids.length,
+      deduped: r.deduped,
+    }));
+  } catch (e: any) {
+    console.warn("[outbox] reconstituição de follow-up falhou", String(e?.message ?? e));
   }
 }
 
@@ -1222,6 +1254,7 @@ async function processItem(
       if (quotaRate) q.remainingMinute -= 1;
       if (quotaDaily && !usedReserve) await bumpDailyUsage(item.empresa_id, 1);
       await auditMetaWhatsAppSend(item, metaCfg, "sent");
+      await maybeReconstituteViverFollowup(item);
       return { outcome: "sent", provider_message_id: result.providerId };
     }
 
@@ -1391,6 +1424,7 @@ async function processItem(
         telefone,
       },
     });
+    await maybeReconstituteViverFollowup(item);
     return { outcome: "sent", provider_message_id: result.providerId };
   }
 
@@ -1704,10 +1738,21 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Reconciliação idempotente (sem cron novo): cobre falha entre o envio
+    // confirmado da campanha controlada e o agendamento do follow-up da Viver.
+    let viverFollowupReconcile: { candidates: number; reconstituted: number } | null = null;
+    try {
+      viverFollowupReconcile = await reconcileViverControlledFollowups(
+        supabase,
+        VIVER_FOLLOWUP_EMPRESA_ID,
+      );
+    } catch (_e) { /* best-effort */ }
+
     const summary = {
       tick_id: tickId,
       tenants: empresaIds.length,
       results,
+      viver_followup_reconcile: viverFollowupReconcile,
       duration_ms: Date.now() - t0,
     };
     console.log(JSON.stringify({ scope: "outbox_tick_summary", ...summary }));

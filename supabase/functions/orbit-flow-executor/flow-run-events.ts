@@ -54,7 +54,13 @@ export function restoreRunFromScheduled(s: any): any {
     entity_type: s?.context?.entity_type ?? null,
     entity_id: s?.context?.entity_id ?? null,
     event_id: restoredEventId,
-    context: { payload: s?.context?.payload ?? {}, event_id: restoredEventId },
+    context: {
+      payload: s?.context?.payload ?? {},
+      event_id: restoredEventId,
+      // Preserva a prova de reconstituição da cadência controlada da Viver, usada
+      // pelo produtor para ancorar o gate do piloto no envio real da campanha.
+      viver_followup_reconstitution: s?.context?.viver_followup_reconstitution ?? null,
+    },
     _scheduled_action_id: s?.id,
   };
 }
