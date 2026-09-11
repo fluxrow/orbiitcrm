@@ -23,7 +23,7 @@ export function declinesViverCurrentDay(message: string): boolean {
 
 export function hasExplicitSchedulingDate(message: string): boolean {
   const text = normalizeSchedulingText(message);
-  return /\bamanha\b|\b(?:domingo|segunda(?:-feira)?|terca(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|sabado)\b|\bdia\s+(?:[0-3]?\d)\b|\b(?:0?[1-9]|[12]\d|3[01])[/.\-](?:0?[1-9]|1[0-2])(?:[/.\-]\d{2,4})?\b/.test(text);
+  return /\bamanha\b|\b(?:domingo|segunda(?:-feira)?|terca(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|sabado)\b|\bdia\s+(?:[0-3]?\d)\b|\b(?:0?[1-9]|[12]\d|3[01])[-/.](?:0?[1-9]|1[0-2])(?:[-/.]\d{2,4})?\b/.test(text);
 }
 
 export function hasExplicitSchedulingTime(message: string): boolean {
