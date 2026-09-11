@@ -1238,12 +1238,18 @@ export async function reconstituteViverControlledFollowups(
           action_type: item.action_type,
           action_config: item.action_config,
           context: {
-            payload: { prospect_id: facts.prospect?.id ?? null },
+            payload: {
+              prospect_id: facts.prospect?.id ?? null,
+              // Evento âncora REAL também no fallback (nunca null).
+              event_id: decision.anchor_event_id ?? null,
+            },
             entity_type: "prospect",
             entity_id: facts.prospect?.id ?? null,
-            event_id: facts.event?.id ?? null,
+            event_id: decision.anchor_event_id ?? null,
             viver_followup_reconstitution: {
               version: VIVER_FOLLOWUP_RECONSTITUTION_VERSION,
+              cycle: decision.cycle ?? "legacy",
+              anchor_key: cycleAnchor?.key ?? null,
               outbox_id: outboxRow.id,
               campaign_id: decision.campaign_id,
               batch_label: decision.batch_label,
@@ -1251,6 +1257,7 @@ export async function reconstituteViverControlledFollowups(
               provider_message_id: outboxRow.provider_message_id,
             },
           },
+
           prospect_id: facts.prospect?.id ?? null,
           scheduled_for: item.scheduled_for,
           status: "pending",
