@@ -1320,6 +1320,50 @@ export async function reconstituteViverControlledFollowups(
   }
 }
 
+export interface ReconcileCandidate {
+  id: string;
+  prospect_id: string;
+  sent_at?: string | null;
+}
+
+/**
+ * Ordem de reconciliação SEM starvation. Antes o tick processava sempre os 5
+ * candidatos mais recentes, então quem ficou incompleto no fim da fila nunca era
+ * reavaliado. Agora:
+ *   1. rotação determinística pelo minuto → nenhum prefixo fixo monopoliza;
+ *   2. ordenação ESTÁVEL por prioridade: erro primeiro, depois quem não tem
+ *      nenhum agendamento ativo (cadência faltando), por fim os já ativos.
+ */
+export function rankViverReconcileCandidates(
+  candidates: ReconcileCandidate[],
+  scheduled: Array<{ prospect_id?: string | null; status?: string | null }>,
+  nowMs: number = Date.now(),
+): ReconcileCandidate[] {
+  const active = new Set<string>();
+  const errored = new Set<string>();
+  for (const row of scheduled ?? []) {
+    const pid = row?.prospect_id ? String(row.prospect_id) : "";
+    if (!pid) continue;
+    const status = String(row?.status ?? "").toLowerCase();
+    if (status === "pending" || status === "running") active.add(pid);
+    if (status === "error" || status === "failed") errored.add(pid);
+  }
+  const list = [...(candidates ?? [])];
+  if (list.length === 0) return [];
+  const offset = Math.floor(nowMs / 60_000) % list.length;
+  const rotated = [...list.slice(offset), ...list.slice(0, offset)];
+  const priority = (c: ReconcileCandidate): number => {
+    const pid = String(c.prospect_id);
+    if (errored.has(pid)) return 0;
+    if (!active.has(pid)) return 1;
+    return 2;
+  };
+  return rotated
+    .map((c, i) => ({ c, i, p: priority(c) }))
+    .sort((a, b) => a.p - b.p || a.i - b.i)
+    .map((x) => x.c);
+}
+
 /**
  * Reconciliação idempotente executada pelo tick existente (sem cron novo):
  * cobre falha entre o envio confirmado e o agendamento.
@@ -1331,8 +1375,8 @@ export async function reconcileViverControlledFollowups(
 ): Promise<{ candidates: number; reconstituted: number }> {
   if (empresa_id !== VIVER_FOLLOWUP_EMPRESA_ID) return { candidates: 0, reconstituted: 0 };
   const lookback = opts.lookbackMs ?? 14 * 24 * 60 * 60 * 1000;
-  const maxCandidates = opts.maxCandidates ?? 20;
-  const maxRuns = opts.maxRuns ?? 5;
+  const maxCandidates = opts.maxCandidates ?? 60;
+  const maxRuns = opts.maxRuns ?? 8;
 
   try {
     const { data: rows, error } = await supabase
@@ -1349,14 +1393,28 @@ export async function reconcileViverControlledFollowups(
     const candidates = ((rows ?? []) as any[]).filter((r) => r?.prospect_id);
     if (candidates.length === 0) return { candidates: 0, reconstituted: 0 };
 
+    // Estado dos agendamentos dos candidatos: usado só para PRIORIZAR quem está
+    // com erro ou sem cadência ativa. Nada é reativado aqui.
+    const { data: schedRows } = await supabase
+      .from("orbit_flow_scheduled_actions")
+      .select("prospect_id, status")
+      .eq("empresa_id", empresa_id)
+      .in("prospect_id", candidates.map((r) => String(r.prospect_id)))
+      .limit(1000);
+
+    const ordered = rankViverReconcileCandidates(
+      candidates as ReconcileCandidate[],
+      (schedRows ?? []) as any[],
+    );
+
     // A existência de QUALQUER agendamento não significa cadência completa:
     // sucesso parcial (D1 gravado, D3 falhou) precisa ser reparado. Por isso
     // cada candidato é reavaliado ação por ação — o dedupe por
-    // cadence_key/action_id/ordem/toque real evita qualquer repetição, e
+    // cadence_key/action_id/toque real evita qualquer repetição, e
     // cancelamentos legítimos nunca são reativados.
     let reconstituted = 0;
     let runs = 0;
-    for (const row of candidates) {
+    for (const row of ordered) {
       if (runs >= maxRuns) break;
       runs++;
       const r = await reconstituteViverControlledFollowups(supabase, {
@@ -1366,6 +1424,7 @@ export async function reconcileViverControlledFollowups(
       if (r.ok) reconstituted++;
     }
     return { candidates: candidates.length, reconstituted };
+
   } catch (e) {
     console.warn(
       "[viver-followup] reconciliação falhou",
