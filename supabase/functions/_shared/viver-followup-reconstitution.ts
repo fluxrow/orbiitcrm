@@ -236,9 +236,29 @@ export interface FollowupDecision {
     flow_id: string;
     reason: "no_prior_lead_recebido_run";
   } | null;
+  /** Programação da campanha: novo ciclo autorizado ou regra legada. */
+  cycle?: "legacy" | typeof VIVER_FOLLOWUP_CYCLE_ID;
+  /** Evento `lead_recebido` REAL usado como âncora (inclusive no fallback). */
+  anchor_event_id?: string | null;
+  /**
+   * Âncora do novo ciclo: run determinístico por (campanha, envio real). Não
+   * reaproveita run antigo, então o UNIQUE(run_id, ordem) histórico não bloqueia
+   * e nenhuma evidência anterior é alterada.
+   */
+  cycle_anchor?: {
+    key: string;
+    flow_id: string;
+    event_id: string;
+    campaign_id: string;
+    outbox_id: string;
+    prior_run_id: string | null;
+  } | null;
+  /** Cancelamentos históricos operacionais desconsiderados (nunca reativados). */
+  ignored_historical_cancellations?: string[];
   /** Lembretes de reunião nunca são tocados por esta rotina. */
   preserve_meeting_reminders: true;
 }
+
 
 export interface FollowupFacts {
   empresa_id?: string | null;
