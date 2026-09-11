@@ -903,11 +903,80 @@ async function processItem(
   // enqueue e tick. NÃO chama Z-API. Se inelegível: cancel outbox + ignorado
   // no recipient com o mesmo motivo.
   if (item.source_type === "campaign" && item.campaign_id) {
-    const { data: camp } = await supabase
+    const { data: camp, error: campError } = await supabase
       .from("orbit_campaigns")
       .select("id, empresa_id, canal, filtros_json")
       .eq("id", item.campaign_id)
       .maybeSingle();
+    // Contrato de DIA OPERACIONAL (somente Viver + batches autorizados):
+    // item vencido não atravessa a virada do dia SP para ocupar vaga do dia
+    // seguinte; dia futuro espera; dia atual segue 30 min + 15/dia.
+    // FAIL-CLOSED: erro de leitura da campanha adia o item da Viver.
+    if (campError && isViverOperationalTenant(item.empresa_id)) {
+      await auditViverSpacingFailClosed(
+        item,
+        "campaign_query_failed",
+        campError.message,
+      );
+      await releaseHeldItem(
+        item,
+        VIVER_OPERATIONAL_DATE_INVALID_REASON,
+        new Date(Date.now() + 5 * 60_000).toISOString(),
+      );
+      return {
+        outcome: "deferred",
+        reason: VIVER_OPERATIONAL_DATE_INVALID_REASON,
+      };
+    }
+    const opDay = viverOperationalDateDecision({
+      empresa_id: item.empresa_id,
+      source_type: item.source_type,
+      campaign: camp,
+      provider_message_id: item.provider_message_id ?? null,
+      status: item.status ?? null,
+    });
+    if (opDay.verdict === "expire") {
+      await supabase
+        .from("orbit_whatsapp_outbox")
+        .update({
+          status: "canceled",
+          canceled_at: new Date().toISOString(),
+          canceled_reason: opDay.reason,
+          last_error: opDay.reason,
+          locked_at: null,
+          locked_by: null,
+          next_attempt_at: null,
+        })
+        .eq("id", item.id)
+        .eq("status", "processing")
+        .is("provider_message_id", null);
+      await updateCampaignRecipient(item, {
+        status: "ignorado",
+        motivo: opDay.reason,
+      });
+      await auditViverSpacingFailClosed(
+        item,
+        opDay.reason,
+        `operational_date=${opDay.operational_date} today_sp=${opDay.today_sp}`,
+      );
+      return { outcome: "canceled", reason: opDay.reason };
+    }
+    if (opDay.verdict === "wait" || opDay.verdict === "fail_closed") {
+      if (opDay.verdict === "fail_closed") {
+        await auditViverSpacingFailClosed(
+          item,
+          opDay.reason,
+          `operational_date=${opDay.operational_date}`,
+        );
+      }
+      await releaseHeldItem(
+        item,
+        opDay.reason,
+        opDay.retry_at ?? new Date(Date.now() + 15 * 60_000).toISOString(),
+      );
+      return { outcome: "deferred", reason: opDay.reason };
+    }
+
     let prospect: any = null;
     if (item.prospect_id) {
       const { data: p } = await supabase
