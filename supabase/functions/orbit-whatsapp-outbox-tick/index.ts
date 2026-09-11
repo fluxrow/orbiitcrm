@@ -211,12 +211,32 @@ async function inflightViverCampaignClaims(
 }
 
 
+// Auditoria do fail-closed do espaçamento/vaga (somente Viver campaign).
+async function auditViverSpacingFailClosed(
+  item: any,
+  reason: string,
+  detail?: string,
+): Promise<void> {
+  try {
+    await supabase.from("orbit_audit_log").insert({
+      empresa_id: item.empresa_id,
+      acao: "viver_campaign_spacing_fail_closed",
+      entidade: "orbit_whatsapp_outbox",
+      entidade_id: item.id,
+      detalhes: { reason, detail: detail ?? null, worker: WORKER_ID },
+    });
+  } catch (_e) {
+    console.warn("[outbox] auditoria fail-closed falhou", reason);
+  }
+}
+
 async function bumpDailyUsage(
   empresa_id: string,
   delta: number,
 ): Promise<void> {
-  // Data de referência sempre America/Sao_Paulo (coerente com a contagem real).
+  // Data por tenant: Viver em America/Sao_Paulo; demais tenants preservam UTC legado.
   const today = dailyUsageDateFor(empresa_id);
+
   const { data: existing } = await supabase
     .from("orbit_whatsapp_daily_usage")
     .select("id, sent_count")
