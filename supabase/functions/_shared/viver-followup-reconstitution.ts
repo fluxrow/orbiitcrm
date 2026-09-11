@@ -46,6 +46,28 @@ const CLOSED_CONVERSA_STATUS = new Set([
   "fechada", "fechado", "closed", "encerrada", "encerrado", "arquivada", "archived",
 ]);
 
+/**
+ * Templates LEGADOS do toque D1 (individual e grupo) já enviados antes da troca
+ * pelo áudio novo. O template atual difere, mas o TOQUE é o mesmo: nunca repetir
+ * D1 só porque o template mudou.
+ */
+export const VIVER_LEGACY_D1_TEMPLATE_IDS = new Set([
+  "5a9ecae4-5212-4e46-a612-f394a48d7f7e", // individual
+  "d6307e57-9e08-437a-9a93-2181ab0bde60", // grupo
+]);
+
+/** Janela do toque D1: até 48h após o envio real da campanha. */
+const D1_MAX_DELAY_SECONDS = 48 * 3600;
+
+/**
+ * Status que ocupam o UNIQUE parcial (run_id, ordem) em
+ * orbit_flow_scheduled_actions. `success` NÃO significa envio real: pode ser
+ * skip/`missing_prior_real_outbound`. Nunca apagamos essa evidência; apenas
+ * relatamos o motivo exato e não reinserimos a mesma ordem.
+ */
+const ACTIVE_SCHEDULED_STATUS = new Set(["pending", "running", "success"]);
+
+
 export interface FollowupActionRow {
   id?: string | null;
   flow_id?: string | null;
