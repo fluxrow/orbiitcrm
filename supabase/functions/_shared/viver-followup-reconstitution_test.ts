@@ -1,6 +1,7 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   decideViverFollowupReconstitution,
+  matchesApprovedTypebotFlowConditions,
   followupCadenceKey,
   isApprovedControlledFollowupAction,
   VIVER_FOLLOWUP_EMPRESA_ID,
@@ -10,7 +11,8 @@ const EMPRESA = VIVER_FOLLOWUP_EMPRESA_ID;
 const PROSPECT = "11111111-1111-4111-8111-111111111111";
 const CONVERSA = "22222222-2222-4222-8222-222222222222";
 const CAMPAIGN = "33333333-3333-4333-8333-333333333333";
-const FLOW = "44444444-4444-4444-8444-444444444444";
+const FLOW = "0da4e8dc-05ee-4faa-b4ca-4b359ae5feb7"; // flow Typebot APROVADO (individual)
+const GROUP_FLOW = "9f20eab5-abfe-4998-a8ac-a7afa616f1e6"; // flow Typebot APROVADO (grupo)
 const RUN = "55555555-5555-4555-8555-555555555555";
 const EVENT = "66666666-6666-4666-8666-666666666666";
 const PROVIDER = "ZAPI-PROVIDER-ID-1";
@@ -354,4 +356,191 @@ Deno.test("ordem cancelada/erro não bloqueia reagendamento", () => {
     }));
     assertEquals(d.plan.length, 3);
   }
+});
+
+
+Deno.test("fail-closed: leitura de segurança que falhou nega a reconstituição", () => {
+  const d = decideViverFollowupReconstitution(facts({ read_error: "meetings" }));
+  assertEquals(d.allowed, false);
+  assertEquals(d.reason, "evidence_read_failed");
+  assertEquals(d.plan.length, 0);
+  // Sem read_error a mesma evidência é liberada.
+  assertEquals(decideViverFollowupReconstitution(facts({ read_error: null })).allowed, true);
+});
+
+Deno.test("WhatsApp inválido bloqueia; válido/não verificado segue", () => {
+  const f = facts();
+  for (const status of ["invalido", "INVALID", "bloqueado", "banido"]) {
+    const d = decideViverFollowupReconstitution({
+      ...f,
+      prospect: { ...f.prospect, whatsapp_status: status },
+    });
+    assertEquals(d.allowed, false);
+    assertEquals(d.reason, "prospect_whatsapp_invalid");
+  }
+  for (const status of ["valido", "nao_verificado", null]) {
+    assertEquals(
+      decideViverFollowupReconstitution({
+        ...f,
+        prospect: { ...f.prospect, whatsapp_status: status },
+      }).allowed,
+      true,
+    );
+  }
+});
+
+Deno.test("flow não aprovado (mesmo com run lead_recebido) nunca reconstitui", () => {
+  const f = facts();
+  const d = decideViverFollowupReconstitution({
+    ...f,
+    run: { ...f.run, flow_id: "44444444-4444-4444-8444-444444444444" },
+  });
+  assertEquals(d.allowed, false);
+  assertEquals(d.reason, "run_flow_not_approved_typebot");
+  // Flow de grupo aprovado é aceito.
+  const grupo = decideViverFollowupReconstitution({
+    ...f,
+    run: { ...f.run, flow_id: GROUP_FLOW },
+    actions: [{ ...action(D1, 1), flow_id: GROUP_FLOW }],
+  });
+  assertEquals(grupo.allowed, true);
+  assertEquals(grupo.flow_id, GROUP_FLOW);
+});
+
+Deno.test("event.entity_type diferente de prospect bloqueia", () => {
+  const f = facts();
+  const d = decideViverFollowupReconstitution({
+    ...f,
+    event: { ...f.event, entity_type: "deal" },
+  });
+  assertEquals(d.reason, "event_entity_invalid");
+});
+
+Deno.test("cancelamento legítimo nunca é reativado", () => {
+  const d = decideViverFollowupReconstitution(facts({ cancelled_action_ids: [D1] }));
+  assertEquals(d.plan.map((p) => p.action_id), [D3, D7]);
+  assertEquals(
+    d.skipped.find((s) => s.action_id === D1)?.reason,
+    "cancelled_not_reactivated",
+  );
+});
+
+Deno.test("sucesso parcial: apenas as ações faltantes são replanejadas", () => {
+  const first = decideViverFollowupReconstitution(facts());
+  const d1Key = first.plan.find((p) => p.action_id === D1)!.cadence_key;
+  const partial = decideViverFollowupReconstitution(facts({
+    existing_cadence_keys: [d1Key],
+    existing_run_ordens: [{ ordem: 1, status: "pending" }],
+  }));
+  assertEquals(partial.allowed, true);
+  assertEquals(partial.plan.map((p) => p.action_id), [D3, D7]);
+});
+
+// ── Fallback auditável (prospect sem run antigo)
+const FALLBACK_EVENT = "669c44c4-7f1c-45e9-a408-e6c3794471b5";
+const SOURCE_ID = "a56d2fb5-b186-4129-ae4f-8c7e3304c7e4";
+
+function fallbackFacts(over: Record<string, any> = {}) {
+  return facts({
+    run: null,
+    event: null,
+    actions: [{ ...action(D1, 1), flow_id: GROUP_FLOW }],
+    fallback_candidate: {
+      event: {
+        id: FALLBACK_EVENT,
+        empresa_id: EMPRESA,
+        event_type: "lead_recebido",
+        entity_type: "prospect",
+        entity_id: PROSPECT,
+        payload: {
+          source_id: SOURCE_ID,
+          source_tipo: "typebot",
+          raw: { capital_disponivel: "Até R$ 1.500,00" },
+        },
+      },
+      flow: {
+        id: GROUP_FLOW,
+        empresa_id: EMPRESA,
+        ativo: true,
+        trigger_type: "lead_recebido",
+        condicoes: {
+          source_id: SOURCE_ID,
+          source_tipo: "typebot",
+          payload_match: {
+            "raw.capital_disponivel": ["Até R$ 1.500,00", "De R$ 1.600,00 a R$ 3.000,00"],
+          },
+        },
+      },
+    },
+    ...over,
+  });
+}
+
+Deno.test("fallback: evento real + regras atuais do flow aprovado ancoram a recuperação", () => {
+  const d = decideViverFollowupReconstitution(fallbackFacts());
+  assertEquals(d.allowed, true);
+  assertEquals(d.run_id, null);
+  assertEquals(d.flow_id, GROUP_FLOW);
+  assertEquals(d.fallback_anchor, {
+    event_id: FALLBACK_EVENT,
+    flow_id: GROUP_FLOW,
+    reason: "no_prior_lead_recebido_run",
+  });
+  // Nenhuma ação D0 é planejada: só a cadência aprovada.
+  assertEquals(d.plan.map((p) => p.action_id), [D1]);
+});
+
+Deno.test("fallback: divergências negam a âncora", () => {
+  const base = fallbackFacts();
+  const fb = base.fallback_candidate!;
+  const cases: [Record<string, any>, string][] = [
+    [{ fallback_candidate: null }, "lead_recebido_run_missing"],
+    [{
+      fallback_candidate: {
+        ...fb,
+        event: { ...fb.event, payload: { ...fb.event.payload, raw: { capital_disponivel: "Acima de R$ 25.000,00" } } },
+      },
+    }, "fallback_flow_rules_mismatch"],
+    [{
+      fallback_candidate: {
+        ...fb,
+        event: { ...fb.event, payload: { ...fb.event.payload, source_id: "outra-origem" } },
+      },
+    }, "fallback_flow_rules_mismatch"],
+    [{ fallback_candidate: { ...fb, flow: { ...fb.flow, ativo: false } } }, "fallback_flow_inactive"],
+    [{
+      fallback_candidate: { ...fb, flow: { ...fb.flow, id: "44444444-4444-4444-8444-444444444444" } },
+    }, "fallback_flow_not_approved_typebot"],
+    [{
+      fallback_candidate: { ...fb, event: { ...fb.event, event_type: "lead_replied" } },
+    }, "event_not_lead_recebido"],
+    [{
+      fallback_candidate: { ...fb, event: { ...fb.event, entity_id: "99999999-9999-4999-8999-999999999999" } },
+    }, "event_other_prospect"],
+  ];
+  for (const [over, reason] of cases) {
+    const d = decideViverFollowupReconstitution(fallbackFacts(over));
+    assertEquals(d.allowed, false);
+    assertEquals(d.reason, reason);
+    assertEquals(d.plan.length, 0);
+  }
+});
+
+Deno.test("regras do flow aprovado: match exato de source e capital", () => {
+  const condicoes = {
+    source_id: SOURCE_ID,
+    source_tipo: "typebot",
+    payload_match: { "raw.capital_disponivel": ["Até R$ 1.500,00"] },
+  };
+  assertEquals(
+    matchesApprovedTypebotFlowConditions(condicoes, {
+      source_id: SOURCE_ID,
+      source_tipo: "typebot",
+      raw: { capital_disponivel: "Até R$ 1.500,00" },
+    }),
+    true,
+  );
+  assertEquals(matchesApprovedTypebotFlowConditions(condicoes, { source_id: SOURCE_ID, source_tipo: "meta", raw: {} }), false);
+  assertEquals(matchesApprovedTypebotFlowConditions({}, { source_id: SOURCE_ID }), false);
+  assertEquals(matchesApprovedTypebotFlowConditions(condicoes, null), false);
 });
