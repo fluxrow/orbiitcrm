@@ -441,11 +441,12 @@ export async function evaluateViverControlledInboundReply(
       .eq("source_type", "ai_reply")
       .like("idempotency_key", `%${input.inbound_message_id}%`)
       .limit(5);
+    note("ai_reply", aiRepliesError);
     const existingAiReplyCount = ((aiReplies ?? []) as any[])
       .filter((r) => !["canceled", "cancelled", "failed"].includes(String(r?.status ?? ""))).length;
 
     // Atendimento humano externo (celular) ou humano pelo Orbit.
-    const { data: humanMsgs } = await supabase
+    const { data: humanMsgs, error: humanError } = await supabase
       .from("orbit_mensagens")
       .select("id")
       .eq("empresa_id", empresaId)
