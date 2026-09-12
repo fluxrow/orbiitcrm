@@ -165,6 +165,11 @@ export function decideViverControlledInboundReply(
   if ((f.cutoff_reason ?? null) !== TEMPORAL_CUTOFF_REASON) {
     return block("cutoff_reason_not_temporal");
   }
+  // Consulta de evidência que falhou nunca pode virar "nenhum bloqueio".
+  if (typeof f.query_error === "string" && f.query_error.trim() !== "") {
+    return block("evidence_query_failed");
+  }
+
 
   // ── Prospect
   const p = f.prospect ?? null;
