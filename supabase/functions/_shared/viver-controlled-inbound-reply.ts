@@ -464,10 +464,12 @@ export async function evaluateViverControlledInboundReply(
       .eq("prospect_id", input.prospect_id)
       .gte("scheduled_at", new Date().toISOString())
       .limit(10);
+    note("meetings", meetingsError);
     const futureMeetingCount = ((meetings ?? []) as any[])
       .filter((m) => !["cancelled", "canceled", "cancelada"].includes(String(m?.status ?? "").toLowerCase())).length;
 
     return decideViverControlledInboundReply({
+      query_error: errors.length ? errors.join(",") : null,
       empresa_id: empresaId,
       cutoff_reason: input.cutoff_reason ?? null,
       prospect,
