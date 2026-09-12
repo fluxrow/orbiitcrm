@@ -453,10 +453,11 @@ export async function evaluateViverControlledInboundReply(
       .eq("conversa_id", input.conversa_id)
       .in("sender_type", ["human_phone", "human_orbit"])
       .limit(1);
+    note("human_messages", humanError);
     const externalHumanCount = (humanMsgs ?? []).length;
 
     // Reunião futura não cancelada.
-    const { data: meetings } = await supabase
+    const { data: meetings, error: meetingsError } = await supabase
       .from("orbit_meetings")
       .select("id, status, scheduled_at")
       .eq("empresa_id", empresaId)
