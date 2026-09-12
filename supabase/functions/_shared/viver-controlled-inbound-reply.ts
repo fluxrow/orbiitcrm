@@ -37,6 +37,38 @@ export const TEMPORAL_CUTOFF_REASON = "automation_cutoff";
 
 const SENT_OUT_STATUS = new Set(["enviada", "enviado", "sent"]);
 
+/**
+ * Estados que só existem DEPOIS de um envio real, gravados por callback legítimo
+ * do provedor (incidente real: a OUT da conversa af32fe70 estava `PLAYED`).
+ * Nunca são aceitos sozinhos: a autorização exige, além disso, outbox `sent` com
+ * `provider_message_id` coincidente, campanha aprovada e batch allowlisted.
+ */
+const DELIVERED_OUT_STATUS = new Set([
+  "delivered", "entregue", "entregada",
+  "read", "lida", "lido",
+  "played", "ouvida", "ouvido",
+]);
+
+/** Estados que NUNCA comprovam entrega (fail-closed explícito). */
+const NOT_SENT_OUT_STATUS = new Set([
+  "error", "erro", "failed", "falha", "falhou",
+  "canceled", "cancelled", "cancelada", "cancelado",
+  "expired", "expirada", "rejected", "rejeitada",
+  "pending", "pendente", "queued", "na_fila", "processing",
+  "simulated", "simulado", "blocked", "bloqueada", "held", "retained",
+]);
+
+export type ControlledOutStatusClass = "sent" | "delivered_after_send" | "not_sent";
+
+/** Classificação determinística do status da OUT (default = not_sent). */
+export function classifyControlledOutStatus(raw: unknown): ControlledOutStatusClass {
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (SENT_OUT_STATUS.has(s)) return "sent";
+  if (DELIVERED_OUT_STATUS.has(s)) return "delivered_after_send";
+  if (NOT_SENT_OUT_STATUS.has(s)) return "not_sent";
+  return "not_sent";
+}
+
 export interface ViverControlledInboundDecision {
   allowed: boolean;
   reason: string;
