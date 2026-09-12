@@ -428,11 +428,12 @@ export async function evaluateViverControlledInboundReply(
         .eq("direcao", "OUT")
         .gt("timestamp", inboundTs)
         .limit(1);
+      note("later_out", error);
       laterOutCount = (laterOut ?? []).length;
     }
 
     // ai_reply já enfileirado/enviado para este inbound → idempotência.
-    const { data: aiReplies } = await supabase
+    const { data: aiReplies, error: aiRepliesError } = await supabase
       .from("orbit_whatsapp_outbox")
       .select("id, status")
       .eq("empresa_id", empresaId)
