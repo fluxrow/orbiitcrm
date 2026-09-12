@@ -1185,17 +1185,22 @@ async function processInboundZapi(
         prospect,
       });
       if (controlled.allowed) {
-        automationAllowedEffective = true;
         // Libera SOMENTE o human_talk imposto pelo próprio corte: nunca sobrescreve
         // atendimento humano real (human_user_id/handoff_sent_at permanecem gates).
-        await supabase
+        // O contexto local só muda se o UPDATE condicional realmente afetou a linha
+        // — se um humano assumiu no meio, a corrida fecha o gate.
+        const { data: releasedRows } = await supabase
           .from("orbit_conversas")
           .update({ human_talk: false })
           .eq("id", conversa.id)
           .eq("empresa_id", empresaId)
           .is("human_user_id", null)
-          .is("handoff_sent_at", null);
-        conversa.human_talk = false;
+          .is("handoff_sent_at", null)
+          .select("id");
+        if ((releasedRows ?? []).length > 0) {
+          automationAllowedEffective = true;
+          conversa.human_talk = false;
+        }
       }
       console.log(JSON.stringify({
         event: "viver_controlled_inbound_override",

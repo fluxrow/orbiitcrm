@@ -37,6 +37,38 @@ export const TEMPORAL_CUTOFF_REASON = "automation_cutoff";
 
 const SENT_OUT_STATUS = new Set(["enviada", "enviado", "sent"]);
 
+/**
+ * Estados que só existem DEPOIS de um envio real, gravados por callback legítimo
+ * do provedor (incidente real: a OUT da conversa af32fe70 estava `PLAYED`).
+ * Nunca são aceitos sozinhos: a autorização exige, além disso, outbox `sent` com
+ * `provider_message_id` coincidente, campanha aprovada e batch allowlisted.
+ */
+const DELIVERED_OUT_STATUS = new Set([
+  "delivered", "entregue", "entregada",
+  "read", "lida", "lido",
+  "played", "ouvida", "ouvido",
+]);
+
+/** Estados que NUNCA comprovam entrega (fail-closed explícito). */
+const NOT_SENT_OUT_STATUS = new Set([
+  "error", "erro", "failed", "falha", "falhou",
+  "canceled", "cancelled", "cancelada", "cancelado",
+  "expired", "expirada", "rejected", "rejeitada",
+  "pending", "pendente", "queued", "na_fila", "processing",
+  "simulated", "simulado", "blocked", "bloqueada", "held", "retained",
+]);
+
+export type ControlledOutStatusClass = "sent" | "delivered_after_send" | "not_sent";
+
+/** Classificação determinística do status da OUT (default = not_sent). */
+export function classifyControlledOutStatus(raw: unknown): ControlledOutStatusClass {
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (SENT_OUT_STATUS.has(s)) return "sent";
+  if (DELIVERED_OUT_STATUS.has(s)) return "delivered_after_send";
+  if (NOT_SENT_OUT_STATUS.has(s)) return "not_sent";
+  return "not_sent";
+}
+
 export interface ViverControlledInboundDecision {
   allowed: boolean;
   reason: string;
@@ -107,6 +139,11 @@ export interface ViverControlledInboundFacts {
   future_meeting_count?: number;
   /** Mensagem de atendente humano (Orbit ou celular) na conversa. */
   external_human_message_count?: number;
+  /**
+   * Qualquer erro devolvido pelas consultas de evidência. Fail-closed real:
+   * erro em humanos/reuniões/duplicidade não pode virar 0 e liberar o gate.
+   */
+  query_error?: string | null;
 }
 
 const CLOSED_STATUS = new Set([
@@ -128,6 +165,11 @@ export function decideViverControlledInboundReply(
   if ((f.cutoff_reason ?? null) !== TEMPORAL_CUTOFF_REASON) {
     return block("cutoff_reason_not_temporal");
   }
+  // Consulta de evidência que falhou nunca pode virar "nenhum bloqueio".
+  if (typeof f.query_error === "string" && f.query_error.trim() !== "") {
+    return block("evidence_query_failed");
+  }
+
 
   // ── Prospect
   const p = f.prospect ?? null;
@@ -168,7 +210,9 @@ export function decideViverControlledInboundReply(
   if (outMsg.conversa_id !== c.id) return block("out_other_conversation");
   if (String(outMsg.direcao ?? "OUT").toUpperCase() !== "OUT") return block("out_not_outbound");
   if (!outMsg.campaign_id) return block("out_without_campaign");
-  if (!SENT_OUT_STATUS.has(String(outMsg.status ?? "").toLowerCase())) {
+  // `sent` ou estado evoluído por callback do provedor (delivered/read/played).
+  // Erro/falha/pendente/simulado seguem bloqueando.
+  if (classifyControlledOutStatus(outMsg.status) === "not_sent") {
     return block("out_not_sent");
   }
   if (!outMsg.provider_message_id) return block("out_without_provider_message_id");
@@ -284,30 +328,40 @@ export async function evaluateViverControlledInboundReply(
   }
 
   try {
+    // Fail-closed real: qualquer consulta de evidência que erre invalida a decisão.
+    const errors: string[] = [];
+    const note = (label: string, error: unknown) => {
+      if (error) errors.push(`${label}:${String((error as any)?.code ?? (error as any)?.message ?? "error")}`);
+    };
+
     let prospect = input.prospect ?? null;
     if (!prospect) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("orbit_prospects")
         .select("id, empresa_id, deleted_at, optout_whatsapp")
         .eq("id", input.prospect_id)
         .eq("empresa_id", empresaId)
         .maybeSingle();
+      note("prospect", error);
       prospect = data ?? null;
     }
 
-    const { data: conversa } = await supabase
+    const { data: conversa, error: conversaError } = await supabase
       .from("orbit_conversas")
       .select("id, empresa_id, human_user_id, handoff_sent_at, archived_at, quarantine_reason, status")
       .eq("id", input.conversa_id)
       .eq("empresa_id", empresaId)
       .maybeSingle();
+    note("conversa", conversaError);
 
-    const { data: inbound } = await supabase
+    const { data: inbound, error: inboundError } = await supabase
       .from("orbit_mensagens")
       .select("id, empresa_id, conversa_id, direcao, timestamp")
       .eq("id", input.inbound_message_id)
       .eq("empresa_id", empresaId)
       .maybeSingle();
+    note("inbound", inboundError);
+
 
     const inboundTs = inbound?.timestamp ?? null;
 
@@ -325,17 +379,19 @@ export async function evaluateViverControlledInboundReply(
         .order("timestamp", { ascending: false })
         .limit(20);
       if (inboundTs) q = q.lte("timestamp", inboundTs);
-      const { data: rows } = await q;
+      const { data: rows, error } = await q;
+      note("campaign_out", error);
       const list = (rows ?? []) as any[];
-      outMessage = list.find((r) =>
-        SENT_OUT_STATUS.has(String(r?.status ?? "").toLowerCase())
-      ) ?? list[0] ?? null;
+      // Preferência: `sent`; depois estado evoluído pelo provedor (delivered/read/played).
+      outMessage = list.find((r) => classifyControlledOutStatus(r?.status) === "sent")
+        ?? list.find((r) => classifyControlledOutStatus(r?.status) === "delivered_after_send")
+        ?? list[0] ?? null;
     }
 
     // 2) Outbox correlacionado por provider_message_id + campaign_id + prospect_id.
     let outboxRow: ViverControlledInboundFacts["campaign_outbox"] = null;
     if (outMessage?.provider_message_id && outMessage?.campaign_id) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("orbit_whatsapp_outbox")
         .select("empresa_id, conversa_id, prospect_id, campaign_id, source_type, status, provider_message_id, sent_at, metadata")
         .eq("empresa_id", empresaId)
@@ -345,24 +401,26 @@ export async function evaluateViverControlledInboundReply(
         .eq("status", "sent")
         .eq("provider_message_id", outMessage.provider_message_id)
         .limit(5);
+      note("campaign_outbox", error);
       outboxRow = ((data ?? []) as any[])[0] ?? null;
     }
 
     let campaign: ViverControlledInboundFacts["campaign"] = null;
     if (outboxRow?.campaign_id) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("orbit_campaigns")
         .select("id, empresa_id, aprovacao_status, filtros_json")
         .eq("id", outboxRow.campaign_id)
         .eq("empresa_id", empresaId)
         .maybeSingle();
+      note("campaign", error);
       campaign = data ?? null;
     }
 
     // OUT posterior ao inbound (qualquer canal/origem) → resposta já ocorreu.
     let laterOutCount = 0;
     if (inboundTs) {
-      const { data: laterOut } = await supabase
+      const { data: laterOut, error } = await supabase
         .from("orbit_mensagens")
         .select("id")
         .eq("empresa_id", empresaId)
@@ -370,11 +428,12 @@ export async function evaluateViverControlledInboundReply(
         .eq("direcao", "OUT")
         .gt("timestamp", inboundTs)
         .limit(1);
+      note("later_out", error);
       laterOutCount = (laterOut ?? []).length;
     }
 
     // ai_reply já enfileirado/enviado para este inbound → idempotência.
-    const { data: aiReplies } = await supabase
+    const { data: aiReplies, error: aiRepliesError } = await supabase
       .from("orbit_whatsapp_outbox")
       .select("id, status")
       .eq("empresa_id", empresaId)
@@ -382,31 +441,35 @@ export async function evaluateViverControlledInboundReply(
       .eq("source_type", "ai_reply")
       .like("idempotency_key", `%${input.inbound_message_id}%`)
       .limit(5);
+    note("ai_reply", aiRepliesError);
     const existingAiReplyCount = ((aiReplies ?? []) as any[])
       .filter((r) => !["canceled", "cancelled", "failed"].includes(String(r?.status ?? ""))).length;
 
     // Atendimento humano externo (celular) ou humano pelo Orbit.
-    const { data: humanMsgs } = await supabase
+    const { data: humanMsgs, error: humanError } = await supabase
       .from("orbit_mensagens")
       .select("id")
       .eq("empresa_id", empresaId)
       .eq("conversa_id", input.conversa_id)
       .in("sender_type", ["human_phone", "human_orbit"])
       .limit(1);
+    note("human_messages", humanError);
     const externalHumanCount = (humanMsgs ?? []).length;
 
     // Reunião futura não cancelada.
-    const { data: meetings } = await supabase
+    const { data: meetings, error: meetingsError } = await supabase
       .from("orbit_meetings")
       .select("id, status, scheduled_at")
       .eq("empresa_id", empresaId)
       .eq("prospect_id", input.prospect_id)
       .gte("scheduled_at", new Date().toISOString())
       .limit(10);
+    note("meetings", meetingsError);
     const futureMeetingCount = ((meetings ?? []) as any[])
       .filter((m) => !["cancelled", "canceled", "cancelada"].includes(String(m?.status ?? "").toLowerCase())).length;
 
     return decideViverControlledInboundReply({
+      query_error: errors.length ? errors.join(",") : null,
       empresa_id: empresaId,
       cutoff_reason: input.cutoff_reason ?? null,
       prospect,
