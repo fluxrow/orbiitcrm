@@ -353,3 +353,104 @@ Deno.test("gate do webhook e autorização final concordam no caso real de 11/09
   assertEquals(decision.allowed, true);
   assertEquals(VIVER_CONTROLLED_INBOUND_BATCH_LABELS.length >= 1, true);
 });
+
+// ── Estados evoluídos pelo provedor (incidente real: OUT `PLAYED` em 11/09) ──
+
+import {
+  classifyControlledOutStatus,
+  evaluateViverControlledInboundReply,
+} from "./viver-controlled-inbound-reply.ts";
+
+Deno.test("classificação de status da OUT: sent, evoluído e nunca-enviado", () => {
+  for (const s of ["sent", "enviada", "enviado", "SENT"]) {
+    assertEquals(classifyControlledOutStatus(s), "sent", s);
+  }
+  for (const s of ["PLAYED", "played", "DELIVERED", "entregue", "READ", "lida", "ouvida"]) {
+    assertEquals(classifyControlledOutStatus(s), "delivered_after_send", s);
+  }
+  for (const s of ["error", "failed", "falhou", "pending", "queued", "simulated", "canceled", "expired", "held", "", null, undefined, "coisa_nova"]) {
+    assertEquals(classifyControlledOutStatus(s), "not_sent", String(s));
+  }
+});
+
+Deno.test("OUT com status evoluído (PLAYED/DELIVERED/READ) autoriza com outbox sent + provider coincidente", () => {
+  for (const status of ["PLAYED", "DELIVERED", "READ", "entregue", "lida", "ouvida"]) {
+    const d = decideViverControlledInboundReply(
+      facts({ campaign_out_message: { ...(facts().campaign_out_message as any), status } }),
+    );
+    assertEquals(d.allowed, true, status);
+  }
+});
+
+Deno.test("estado evoluído NÃO compensa outbox sem sent nem provider divergente", () => {
+  const base = facts().campaign_out_message as any;
+  const d1 = decideViverControlledInboundReply(facts({
+    campaign_out_message: { ...base, status: "PLAYED" },
+    campaign_outbox: { ...(facts().campaign_outbox as any), status: "pending" },
+  }));
+  assertEquals(d1.allowed, false);
+  assertEquals(d1.reason, "out_not_sent");
+
+  const d2 = decideViverControlledInboundReply(facts({
+    campaign_out_message: { ...base, status: "PLAYED" },
+    campaign_outbox: { ...(facts().campaign_outbox as any), provider_message_id: "prov-outro" },
+  }));
+  assertEquals(d2.allowed, false);
+  assertEquals(d2.reason, "out_provider_message_id_mismatch");
+});
+
+Deno.test("erro/falha/pendente/simulado na OUT continuam bloqueando", () => {
+  for (const status of ["error", "erro", "failed", "falhou", "pending", "queued", "simulated", "canceled", "expired"]) {
+    const d = decideViverControlledInboundReply(
+      facts({ campaign_out_message: { ...(facts().campaign_out_message as any), status } }),
+    );
+    assertEquals(d.allowed, false, status);
+    assertEquals(d.reason, "out_not_sent", status);
+  }
+});
+
+Deno.test("erro de consulta de evidência fecha o gate (nunca vira zero bloqueios)", () => {
+  const d = decideViverControlledInboundReply(facts({ query_error: "meetings:57014" }));
+  assertEquals(d.allowed, false);
+  assertEquals(d.reason, "evidence_query_failed");
+  assertEquals(decideViverControlledInboundReply(facts({ query_error: "" })).allowed, true);
+});
+
+// Stub encadeável mínimo: nenhuma rede, nenhum envio.
+function stubClient(opts: { errorOn?: string; rows: Record<string, any[]> }) {
+  const make = (table: string) => {
+    const result = () => {
+      if (opts.errorOn === table) return { data: null, error: { code: "57014", message: "timeout" } };
+      return { data: opts.rows[table] ?? [], error: null };
+    };
+    const chain: any = {
+      select: () => chain, eq: () => chain, in: () => chain, gt: () => chain, gte: () => chain,
+      lte: () => chain, like: () => chain, not: () => chain, order: () => chain,
+      limit: () => Promise.resolve(result()),
+      maybeSingle: () => Promise.resolve({ ...result(), data: (result().data ?? [])[0] ?? null }),
+      then: (res: any) => Promise.resolve(result()).then(res),
+    };
+    return chain;
+  };
+  return { from: (table: string) => make(table) };
+}
+
+const REAL_ROWS = {
+  orbit_prospects: [{ id: "p1", empresa_id: VIVER, deleted_at: null, optout_whatsapp: false }],
+  orbit_conversas: [{ id: "c1", empresa_id: VIVER, human_user_id: null, handoff_sent_at: null, archived_at: null, quarantine_reason: null, status: "aberta" }],
+  orbit_mensagens: [{ id: "m1", empresa_id: VIVER, conversa_id: "c1", campaign_id: "camp1", direcao: "OUT", status: "PLAYED", provider_message_id: "prov-1", timestamp: OUT_AT }],
+  orbit_whatsapp_outbox: [{ empresa_id: VIVER, conversa_id: null, prospect_id: "p1", campaign_id: "camp1", source_type: "campaign", status: "sent", provider_message_id: "prov-1", sent_at: OUT_AT, metadata: { viver_controlled_reengagement: true } }],
+  orbit_campaigns: [{ id: "camp1", empresa_id: VIVER, aprovacao_status: "aprovada", filtros_json: { batch_label: VIVER_CONTROLLED_INBOUND_BATCH_LABELS[0] } }],
+  orbit_meetings: [],
+};
+
+Deno.test("evaluate: erro em reuniões/humanos/duplicidade bloqueia mesmo com evidência válida", async () => {
+  const input = { empresa_id: VIVER, prospect_id: "p1", conversa_id: "c1", inbound_message_id: "in1", cutoff_reason: "automation_cutoff" };
+  for (const table of ["orbit_meetings", "orbit_whatsapp_outbox", "orbit_mensagens"]) {
+    const d = await evaluateViverControlledInboundReply(
+      stubClient({ errorOn: table, rows: REAL_ROWS }) as any,
+      input as any,
+    );
+    assertEquals(d.allowed, false, table);
+  }
+});
