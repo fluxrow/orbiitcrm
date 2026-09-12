@@ -139,6 +139,11 @@ export interface ViverControlledInboundFacts {
   future_meeting_count?: number;
   /** Mensagem de atendente humano (Orbit ou celular) na conversa. */
   external_human_message_count?: number;
+  /**
+   * Qualquer erro devolvido pelas consultas de evidência. Fail-closed real:
+   * erro em humanos/reuniões/duplicidade não pode virar 0 e liberar o gate.
+   */
+  query_error?: string | null;
 }
 
 const CLOSED_STATUS = new Set([
@@ -200,7 +205,9 @@ export function decideViverControlledInboundReply(
   if (outMsg.conversa_id !== c.id) return block("out_other_conversation");
   if (String(outMsg.direcao ?? "OUT").toUpperCase() !== "OUT") return block("out_not_outbound");
   if (!outMsg.campaign_id) return block("out_without_campaign");
-  if (!SENT_OUT_STATUS.has(String(outMsg.status ?? "").toLowerCase())) {
+  // `sent` ou estado evoluído por callback do provedor (delivered/read/played).
+  // Erro/falha/pendente/simulado seguem bloqueando.
+  if (classifyControlledOutStatus(outMsg.status) === "not_sent") {
     return block("out_not_sent");
   }
   if (!outMsg.provider_message_id) return block("out_without_provider_message_id");
