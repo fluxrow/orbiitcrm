@@ -3,6 +3,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
 import {
+  evaluateViverControlledInboundReply,
+  shouldEvaluateViverControlledOverride,
+} from "../_shared/viver-controlled-inbound-reply.ts";
+import {
   classifyZapiFailure,
   markZapiInstanceOffline,
   markZapiInstanceOnline,
@@ -1154,7 +1158,55 @@ async function processInboundZapi(
     // 6. Somente APÓS o commit do inbound: pipeline de mídia / agente.
     //    Falha aqui nunca desfaz a mensagem IN — apenas loga e libera retry.
     const correlationId = `inbound:${empresaId}:${messageId ?? savedMessage?.id}`;
-    if (!fromMe && automationAllowed && !conversaQuarantined && !conversa.human_talk && shouldProcessMedia && savedMessage?.id) {
+
+    // 5d. Exceção tenant-scoped (Viver Semijoias): inbound real de OUT de campanha
+    //     controlada aprovada não pode morrer no corte temporal. A autorização final
+    //     é a mesma do agente (campanha aprovada + batch allowlisted + OUT/outbox
+    //     correlacionados + nenhum humano/opt-out/reunião/resposta). Fail-closed.
+    let automationAllowedEffective = automationAllowed;
+    if (
+      shouldEvaluateViverControlledOverride({
+        empresa_id: empresaId,
+        from_me: fromMe,
+        cutoff_allowed: automationAllowed,
+        cutoff_reason: cutoffDecision.reason ?? null,
+        conversa_quarantined: conversaQuarantined,
+        conversa,
+        prospect_id: prospect?.id ?? null,
+        inbound_message_id: savedMessage?.id ?? null,
+      })
+    ) {
+      const controlled = await evaluateViverControlledInboundReply(supabase, {
+        empresa_id: empresaId,
+        prospect_id: prospect?.id ?? null,
+        conversa_id: conversa.id,
+        inbound_message_id: savedMessage?.id ?? null,
+        cutoff_reason: cutoffDecision.reason ?? null,
+        prospect,
+      });
+      if (controlled.allowed) {
+        automationAllowedEffective = true;
+        // Libera SOMENTE o human_talk imposto pelo próprio corte: nunca sobrescreve
+        // atendimento humano real (human_user_id/handoff_sent_at permanecem gates).
+        await supabase
+          .from("orbit_conversas")
+          .update({ human_talk: false })
+          .eq("id", conversa.id)
+          .eq("empresa_id", empresaId)
+          .is("human_user_id", null)
+          .is("handoff_sent_at", null);
+        conversa.human_talk = false;
+      }
+      console.log(JSON.stringify({
+        event: "viver_controlled_inbound_override",
+        empresa_id: empresaId,
+        conversa_id: conversa.id,
+        allowed: controlled.allowed,
+        reason: controlled.reason,
+      }));
+    }
+
+    if (!fromMe && automationAllowedEffective && !conversaQuarantined && !conversa.human_talk && shouldProcessMedia && savedMessage?.id) {
       try {
         const mediaResponse = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/orbit-inbound-media-processor`, {
           method: "POST",
@@ -1172,7 +1224,7 @@ async function processInboundZapi(
       } catch (mediaErr) {
         console.error("[orbit-webhook] media processor indisponível:", mediaErr instanceof Error ? mediaErr.message : mediaErr);
       }
-    } else if (!fromMe && automationAllowed && !conversaQuarantined && !conversa.human_talk && prospect?.id && !((tipoMidia === "image" || tipoMidia === "audio") && !shouldProcessMedia)) {
+    } else if (!fromMe && automationAllowedEffective && !conversaQuarantined && !conversa.human_talk && prospect?.id && !((tipoMidia === "image" || tipoMidia === "audio") && !shouldProcessMedia)) {
       const { data: aiConfig } = await supabase
         .from("orbit_ai_config")
         .select("modo_automatico, ai_reply_debounce")

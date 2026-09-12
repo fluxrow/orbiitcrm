@@ -217,6 +217,46 @@ export function decideViverControlledInboundReply(
   };
 }
 
+// ── Gate do webhook (perda comprovada em 11/09) ─────────────────────────────────
+// O corte temporal marcava a conversa como human_talk e o webhook nunca chamava o
+// agente, então a exceção controlada que existe DENTRO do agente era inalcançável
+// para inbound real. Esta decisão pura diz apenas se vale a pena AVALIAR a exceção
+// (a autorização final continua em decideViverControlledInboundReply).
+export interface ViverControlledOverrideGateInput {
+  empresa_id?: string | null;
+  from_me?: boolean | null;
+  cutoff_allowed?: boolean | null;
+  cutoff_reason?: string | null;
+  conversa_quarantined?: boolean | null;
+  conversa?: {
+    id?: string | null;
+    human_user_id?: string | null;
+    handoff_sent_at?: string | null;
+    archived_at?: string | null;
+    quarantine_reason?: string | null;
+  } | null;
+  prospect_id?: string | null;
+  inbound_message_id?: string | null;
+}
+
+export function shouldEvaluateViverControlledOverride(
+  i: ViverControlledOverrideGateInput,
+): boolean {
+  if (i.empresa_id !== VIVER_CONTROLLED_INBOUND_EMPRESA_ID) return false;
+  if (i.from_me === true) return false;
+  if (i.cutoff_allowed === true) return false;
+  if ((i.cutoff_reason ?? null) !== TEMPORAL_CUTOFF_REASON) return false;
+  if (i.conversa_quarantined === true) return false;
+  const c = i.conversa ?? null;
+  if (!c?.id) return false;
+  if (c.human_user_id) return false;
+  if (c.handoff_sent_at) return false;
+  if (c.archived_at) return false;
+  if (c.quarantine_reason) return false;
+  if (!i.prospect_id || !i.inbound_message_id) return false;
+  return true;
+}
+
 export interface ViverControlledInboundInput {
   empresa_id?: string | null;
   prospect_id?: string | null;

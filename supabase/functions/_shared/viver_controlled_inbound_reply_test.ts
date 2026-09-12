@@ -302,3 +302,54 @@ Deno.test("ai_reply Viver com marcador tipado dispensa só o corte temporal", ()
     empresa_id: OTHER, source_type: "ai_reply", controlled_reengagement: true,
   }), false);
 });
+
+// ── Gate do webhook (incidente 11/09: inbound do lead nunca chegou ao agente) ──
+
+import { shouldEvaluateViverControlledOverride } from "./viver-controlled-inbound-reply.ts";
+
+function gate(over: Record<string, unknown> = {}) {
+  return {
+    empresa_id: VIVER,
+    from_me: false,
+    cutoff_allowed: false,
+    cutoff_reason: "automation_cutoff",
+    conversa_quarantined: false,
+    conversa: {
+      id: "c1", human_user_id: null, handoff_sent_at: null,
+      archived_at: null, quarantine_reason: null,
+    },
+    prospect_id: "p1",
+    inbound_message_id: "in1",
+    ...over,
+  };
+}
+
+Deno.test("webhook avalia a exceção quando o corte temporal bloqueou o inbound da Viver", () => {
+  assertEquals(shouldEvaluateViverControlledOverride(gate()), true);
+});
+
+Deno.test("webhook não avalia fora do cenário legítimo", () => {
+  const cases: Array<[Record<string, unknown>, string]> = [
+    [{ empresa_id: OTHER }, "outro tenant (Bullink intacto)"],
+    [{ from_me: true }, "mensagem do próprio número"],
+    [{ cutoff_allowed: true }, "corte não bloqueou"],
+    [{ cutoff_reason: "tenant_paused" }, "motivo não temporal"],
+    [{ conversa_quarantined: true }, "conversa em quarentena"],
+    [{ conversa: { id: "c1", human_user_id: "u1" } }, "humano assumiu"],
+    [{ conversa: { id: "c1", handoff_sent_at: "2026-09-11T00:00:00Z" } }, "handoff humano"],
+    [{ conversa: { id: "c1", archived_at: "2026-09-11T00:00:00Z" } }, "conversa arquivada"],
+    [{ conversa: { id: "c1", quarantine_reason: "x" } }, "conversa quarentenada"],
+    [{ prospect_id: null }, "sem prospect"],
+    [{ inbound_message_id: null }, "sem inbound persistido"],
+  ];
+  for (const [over, label] of cases) {
+    assertEquals(shouldEvaluateViverControlledOverride(gate(over)), false, label);
+  }
+});
+
+Deno.test("gate do webhook e autorização final concordam no caso real de 11/09", () => {
+  assertEquals(shouldEvaluateViverControlledOverride(gate()), true);
+  const decision = decideViverControlledInboundReply(facts());
+  assertEquals(decision.allowed, true);
+  assertEquals(VIVER_CONTROLLED_INBOUND_BATCH_LABELS.length >= 1, true);
+});

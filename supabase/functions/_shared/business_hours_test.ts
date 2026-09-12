@@ -62,3 +62,22 @@ Deno.test("BH7 opt-in estrito", () => {
   assertEquals(isAlwaysOn({ responder_fora_horario: null }), false);
   assertEquals(isAlwaysOn({ responder_fora_horario: true }), true);
 });
+
+// ── Atendimento reativo 24h (responder_fora_horario=true) ──
+// Sábado à noite, madrugada e domingo: nenhum halt, nenhum fallback, geração normal.
+Deno.test("24h responde inbound à noite, no fim de semana e na madrugada", () => {
+  const cfg = { ...LEGACY, responder_fora_horario: true, horario_inicio: "08:00", horario_fim: "21:00" };
+  for (const t of ["23:59", "03:10", "07:59", "21:01", "22:30"]) {
+    const d = evaluateBusinessHours(cfg, t);
+    assertEquals(d.halt, false, t);
+    assertEquals(d.fallbackMessage, null, t);
+    assertEquals(d.reason, "always_on", t);
+  }
+});
+
+Deno.test("sem a flag, 21:01 continua caindo no fallback (comportamento legado)", () => {
+  const cfg = { ...LEGACY, horario_inicio: "08:00", horario_fim: "21:00" };
+  const d = evaluateBusinessHours(cfg, "21:01");
+  assertEquals(d.halt, true);
+  assertEquals(d.reason, "outside_hours");
+});
