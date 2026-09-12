@@ -401,24 +401,26 @@ export async function evaluateViverControlledInboundReply(
         .eq("status", "sent")
         .eq("provider_message_id", outMessage.provider_message_id)
         .limit(5);
+      note("campaign_outbox", error);
       outboxRow = ((data ?? []) as any[])[0] ?? null;
     }
 
     let campaign: ViverControlledInboundFacts["campaign"] = null;
     if (outboxRow?.campaign_id) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("orbit_campaigns")
         .select("id, empresa_id, aprovacao_status, filtros_json")
         .eq("id", outboxRow.campaign_id)
         .eq("empresa_id", empresaId)
         .maybeSingle();
+      note("campaign", error);
       campaign = data ?? null;
     }
 
     // OUT posterior ao inbound (qualquer canal/origem) → resposta já ocorreu.
     let laterOutCount = 0;
     if (inboundTs) {
-      const { data: laterOut } = await supabase
+      const { data: laterOut, error } = await supabase
         .from("orbit_mensagens")
         .select("id")
         .eq("empresa_id", empresaId)
