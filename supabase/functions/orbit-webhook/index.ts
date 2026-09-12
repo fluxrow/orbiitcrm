@@ -3,6 +3,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
 import {
+  evaluateViverControlledInboundReply,
+  shouldEvaluateViverControlledOverride,
+} from "../_shared/viver-controlled-inbound-reply.ts";
+import {
   classifyZapiFailure,
   markZapiInstanceOffline,
   markZapiInstanceOnline,
@@ -1220,7 +1224,7 @@ async function processInboundZapi(
       } catch (mediaErr) {
         console.error("[orbit-webhook] media processor indisponível:", mediaErr instanceof Error ? mediaErr.message : mediaErr);
       }
-    } else if (!fromMe && automationAllowed && !conversaQuarantined && !conversa.human_talk && prospect?.id && !((tipoMidia === "image" || tipoMidia === "audio") && !shouldProcessMedia)) {
+    } else if (!fromMe && automationAllowedEffective && !conversaQuarantined && !conversa.human_talk && prospect?.id && !((tipoMidia === "image" || tipoMidia === "audio") && !shouldProcessMedia)) {
       const { data: aiConfig } = await supabase
         .from("orbit_ai_config")
         .select("modo_automatico, ai_reply_debounce")
