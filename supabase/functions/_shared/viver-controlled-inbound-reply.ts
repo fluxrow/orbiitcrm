@@ -328,30 +328,40 @@ export async function evaluateViverControlledInboundReply(
   }
 
   try {
+    // Fail-closed real: qualquer consulta de evidência que erre invalida a decisão.
+    const errors: string[] = [];
+    const note = (label: string, error: unknown) => {
+      if (error) errors.push(`${label}:${String((error as any)?.code ?? (error as any)?.message ?? "error")}`);
+    };
+
     let prospect = input.prospect ?? null;
     if (!prospect) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("orbit_prospects")
         .select("id, empresa_id, deleted_at, optout_whatsapp")
         .eq("id", input.prospect_id)
         .eq("empresa_id", empresaId)
         .maybeSingle();
+      note("prospect", error);
       prospect = data ?? null;
     }
 
-    const { data: conversa } = await supabase
+    const { data: conversa, error: conversaError } = await supabase
       .from("orbit_conversas")
       .select("id, empresa_id, human_user_id, handoff_sent_at, archived_at, quarantine_reason, status")
       .eq("id", input.conversa_id)
       .eq("empresa_id", empresaId)
       .maybeSingle();
+    note("conversa", conversaError);
 
-    const { data: inbound } = await supabase
+    const { data: inbound, error: inboundError } = await supabase
       .from("orbit_mensagens")
       .select("id, empresa_id, conversa_id, direcao, timestamp")
       .eq("id", input.inbound_message_id)
       .eq("empresa_id", empresaId)
       .maybeSingle();
+    note("inbound", inboundError);
+
 
     const inboundTs = inbound?.timestamp ?? null;
 
