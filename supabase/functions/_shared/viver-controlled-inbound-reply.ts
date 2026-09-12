@@ -379,17 +379,19 @@ export async function evaluateViverControlledInboundReply(
         .order("timestamp", { ascending: false })
         .limit(20);
       if (inboundTs) q = q.lte("timestamp", inboundTs);
-      const { data: rows } = await q;
+      const { data: rows, error } = await q;
+      note("campaign_out", error);
       const list = (rows ?? []) as any[];
-      outMessage = list.find((r) =>
-        SENT_OUT_STATUS.has(String(r?.status ?? "").toLowerCase())
-      ) ?? list[0] ?? null;
+      // Preferência: `sent`; depois estado evoluído pelo provedor (delivered/read/played).
+      outMessage = list.find((r) => classifyControlledOutStatus(r?.status) === "sent")
+        ?? list.find((r) => classifyControlledOutStatus(r?.status) === "delivered_after_send")
+        ?? list[0] ?? null;
     }
 
     // 2) Outbox correlacionado por provider_message_id + campaign_id + prospect_id.
     let outboxRow: ViverControlledInboundFacts["campaign_outbox"] = null;
     if (outMessage?.provider_message_id && outMessage?.campaign_id) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("orbit_whatsapp_outbox")
         .select("empresa_id, conversa_id, prospect_id, campaign_id, source_type, status, provider_message_id, sent_at, metadata")
         .eq("empresa_id", empresaId)
