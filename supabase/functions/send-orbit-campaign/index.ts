@@ -11,6 +11,7 @@ import { claimCampaignDispatchAuthorization } from "../_shared/campaign-dispatch
 import { controlledViverCampaignMessageBlockReason } from "../_shared/outbox-pilot.ts";
 import { isAuthorizedViverControlledCampaign } from "../_shared/viver-controlled-inbound-reply.ts";
 import { viverOperationalDateDecision } from "../_shared/viver-campaign-operational-date.ts";
+import { campaignStatusForAbort, updateCampaignStatus } from "../_shared/campaign-status.ts";
 
 import { buildTemplateOutboxPayload, templatePayloadType } from "../_shared/message-template-media.ts";
 import {
@@ -314,8 +315,15 @@ const handler = async (req: Request): Promise<Response> => {
         .select("*", { count: "exact", head: true })
         .eq("campaign_id", campaign_id)
         .in("status", ["enviado", "simulated"]);
-      const emptyFinalStatus = (failedCount || 0) > 0 && (sentCount || 0) === 0 ? "falha" : "concluida";
-      await supabase.from("orbit_campaigns").update({ status: emptyFinalStatus }).eq("id", campaign_id);
+      const allFailed = (failedCount || 0) > 0 && (sentCount || 0) === 0;
+      const emptyUpdate = await updateCampaignStatus(supabase as any, {
+        campaign_id,
+        status: allFailed ? campaignStatusForAbort("CAMPAIGN_ALL_FAILED") : "concluida",
+        ...(allFailed ? { motivo_reprovacao: "CAMPAIGN_ALL_FAILED" } : {}),
+      });
+      if (!emptyUpdate.applied) {
+        console.error("[send-campaign] status update rejeitado", emptyUpdate);
+      }
       return ok({ enviados: 0, validados_enviados: 0, ignorados_sem_numero: 0, ignorados_sem_whatsapp: 0, ignorados_whatsapp_invalido: 0, falhas: 0, pausada_por_limite: false, message: "Campanha concluída" }, undefined, req);
     }
 
@@ -444,10 +452,14 @@ const handler = async (req: Request): Promise<Response> => {
       const campaignBlockReason = getOrbitZapiRealSendBlockReason(zapiConfig);
       if (campaignBlockReason) {
         console.error(`[send-campaign] Envio real bloqueado — aborting campaign ${campaign_id}`);
-        await supabase
-          .from("orbit_campaigns")
-          .update({ status: "falha", motivo_reprovacao: "ZAPI_REAL_SEND_BLOCKED" })
-          .eq("id", campaign_id);
+        const blockedUpdate = await updateCampaignStatus(supabase as any, {
+          campaign_id,
+          status: campaignStatusForAbort("ZAPI_REAL_SEND_BLOCKED"),
+          motivo_reprovacao: "ZAPI_REAL_SEND_BLOCKED",
+        });
+        if (!blockedUpdate.applied) {
+          console.error("[send-campaign] status update rejeitado", blockedUpdate);
+        }
         await auditZapiSendAttempt(supabase, {
           empresa_id: campaign.empresa_id,
           function_name: "send-orbit-campaign",
@@ -470,10 +482,17 @@ const handler = async (req: Request): Promise<Response> => {
       const status = await checkZapiInstanceStatus(zapiBaseUrl, zapiHeaders);
       if (!status.connected) {
         console.error(`[send-campaign] Z-API instance not connected — aborting campaign ${campaign_id}`);
-        await supabase
-          .from("orbit_campaigns")
-          .update({ status: "falha", motivo_reprovacao: "ZAPI_DISCONNECTED" })
-          .eq("id", campaign_id);
+        // Transitório: volta para `agendada` (retomável pelo claim normal, com
+        // todos os gates) em vez de gravar um status inválido e ficar preso em
+        // `enviando` sendo reinvocado a cada minuto.
+        const disconnectedUpdate = await updateCampaignStatus(supabase as any, {
+          campaign_id,
+          status: campaignStatusForAbort("ZAPI_DISCONNECTED"),
+          motivo_reprovacao: "ZAPI_DISCONNECTED",
+        });
+        if (!disconnectedUpdate.applied) {
+          console.error("[send-campaign] status update rejeitado", disconnectedUpdate);
+        }
         return fail(
           ErrorCodes.PROVIDER_NOT_CONFIGURED,
           "A instância do WhatsApp (Z-API) está desconectada. Reconecte e tente novamente. Nenhum prospect foi marcado como inválido.",
@@ -1014,15 +1033,16 @@ const handler = async (req: Request): Promise<Response> => {
     if (adapterEnabled && campaign.canal === "whatsapp") {
       await supabase.rpc("reconcile_campaign_counters", { _campaign_id: campaign_id });
     } else {
+      const allFailedFinal = totalEnviados === 0 && falhas > 0;
       const finalStatus = pausada_por_limite
         ? "pausada_por_limite"
         : (remainingPending && remainingPending > 0)
           ? "enviando"
-          : (totalEnviados === 0 && falhas > 0)
-            ? "falha"
+          : allFailedFinal
+            ? campaignStatusForAbort("CAMPAIGN_ALL_FAILED")
             : "concluida";
 
-      await supabase.from("orbit_campaigns").update({
+      const { error: finalStatusError } = await supabase.from("orbit_campaigns").update({
         enviados: (campaign.enviados || 0) + totalEnviados,
         falhas: (campaign.falhas || 0) + falhas,
         ignorados: (campaign.ignorados || 0)
@@ -1031,7 +1051,15 @@ const handler = async (req: Request): Promise<Response> => {
           + ignorados_sem_whatsapp
           + ignorados_whatsapp_invalido,
         status: finalStatus,
+        ...(allFailedFinal ? { motivo_reprovacao: "CAMPAIGN_ALL_FAILED" } : {}),
       }).eq("id", campaign_id);
+      if (finalStatusError) {
+        console.error("[send-campaign] status final rejeitado", {
+          campaign_id,
+          status: finalStatus,
+          error: finalStatusError.message,
+        });
+      }
     }
 
     return ok(

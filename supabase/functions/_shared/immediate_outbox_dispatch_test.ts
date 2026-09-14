@@ -150,6 +150,35 @@ Deno.test("erro/timeout no kick é fail-safe (mantém pending)", async () => {
   assertEquals(r2.status, 500);
 });
 
+Deno.test("kick deferido pelo worker é observável (não conta como envio imediato)", async () => {
+  const bodies = [
+    { body: { ok: true, data: { outcome: "deferred", reason: "higher_priority_pending" } }, deferred: true },
+    { body: { ok: true, data: { skipped: true, reason: "viver_campaign_targeted_refused" } }, deferred: true },
+    { body: { ok: true, data: { outcome: "sent", reason: null } }, deferred: false },
+  ];
+  for (const c of bodies) {
+    const fetchImpl = (() =>
+      Promise.resolve(new Response(JSON.stringify(c.body), { status: 200 }))) as unknown as typeof fetch;
+    const r = await kickOutboxDispatch(
+      { outboxId: OUTBOX_ID, empresaId: BULLINK },
+      { functionsBase: "https://x.functions/v1", cronToken: "tok", fetchImpl },
+    );
+    assertEquals(r.ok, true);
+    assertEquals(r.deferred, c.deferred, JSON.stringify(c.body));
+  }
+});
+
+Deno.test("corpo não-JSON não invalida o kick", async () => {
+  const fetchImpl = (() =>
+    Promise.resolve(new Response("ok", { status: 200 }))) as unknown as typeof fetch;
+  const r = await kickOutboxDispatch(
+    { outboxId: OUTBOX_ID, empresaId: BULLINK },
+    { functionsBase: "https://x.functions/v1", cronToken: "tok", fetchImpl },
+  );
+  assertEquals(r.ok, true);
+  assertEquals(r.deferred, false);
+});
+
 Deno.test("sem SCHEDULER_CRON_TOKEN não há chamada alguma", async () => {
   let called = 0;
   const fetchImpl = (() => {
