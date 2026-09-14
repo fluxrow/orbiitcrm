@@ -142,7 +142,9 @@ export async function kickOutboxDispatch(
       body: JSON.stringify({ outbox_id: args.outboxId, empresa_id: args.empresaId }),
       signal: controller.signal,
     });
-    return { attempted: true, ok: resp.ok, status: resp.status };
+    let body: unknown = null;
+    try { body = await resp.json(); } catch { /* corpo não-JSON não invalida o kick */ }
+    return { attempted: true, ok: resp.ok, status: resp.status, ...readKickOutcome(body) };
   } catch (e) {
     return { attempted: true, ok: false, error: String((e as any)?.message ?? e) };
   } finally {
