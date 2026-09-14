@@ -458,8 +458,10 @@ const handler = async (req: Request): Promise<Response> => {
         console.error(`[send-campaign] Envio real bloqueado — aborting campaign ${campaign_id}`);
         const blockedUpdate = await updateCampaignStatus(supabase as any, {
           campaign_id,
-          status: campaignStatusForAbort("ZAPI_REAL_SEND_BLOCKED"),
+          empresa_id: campaign.empresa_id,
+          status: campaignStatusForAbort("ZAPI_REAL_SEND_BLOCKED", { empresaId: campaign.empresa_id }),
           motivo_reprovacao: "ZAPI_REAL_SEND_BLOCKED",
+          expectedStatus: ["enviando"],
         });
         if (!blockedUpdate.applied) {
           console.error("[send-campaign] status update rejeitado", blockedUpdate);
@@ -491,8 +493,10 @@ const handler = async (req: Request): Promise<Response> => {
         // `enviando` sendo reinvocado a cada minuto.
         const disconnectedUpdate = await updateCampaignStatus(supabase as any, {
           campaign_id,
-          status: campaignStatusForAbort("ZAPI_DISCONNECTED"),
+          empresa_id: campaign.empresa_id,
+          status: campaignStatusForAbort("ZAPI_DISCONNECTED", { empresaId: campaign.empresa_id }),
           motivo_reprovacao: "ZAPI_DISCONNECTED",
+          expectedStatus: ["enviando"],
         });
         if (!disconnectedUpdate.applied) {
           console.error("[send-campaign] status update rejeitado", disconnectedUpdate);
@@ -1043,7 +1047,7 @@ const handler = async (req: Request): Promise<Response> => {
         : (remainingPending && remainingPending > 0)
           ? "enviando"
           : allFailedFinal
-            ? campaignStatusForAbort("CAMPAIGN_ALL_FAILED")
+            ? campaignStatusForAbort("CAMPAIGN_ALL_FAILED", { empresaId: campaign.empresa_id })
             : "concluida";
 
       const { error: finalStatusError } = await supabase.from("orbit_campaigns").update({
