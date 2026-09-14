@@ -1033,15 +1033,16 @@ const handler = async (req: Request): Promise<Response> => {
     if (adapterEnabled && campaign.canal === "whatsapp") {
       await supabase.rpc("reconcile_campaign_counters", { _campaign_id: campaign_id });
     } else {
+      const allFailedFinal = totalEnviados === 0 && falhas > 0;
       const finalStatus = pausada_por_limite
         ? "pausada_por_limite"
         : (remainingPending && remainingPending > 0)
           ? "enviando"
-          : (totalEnviados === 0 && falhas > 0)
-            ? "falha"
+          : allFailedFinal
+            ? campaignStatusForAbort("CAMPAIGN_ALL_FAILED")
             : "concluida";
 
-      await supabase.from("orbit_campaigns").update({
+      const { error: finalStatusError } = await supabase.from("orbit_campaigns").update({
         enviados: (campaign.enviados || 0) + totalEnviados,
         falhas: (campaign.falhas || 0) + falhas,
         ignorados: (campaign.ignorados || 0)
@@ -1050,7 +1051,15 @@ const handler = async (req: Request): Promise<Response> => {
           + ignorados_sem_whatsapp
           + ignorados_whatsapp_invalido,
         status: finalStatus,
+        ...(allFailedFinal ? { motivo_reprovacao: "CAMPAIGN_ALL_FAILED" } : {}),
       }).eq("id", campaign_id);
+      if (finalStatusError) {
+        console.error("[send-campaign] status final rejeitado", {
+          campaign_id,
+          status: finalStatus,
+          error: finalStatusError.message,
+        });
+      }
     }
 
     return ok(
