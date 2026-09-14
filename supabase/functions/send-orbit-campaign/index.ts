@@ -11,6 +11,7 @@ import { claimCampaignDispatchAuthorization } from "../_shared/campaign-dispatch
 import { controlledViverCampaignMessageBlockReason } from "../_shared/outbox-pilot.ts";
 import { isAuthorizedViverControlledCampaign } from "../_shared/viver-controlled-inbound-reply.ts";
 import { viverOperationalDateDecision } from "../_shared/viver-campaign-operational-date.ts";
+import { campaignStatusForAbort, updateCampaignStatus } from "../_shared/campaign-status.ts";
 
 import { buildTemplateOutboxPayload, templatePayloadType } from "../_shared/message-template-media.ts";
 import {
@@ -314,8 +315,15 @@ const handler = async (req: Request): Promise<Response> => {
         .select("*", { count: "exact", head: true })
         .eq("campaign_id", campaign_id)
         .in("status", ["enviado", "simulated"]);
-      const emptyFinalStatus = (failedCount || 0) > 0 && (sentCount || 0) === 0 ? "falha" : "concluida";
-      await supabase.from("orbit_campaigns").update({ status: emptyFinalStatus }).eq("id", campaign_id);
+      const allFailed = (failedCount || 0) > 0 && (sentCount || 0) === 0;
+      const emptyUpdate = await updateCampaignStatus(supabase as any, {
+        campaign_id,
+        status: allFailed ? campaignStatusForAbort("CAMPAIGN_ALL_FAILED") : "concluida",
+        ...(allFailed ? { motivo_reprovacao: "CAMPAIGN_ALL_FAILED" } : {}),
+      });
+      if (!emptyUpdate.applied) {
+        console.error("[send-campaign] status update rejeitado", emptyUpdate);
+      }
       return ok({ enviados: 0, validados_enviados: 0, ignorados_sem_numero: 0, ignorados_sem_whatsapp: 0, ignorados_whatsapp_invalido: 0, falhas: 0, pausada_por_limite: false, message: "Campanha concluída" }, undefined, req);
     }
 
