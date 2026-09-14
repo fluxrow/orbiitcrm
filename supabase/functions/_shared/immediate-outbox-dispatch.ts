@@ -86,6 +86,29 @@ export interface KickResult {
   ok: boolean;
   status?: number;
   error?: string;
+  /**
+   * Resultado real do worker no modo dirigido. A execução dirigida devolve
+   * HTTP 200 mesmo quando apenas DEFERE o item (recusa de campanha Viver,
+   * prioridade maior pendente, item já não `pending`). Sem isso, um deferimento
+   * legítimo era indistinguível de envio imediato no log — e a latência real
+   * (fallback do cron, ~1 min) ficava sem causa observável.
+   */
+  outcome?: string | null;
+  reason?: string | null;
+  deferred?: boolean;
+}
+
+/** Extrai outcome/reason/deferred do corpo do worker (tolerante a formatos). */
+export function readKickOutcome(body: unknown): Pick<KickResult, "outcome" | "reason" | "deferred"> {
+  const data = (body as any)?.data ?? body ?? {};
+  const outcome = data?.outcome ?? (data?.deferred === true ? "deferred" : data?.skipped === true ? "skipped" : null);
+  const deferred = data?.deferred === true || data?.skipped === true ||
+    (typeof outcome === "string" && ["deferred", "skipped", "retained", "held"].includes(outcome));
+  return {
+    outcome: typeof outcome === "string" ? outcome : null,
+    reason: typeof data?.reason === "string" ? data.reason : null,
+    deferred,
+  };
 }
 
 export interface KickDeps {
