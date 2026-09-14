@@ -1060,7 +1060,7 @@ const handler = async (req: Request): Promise<Response> => {
           + ignorados_whatsapp_invalido,
         status: finalStatus,
         ...(allFailedFinal ? { motivo_reprovacao: "CAMPAIGN_ALL_FAILED" } : {}),
-      }).eq("id", campaign_id);
+      }).eq("id", campaign_id).eq("empresa_id", campaign.empresa_id);
       if (finalStatusError) {
         console.error("[send-campaign] status final rejeitado", {
           campaign_id,
