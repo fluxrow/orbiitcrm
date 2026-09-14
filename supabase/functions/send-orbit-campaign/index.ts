@@ -318,7 +318,11 @@ const handler = async (req: Request): Promise<Response> => {
       const allFailed = (failedCount || 0) > 0 && (sentCount || 0) === 0;
       const emptyUpdate = await updateCampaignStatus(supabase as any, {
         campaign_id,
-        status: allFailed ? campaignStatusForAbort("CAMPAIGN_ALL_FAILED") : "concluida",
+        empresa_id: campaign.empresa_id,
+        status: allFailed
+          ? campaignStatusForAbort("CAMPAIGN_ALL_FAILED", { empresaId: campaign.empresa_id })
+          : "concluida",
+        expectedStatus: ["enviando"],
         ...(allFailed ? { motivo_reprovacao: "CAMPAIGN_ALL_FAILED" } : {}),
       });
       if (!emptyUpdate.applied) {
