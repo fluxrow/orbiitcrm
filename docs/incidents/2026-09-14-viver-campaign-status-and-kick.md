@@ -56,33 +56,40 @@ final "tudo falhou", caso sem recipients).
 
 ## 3. Incidente 2 — `ai_reply 677bd76d…` (51,36 s)
 
-Limitação factual: a retenção de logs de runtime do projeto é de ~9 minutos
-(consulta de fontes confirma o log mais antigo em 13:08 de hoje). Os logs de kick
-de 12:14 SP-3 já não existem e **não serão inventados**.
+Limitação factual: no momento da investigação a consulta de logs só retornava
+entradas a partir de 13:08 (log mais antigo disponível), então os registros de
+kick de 12:14 não estavam mais acessíveis. Isso é uma OBSERVAÇÃO da janela
+disponível — **não** prova de uma política de retenção de 9 minutos. Causa não
+comprovada; nada será inventado.
 
 Evidência durável disponível: item criado 12:14:16.687Z, `sent_at` 12:15:08.047Z,
-`attempts=1`, provider presente. Os ticks do worker rodam ~:04–:05 de cada minuto
-com duração 3,3–4,3 s, ou seja 12:15:08 é exatamente o cron seguinte — o item foi
-enviado pelo fallback, não pelo kick. Respostas irmãs (12:16:40→45, 12:18:00→06,
-12:19:05→11, 12:20:24→30) mostram o kick funcionando em 5–8 s.
+`attempts=1`, provider presente. Os ticks do worker rodam ~:04–:05 de cada minuto.
+A coincidência entre `sent_at` e o horário do cron seguinte é uma INFERÊNCIA
+compatível com o fallback — **não** é prova de qual caminho enviou o item, pois
+não há log correlacionado. Respostas irmãs (12:16:40→45, 12:18:00→06, 12:19:05→11,
+12:20:24→30) saíram em 5–8 s.
 
 Por que o kick pode não entregar sem deixar rastro: a execução dirigida devolve
 `ok:true` com `deferred`/`skipped` (recusa de campanha Viver, `higher_priority_pending`,
 item já não `pending`) e o helper só olha `resp.ok`. Assim um deferimento
 legítimo era indistinguível de um envio imediato nos logs.
 
-Correção mínima (sem re-arquitetura, sem caminho alternativo de envio): o helper
-passa a ler o corpo da resposta e reportar `outcome`/`reason`/`deferred`, e o
-agente registra isso. Nenhuma mudança de gate, prioridade ou trava.
+Correção mínima: **apenas observabilidade**. O helper passa a ler o corpo da
+resposta e reportar `outcome`/`reason`/`deferred`, e o agente registra isso.
+Nenhuma mudança de gate, prioridade, trava ou caminho de envio — e portanto
+**nenhuma afirmação de que a latência foi corrigida**.
 
 ## 4. Plano mínimo
 
-1. `_shared/campaign-status.ts`: statuses válidos + mapeamento de abort e update
-   com erro verificado.
-2. `send-orbit-campaign`: usar o mapeamento nos 4 pontos.
+1. `_shared/campaign-status.ts`: statuses válidos + mapeamento de abort
+   **restrito ao tenant Viver** (outros tenants mantêm o mapeamento legado) +
+   update com `empresa_id` obrigatório, compare-and-swap de estado esperado
+   (`enviando`) e confirmação por linha afetada (zero rows ⇒ `applied:false`).
+2. `send-orbit-campaign`: usar o mapeamento tenant-scoped nos 4 pontos.
    - `ZAPI_DISCONNECTED` → `agendada` + motivo (retomável pelo claim normal quando
      a instância voltar, dentro do mesmo dia operacional).
    - `ZAPI_REAL_SEND_BLOCKED` → `pausada` + motivo (fail-closed, sem auto-resume).
    - "tudo falhou" → `pausada` + motivo.
-3. `_shared/immediate-outbox-dispatch.ts`: `KickResult` com `outcome`/`reason`/`deferred`.
+3. `_shared/immediate-outbox-dispatch.ts`: `KickResult` com
+   `outcome`/`reason`/`deferred` — somente observabilidade.
 4. Testes com stubs (sem mensagem real) e deploy só das funções afetadas.

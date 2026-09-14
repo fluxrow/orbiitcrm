@@ -1,14 +1,22 @@
 /**
  * Status de campanha permitidos pelo banco (`orbit_campaigns_status_check`).
  *
- * Incidente 2026-09-14 (Viver): o abort por Z-API desconectada gravava
+ * Incidente 2026-09-14 (tenant Viver): o abort por Z-API desconectada gravava
  * `status='falha'`, valor REJEITADO pela CHECK constraint. O erro do UPDATE era
  * ignorado, a campanha ficava presa em `enviando` com destinatários pendentes e o
  * auto-resume a reinvocava a cada minuto para sempre.
  *
- * Este módulo é puro (mapeamento) + um único helper de I/O que VERIFICA o erro
- * do UPDATE, para que uma transição inválida nunca volte a passar em silêncio.
+ * ESCOPO DA MUDANÇA DE COMPORTAMENTO: somente o tenant Viver. Para qualquer
+ * outro tenant o mapeamento legado é preservado byte a byte (inclusive o valor
+ * `falha`), de modo que nenhuma semântica existente muda fora da Viver.
+ *
+ * Este módulo é puro (mapeamento) + um único helper de I/O que aplica o UPDATE
+ * com escopo de tenant obrigatório e compare-and-swap de estado esperado,
+ * confirmando a linha afetada — nunca mais "applied" sem linha alterada e nunca
+ * desfazendo uma pausa/cancelamento concorrente.
  */
+
+import { VIVER_EMPRESA_ID } from "./tenant-scheduling-policy.ts";
 
 export const CAMPAIGN_STATUSES = [
   "rascunho",
@@ -38,20 +46,33 @@ export type CampaignAbortReason =
   | "WHATSAPP_RHYTHM_DISABLED"
   | "CAMPAIGN_ALL_FAILED";
 
+/** Comportamento histórico, mantido para todos os tenants exceto Viver. */
+const LEGACY_ABORT_STATUS: Record<CampaignAbortReason, string> = {
+  ZAPI_DISCONNECTED: "falha",
+  ZAPI_REAL_SEND_BLOCKED: "falha",
+  CAMPAIGN_ALL_FAILED: "falha",
+  WHATSAPP_RHYTHM_DISABLED: "pausada",
+};
+
+export function isViverCampaignTenant(empresaId: unknown): boolean {
+  return String(empresaId ?? "") === VIVER_EMPRESA_ID;
+}
+
 /**
- * Estado alvo por motivo de abort:
+ * Estado alvo por motivo de abort — SOMENTE Viver:
  *  • `ZAPI_DISCONNECTED` é transitório → `agendada`, retomável pelo claim normal
- *    (mesmos gates, mesma janela, mesmo dia operacional). Sem envio direto.
+ *    (mesmos gates: 15 campanhas/dia, gap de 30 min, data operacional). Nunca
+ *    envia direto e nunca libera hold.
  *  • bloqueios de política/kill-switch e "tudo falhou" → `pausada` (fail-closed,
  *    sem auto-resume; exige decisão humana).
+ * Outros tenants: mapeamento legado inalterado.
  */
-export function campaignStatusForAbort(reason: CampaignAbortReason): CampaignStatus {
-  switch (reason) {
-    case "ZAPI_DISCONNECTED":
-      return "agendada";
-    default:
-      return "pausada";
-  }
+export function campaignStatusForAbort(
+  reason: CampaignAbortReason,
+  opts?: { empresaId?: unknown },
+): string {
+  if (!isViverCampaignTenant(opts?.empresaId)) return LEGACY_ABORT_STATUS[reason];
+  return reason === "ZAPI_DISCONNECTED" ? "agendada" : "pausada";
 }
 
 export interface CampaignStatusUpdateResult {
@@ -60,23 +81,39 @@ export interface CampaignStatusUpdateResult {
   error?: string;
 }
 
-/** Cliente mínimo (stubável) para o update de status. */
+/** Cliente mínimo (stubável) para o update de status com filtros encadeados. */
+export interface CampaignStatusFilterBuilder {
+  eq(column: string, value: unknown): CampaignStatusFilterBuilder;
+  in(column: string, values: readonly unknown[]): CampaignStatusFilterBuilder;
+  select(columns: string): Promise<{ data: unknown[] | null; error: { message?: string } | null }>;
+}
+
 export interface CampaignStatusUpdateClient {
-  from(table: string): {
-    update(values: Record<string, unknown>): {
-      eq(column: string, value: unknown): Promise<{ error: { message?: string } | null }>;
-    };
-  };
+  from(table: string): { update(values: Record<string, unknown>): CampaignStatusFilterBuilder };
 }
 
 /**
- * Aplica o status verificando validade e erro do banco. Fail-loud: status
- * inválido nunca é enviado ao banco e o erro é sempre devolvido/logável.
+ * Aplica o status com:
+ *  • escopo de tenant obrigatório (`empresa_id`);
+ *  • compare-and-swap opcional (`expectedStatus`) para não sobrescrever pausa,
+ *    cancelamento ou qualquer transição concorrente;
+ *  • confirmação por linha retornada — zero rows ⇒ `applied:false`.
+ * Fail-loud: status inválido nunca é enviado ao banco e o erro é sempre devolvido.
  */
 export async function updateCampaignStatus(
   client: CampaignStatusUpdateClient,
-  args: { campaign_id: string; status: string; motivo_reprovacao?: string | null },
+  args: {
+    campaign_id: string;
+    empresa_id: string;
+    status: string;
+    motivo_reprovacao?: string | null;
+    /** Estados aceitos como ponto de partida (CAS). Vazio/omitido = sem CAS. */
+    expectedStatus?: readonly string[];
+  },
 ): Promise<CampaignStatusUpdateResult> {
+  if (!args.empresa_id) {
+    return { applied: false, status: args.status, error: "missing_empresa_id" };
+  }
   if (!isValidCampaignStatus(args.status)) {
     return { applied: false, status: args.status, error: "invalid_campaign_status" };
   }
@@ -84,12 +121,20 @@ export async function updateCampaignStatus(
   if (args.motivo_reprovacao !== undefined) {
     values.motivo_reprovacao = args.motivo_reprovacao;
   }
-  const { error } = await client
+  let query = client
     .from("orbit_campaigns")
     .update(values)
-    .eq("id", args.campaign_id);
+    .eq("id", args.campaign_id)
+    .eq("empresa_id", args.empresa_id);
+  if (args.expectedStatus && args.expectedStatus.length > 0) {
+    query = query.in("status", args.expectedStatus);
+  }
+  const { data, error } = await query.select("id");
   if (error) {
     return { applied: false, status: args.status, error: String(error.message ?? "update_failed") };
+  }
+  if (!Array.isArray(data) || data.length === 0) {
+    return { applied: false, status: args.status, error: "no_rows_matched" };
   }
   return { applied: true, status: args.status };
 }
