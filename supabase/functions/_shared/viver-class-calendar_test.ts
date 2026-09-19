@@ -11,19 +11,20 @@ function event(overrides: Record<string, unknown> = {}) {
   return {
     id: "official-instance",
     status: "confirmed",
-    start: { dateTime: "2026-09-01T22:30:00.000Z" },
+    start: { dateTime: "2026-09-02T22:30:00.000Z" },
     hangoutLink: canonical,
     ...overrides,
   };
 }
 
-Deno.test("seleciona apenas a próxima terça às 19h30 com Meet canônico", () => {
+Deno.test("seleciona apenas a próxima quarta às 19h30 com Meet canônico", () => {
   const result = selectAuthoritativeViverClassEvent(
     [
       event({
         id: "wrong-time",
-        start: { dateTime: "2026-09-01T21:30:00.000Z" },
+        start: { dateTime: "2026-09-02T21:30:00.000Z" },
       }),
+      event({ id: "wrong-weekday", start: { dateTime: "2026-09-01T22:30:00.000Z" } }),
       event({
         id: "wrong-link",
         hangoutLink: "https://meet.google.com/outro-link",

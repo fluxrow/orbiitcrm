@@ -17,7 +17,7 @@ import {
 } from "./viver-class-guard.ts";
 
 const canonical =
-  `Perfeito, {{nome}}. Aqui esta o link da aula ao vivo: https://meet.google.com/esz-wgwt-pge\n\nA aula sera na terca-feira, as 19:30.`;
+  `Perfeito, {{nome}}. Aqui esta o link da aula ao vivo: https://meet.google.com/esz-wgwt-pge\n\nA aula sera na quarta-feira, as 19:30.`;
 
 Deno.test("aceite explícito após oferta de acesso entrega template canônico", () => {
   const messages = [
@@ -121,23 +121,23 @@ Deno.test("preserva link canônico e respostas sem conteúdo de aula", () => {
 });
 
 Deno.test("controle temporal distingue antes, durante e depois da aula em São Paulo", () => {
-  assertEquals(viverClassPhase(new Date("2026-08-25T22:29:59Z")), "upcoming");
+  assertEquals(viverClassPhase(new Date("2026-08-26T22:29:59Z")), "upcoming");
   assertEquals(
-    viverClassPhase(new Date("2026-08-25T22:30:00Z")),
+    viverClassPhase(new Date("2026-08-26T22:30:00Z")),
     "in_progress",
   );
-  assertEquals(viverClassPhase(new Date("2026-08-26T00:00:00Z")), "next_week");
+  assertEquals(viverClassPhase(new Date("2026-08-27T00:00:00Z")), "next_week");
 });
 
 Deno.test("durante a aula usa linguagem presente e o link canônico", () => {
   const text = buildCanonicalClassDelivery(
     canonical,
     "Franciane",
-    new Date("2026-08-25T22:39:00Z"),
+    new Date("2026-08-26T22:39:00Z"),
   );
   assert(text.includes("já está acontecendo"));
   assert(text.includes("https://meet.google.com/esz-wgwt-pge"));
-  assert(!text.includes("sera na terca"));
+  assert(!text.includes("sera na quarta"));
 });
 
 Deno.test("falha fechada se não houver autoridade válida para link de aula", () => {
@@ -178,6 +178,6 @@ Deno.test("aceite natural após oferta explícita da aula", () => {
 
 Deno.test("confirmação de participação no horário é oferta explícita de aula", () => {
   assertEquals(previousAssistantOfferedClassAccess([
-    { direcao: "OUT", mensagem: "A aula é terça-feira às 19:30. Você consegue participar nesse horário?", timestamp: "2026-08-27T13:00:00Z" },
+    { direcao: "OUT", mensagem: "A aula é quarta-feira às 19:30. Você consegue participar nesse horário?", timestamp: "2026-08-27T13:00:00Z" },
   ], "Sim, quero que libere o acesso."), true);
 });

@@ -9,7 +9,7 @@ import {
 
 Deno.test("sandbox Viver reconhece aceite somente após oferta explícita da aula", () => {
   const messages = [
-    { role: "assistant" as const, content: "Quer que eu libere o acesso para a aula de terça-feira?" },
+    { role: "assistant" as const, content: "Quer que eu libere o acesso para a aula de quarta-feira?" },
     { role: "user" as const, content: "Sim" },
   ];
   assertEquals(previousAssistantOfferedClassAccess(sandboxConversationMessages(messages), "Sim"), true);
@@ -17,7 +17,7 @@ Deno.test("sandbox Viver reconhece aceite somente após oferta explícita da aul
 
 Deno.test("sandbox Viver reconhece aceite natural com pedido de liberação", () => {
   const messages = [
-    { role: "assistant" as const, content: "A aula é terça-feira às 19:30. Quer que eu libere seu acesso?" },
+    { role: "assistant" as const, content: "A aula é quarta-feira às 19:30. Quer que eu libere seu acesso?" },
     { role: "user" as const, content: "Sim, quero que libere o acesso." },
   ];
   assertEquals(previousAssistantOfferedClassAccess(sandboxConversationMessages(messages), messages[1].content), true);
@@ -25,7 +25,7 @@ Deno.test("sandbox Viver reconhece aceite natural com pedido de liberação", ()
 
 Deno.test("sandbox Viver reconhece confirmação de participação no horário da aula", () => {
   const messages = [
-    { role: "assistant" as const, content: "A aula é terça-feira às 19:30. Você consegue participar nesse horário?" },
+    { role: "assistant" as const, content: "A aula é quarta-feira às 19:30. Você consegue participar nesse horário?" },
     { role: "user" as const, content: "Sim, quero que libere o acesso." },
   ];
   assertEquals(previousAssistantOfferedClassAccess(sandboxConversationMessages(messages), messages[1].content), true);

@@ -1,6 +1,13 @@
+import {
+  VIVER_CLASS_HOUR,
+  VIVER_CLASS_MINUTE,
+  VIVER_CLASS_TIME_ZONE,
+  VIVER_CLASS_WEEKDAY,
+} from "../_shared/viver-class-calendar.ts";
+
 export const VIVER_CLASS_DURATION_MINUTES = 90;
 export const VIVER_CLASS_MEETING_KIND = "viver_group_class";
-export const VIVER_CLASS_TIME_ZONE = "America/Sao_Paulo";
+export { VIVER_CLASS_TIME_ZONE } from "../_shared/viver-class-calendar.ts";
 
 export type ViverClassMeetingInsert = {
   empresa_id: string;
@@ -63,7 +70,7 @@ const WEEKDAY_INDEX: Record<string, number> = {
 };
 
 /**
- * Próxima terça-feira às 19h30 em São Paulo.
+ * Próxima quarta-feira às 19h30 em São Paulo.
  * São Paulo não usa horário de verão desde 2019; 19h30 local é 22h30 UTC.
  */
 export function nextViverClassStart(now = new Date()): Date {
@@ -72,19 +79,24 @@ export function nextViverClassStart(now = new Date()): Date {
   if (!Number.isInteger(weekday)) {
     throw new Error("viver_class_invalid_weekday");
   }
-  let daysUntilTuesday = (2 - weekday + 7) % 7;
+  const classWeekday = WEEKDAY_INDEX[VIVER_CLASS_WEEKDAY];
+  if (!Number.isInteger(classWeekday)) {
+    throw new Error("viver_class_invalid_target_weekday");
+  }
+  let daysUntilWednesday = (classWeekday - weekday + 7) % 7;
   if (
-    daysUntilTuesday === 0 &&
-    (local.hour > 19 || (local.hour === 19 && local.minute >= 30))
+    daysUntilWednesday === 0 &&
+    (local.hour > VIVER_CLASS_HOUR ||
+      (local.hour === VIVER_CLASS_HOUR && local.minute >= VIVER_CLASS_MINUTE))
   ) {
-    daysUntilTuesday = 7;
+    daysUntilWednesday = 7;
   }
   return new Date(Date.UTC(
     local.year,
     local.month - 1,
-    local.day + daysUntilTuesday,
-    22,
-    30,
+    local.day + daysUntilWednesday,
+    VIVER_CLASS_HOUR + 3,
+    VIVER_CLASS_MINUTE,
     0,
     0,
   ));
@@ -93,7 +105,7 @@ export function nextViverClassStart(now = new Date()): Date {
 export function viverClassOccurrenceKey(start: Date): string {
   const local = saoPauloParts(start);
   const pad = (value: number) => String(value).padStart(2, "0");
-  return `${local.year}-${pad(local.month)}-${pad(local.day)}T19:30:00-03:00`;
+  return `${local.year}-${pad(local.month)}-${pad(local.day)}T${pad(VIVER_CLASS_HOUR)}:${pad(VIVER_CLASS_MINUTE)}:00-03:00`;
 }
 
 export function buildViverClassMeetingInsert(input: {
