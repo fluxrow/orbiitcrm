@@ -9864,6 +9864,7 @@ export type Database = {
         | "lead_replied"
         | "meeting_reminder_5m"
         | "meeting_reminder_15m"
+        | "meeting_reminder_morning"
       orbit_onboarding_status:
         | "rascunho"
         | "enviado"
@@ -10024,6 +10025,7 @@ export const Constants = {
         "lead_replied",
         "meeting_reminder_5m",
         "meeting_reminder_15m",
+        "meeting_reminder_morning",
       ],
       orbit_onboarding_status: [
         "rascunho",
