@@ -1,4 +1,20 @@
+import { VIVER_EMPRESA_ID } from "./tenant-scheduling-policy.ts";
+
 export type ScheduledActionResult = "success" | "skipped" | "error";
+
+export function classifyTenantScheduledActionResult(
+  empresaId: string,
+  httpOk: boolean,
+  response: Record<string, unknown> | null | undefined,
+): ScheduledActionResult {
+  if (empresaId === VIVER_EMPRESA_ID) {
+    return classifyScheduledActionResult(httpOk, response);
+  }
+  const data = response?.data as Record<string, unknown> | null | undefined;
+  return httpOk && (response?.ok === true || data?.ok === true)
+    ? "success"
+    : "error";
+}
 
 export function classifyScheduledActionResult(
   httpOk: boolean,

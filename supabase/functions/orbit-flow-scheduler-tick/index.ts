@@ -5,7 +5,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { sanitizedOrphanAlert } from "../_shared/orphan-flow-run.ts";
-import { classifyScheduledActionResult } from "../_shared/scheduled-action-result.ts";
+import { classifyTenantScheduledActionResult } from "../_shared/scheduled-action-result.ts";
 import { VIVER_EMPRESA_ID } from "../_shared/tenant-scheduling-policy.ts";
 
 const corsHeaders = {
@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({ mode: "single_action", scheduled_id: row.id }),
         });
         const json = await resp.json().catch(() => ({}));
-        const result = classifyScheduledActionResult(resp.ok, json);
+        const result = classifyTenantScheduledActionResult(row.empresa_id, resp.ok, json);
         const ok = result === "success";
         const stepError = json?.data?.error ?? json?.error ?? (ok ? null : `HTTP ${resp.status}`);
 
