@@ -5,6 +5,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { sanitizedOrphanAlert } from "../_shared/orphan-flow-run.ts";
+import { classifyTenantScheduledActionResult } from "../_shared/scheduled-action-result.ts";
 import { VIVER_EMPRESA_ID } from "../_shared/tenant-scheduling-policy.ts";
 
 const corsHeaders = {
@@ -42,7 +43,7 @@ Deno.serve(async (req) => {
 
   const tickId = crypto.randomUUID();
   const t0 = Date.now();
-  let claimed = 0, success = 0, errors = 0, rescheduled = 0, dead = 0;
+  let claimed = 0, success = 0, skipped = 0, errors = 0, rescheduled = 0, dead = 0;
 
   try {
     let body: any = {};
@@ -74,19 +75,30 @@ Deno.serve(async (req) => {
           body: JSON.stringify({ mode: "single_action", scheduled_id: row.id }),
         });
         const json = await resp.json().catch(() => ({}));
-        const ok = resp.ok && (json?.ok === true || json?.data?.ok === true);
+        const result = classifyTenantScheduledActionResult(row.empresa_id, resp.ok, json);
+        const ok = result === "success";
         const stepError = json?.data?.error ?? json?.error ?? (ok ? null : `HTTP ${resp.status}`);
 
-        if (ok) {
+        if (result === "skipped") {
+          skipped++;
+          // The executor may already have canceled the claimed row. Never
+          // overwrite that terminal state with a misleading success.
+          await supabase.from("orbit_flow_scheduled_actions")
+            .update({ status: "canceled", canceled_reason: String(json?.data?.reason ?? json?.data?.output?.reason ?? "action_skipped").slice(0, 500), locked_at: null, locked_by: null })
+            .eq("id", row.id)
+            .eq("status", "running");
+        } else if (ok) {
           success++;
           await supabase.from("orbit_flow_scheduled_actions")
             .update({ status: "success", last_error: null, locked_at: null, locked_by: null })
-            .eq("id", row.id);
+            .eq("id", row.id)
+            .eq("status", "running");
         } else if (row.attempts >= MAX_ATTEMPTS) {
           dead++; errors++;
           await supabase.from("orbit_flow_scheduled_actions")
             .update({ status: "error", last_error: String(stepError || "max attempts").slice(0, 500), locked_at: null, locked_by: null })
-            .eq("id", row.id);
+            .eq("id", row.id)
+            .eq("status", "running");
         } else {
           rescheduled++;
           await supabase.rpc("reschedule_scheduled_action", {
@@ -117,7 +129,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    const summary = { tick_id: tickId, claimed, success, errors, rescheduled, dead, duration_ms: Date.now() - t0 };
+    const summary = { tick_id: tickId, claimed, success, skipped, errors, rescheduled, dead, duration_ms: Date.now() - t0 };
     console.log(JSON.stringify({ scope: "scheduler_tick_summary", ...summary }));
     return new Response(JSON.stringify({ ok: true, data: summary }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },

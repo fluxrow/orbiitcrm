@@ -56,6 +56,35 @@ Deno.test("Viver: aliases Typebot de Elaine e Marcelo viram memória canônica",
   assertEquals(canonicalFactsToCollectedFields(facts).renda_capital, "R$ 20.000");
 });
 
+Deno.test("Viver: não pergunta de novo se já tem marca quando o formulário informou o momento", () => {
+  const facts = hydrateCanonicalFacts({ prospect: { dados_adicionais: {
+    momento_negocio: "Já trabalho com semijoias e tenho estoque",
+    capital_disponivel: "De R$ 4.000,00 a R$ 6.000,00",
+  } } });
+  for (const question of [
+    "Hoje você já tem sua própria marca ou operação com semijoias, ou quer começar?",
+    "Você já trabalha com semijoias ou está começando do zero?",
+  ]) {
+    const verdict = detectRepetition(question, facts, []);
+    assertEquals(verdict.reason, "asks_known_field", question);
+    assertEquals(verdict.field, "momento_negocio", question);
+  }
+});
+
+Deno.test("Viver: perguntas semanticamente iguais não voltam com outras palavras", () => {
+  const previous = ["O que mais trava seu crescimento hoje: vendas, clientes ou revendedoras?"];
+  const verdict = detectRepetition(
+    "Qual é o principal ponto que está travando seu negócio?",
+    {},
+    previous,
+  );
+  assertEquals(verdict.reason, "repeats_recent_question");
+  assertEquals(buildDeterministicFallback({}, [
+    { key: "maior_desafio", pergunta: "Qual é o principal ponto que está travando seu negócio?" },
+    { key: "capital_disponivel", pergunta: "Qual faixa de capital você tem disponível?" },
+  ], previous), "Qual faixa de capital você tem disponível?");
+});
+
 Deno.test("normaliza formas monetárias equivalentes", () => {
   for (const input of ["R$ 20.000", "R$20 mil", "20 mil", "20000", "20k", "vinte mil"]) {
     assertEquals(normalizeMoneyValue(input), "R$ 20.000", input);

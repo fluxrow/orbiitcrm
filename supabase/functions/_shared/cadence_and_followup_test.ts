@@ -44,6 +44,7 @@ function makeSupabase(fx: Fx) {
   function query(table: string) {
     const filters: Array<[string, any]> = [];
     const inFilters: Array<[string, any[]]> = [];
+    const notNullFilters: string[] = [];
     const gteFilters: Array<[string, string]> = [];
     let limitN = Infinity;
     let insertRow: any = null;
@@ -51,6 +52,10 @@ function makeSupabase(fx: Fx) {
       select: () => api,
       eq: (col: string, val: any) => { filters.push([col, val]); return api; },
       in: (col: string, vals: any[]) => { inFilters.push([col, vals]); return api; },
+      not: (col: string, operator: string, value: unknown) => {
+        if (operator === "is" && value === null) notNullFilters.push(col);
+        return api;
+      },
       gte: (col: string, v: string) => { gteFilters.push([col, v]); return api; },
       limit: (n: number) => { limitN = n; return api; },
       insert: (row: any) => { insertRow = row; return api; },
@@ -90,6 +95,7 @@ function makeSupabase(fx: Fx) {
     function matches(r: any): boolean {
       for (const [c, v] of filters) if (r[c] !== v) return false;
       for (const [c, vals] of inFilters) if (!vals.includes(r[c])) return false;
+      for (const c of notNullFilters) if (r[c] === null || r[c] === undefined) return false;
       for (const [c, v] of gteFilters) if (!(String(r[c] ?? "") >= v)) return false;
       return true;
     }
@@ -210,6 +216,32 @@ Deno.test("FC7 flow_stage ignora gate de OUT real (não bloqueia)", async () => 
     event_id: "evt-1",
   });
   assertEquals(r.reasons, []);
+});
+
+Deno.test("Viver aceita OUT real com status de callback em maiúsculas", async () => {
+  for (const status of ["SENT", "RECEIVED", "PLAYED"]) {
+    const fx = baseFx({
+      prospects: [{ id: PRO, empresa_id: "36f26579-66ad-4ef1-9788-141e4c727232", optout_whatsapp: false, deleted_at: null }],
+      conversas: [{ id: CONV, empresa_id: "36f26579-66ad-4ef1-9788-141e4c727232", prospect_id: PRO, human_talk: false, human_user_id: null }],
+      mensagens: [{ id: "m-real", conversa_id: CONV, direcao: "OUT", status, provider_message_id: "provider-confirmed" }],
+    });
+    const r = await checkEligibility(makeSupabase(fx), {
+      ...ctxFollowup(), empresa_id: "36f26579-66ad-4ef1-9788-141e4c727232",
+    });
+    assert(!r.reasons.includes("missing_prior_real_outbound"), `${status}: ${r.reasons.join(",")}`);
+  }
+});
+
+Deno.test("Viver exige ID do provedor antes de liberar follow-up", async () => {
+  const fx = baseFx({
+    prospects: [{ id: PRO, empresa_id: "36f26579-66ad-4ef1-9788-141e4c727232", optout_whatsapp: false, deleted_at: null }],
+    conversas: [{ id: CONV, empresa_id: "36f26579-66ad-4ef1-9788-141e4c727232", prospect_id: PRO, human_talk: false, human_user_id: null }],
+    mensagens: [{ id: "m-no-provider", conversa_id: CONV, direcao: "OUT", status: "SENT" }],
+  });
+  const r = await checkEligibility(makeSupabase(fx), {
+    ...ctxFollowup(), empresa_id: "36f26579-66ad-4ef1-9788-141e4c727232",
+  });
+  assert(r.reasons.includes("missing_prior_real_outbound"));
 });
 
 Deno.test("FC8 enqueueOutbox propaga metadata.simulate=true", async () => {
