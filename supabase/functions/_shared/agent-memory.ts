@@ -413,9 +413,14 @@ const FIELD_QUESTION_PATTERNS: Array<{ key: string; patterns: RegExp[] }> = [
   { key: "instituicao", patterns: [/\bqual instituicao\b/i, /\bqual universidade\b/i, /\b(voce )?(ja )?(tem|escolheu|definiu).{0,20}(instituicao|universidade)\b/i] },
   { key: "objetivo_nivel", patterns: [/\b(mestrado ou doutorado|doutorado ou mestrado)\b/i, /\b(voce )?(busca|quer|pretende|deseja|esta pensando (em )?).{0,20}(mestrado|doutorado)\b/i] },
   { key: "etapa_atual", patterns: [/\bem que (fase|etapa)\b/i, /\bqual (e )?(a )?sua etapa atual\b/i, /\bcomo esta seu processo\b/i] },
-  { key: "dificuldade", patterns: [/\bqual (e )?(o |a )?(seu|sua) (maior|principal) (dificuldade|desafio)\b/i, /\bo que (mais )?(te trava|esta dificultando|te impede)\b/i, /\b(principal|maior) desafio\b/i] },
+  { key: "dificuldade", patterns: [/\bqual (e )?(o |a )?(seu|sua) (maior|principal) (dificuldade|desafio)\b/i, /\bo que (mais )?(te trava|esta dificultando|te impede)\b/i, /\b(principal|maior) desafio\b/i, /\b(principal ponto|o que mais).{0,35}(trava|dificulta|bloqueia)\w*\b/i] },
   { key: "renda_capital", patterns: [/\bquanto (voce )?(tem|pode|consegue).{0,25}(investir|disponivel)\b/i, /\bqual (e )?(a )?sua (renda|faixa de investimento)\b/i, /\bcapital disponivel\b/i] },
-  { key: "momento_negocio", patterns: [/\bqual (e )?(o )?momento do (seu )?negocio\b/i, /\bem que (fase|momento).{0,15}negocio\b/i] },
+  { key: "momento_negocio", patterns: [
+    /\bqual (e )?(o )?momento do (seu )?negocio\b/i,
+    /\bem que (fase|momento).{0,15}negocio\b/i,
+    /\b(voce )?(ja )?(tem|possui|trabalha).{0,40}(marca|operacao|semijoias)\b/i,
+    /\b(esta|ta|quer|pretende).{0,25}(comecando|comecar|iniciar).{0,20}(zero|semijoias|negocio)\b/i,
+  ] },
   {
     key: "objetivo_negocio",
     patterns: [
@@ -450,7 +455,8 @@ export function detectRepetition(
       return { violates: true, reason: "asks_known_field", field, question: q };
     }
     for (const prev of previousQuestions) {
-      if (questionSimilarity(q, prev) >= 0.6) {
+      if (questionSimilarity(q, prev) >= 0.6 ||
+        (field !== null && field === detectQuestionField(prev))) {
         return { violates: true, reason: "repeats_recent_question", question: q };
       }
     }
@@ -525,7 +531,11 @@ export function buildDeterministicFallback(
     if (facts[campo.key]) continue;
     const pergunta = (campo.pergunta || campo.label || "").trim();
     if (!pergunta) continue;
-    const repeated = previousQuestions.some((p) => questionSimilarity(p, pergunta) >= 0.6);
+    const questionField = detectQuestionField(pergunta);
+    const repeated = previousQuestions.some((p) =>
+      questionSimilarity(p, pergunta) >= 0.6 ||
+      (questionField !== null && questionField === detectQuestionField(p))
+    );
     if (repeated) continue;
     return pergunta.endsWith("?") ? pergunta : `${pergunta}?`;
   }

@@ -28,6 +28,7 @@ import {
 } from "./viver-followup-reconstitution.ts";
 import { mixedPaymentIdempotencyKey } from "./mixed-payment-handoff.ts";
 import { looksLikeInternalPayload, sanitizedLeakSummary } from "./ai-output-guard.ts";
+import { VIVER_EMPRESA_ID } from "./tenant-scheduling-policy.ts";
 
 
 
@@ -369,14 +370,24 @@ export async function checkEligibility(supabase: any, ctx: OutboxContext): Promi
       .eq("empresa_id", ctx.empresa_id);
     const convIds = (convs ?? []).map((r: any) => r.id);
     const REAL_OUT_STATUS = ["enviada", "sent", "entregue", "delivered"];
+    // O callback do provedor da Viver também grava status em maiúsculas.
+    // Exigir provider_message_id impede que uma tentativa local libere a cadência.
+    const VIVER_REAL_OUT_STATUS = [
+      ...REAL_OUT_STATUS,
+      "SENT", "RECEIVED", "DELIVERED", "READ", "PLAYED",
+      "received", "read", "played", "lida", "ouvida",
+    ];
     if (convIds.length > 0) {
-      const { data: outMsgs } = await supabase
+      let outQuery = supabase
         .from("orbit_mensagens")
         .select("id, status")
         .in("conversa_id", convIds)
         .eq("direcao", "OUT")
-        .in("status", REAL_OUT_STATUS)
-        .limit(1);
+        .in("status", ctx.empresa_id === VIVER_EMPRESA_ID ? VIVER_REAL_OUT_STATUS : REAL_OUT_STATUS);
+      if (ctx.empresa_id === VIVER_EMPRESA_ID) {
+        outQuery = outQuery.not("provider_message_id", "is", null);
+      }
+      const { data: outMsgs } = await outQuery.limit(1);
       const hasRealOut = !!(outMsgs && outMsgs.length > 0);
       if (ctx.source_type === "flow_initial" && hasRealOut) {
         reasons.push("already_contacted");
