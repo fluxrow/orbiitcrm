@@ -29,7 +29,7 @@ import {
 import { resolveEventId, buildScheduledActionContext, restoreRunFromScheduled } from "./flow-run-events.ts";
 import { computeCadenceKey } from "./cadence-key.ts";
 import { isActionDisabled } from "./action-guards.ts";
-import { buildMeetingTemplateVars } from "./template-vars.ts";
+import { buildMeetingTemplateVars, renderTemplateVars } from "./template-vars.ts";
 import { deriveOutboxSourceType } from "./outbox-source.ts";
 import { resolveTemplateIdFromPayload } from "./template-selector.ts";
 import { buildTemplateOutboxPayload, templatePayloadType } from "../_shared/message-template-media.ts";
@@ -41,14 +41,6 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
 
 type Json = Record<string, any>;
 type StepResult = { ok: boolean; output?: Json; error?: string };
-
-function renderTemplateVars(text: string, vars: Json): string {
-  if (!text) return "";
-  return text.replace(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g, (_m, key) => {
-    const v = vars?.[key];
-    return v == null ? "" : String(v);
-  });
-}
 
 // Cache leve por invocação para não re-consultar orbit_flows a cada action.
 const FLOW_TRIGGER_CACHE = new Map<string, string | null>();
@@ -113,7 +105,7 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
   if (run.empresa_id === VIVER_EMPRESA_ID && isMeetingReminderKind(triggerType)) {
     const meetingLookup = meetingId ? await supabase
       .from("orbit_meetings")
-      .select("id, empresa_id, prospect_id, conversa_id, scheduled_at, duration_minutes, status, meeting_url, titulo, metadata")
+      .select("id, empresa_id, prospect_id, conversa_id, scheduled_at, duration_minutes, status, meeting_url, titulo, metadata, created_at")
       .eq("empresa_id", VIVER_EMPRESA_ID)
       .eq("id", meetingId)
       .maybeSingle() : { data: null, error: null };
@@ -284,7 +276,11 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
       action_id: actionId,
       event_created: eventCreated,
       meeting_id: sourceType === "meeting_confirmation" ? meetingId : null,
-      idempotency_scope: sourceType === "meeting_confirmation" ? String(triggerType) : null,
+      idempotency_scope: sourceType === "meeting_confirmation"
+        ? (triggerType === "meeting_reminder_morning"
+          ? `${triggerType}:${authoritativeMeeting?.scheduled_at ?? "missing_schedule"}`
+          : String(triggerType))
+        : null,
       payload_type: templatePayloadType(tpl),
       payload: buildTemplateOutboxPayload(tpl, mensagem, {
         template_id: tpl.id,
@@ -948,7 +944,7 @@ async function handleSingleAction(scheduledId: string): Promise<Response> {
     if (reminderKind.startsWith("meeting_reminder_")) {
       const meetingLookup = meetingId ? await supabase
         .from("orbit_meetings")
-        .select("id, scheduled_at, duration_minutes, status, meeting_url")
+        .select("id, scheduled_at, duration_minutes, status, meeting_url, metadata, created_at")
         .eq("empresa_id", VIVER_EMPRESA_ID)
         .eq("id", meetingId)
         .maybeSingle() : { data: null, error: null };

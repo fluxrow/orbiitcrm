@@ -4,6 +4,7 @@ import {
 } from "./viver-meeting-guard.ts";
 import {
   evaluateReminderDeliveryTime,
+  evaluateViverMorningReminder,
   isMeetingReminderKind,
 } from "./meeting-reminder-policy.ts";
 export * from "./viver-meeting-guard.ts";
@@ -46,6 +47,15 @@ export function evaluateViverMeetingReminder(input: {
   }
   if (!isMeetingReminderKind(input.reminderKind)) {
     return { allowed: false, reason: "meeting_reminder_kind_not_supported" };
+  }
+  if (input.reminderKind === "meeting_reminder_morning") {
+    return evaluateViverMorningReminder({
+      scheduledAt: input.meeting.scheduled_at,
+      createdAt: input.meeting.created_at,
+      meetingKind: typeof input.meeting.metadata?.meeting_kind === "string"
+        ? input.meeting.metadata.meeting_kind
+        : null,
+    }, now);
   }
   const timing = evaluateReminderDeliveryTime(
     input.reminderKind,

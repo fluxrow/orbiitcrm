@@ -77,6 +77,25 @@ Deno.test("lembrete autoritativo é permitido somente na janela exata do própri
   assertEquals(result, { allowed: true });
 });
 
+Deno.test("lembrete matinal só passa com reunião futura individual e horário autoritativo", () => {
+  const meeting = {
+    ...authoritativeMeeting,
+    scheduled_at: "2026-09-22T19:00:00.000Z",
+    created_at: "2026-09-21T20:00:00.000Z",
+    metadata: { meeting_kind: "viver_individual" },
+  };
+  assertEquals(evaluateViverMeetingReminder({
+    reminderKind: "meeting_reminder_morning",
+    meetingId: meeting.id,
+    meeting,
+  }, new Date("2026-09-22T12:05:00.000Z")), { allowed: true });
+  assertEquals(evaluateViverMeetingReminder({
+    reminderKind: "meeting_reminder_morning",
+    meetingId: meeting.id,
+    meeting: { ...meeting, metadata: { meeting_kind: "viver_group_class" } },
+  }, new Date("2026-09-22T12:05:00.000Z")).allowed, false);
+});
+
 Deno.test("lembrete adiantado ou atrasado é bloqueado sem compensar backlog", () => {
   for (
     const now of [

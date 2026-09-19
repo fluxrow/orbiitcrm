@@ -7,6 +7,8 @@ export type MeetingRow = {
   duration_minutes?: number | null;
   status?: string | null;
   meeting_url?: string | null;
+  created_at?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 export type MeetingPhase = "upcoming" | "in_progress" | "expired" | "inactive";
