@@ -2,6 +2,14 @@ type Json = Record<string, unknown>;
 
 const DEFAULT_TIMEZONE = "America/Sao_Paulo";
 
+export function renderTemplateVars(text: string, vars: Json): string {
+  if (!text) return "";
+  return text.replace(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g, (_m, key) => {
+    const value = vars[key];
+    return value == null ? "" : String(value);
+  });
+}
+
 function resolveTimezone(timezone?: string | null): string {
   const candidate = timezone?.trim() || DEFAULT_TIMEZONE;
   try {
