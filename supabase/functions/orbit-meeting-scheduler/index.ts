@@ -39,7 +39,10 @@ async function emitForWindow(
     .select(
       "id, empresa_id, deal_id, prospect_id, conversa_id, scheduled_at, titulo, meeting_url, duration_minutes, metadata",
     )
-    .eq("status", "scheduled")
+    // Remarcação confirmada continua sendo uma reunião futura válida. Usar
+    // somente `scheduled` deixava justamente a participante migrada da aula
+    // de terça para quarta sem os lembretes padrão.
+    .in("status", ["scheduled", "rescheduled"])
     .gte("scheduled_at", lower)
     .lte("scheduled_at", upper)
     .limit(500);

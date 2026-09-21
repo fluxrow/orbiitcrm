@@ -11,7 +11,7 @@ import { isControlledDailyCapAccepted } from "./viver-daily-quota-policy.ts";
 import { proveViverControlledFollowup } from "./viver-followup-reconstitution.ts";
 
 export const VIVER_SEMIJOIAS_EMPRESA_ID = "36f26579-66ad-4ef1-9788-141e4c727232";
-export const VIVER_CONTROLLED_OUTBOX_GATE_VERSION = "2026-09-02-v3";
+export const VIVER_CONTROLLED_OUTBOX_GATE_VERSION = "2026-09-21-v4";
 
 export const PILOT_SOURCE_BLOCKED = "PILOT_SOURCE_BLOCKED";
 export const PILOT_INBOUND_REQUIRED = "PILOT_INBOUND_REQUIRED";
@@ -19,6 +19,9 @@ export const PILOT_TYPEBOT_EVIDENCE_REQUIRED = "PILOT_TYPEBOT_EVIDENCE_REQUIRED"
 export const PILOT_CAMPAIGN_EVIDENCE_REQUIRED = "PILOT_CAMPAIGN_EVIDENCE_REQUIRED";
 export const PILOT_CAMPAIGN_MESSAGE_INVALID = "PILOT_CAMPAIGN_MESSAGE_INVALID";
 export const PILOT_FOLLOWUP_EVIDENCE_REQUIRED = "PILOT_FOLLOWUP_EVIDENCE_REQUIRED";
+export const PILOT_FOLLOWUP_INITIAL_DELIVERY_REQUIRED = "PILOT_FOLLOWUP_INITIAL_DELIVERY_REQUIRED";
+export const PILOT_FOLLOWUP_CANCELED_ON_REPLY = "PILOT_FOLLOWUP_CANCELED_ON_REPLY";
+export const PILOT_FOLLOWUP_CANCELED_AFTER_HUMAN_OUTBOUND = "PILOT_FOLLOWUP_CANCELED_AFTER_HUMAN_OUTBOUND";
 export const PILOT_MEETING_EVIDENCE_REQUIRED = "PILOT_MEETING_EVIDENCE_REQUIRED";
 
 const VIVER_TYPEBOT_D0_ACTIONS = new Map([
@@ -203,14 +206,81 @@ export async function pilotInboundBlockReason(supabase: any, item: any): Promise
     // Follow-up reconstituído da lista antiga: revalidação no worker exige a mesma
     // prova server-side do produtor (campanha aprovada + outbox sent correlacionado
     // + OUT real + run lead_recebido). Marcador em metadata nunca basta.
-    if (item?.metadata?.viver_followup_reconstitution === true) {
+    const reconstituted = item?.metadata?.viver_followup_reconstitution === true;
+    let deliveryAnchorAt = "";
+    if (reconstituted) {
       const proof = await proveViverControlledFollowup(supabase, {
         empresa_id: item.empresa_id,
         prospect_id: item.prospect_id,
         conversa_id: item.conversa_id ?? null,
       });
       if (!proof.allowed) return PILOT_FOLLOWUP_EVIDENCE_REQUIRED;
+      deliveryAnchorAt = String(item.metadata.pilot_not_before ?? "");
+    } else {
+      // Uma ação agendada não prova que o primeiro contato chegou ao provedor.
+      // Exigimos o outbox inicial correlacionado, terminalmente aceito e com
+      // sent_at real. Isso impede follow-up de número inválido, envio cancelado
+      // ou corrida entre o scheduler e o worker.
+      const { data: initialDelivery } = await supabase
+        .from("orbit_whatsapp_outbox")
+        .select("id, empresa_id, flow_run_id, prospect_id, conversa_id, source_type, status, sent_at, provider_message_id")
+        .eq("empresa_id", item.empresa_id)
+        .eq("flow_run_id", item.flow_run_id)
+        .eq("prospect_id", item.prospect_id)
+        .eq("source_type", "flow_initial")
+        .in("status", ["sent", "delivered", "read", "SENT", "DELIVERED", "READ"])
+        .not("sent_at", "is", null)
+        .not("provider_message_id", "is", null)
+        .neq("provider_message_id", "")
+        .order("sent_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (!initialDelivery || String(initialDelivery.empresa_id) !== String(item.empresa_id) ||
+        String(initialDelivery.flow_run_id) !== String(item.flow_run_id) ||
+        String(initialDelivery.prospect_id) !== String(item.prospect_id) ||
+        (item.conversa_id && String(initialDelivery.conversa_id) !== String(item.conversa_id))) {
+        return PILOT_FOLLOWUP_INITIAL_DELIVERY_REQUIRED;
+      }
+      deliveryAnchorAt = String(initialDelivery.sent_at ?? "");
     }
+
+    const anchorMs = Date.parse(deliveryAnchorAt);
+    if (!item.conversa_id || !Number.isFinite(anchorMs)) {
+      return PILOT_FOLLOWUP_EVIDENCE_REQUIRED;
+    }
+
+    // Última barreira imediatamente antes do envio real. Mesmo que o item já
+    // esteja no outbox, qualquer resposta do lead ou intervenção da Fernanda
+    // depois do primeiro contato cancela a automação e evita colisão.
+    const [{ data: conversa }, { data: laterMessages }] = await Promise.all([
+      supabase.from("orbit_conversas")
+        .select("id, empresa_id, prospect_id, human_talk, handoff_sent_at")
+        .eq("id", item.conversa_id)
+        .eq("empresa_id", item.empresa_id)
+        .maybeSingle(),
+      supabase.from("orbit_mensagens")
+        .select("id, direcao, timestamp, sent_by_user_id, sender_type")
+        .eq("empresa_id", item.empresa_id)
+        .eq("conversa_id", item.conversa_id)
+        .gt("timestamp", deliveryAnchorAt)
+        .order("timestamp", { ascending: true })
+        .limit(200),
+    ]);
+    if (!conversa || String(conversa.prospect_id) !== String(item.prospect_id)) {
+      return PILOT_FOLLOWUP_EVIDENCE_REQUIRED;
+    }
+    const messages = laterMessages ?? [];
+    if (messages.some((message: any) => String(message?.direcao ?? "").toUpperCase() === "IN")) {
+      return PILOT_FOLLOWUP_CANCELED_ON_REPLY;
+    }
+    const humanOutbound = conversa.human_talk === true || Boolean(conversa.handoff_sent_at) ||
+      messages.some((message: any) =>
+        String(message?.direcao ?? "").toUpperCase() === "OUT" &&
+        (Boolean(message?.sent_by_user_id) || ["human", "user", "agent_human"].includes(
+          String(message?.sender_type ?? "").toLowerCase(),
+        ))
+      );
+    if (humanOutbound) return PILOT_FOLLOWUP_CANCELED_AFTER_HUMAN_OUTBOUND;
     return null;
   }
 
