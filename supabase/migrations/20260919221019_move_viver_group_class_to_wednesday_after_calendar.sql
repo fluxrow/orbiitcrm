@@ -1,5 +1,7 @@
--- Apply only after the external Google event and all existing participants have
--- actually moved to Wednesday. This migration does not reschedule or send.
+-- Apply only after the existing group meeting (and therefore its participant)
+-- has actually moved to Wednesday. Viver uses one verified recurring Google
+-- Meet URL for the group class, so a distinct google_event_id is not required.
+-- This migration does not reschedule or send.
 DO $wednesday$
 DECLARE
   v_empresa_id uuid := '36f26579-66ad-4ef1-9788-141e4c727232';
@@ -24,10 +26,11 @@ BEGIN
       AND status IN ('scheduled', 'rescheduled')
       AND scheduled_at > now()
       AND extract(isodow FROM (scheduled_at AT TIME ZONE 'America/Sao_Paulo')) = 3
-      AND nullif(google_event_id, '') IS NOT NULL
-      AND meeting_url ~* '^https://meet\.google\.com/[a-z0-9-]+'
+      AND meeting_url ~* '^https://meet\.google\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}(?:[/?#].*)?$'
+      AND prospect_id IS NOT NULL
+      AND conversa_id IS NOT NULL
   ) THEN
-    RAISE EXCEPTION 'VIVER_WEDNESDAY_CALENDAR_EVENT_NOT_VERIFIED';
+    RAISE EXCEPTION 'VIVER_WEDNESDAY_RECURRING_MEETING_NOT_VERIFIED';
   END IF;
 
   IF EXISTS (
