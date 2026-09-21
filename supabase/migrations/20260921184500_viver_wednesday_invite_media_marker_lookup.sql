@@ -10,16 +10,23 @@ DECLARE
   v_action_rows integer := 0;
   v_snapshot_rows integer := 0;
 BEGIN
-  SELECT count(*), min(id)
-    INTO v_template_count, v_template_id
+  SELECT count(*)
+    INTO v_template_count
   FROM public.orbit_message_templates
   WHERE empresa_id = v_empresa_id
     AND nome = 'Viver - Convite aula em grupo quarta 19h30 (texto)'
     AND ativo = true;
 
-  IF v_template_count <> 1 OR v_template_id IS NULL THEN
+  IF v_template_count <> 1 THEN
     RAISE EXCEPTION 'VIVER_WEDNESDAY_INVITE_TEMPLATE_AMBIGUOUS_OR_MISSING';
   END IF;
+
+  SELECT id
+    INTO v_template_id
+  FROM public.orbit_message_templates
+  WHERE empresa_id = v_empresa_id
+    AND nome = 'Viver - Convite aula em grupo quarta 19h30 (texto)'
+    AND ativo = true;
 
   UPDATE public.orbit_flow_actions
   SET action_config = action_config - 'viver_group_invite_audio',

@@ -11,6 +11,8 @@ Deno.test("Wednesday invite reconciliation resolves the generated template ID te
   assertStringIncludes(migration, "empresa_id = v_empresa_id");
   assertStringIncludes(migration, "Viver - Convite aula em grupo quarta 19h30 (texto)");
   assertStringIncludes(migration, "v_template_count <> 1");
+  assert(!migration.includes("min(id)"));
+  assertStringIncludes(migration, "SELECT id\n    INTO v_template_id");
   assertStringIncludes(migration, "action_config->>'template_id' = v_template_id::text");
   assertStringIncludes(migration, "action_config - 'viver_group_invite_audio'");
 });
