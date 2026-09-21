@@ -72,6 +72,10 @@ import {
   VIVER_FOLLOWUP_EMPRESA_ID,
 } from "../_shared/viver-followup-reconstitution.ts";
 import {
+  computeViverFollowupDeliveryAnchor,
+  VIVER_FOLLOWUP_DELIVERY_ANCHOR_EMPRESA_ID,
+} from "../_shared/viver-followup-delivery-anchor.ts";
+import {
   VIVER_OPERATIONAL_DATE_EMPRESA_ID,
   VIVER_OPERATIONAL_DATE_INVALID_REASON,
   viverOperationalDateDecision,
@@ -505,6 +509,80 @@ async function maybeReconstituteViverFollowup(item: any): Promise<void> {
       console.warn("[outbox] reconstituição de follow-up falhou", String(e?.message ?? e));
       return;
     }
+  }
+}
+
+// Se o primeiro contato ficou retido (por exemplo, instância offline), o D+1
+// precisa começar no envio realmente aceito pelo provedor, não na entrada do
+// lead. Best-effort, tenant/run scoped e monotônico: somente empurra para frente.
+async function maybeAnchorViverFlowFollowups(
+  item: any,
+  providerSentAt: string,
+): Promise<void> {
+  if (
+    String(item?.empresa_id ?? "") !==
+      VIVER_FOLLOWUP_DELIVERY_ANCHOR_EMPRESA_ID ||
+    String(item?.source_type ?? "") !== "flow_initial" ||
+    !item?.flow_run_id || !item?.prospect_id
+  ) return;
+
+  try {
+    const { data: pending, error: pendingError } = await supabase
+      .from("orbit_flow_scheduled_actions")
+      .select("id, action_id, scheduled_for, context, action_config")
+      .eq("empresa_id", item.empresa_id)
+      .eq("run_id", item.flow_run_id)
+      .eq("prospect_id", item.prospect_id)
+      .eq("status", "pending")
+      .eq("action_type", "send_whatsapp_template");
+    if (pendingError) throw pendingError;
+
+    const actionIds = [...new Set(
+      (pending ?? []).map((row: any) => row.action_id).filter(Boolean),
+    )];
+    if (actionIds.length === 0) return;
+    const { data: actions, error: actionsError } = await supabase
+      .from("orbit_flow_actions")
+      .select("id, delay_seconds, action_config")
+      .in("id", actionIds);
+    if (actionsError) throw actionsError;
+    const byId = new Map((actions ?? []).map((action: any) => [
+      String(action.id),
+      action,
+    ]));
+
+    for (const row of pending ?? []) {
+      const action: any = byId.get(String((row as any).action_id));
+      const controlled = action?.action_config?.viver_controlled_followup ===
+        true ||
+        (row as any)?.action_config?.viver_controlled_followup === true;
+      const anchored = computeViverFollowupDeliveryAnchor({
+        empresaId: item.empresa_id,
+        sourceType: item.source_type,
+        controlledFollowup: controlled,
+        providerSentAt,
+        delaySeconds: action?.delay_seconds,
+        currentScheduledFor: (row as any).scheduled_for,
+      });
+      if (!anchored) continue;
+      await supabase.from("orbit_flow_scheduled_actions").update({
+        scheduled_for: anchored,
+        context: {
+          ...((row as any).context ?? {}),
+          delivery_anchor_sent_at: providerSentAt,
+          delivery_anchor_source: "flow_initial_provider_accepted",
+        },
+        updated_at: new Date().toISOString(),
+      })
+        .eq("empresa_id", item.empresa_id)
+        .eq("id", (row as any).id)
+        .eq("status", "pending");
+    }
+  } catch (error: any) {
+    console.warn(
+      "[outbox] Viver follow-up delivery anchor failed",
+      String(error?.message ?? error),
+    );
   }
 }
 
@@ -1441,6 +1519,7 @@ async function processItem(
       if (quotaRate) q.remainingMinute -= 1;
       if (quotaDaily && !usedReserve) await bumpDailyUsage(item.empresa_id, 1);
       await auditMetaWhatsAppSend(item, metaCfg, "sent");
+      await maybeAnchorViverFlowFollowups(item, sentAt);
       await maybeReconstituteViverFollowup(item);
       return { outcome: "sent", provider_message_id: result.providerId };
     }
@@ -1557,11 +1636,12 @@ async function processItem(
   // Envio
   const result = await sendViaZapi(item, telefone, zcfg);
   if (result.ok) {
+    const sentAt = new Date().toISOString();
     await supabase
       .from("orbit_whatsapp_outbox")
       .update({
         status: "sent",
-        sent_at: new Date().toISOString(),
+        sent_at: sentAt,
         provider_message_id: result.providerId ?? null,
         locked_at: null,
         locked_by: null,
@@ -1580,7 +1660,7 @@ async function processItem(
       await supabase
         .from("orbit_conversas")
         .update({
-          ultima_mensagem_at: new Date().toISOString(),
+          ultima_mensagem_at: sentAt,
           ultima_mensagem_preview: preview,
         })
         .eq("id", item.conversa_id);
@@ -1611,6 +1691,7 @@ async function processItem(
         telefone,
       },
     });
+    await maybeAnchorViverFlowFollowups(item, sentAt);
     await maybeReconstituteViverFollowup(item);
     return { outcome: "sent", provider_message_id: result.providerId };
   }
