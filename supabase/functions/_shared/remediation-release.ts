@@ -147,6 +147,14 @@ export const RELEASE_WINDOW_POLICY: Record<ReleaseKind, WindowPolicy> = {
     meetingRequired: true,
     linkRequired: true,
   },
+  meeting_reminder_morning: {
+    minPreflightLeadMs: 10 * minute,
+    maxPreflightLeadMs: 20 * minute,
+    maxReleaseGraceMs: 10 * minute,
+    maxDeliveryGraceMs: 10 * minute,
+    meetingRequired: true,
+    linkRequired: true,
+  },
   weekly_reminder: {
     minPreflightLeadMs: 20 * minute,
     maxPreflightLeadMs: 40 * minute,
