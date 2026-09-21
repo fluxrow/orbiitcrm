@@ -3,7 +3,10 @@
 // originadas por inbound real. O único bypass é um canário manual explicitamente
 // marcado; o gate final da Z-API ainda restringe o telefone à allowlist canário.
 
-import { evaluateViverMeetingReminder } from "./viver-meeting-lifecycle.ts";
+import {
+  evaluateViverMeetingReminder,
+  isViverMeetingNotificationKind,
+} from "./viver-meeting-lifecycle.ts";
 import { isControlledDailyCapAccepted } from "./viver-daily-quota-policy.ts";
 import { proveViverControlledFollowup } from "./viver-followup-reconstitution.ts";
 
@@ -70,7 +73,7 @@ export function isControlledViverFollowup(item: any): boolean {
 export function isControlledViverMeetingReminder(item: any): boolean {
   return isPilotTenant(item?.empresa_id) && item?.source_type === "meeting_confirmation" &&
     typeof item?.metadata?.meeting_id === "string" &&
-    typeof item?.metadata?.reminder_kind === "string";
+    isViverMeetingNotificationKind(item?.metadata?.reminder_kind);
 }
 
 export function pilotStaticBlockReason(item: any): string | null {
