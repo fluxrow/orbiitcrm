@@ -258,6 +258,18 @@ Deno.test("bloqueia repetição de pergunta recente do agente", () => {
   assertEquals(v.reason, "repeats_recent_question");
 });
 
+Deno.test("REGRESSÃO Viver: maior desafio e principal bloqueio são a mesma pergunta", () => {
+  const previous = recentAgentQuestions([
+    { direcao: "OUT", mensagem: "Qual é seu maior desafio hoje?" },
+    { direcao: "IN", mensagem: "Estou começando agora." },
+  ]);
+  const response =
+    "Entendi. Qual é o principal bloqueio hoje: falta de clientes, dificuldade em vender ou falta de estratégia?";
+  const verdict = detectRepetition(response, {}, previous);
+  assert(verdict.violates);
+  assertEquals(verdict.reason, "repeats_recent_question");
+});
+
 Deno.test("fallback determinístico pergunta apenas o próximo campo ausente", () => {
   const facts = hydrateCanonicalFacts({ prospect: prospectEbsamar });
   const out = buildDeterministicFallback(
