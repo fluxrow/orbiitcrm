@@ -34,6 +34,23 @@ Deno.test("aceite explícito após oferta de acesso entrega template canônico",
   assert(rendered.includes("https://meet.google.com/esz-wgwt-pge"));
 });
 
+Deno.test("aceite após oferta descrita como reunião em grupo entrega acesso", () => {
+  const messages = [
+    {
+      direcao: "OUT",
+      mensagem:
+        "Toda semana faço uma reunião gratuita em grupo, na quarta às 19:30. Você quer receber o acesso?",
+      timestamp: "2026-09-21T22:59:09Z",
+    },
+    {
+      direcao: "IN",
+      mensagem: "Gostaria.",
+      timestamp: "2026-09-21T22:59:55Z",
+    },
+  ];
+  assertEquals(previousAssistantOfferedClassAccess(messages, "Gostaria."), true);
+});
+
 Deno.test("primeiro SIM entrega o link imediatamente sem bloquear por e-mail", () => {
   const acceptance = buildImmediateClassAcceptance(
     canonical,
