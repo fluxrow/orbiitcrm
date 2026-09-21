@@ -33,6 +33,7 @@ import { buildMeetingTemplateVars, renderTemplateVars } from "./template-vars.ts
 import { deriveOutboxSourceType } from "./outbox-source.ts";
 import { resolveTemplateIdFromPayload } from "./template-selector.ts";
 import { buildTemplateOutboxPayload, templatePayloadType } from "../_shared/message-template-media.ts";
+import { viverD0KnownChallengeAdvance } from "../_shared/viver-d0-known-challenge.ts";
 
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -147,6 +148,23 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
   const tpl = tpls?.[0] as any;
   if (!tpl) return { ok: false, error: "template não encontrado" };
 
+  // Se o formulário da Viver já trouxe o maior desafio, o áudio de abertura
+  // perguntaria exatamente o mesmo dado. Nesse caso avançamos por texto para
+  // a próxima dimensão e removemos a mídia somente desta mensagem.
+  const knownChallengeAdvance = viverD0KnownChallengeAdvance({
+    empresaId: run.empresa_id,
+    controlledD0: cfg?.viver_pilot_typebot_d0,
+    dadosAdicionais: (prospect as any)?.dados_adicionais,
+  });
+  const effectiveTpl = knownChallengeAdvance
+    ? {
+      ...tpl,
+      corpo_texto: knownChallengeAdvance,
+      audio_url: null,
+      imagem_url: null,
+    }
+    : tpl;
+
   const p: any = prospect;
   const payloadVars: any = {
     ...(run.context?.payload ?? {}),
@@ -189,7 +207,7 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
     ...meetingVars,
     ...(payloadVars.vars ?? {}),
   };
-  const mensagem = renderTemplateVars(tpl.corpo_texto || "", vars);
+  const mensagem = renderTemplateVars(effectiveTpl.corpo_texto || "", vars);
 
   const conversaId = await findOrCreateConversa(run.empresa_id, prospectId, telefone);
   if (!conversaId) return { ok: false, error: "não foi possível criar/obter conversa" };
@@ -242,6 +260,7 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
     if (cfg?.viver_pilot_typebot_d0 === true) {
       metadata.viver_pilot_typebot_d0 = true;
       metadata.pilot_not_before = cfg?.pilot_not_before;
+      if (knownChallengeAdvance) metadata.viver_known_challenge_advance = true;
     }
     if (cfg?.viver_controlled_followup === true) {
       metadata.viver_controlled_followup = true;
@@ -281,8 +300,8 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
           ? `${triggerType}:${authoritativeMeeting?.scheduled_at ?? "missing_schedule"}`
           : String(triggerType))
         : null,
-      payload_type: templatePayloadType(tpl),
-      payload: buildTemplateOutboxPayload(tpl, mensagem, {
+      payload_type: templatePayloadType(effectiveTpl),
+      payload: buildTemplateOutboxPayload(effectiveTpl, mensagem, {
         template_id: tpl.id,
         template_nome: tpl.nome,
       }),
@@ -302,7 +321,7 @@ async function actionSendWhatsappTemplate(cfg: Json, run: Json): Promise<StepRes
         allow_terminal_stage_message: allowTerminal,
         template_id: tpl.id,
         template_nome: tpl.nome,
-        payload_type: templatePayloadType(tpl),
+        payload_type: templatePayloadType(effectiveTpl),
         conversa_id: conversaId,
         telefone,
         mensagem,
