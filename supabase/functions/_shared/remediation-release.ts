@@ -6,6 +6,7 @@ export type ReleaseKind =
   | "meeting_reminder_1h"
   | "meeting_reminder_15m"
   | "meeting_reminder_5m"
+  | "meeting_reminder_morning"
   | "weekly_reminder"
   | "follow_up";
 
