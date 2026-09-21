@@ -3,6 +3,7 @@ import {
   PILOT_FOLLOWUP_CANCELED_AFTER_HUMAN_OUTBOUND,
   PILOT_FOLLOWUP_CANCELED_ON_REPLY,
   PILOT_FOLLOWUP_INITIAL_DELIVERY_REQUIRED,
+  PILOT_FOLLOWUP_STALE_BACKLOG,
   pilotInboundBlockReason,
   VIVER_SEMIJOIAS_EMPRESA_ID,
 } from "./outbox-pilot.ts";
@@ -14,9 +15,13 @@ class Query {
   constructor(rows: Row[]) {
     this.#rows = [...rows];
   }
-  select(_columns: string) { return this; }
+  select(_columns: string) {
+    return this;
+  }
   eq(column: string, value: unknown) {
-    this.#rows = this.#rows.filter((row) => String(row[column] ?? "") === String(value ?? ""));
+    this.#rows = this.#rows.filter((row) =>
+      String(row[column] ?? "") === String(value ?? "")
+    );
     return this;
   }
   in(column: string, values: unknown[]) {
@@ -25,28 +30,38 @@ class Query {
     return this;
   }
   not(column: string, operator: string, value: unknown) {
-    if (operator === "is" && value === null) this.#rows = this.#rows.filter((row) => row[column] != null);
+    if (operator === "is" && value === null) {
+      this.#rows = this.#rows.filter((row) => row[column] != null);
+    }
     return this;
   }
   neq(column: string, value: unknown) {
-    this.#rows = this.#rows.filter((row) => String(row[column] ?? "") !== String(value ?? ""));
+    this.#rows = this.#rows.filter((row) =>
+      String(row[column] ?? "") !== String(value ?? "")
+    );
     return this;
   }
   gt(column: string, value: unknown) {
     const cutoff = Date.parse(String(value ?? ""));
-    this.#rows = this.#rows.filter((row) => Date.parse(String(row[column] ?? "")) > cutoff);
+    this.#rows = this.#rows.filter((row) =>
+      Date.parse(String(row[column] ?? "")) > cutoff
+    );
     return this;
   }
   order(column: string, options: { ascending?: boolean } = {}) {
     const direction = options.ascending === false ? -1 : 1;
-    this.#rows.sort((a, b) => String(a[column] ?? "").localeCompare(String(b[column] ?? "")) * direction);
+    this.#rows.sort((a, b) =>
+      String(a[column] ?? "").localeCompare(String(b[column] ?? "")) * direction
+    );
     return this;
   }
   limit(value: number) {
     this.#rows = this.#rows.slice(0, value);
     return this;
   }
-  async maybeSingle() { return { data: this.#rows[0] ?? null, error: null }; }
+  async maybeSingle() {
+    return { data: this.#rows[0] ?? null, error: null };
+  }
   then(resolve: (value: { data: Row[]; error: null }) => unknown) {
     return Promise.resolve({ data: this.#rows, error: null }).then(resolve);
   }
@@ -61,7 +76,12 @@ function fixture(overrides: Partial<Record<string, Row[]>> = {}) {
       flow_id: "flow-1",
       action_id: "action-1",
       prospect_id: "prospect-1",
-      action_config: { enabled: true, cancel_on_reply: true, viver_controlled_followup: true },
+      scheduled_for: "2026-09-21T14:30:00Z",
+      action_config: {
+        enabled: true,
+        cancel_on_reply: true,
+        viver_controlled_followup: true,
+      },
     }],
     orbit_flow_runs: [{
       id: "run-1",
@@ -113,13 +133,41 @@ const item = {
   },
 };
 
+const now = new Date("2026-09-21T14:31:00Z");
+
 Deno.test("Viver follow-up permits only a provider-accepted initial delivery without later contact", async () => {
-  assertEquals(await pilotInboundBlockReason(fixture(), item), null);
+  assertEquals(await pilotInboundBlockReason(fixture(), item, now), null);
 });
 
 Deno.test("Viver follow-up blocks when the initial delivery is not proven", async () => {
   const db = fixture({ orbit_whatsapp_outbox: [] });
-  assertEquals(await pilotInboundBlockReason(db, item), PILOT_FOLLOWUP_INITIAL_DELIVERY_REQUIRED);
+  assertEquals(
+    await pilotInboundBlockReason(db, item, now),
+    PILOT_FOLLOWUP_INITIAL_DELIVERY_REQUIRED,
+  );
+});
+
+Deno.test("Viver follow-up never compensates a stale scheduled backlog", async () => {
+  const db = fixture({
+    orbit_flow_scheduled_actions: [{
+      id: "scheduled-1",
+      empresa_id: VIVER_SEMIJOIAS_EMPRESA_ID,
+      run_id: "run-1",
+      flow_id: "flow-1",
+      action_id: "action-1",
+      prospect_id: "prospect-1",
+      scheduled_for: "2026-09-21T13:30:00Z",
+      action_config: {
+        enabled: true,
+        cancel_on_reply: true,
+        viver_controlled_followup: true,
+      },
+    }],
+  });
+  assertEquals(
+    await pilotInboundBlockReason(db, item, now),
+    PILOT_FOLLOWUP_STALE_BACKLOG,
+  );
 });
 
 Deno.test("Viver follow-up cancels after a lead reply", async () => {
@@ -134,7 +182,10 @@ Deno.test("Viver follow-up cancels after a lead reply", async () => {
       sender_type: "contact",
     }],
   });
-  assertEquals(await pilotInboundBlockReason(db, item), PILOT_FOLLOWUP_CANCELED_ON_REPLY);
+  assertEquals(
+    await pilotInboundBlockReason(db, item, now),
+    PILOT_FOLLOWUP_CANCELED_ON_REPLY,
+  );
 });
 
 Deno.test("Viver follow-up cancels after Fernanda sends from the conversation", async () => {
@@ -149,5 +200,8 @@ Deno.test("Viver follow-up cancels after Fernanda sends from the conversation", 
       sender_type: "human",
     }],
   });
-  assertEquals(await pilotInboundBlockReason(db, item), PILOT_FOLLOWUP_CANCELED_AFTER_HUMAN_OUTBOUND);
+  assertEquals(
+    await pilotInboundBlockReason(db, item, now),
+    PILOT_FOLLOWUP_CANCELED_AFTER_HUMAN_OUTBOUND,
+  );
 });
