@@ -10,7 +10,8 @@ import { VIVER_EMPRESA_ID } from "../_shared/tenant-scheduling-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -24,13 +25,16 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
 
 // Exponencial: 1, 2, 4, 8, 16 min (cap 60min); depois → error final
 const MAX_ATTEMPTS = 5;
+const VIVER_FOLLOWUP_MAX_LATE_MS = 30 * 60 * 1000;
 function backoffSecondsFor(attempt: number): number {
   const mins = Math.min(60, Math.pow(2, Math.max(0, attempt - 1)));
   return Math.round(mins * 60);
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
   const authHeader = req.headers.get("Authorization") ?? "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -43,26 +47,92 @@ Deno.serve(async (req) => {
 
   const tickId = crypto.randomUUID();
   const t0 = Date.now();
-  let claimed = 0, success = 0, skipped = 0, errors = 0, rescheduled = 0, dead = 0;
+  let claimed = 0,
+    success = 0,
+    skipped = 0,
+    errors = 0,
+    rescheduled = 0,
+    dead = 0;
+  let staleCanceled = 0;
 
   try {
     let body: any = {};
-    try { body = await req.json(); } catch { /* empty */ }
+    try {
+      body = await req.json();
+    } catch { /* empty */ }
     const batch = Math.max(1, Math.min(100, Number(body?.batch ?? 25)));
 
     // Fail-closed: somente registra runs órfãos numa fila de revisão idempotente.
     // Nunca os reprocessa automaticamente.
-    const { data: orphanRows, error: orphanError } = await supabase.rpc("queue_orphan_flow_runs_for_review", {
-      _empresa_id: VIVER_EMPRESA_ID, _sla_seconds: 300, _limit: batch,
-    });
-    if (orphanError) console.warn(JSON.stringify({ scope: "orphan_flow_run_review_error", reason: "rpc_failed" }));
-    for (const row of orphanRows ?? []) console.warn(JSON.stringify(sanitizedOrphanAlert(row)));
-    const { error: retentionError } = await supabase.rpc("cleanup_orbit_execution_history", {
-      _empresa_id: VIVER_EMPRESA_ID, _claim_days: 30, _review_days: 90,
-    });
-    if (retentionError) console.warn(JSON.stringify({ scope: "orbit_execution_retention_error", reason: "rpc_failed" }));
+    const { data: orphanRows, error: orphanError } = await supabase.rpc(
+      "queue_orphan_flow_runs_for_review",
+      {
+        _empresa_id: VIVER_EMPRESA_ID,
+        _sla_seconds: 300,
+        _limit: batch,
+      },
+    );
+    if (orphanError) {
+      console.warn(
+        JSON.stringify({
+          scope: "orphan_flow_run_review_error",
+          reason: "rpc_failed",
+        }),
+      );
+    }
+    for (const row of orphanRows ?? []) {
+      console.warn(JSON.stringify(sanitizedOrphanAlert(row)));
+    }
+    const { error: retentionError } = await supabase.rpc(
+      "cleanup_orbit_execution_history",
+      {
+        _empresa_id: VIVER_EMPRESA_ID,
+        _claim_days: 30,
+        _review_days: 90,
+      },
+    );
+    if (retentionError) {
+      console.warn(
+        JSON.stringify({
+          scope: "orbit_execution_retention_error",
+          reason: "rpc_failed",
+        }),
+      );
+    }
 
-    const { data: rows, error: claimErr } = await supabase.rpc("claim_scheduled_actions", { _batch: batch });
+    // Não drena backlog da Viver após reconexão. A ação continua válida por uma
+    // pequena tolerância operacional; depois disso é cancelada antes do claim.
+    // O outbox repete a mesma regra como barreira final fail-closed.
+    const staleCutoff = new Date(Date.now() - VIVER_FOLLOWUP_MAX_LATE_MS)
+      .toISOString();
+    const { data: staleRows, error: staleError } = await supabase
+      .from("orbit_flow_scheduled_actions")
+      .update({
+        status: "canceled",
+        canceled_reason: "no_compensatory_backlog",
+        locked_at: null,
+        locked_by: null,
+      })
+      .eq("empresa_id", VIVER_EMPRESA_ID)
+      .eq("status", "pending")
+      .lt("scheduled_for", staleCutoff)
+      .contains("action_config", { viver_controlled_followup: true })
+      .select("id");
+    if (staleError) {
+      console.warn(
+        JSON.stringify({
+          scope: "viver_followup_stale_cleanup_error",
+          reason: "query_failed",
+        }),
+      );
+    } else {
+      staleCanceled = (staleRows ?? []).length;
+    }
+
+    const { data: rows, error: claimErr } = await supabase.rpc(
+      "claim_scheduled_actions",
+      { _batch: batch },
+    );
     if (claimErr) throw new Error(claimErr.message);
     claimed = (rows ?? []).length;
 
@@ -71,32 +141,59 @@ Deno.serve(async (req) => {
       try {
         const resp = await fetch(`${FUNCTIONS_BASE}/orbit-flow-executor`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${SERVICE_KEY}`,
+          },
           body: JSON.stringify({ mode: "single_action", scheduled_id: row.id }),
         });
         const json = await resp.json().catch(() => ({}));
-        const result = classifyTenantScheduledActionResult(row.empresa_id, resp.ok, json);
+        const result = classifyTenantScheduledActionResult(
+          row.empresa_id,
+          resp.ok,
+          json,
+        );
         const ok = result === "success";
-        const stepError = json?.data?.error ?? json?.error ?? (ok ? null : `HTTP ${resp.status}`);
+        const stepError = json?.data?.error ?? json?.error ??
+          (ok ? null : `HTTP ${resp.status}`);
 
         if (result === "skipped") {
           skipped++;
           // The executor may already have canceled the claimed row. Never
           // overwrite that terminal state with a misleading success.
           await supabase.from("orbit_flow_scheduled_actions")
-            .update({ status: "canceled", canceled_reason: String(json?.data?.reason ?? json?.data?.output?.reason ?? "action_skipped").slice(0, 500), locked_at: null, locked_by: null })
+            .update({
+              status: "canceled",
+              canceled_reason: String(
+                json?.data?.reason ?? json?.data?.output?.reason ??
+                  "action_skipped",
+              ).slice(0, 500),
+              locked_at: null,
+              locked_by: null,
+            })
             .eq("id", row.id)
             .eq("status", "running");
         } else if (ok) {
           success++;
           await supabase.from("orbit_flow_scheduled_actions")
-            .update({ status: "success", last_error: null, locked_at: null, locked_by: null })
+            .update({
+              status: "success",
+              last_error: null,
+              locked_at: null,
+              locked_by: null,
+            })
             .eq("id", row.id)
             .eq("status", "running");
         } else if (row.attempts >= MAX_ATTEMPTS) {
-          dead++; errors++;
+          dead++;
+          errors++;
           await supabase.from("orbit_flow_scheduled_actions")
-            .update({ status: "error", last_error: String(stepError || "max attempts").slice(0, 500), locked_at: null, locked_by: null })
+            .update({
+              status: "error",
+              last_error: String(stepError || "max attempts").slice(0, 500),
+              locked_at: null,
+              locked_by: null,
+            })
             .eq("id", row.id)
             .eq("status", "running");
         } else {
@@ -108,9 +205,15 @@ Deno.serve(async (req) => {
           });
         }
         console.log(JSON.stringify({
-          scope: "scheduler_tick", tick_id: tickId, scheduled_id: row.id,
-          empresa_id: row.empresa_id, flow_id: row.flow_id, action_type: row.action_type,
-          attempt: row.attempts, ok, duration_ms: Date.now() - rowT0,
+          scope: "scheduler_tick",
+          tick_id: tickId,
+          scheduled_id: row.id,
+          empresa_id: row.empresa_id,
+          flow_id: row.flow_id,
+          action_type: row.action_type,
+          attempt: row.attempts,
+          ok,
+          duration_ms: Date.now() - rowT0,
         }));
       } catch (e: any) {
         errors++;
@@ -118,26 +221,54 @@ Deno.serve(async (req) => {
         if (row.attempts >= MAX_ATTEMPTS) {
           dead++;
           await supabase.from("orbit_flow_scheduled_actions")
-            .update({ status: "error", last_error: msg, locked_at: null, locked_by: null })
+            .update({
+              status: "error",
+              last_error: msg,
+              locked_at: null,
+              locked_by: null,
+            })
             .eq("id", row.id);
         } else {
           rescheduled++;
           await supabase.rpc("reschedule_scheduled_action", {
-            _id: row.id, _delay_seconds: backoffSecondsFor(row.attempts), _error: msg,
+            _id: row.id,
+            _delay_seconds: backoffSecondsFor(row.attempts),
+            _error: msg,
           });
         }
       }
     }
 
-    const summary = { tick_id: tickId, claimed, success, skipped, errors, rescheduled, dead, duration_ms: Date.now() - t0 };
-    console.log(JSON.stringify({ scope: "scheduler_tick_summary", ...summary }));
+    const summary = {
+      tick_id: tickId,
+      claimed,
+      success,
+      skipped,
+      errors,
+      rescheduled,
+      dead,
+      stale_canceled: staleCanceled,
+      duration_ms: Date.now() - t0,
+    };
+    console.log(
+      JSON.stringify({ scope: "scheduler_tick_summary", ...summary }),
+    );
     return new Response(JSON.stringify({ ok: true, data: summary }), {
-      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
     console.error("scheduler-tick fatal", e);
-    return new Response(JSON.stringify({ ok: false, error: String(e?.message ?? e), tick_id: tickId }), {
-      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error: String(e?.message ?? e),
+        tick_id: tickId,
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   }
 });
