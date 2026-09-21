@@ -53,6 +53,7 @@ import {
   kickOutboxDispatch,
   readImmediateOutboxDispatchFlag,
 } from "../_shared/immediate-outbox-dispatch.ts";
+import { enforceViverProductLadder } from "../_shared/viver-product-ladder-guard.ts";
 
 import { evaluateAutomationCutoff } from "../_shared/automation-cutoff.ts";
 import {
@@ -1971,6 +1972,24 @@ ${regrasBlock}`;
           resposta = buildDeterministicFallback(canonicalFacts, camposQualificacao, previousAgentQuestions);
           console.warn("[orbit-ai-agent] Fallback determinístico aplicado.");
         }
+        parsed.mensagem = resposta;
+      }
+    }
+
+    // ── VIVER: a esteira comercial não pode ser ignorada pelo modelo ──
+    // Faixas low seguem para a aula em grupo; convite/link individual fica
+    // bloqueado deterministicamente e o link da aula continua condicionado ao aceite.
+    {
+      const ladder = enforceViverProductLadder({
+        empresaId,
+        response: resposta,
+        capitalValue:
+          canonicalFacts.renda_capital?.value ??
+          (prospect as any)?.dados_adicionais?.capital_disponivel,
+      });
+      if (ladder.changed) {
+        console.warn("[orbit-ai-agent] Trava da esteira Viver acionada:", ladder.reason);
+        resposta = ladder.text;
         parsed.mensagem = resposta;
       }
     }
