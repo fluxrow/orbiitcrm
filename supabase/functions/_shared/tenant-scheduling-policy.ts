@@ -5,6 +5,8 @@ export type ViverRescheduleState = {
   active: boolean;
   requested_at?: string | null;
   reason?: "change_day" | "declined_today" | null;
+  date_fragment?: string | null;
+  time_fragment?: string | null;
 };
 
 function normalizeSchedulingText(message: string): string {
@@ -31,20 +33,36 @@ export function hasExplicitSchedulingTime(message: string): boolean {
   return /\b(?:as\s+)?(?:[01]?\d|2[0-3])(?::[0-5]\d|h(?:[0-5]\d)?)\b/.test(text);
 }
 
+export function extractExplicitSchedulingClock(message: string): { hour: number; minute: number } | null {
+  const text = normalizeSchedulingText(message);
+  const match = text.match(/\b(?:as\s+)?([01]?\d|2[0-3])(?::([0-5]\d)|h([0-5]\d)?)\b/);
+  if (!match) return null;
+  return { hour: Number(match[1]), minute: Number(match[2] || match[3] || 0) };
+}
+
 export function shouldClarifyViverReschedule(input: {
   empresaId: string | null | undefined;
   message: string;
   state?: ViverRescheduleState | null;
   selectedPreviouslyProposedSlot?: boolean;
-}): { blocked: boolean; nextState: ViverRescheduleState | null; reason?: string } {
-  if (input.empresaId !== VIVER_EMPRESA_ID) return { blocked: false, nextState: input.state ?? null };
+}): { blocked: boolean; nextState: ViverRescheduleState | null; reason?: string; effectiveMessage?: string; missingDate?: boolean; missingTime?: boolean } {
+  if (input.empresaId !== VIVER_EMPRESA_ID) return { blocked: false, nextState: input.state ?? null, effectiveMessage: input.message };
   const changeIntent = detectsViverDayChangeIntent(input.message);
   const active = input.state?.active === true || changeIntent;
-  if (!active) return { blocked: false, nextState: null };
+  if (!active) return { blocked: false, nextState: null, effectiveMessage: input.message };
 
-  const hasDateAndTime = hasExplicitSchedulingDate(input.message) && hasExplicitSchedulingTime(input.message);
+  const currentHasDate = hasExplicitSchedulingDate(input.message);
+  const currentHasTime = hasExplicitSchedulingTime(input.message);
+  const dateFragment = currentHasDate ? input.message : input.state?.date_fragment;
+  const timeFragment = currentHasTime ? input.message : input.state?.time_fragment;
+  const effectiveMessage = [dateFragment, timeFragment]
+    .filter((value, index, all): value is string => Boolean(value) && all.indexOf(value) === index)
+    .join(" ").trim() || input.message;
+  const hasDate = hasExplicitSchedulingDate(effectiveMessage);
+  const hasTime = hasExplicitSchedulingTime(effectiveMessage);
+  const hasDateAndTime = hasDate && hasTime;
   if (hasDateAndTime || input.selectedPreviouslyProposedSlot === true) {
-    return { blocked: false, nextState: null };
+    return { blocked: false, nextState: null, effectiveMessage };
   }
   return {
     blocked: true,
@@ -52,8 +70,13 @@ export function shouldClarifyViverReschedule(input: {
       active: true,
       requested_at: input.state?.requested_at ?? null,
       reason: declinesViverCurrentDay(input.message) ? "declined_today" : (input.state?.reason ?? "change_day"),
+      date_fragment: dateFragment ?? null,
+      time_fragment: timeFragment ?? null,
     },
     reason: changeIntent ? "viver_reschedule_requested" : "viver_reschedule_awaiting_explicit_date_time",
+    effectiveMessage,
+    missingDate: !hasDate,
+    missingTime: !hasTime,
   };
 }
 
