@@ -39,6 +39,16 @@ Deno.test("pilot only admits explicitly marked controlled Viver operations to ev
     source_type: "meeting_confirmation",
     metadata: { meeting_id: "11111111-1111-4111-8111-111111111111", reminder_kind: "meeting_reminder_5m" },
   }), null);
+  assertEquals(pilotStaticBlockReason({
+    empresa_id: VIVER_SEMIJOIAS_EMPRESA_ID,
+    source_type: "meeting_confirmation",
+    metadata: { meeting_id: "11111111-1111-4111-8111-111111111111", reminder_kind: "meeting_reschedule_notice" },
+  }), null);
+  assertEquals(pilotStaticBlockReason({
+    empresa_id: VIVER_SEMIJOIAS_EMPRESA_ID,
+    source_type: "meeting_confirmation",
+    metadata: { meeting_id: "11111111-1111-4111-8111-111111111111", reminder_kind: "arbitrary_bypass" },
+  }), PILOT_SOURCE_BLOCKED);
   assertEquals(PILOT_CAMPAIGN_EVIDENCE_REQUIRED, "PILOT_CAMPAIGN_EVIDENCE_REQUIRED");
   assertEquals(PILOT_FOLLOWUP_EVIDENCE_REQUIRED, "PILOT_FOLLOWUP_EVIDENCE_REQUIRED");
   assertEquals(PILOT_MEETING_EVIDENCE_REQUIRED, "PILOT_MEETING_EVIDENCE_REQUIRED");

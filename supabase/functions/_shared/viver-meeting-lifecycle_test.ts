@@ -2,6 +2,7 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   evaluateViverMeetingReminder,
   meetingIdFromFlowContext,
+  VIVER_MEETING_RESCHEDULE_NOTICE,
 } from "./viver-meeting-lifecycle.ts";
 
 Deno.test("extrai meeting_id apenas de UUID persistido no payload", () => {
@@ -125,6 +126,29 @@ Deno.test("reunião iniciada ou encerrada nunca recebe lembrete", () => {
     allowed: false,
     reason: "meeting_reminder_in_progress",
   });
+});
+
+Deno.test("aviso de remarcação exige reunião futura e Meet autoritativo", () => {
+  assertEquals(evaluateViverMeetingReminder({
+    reminderKind: VIVER_MEETING_RESCHEDULE_NOTICE,
+    meetingId: authoritativeMeeting.id,
+    meeting: authoritativeMeeting,
+  }, new Date("2026-08-26T16:00:00.000Z")), { allowed: true });
+
+  assertEquals(evaluateViverMeetingReminder({
+    reminderKind: VIVER_MEETING_RESCHEDULE_NOTICE,
+    meetingId: authoritativeMeeting.id,
+    meeting: authoritativeMeeting,
+  }, new Date("2026-08-26T20:00:00.000Z")), {
+    allowed: false,
+    reason: "meeting_reminder_expired",
+  });
+
+  assertEquals(evaluateViverMeetingReminder({
+    reminderKind: VIVER_MEETING_RESCHEDULE_NOTICE,
+    meetingId: authoritativeMeeting.id,
+    meeting: { ...authoritativeMeeting, meeting_url: null },
+  }, new Date("2026-08-26T16:00:00.000Z")).allowed, false);
 });
 
 Deno.test("tipo de lembrete desconhecido falha fechado", () => {

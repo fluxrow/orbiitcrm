@@ -9,6 +9,14 @@ import {
 } from "./meeting-reminder-policy.ts";
 export * from "./viver-meeting-guard.ts";
 
+export const VIVER_MEETING_RESCHEDULE_NOTICE =
+  "meeting_reschedule_notice";
+
+export function isViverMeetingNotificationKind(value: unknown): boolean {
+  return value === VIVER_MEETING_RESCHEDULE_NOTICE ||
+    isMeetingReminderKind(value);
+}
+
 export function meetingIdFromFlowContext(
   context: Record<string, any> | null | undefined,
 ): string | null {
@@ -26,7 +34,9 @@ export function evaluateViverMeetingReminder(input: {
   meeting: MeetingRow | null;
   queryFailed?: boolean;
 }, now = new Date()): { allowed: boolean; reason?: string } {
-  if (!String(input.reminderKind ?? "").startsWith("meeting_reminder_")) {
+  const kind = String(input.reminderKind ?? "");
+  const isRescheduleNotice = kind === VIVER_MEETING_RESCHEDULE_NOTICE;
+  if (!kind.startsWith("meeting_reminder_") && !isRescheduleNotice) {
     return { allowed: true };
   }
   if (!input.meetingId) {
@@ -45,6 +55,9 @@ export function evaluateViverMeetingReminder(input: {
   if (phase !== "upcoming") {
     return { allowed: false, reason: `meeting_reminder_${phase}` };
   }
+  // Aviso operacional de remarcação: não usa janela de offset, mas conserva
+  // todos os gates autoritativos acima (tenant, reunião futura e Meet oficial).
+  if (isRescheduleNotice) return { allowed: true };
   if (!isMeetingReminderKind(input.reminderKind)) {
     return { allowed: false, reason: "meeting_reminder_kind_not_supported" };
   }
