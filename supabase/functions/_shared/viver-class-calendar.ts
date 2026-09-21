@@ -1,4 +1,4 @@
-export const VIVER_CLASS_WEEKDAY = "Tue";
+export const VIVER_CLASS_WEEKDAY = "Wed";
 export const VIVER_CLASS_HOUR = 19;
 export const VIVER_CLASS_MINUTE = 30;
 export const VIVER_CLASS_TIME_ZONE = "America/Sao_Paulo";

@@ -1,5 +1,12 @@
+import {
+  VIVER_CLASS_HOUR,
+  VIVER_CLASS_MINUTE,
+  VIVER_CLASS_TIME_ZONE,
+  VIVER_CLASS_WEEKDAY,
+} from "../_shared/viver-class-calendar.ts";
+
 export const VIVER_CLASS_TEMPLATE_NAME = "Aula Grupo - Envio Link";
-export const VIVER_CLASS_TIME_ZONE = "America/Sao_Paulo";
+export { VIVER_CLASS_TIME_ZONE } from "../_shared/viver-class-calendar.ts";
 
 export type ConversationMessage = {
   direcao?: string | null;
@@ -101,9 +108,9 @@ export function viverClassPhase(
   }).formatToParts(now);
   const value = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((part) => part.type === type)?.value || "";
-  if (value("weekday") !== "Tue") return "upcoming";
+  if (value("weekday") !== VIVER_CLASS_WEEKDAY) return "upcoming";
   const minutes = Number(value("hour")) * 60 + Number(value("minute"));
-  const startsAt = 19 * 60 + 30;
+  const startsAt = VIVER_CLASS_HOUR * 60 + VIVER_CLASS_MINUTE;
   if (minutes < startsAt) return "upcoming";
   if (minutes < startsAt + durationMinutes) return "in_progress";
   return "next_week";

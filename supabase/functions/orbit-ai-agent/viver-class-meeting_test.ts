@@ -12,15 +12,15 @@ function assertEquals(actual: unknown, expected: unknown) {
   }
 }
 
-Deno.test("agenda a próxima terça às 19h30 antes do início", () => {
+Deno.test("agenda a próxima quarta às 19h30 antes do início", () => {
   const start = nextViverClassStart(new Date("2026-08-31T17:00:00Z"));
-  assertEquals(start.toISOString(), "2026-09-01T22:30:00.000Z");
-  assertEquals(viverClassOccurrenceKey(start), "2026-09-01T19:30:00-03:00");
+  assertEquals(start.toISOString(), "2026-09-02T22:30:00.000Z");
+  assertEquals(viverClassOccurrenceKey(start), "2026-09-02T19:30:00-03:00");
 });
 
-Deno.test("após o início usa a terça seguinte", () => {
-  const start = nextViverClassStart(new Date("2026-09-01T22:31:00Z"));
-  assertEquals(start.toISOString(), "2026-09-08T22:30:00.000Z");
+Deno.test("após o início usa a quarta seguinte", () => {
+  const start = nextViverClassStart(new Date("2026-09-02T22:31:00Z"));
+  assertEquals(start.toISOString(), "2026-09-09T22:30:00.000Z");
 });
 
 Deno.test("monta reunião idempotente com evidência de consentimento", () => {
@@ -32,11 +32,11 @@ Deno.test("monta reunião idempotente com evidência de consentimento", () => {
     canonicalMeetUrl: "https://meet.google.com/abc-defg-hij",
     now: new Date("2026-08-31T17:00:00Z"),
   });
-  assertEquals(row.scheduled_at, "2026-09-01T22:30:00.000Z");
+  assertEquals(row.scheduled_at, "2026-09-02T22:30:00.000Z");
   assertEquals(row.duration_minutes, 90);
   assertEquals(row.metadata, {
     meeting_kind: "viver_group_class",
-    class_occurrence_key: "2026-09-01T19:30:00-03:00",
+    class_occurrence_key: "2026-09-02T19:30:00-03:00",
     consent_message_id: "c14ed520-ffea-40e1-bed5-31e1f9ece78d",
     consent_source: "whatsapp_explicit_acceptance",
   });
