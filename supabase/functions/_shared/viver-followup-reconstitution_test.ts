@@ -117,7 +117,7 @@ Deno.test("individual: agenda D1/D3/D7 ancorados no sent_at real", () => {
   assertEquals(d.run_id, RUN);
 });
 
-Deno.test("grupo: apenas o D1 habilitado é agendado, sem reativar os demais", () => {
+Deno.test("grupo: ações explicitamente desabilitadas continuam fora da cadência", () => {
   const d = decideViverFollowupReconstitution(facts({
     actions: [
       action(D1, 1),
@@ -129,6 +129,24 @@ Deno.test("grupo: apenas o D1 habilitado é agendado, sem reativar os demais", (
   assertEquals(d.plan.length, 1);
   assertEquals(d.plan[0].action_id, D1);
   assertEquals(d.skipped.map((s) => s.reason), ["action_not_approved", "action_not_approved"]);
+});
+
+Deno.test("grupo: com a esteira completa aprovada agenda D1/D3/D7", () => {
+  const d = decideViverFollowupReconstitution(facts({
+    run: { ...facts().run, flow_id: GROUP_FLOW },
+    actions: [
+      { ...action(D1, 1), flow_id: GROUP_FLOW },
+      { ...action(D3, 3), flow_id: GROUP_FLOW },
+      { ...action(D7, 7), flow_id: GROUP_FLOW },
+    ],
+  }));
+  assertEquals(d.allowed, true);
+  assertEquals(d.plan.map((entry) => entry.action_id), [D1, D3, D7]);
+  assertEquals(d.plan.map((entry) => entry.scheduled_for), [
+    "2026-09-11T13:00:00.000Z",
+    "2026-09-13T13:00:00.000Z",
+    "2026-09-17T13:00:00.000Z",
+  ]);
 });
 
 Deno.test("delays nunca usam a criação antiga do lead", () => {
