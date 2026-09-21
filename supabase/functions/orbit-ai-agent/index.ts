@@ -200,6 +200,7 @@ import {
   isAmbiguousSlotAcceptance,
   selectExplicitSuggestion,
   detectsViverDayChangeIntent,
+  extractExplicitSchedulingClock,
   isUnequivocalPreviouslyProposedDateSelection,
   shouldClarifyViverReschedule,
   type ViverRescheduleState,
@@ -4367,7 +4368,7 @@ export async function tryAutoScheduleMeeting(
     now: depsIn?.now ?? (() => new Date()),
   };
 
-  const ag = params.agendamento || {};
+  let ag = params.agendamento || {};
   const rawToken = await deps.getTokenForEmpresa(params.empresaId).catch(() => null);
   if (!rawToken) {
     console.log("[orbit-ai-agent] Google Calendar não conectado — fallback para handoff manual", { empresaId: params.empresaId });
@@ -4387,11 +4388,17 @@ export async function tryAutoScheduleMeeting(
       previousSuggestions,
     ),
   });
+  const schedulingMessage = rescheduleDecision.effectiveMessage || params.mensagem_cliente || "";
   if (rescheduleDecision.blocked) {
+    const clarification = rescheduleDecision.missingDate && !rescheduleDecision.missingTime
+      ? "Qual data fica melhor para você?"
+      : rescheduleDecision.missingTime && !rescheduleDecision.missingDate
+      ? "Qual horário fica melhor para você?"
+      : "Qual data e horário ficam melhores para você?";
     return {
       handled: true,
       created: false,
-      response_override: "Claro. Qual data e horário ficam melhores para você?",
+      response_override: clarification,
       suggestions: [],
       reschedule_state: {
         ...rescheduleDecision.nextState,
@@ -4417,7 +4424,17 @@ export async function tryAutoScheduleMeeting(
   const configuredHorizon = Number(token.booking_max_horizon_days);
   const minNoticeMinutes = Math.max(0, Number.isFinite(configuredNotice) ? configuredNotice : 60);
   const maxHorizonDays = Math.max(1, Number.isFinite(configuredHorizon) ? configuredHorizon : 60);
-  const hint = resolveBookingDateHint(params.mensagem_cliente || "", now, tz);
+  const hint = resolveBookingDateHint(schedulingMessage, now, tz);
+  if (!selectedSuggestion?.start && !ag.data_iso && hint.expectedDay) {
+    const clock = extractExplicitSchedulingClock(schedulingMessage);
+    if (clock) {
+      ag = {
+        ...ag,
+        data_iso: isoWithOffset(hint.expectedDay, clock.hour, clock.minute, tz),
+        tem_horario: true,
+      };
+    }
+  }
 
   // Sem data informada: consultar a agenda e oferecer os dois horários úteis mais próximos.
   if (!selectedSuggestion?.start && !ag.data_iso) {
@@ -4436,7 +4453,7 @@ export async function tryAutoScheduleMeeting(
         minNoticeMinutes,
         maxDays: Math.min(maxHorizonDays, 14),
         now,
-        message: params.mensagem_cliente || "",
+        message: schedulingMessage,
       });
       return {
         handled: true,
@@ -4472,7 +4489,7 @@ export async function tryAutoScheduleMeeting(
         minNoticeMinutes,
         maxDays: Math.min(maxHorizonDays, 14),
         now,
-        message: params.mensagem_cliente || "",
+        message: schedulingMessage,
       });
       return {
         handled: true,
@@ -4486,7 +4503,7 @@ export async function tryAutoScheduleMeeting(
   }
   if (!selectedSuggestion && hint.expectedDay && hint.expectedDay !== dayStr) {
     console.warn("[orbit-ai-agent] data do modelo diverge da mensagem", {
-      message: params.mensagem_cliente, expectedDay: hint.expectedDay, modelDay: dayStr,
+      message: schedulingMessage, expectedDay: hint.expectedDay, modelDay: dayStr,
     });
     const access = await deps.ensureFreshAccessToken(token);
     try {
@@ -4501,7 +4518,7 @@ export async function tryAutoScheduleMeeting(
         minNoticeMinutes,
         maxDays: Math.min(maxHorizonDays, 14),
         now,
-        message: params.mensagem_cliente || "",
+        message: schedulingMessage,
       });
       return {
         handled: true,
@@ -4561,7 +4578,7 @@ export async function tryAutoScheduleMeeting(
           minNoticeMinutes,
           maxDays: Math.min(maxHorizonDays, 14),
           now,
-          message: params.mensagem_cliente || "",
+          message: "",
         });
         return {
           handled: true,
@@ -4598,7 +4615,7 @@ export async function tryAutoScheduleMeeting(
           minNoticeMinutes,
           maxDays: Math.min(maxHorizonDays, 14),
           now,
-          message: params.mensagem_cliente || "",
+          message: "",
         });
         return {
           handled: true,
@@ -4638,7 +4655,7 @@ export async function tryAutoScheduleMeeting(
         minNoticeMinutes,
         maxDays: Math.min(maxHorizonDays, 14),
         now,
-        message: params.mensagem_cliente || "",
+        message: schedulingMessage,
       });
       return {
         handled: true,

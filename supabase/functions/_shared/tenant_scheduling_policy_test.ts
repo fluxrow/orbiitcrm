@@ -2,6 +2,7 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   VIVER_EMPRESA_ID,
   detectsViverDayChangeIntent,
+  extractExplicitSchedulingClock,
   hasExplicitSchedulingDate,
   hasExplicitSchedulingTime,
   isAmbiguousSlotAcceptance,
@@ -50,6 +51,28 @@ Deno.test("detecta mudança de dia e exige data mais horário durante remarcaç�
     message: "dia 16 às 16h",
     state: { active: true, reason: "change_day" },
   }).blocked, false);
+});
+
+Deno.test("Viver acumula data e horário informados em mensagens separadas", () => {
+  const dateTurn = shouldClarifyViverReschedule({
+    empresaId: VIVER_EMPRESA_ID,
+    message: "Pode ser amanhã?",
+    state: { active: true, reason: "change_day" },
+  });
+  assertEquals(dateTurn.blocked, true);
+  assertEquals(dateTurn.missingDate, false);
+  assertEquals(dateTurn.missingTime, true);
+  assertEquals(dateTurn.nextState?.date_fragment, "Pode ser amanhã?");
+
+  const timeTurn = shouldClarifyViverReschedule({
+    empresaId: VIVER_EMPRESA_ID,
+    message: "Às 09h",
+    state: dateTurn.nextState,
+  });
+  assertEquals(timeTurn.blocked, false);
+  assertEquals(timeTurn.nextState, null);
+  assertEquals(hasExplicitSchedulingDate(timeTurn.effectiveMessage || ""), true);
+  assertEquals(extractExplicitSchedulingClock(timeTurn.effectiveMessage || ""), { hour: 9, minute: 0 });
 });
 
 Deno.test("guarda de remarcação não altera outros tenants", () => {

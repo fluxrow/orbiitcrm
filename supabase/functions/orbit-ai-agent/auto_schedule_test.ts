@@ -264,6 +264,38 @@ Deno.test("Viver: 'outro dia' seguido de '16' pede data e cria zero meetings", a
   assert(!state.order.includes("orbit_meetings.insert"));
 });
 
+Deno.test("Viver: data e horário em turnos separados não repetem a pergunta combinada", async () => {
+  const state: FakeState = { meetings: [], deals: [], pipeline_stages: [], flow_events: [], order: [] };
+  const deps = {
+    getTokenForEmpresa: async () => TOKEN,
+    ensureFreshAccessToken: async () => "at",
+    checkAvailability: async () => ({ busy: [] }),
+    now: () => FROZEN_NOW,
+  };
+
+  const dateTurn = baseParams() as any;
+  dateTurn.empresaId = VIVER_EMPRESA_ID;
+  dateTurn.mensagem_cliente = "Pode ser amanhã?";
+  dateTurn.agendamento = { data_iso: null, tem_horario: false, duracao_min: 60 };
+  dateTurn.remarcacao_estado = { active: true, reason: "change_day" };
+  const first = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, dateTurn, deps);
+  assertEquals(first.created, false);
+  assertEquals(first.reschedule_state?.date_fragment, "Pode ser amanhã?");
+  assertEquals(first.response_override, "Qual horário fica melhor para você?");
+
+  const timeTurn = baseParams() as any;
+  timeTurn.empresaId = VIVER_EMPRESA_ID;
+  timeTurn.mensagem_cliente = "Às 09h";
+  timeTurn.agendamento = { data_iso: null, tem_horario: false, duracao_min: 60 };
+  timeTurn.remarcacao_estado = first.reschedule_state;
+  const second = await tryAutoScheduleMeeting(makeFakeSupabase(state) as any, timeTurn, deps);
+  assertEquals(second.created, false);
+  assert(!String(second.response_override).includes("Qual data e horário"));
+  assert(String(second.response_override).includes("fora do nosso expediente"));
+  assertEquals(second.suggestions?.length, 2);
+  assertEquals(state.meetings.length, 0);
+});
+
 Deno.test("Viver: remarcação com 'dia 16 às 16h' cria uma meeting na data explícita", async () => {
   const state: FakeState = {
     meetings: [], deals: [{ id: "deal-1", etapa_id: null }],
