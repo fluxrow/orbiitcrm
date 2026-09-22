@@ -14,7 +14,11 @@ export type ConversationMessage = {
   timestamp?: string | null;
 };
 
-const CLASS_CONTEXT_RE = /\b(?:aula|encontro)\b/iu;
+// O agente pode apresentar a aula em grupo como "aula", "encontro" ou
+// "reunião". A detecção do aceite precisa reconhecer as três formas; caso
+// contrário, um "Gostaria" após "reunião gratuita em grupo" cai na IA
+// generativa, que pode prometer o link sem criar a participação.
+const CLASS_CONTEXT_RE = /\b(?:aula|encontro|reuni[aã]o)\b/iu;
 const ACCESS_OFFER_RE =
   /(?:quer|gostaria|posso).{0,50}(?:link|acesso|participar)|(?:link|acesso).{0,40}(?:aula|participar)|(?:consegue|pode|vai).{0,40}participar/iu;
 const AFFIRMATIVE_RE =
