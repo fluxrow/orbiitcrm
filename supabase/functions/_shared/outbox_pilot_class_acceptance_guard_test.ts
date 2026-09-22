@@ -15,7 +15,15 @@ class Query {
     this.#rows = this.#rows.filter((row) => String(row[column] ?? "") === String(value ?? ""));
     return this;
   }
+  gt(column: string, value: unknown) {
+    const cutoff = Date.parse(String(value ?? ""));
+    this.#rows = this.#rows.filter((row) => Date.parse(String(row[column] ?? "")) > cutoff);
+    return this;
+  }
   async maybeSingle() { return { data: this.#rows[0] ?? null, error: null }; }
+  then(resolve: (value: { data: Row[]; error: null }) => unknown) {
+    return Promise.resolve({ data: this.#rows, error: null }).then(resolve);
+  }
 }
 
 const meetingId = "11111111-1111-4111-8111-111111111111";
@@ -86,6 +94,43 @@ Deno.test("Viver controlled class acceptance blocks after human handoff", async 
       prospect_id: prospectId,
       human_talk: true,
       handoff_sent_at: "2026-09-22T00:10:00Z",
+    }],
+  });
+  assertEquals(
+    await pilotInboundBlockReason(db, item, new Date("2026-09-22T00:15:00Z")),
+    PILOT_CLASS_ACCEPTANCE_EVIDENCE_REQUIRED,
+  );
+});
+
+Deno.test("Viver controlled class acceptance keeps internal notification from transferring ownership", async () => {
+  const db = fixture({
+    orbit_conversas: [{
+      id: conversaId,
+      empresa_id: VIVER_SEMIJOIAS_EMPRESA_ID,
+      prospect_id: prospectId,
+      human_talk: false,
+      handoff_sent_at: "2026-09-22T00:10:00Z",
+    }],
+  });
+  assertEquals(await pilotInboundBlockReason(db, item, new Date("2026-09-22T00:15:00Z")), null);
+});
+
+Deno.test("Viver controlled class acceptance blocks after real human outbound", async () => {
+  const db = fixture({
+    orbit_mensagens: [{
+      id: consentId,
+      empresa_id: VIVER_SEMIJOIAS_EMPRESA_ID,
+      conversa_id: conversaId,
+      direcao: "IN",
+      timestamp: "2026-09-21T22:59:55Z",
+    }, {
+      id: "55555555-5555-4555-8555-555555555555",
+      empresa_id: VIVER_SEMIJOIAS_EMPRESA_ID,
+      conversa_id: conversaId,
+      direcao: "OUT",
+      timestamp: "2026-09-22T00:05:00Z",
+      sender_type: "human_phone",
+      sent_by_user_id: null,
     }],
   });
   assertEquals(
