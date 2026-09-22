@@ -445,7 +445,9 @@ export async function pilotInboundBlockReason(
       String(consent.conversa_id) !== String(item.conversa_id) ||
       String(consent.direcao).toUpperCase() !== "IN" ||
       String(conversa.prospect_id) !== String(item.prospect_id) ||
-      conversa.human_talk === true || Boolean(conversa.handoff_sent_at) ||
+      // A notificação interna pode preencher handoff_sent_at sem transferir a
+      // posse. Só human_talk ou uma saída humana real bloqueiam a correção.
+      conversa.human_talk === true ||
       prospect.optout_whatsapp === true || Boolean(prospect.deleted_at) ||
       !["scheduled", "rescheduled"].includes(String(meeting.status)) ||
       meeting.metadata?.meeting_kind !== "viver_group_class" ||
@@ -454,6 +456,23 @@ export async function pilotInboundBlockReason(
       !Number.isFinite(consentAt) || !Number.isFinite(itemAt) ||
       !Number.isFinite(scheduledAt) || consentAt > itemAt ||
       itemAt - consentAt > 24 * 60 * 60 * 1000 || scheduledAt <= now.getTime()
+    ) {
+      return PILOT_CLASS_ACCEPTANCE_EVIDENCE_REQUIRED;
+    }
+    const { data: laterMessages, error: laterMessagesError } = await supabase
+      .from("orbit_mensagens")
+      .select("id, direcao, timestamp, sender_type, sent_by_user_id")
+      .eq("empresa_id", item.empresa_id)
+      .eq("conversa_id", item.conversa_id)
+      .gt("timestamp", consent.timestamp);
+    if (
+      laterMessagesError || (laterMessages ?? []).some((message: any) =>
+        String(message?.direcao ?? "").toUpperCase() === "OUT" &&
+        (Boolean(message?.sent_by_user_id) ||
+          ["human_phone", "human_orbit"].includes(
+            String(message?.sender_type ?? "").toLowerCase(),
+          ))
+      )
     ) {
       return PILOT_CLASS_ACCEPTANCE_EVIDENCE_REQUIRED;
     }
