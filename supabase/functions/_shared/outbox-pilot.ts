@@ -12,7 +12,7 @@ import { proveViverControlledFollowup } from "./viver-followup-reconstitution.ts
 
 export const VIVER_SEMIJOIAS_EMPRESA_ID =
   "36f26579-66ad-4ef1-9788-141e4c727232";
-export const VIVER_CONTROLLED_OUTBOX_GATE_VERSION = "2026-09-21-v5";
+export const VIVER_CONTROLLED_OUTBOX_GATE_VERSION = "2026-09-21-v6";
 
 export const PILOT_SOURCE_BLOCKED = "PILOT_SOURCE_BLOCKED";
 export const PILOT_INBOUND_REQUIRED = "PILOT_INBOUND_REQUIRED";
@@ -32,6 +32,8 @@ export const PILOT_FOLLOWUP_CANCELED_AFTER_HUMAN_OUTBOUND =
 export const PILOT_FOLLOWUP_STALE_BACKLOG = "PILOT_FOLLOWUP_STALE_BACKLOG";
 export const PILOT_MEETING_EVIDENCE_REQUIRED =
   "PILOT_MEETING_EVIDENCE_REQUIRED";
+export const PILOT_CLASS_ACCEPTANCE_EVIDENCE_REQUIRED =
+  "PILOT_CLASS_ACCEPTANCE_EVIDENCE_REQUIRED";
 
 // Atrasos curtos do cron são tolerados. Depois desta janela, a ação deixa de
 // representar a cadência original e não pode ser compensada na reconexão.
@@ -103,6 +105,15 @@ export function isControlledViverMeetingReminder(item: any): boolean {
     isViverMeetingNotificationKind(item?.metadata?.reminder_kind);
 }
 
+export function isControlledViverClassAcceptance(item: any): boolean {
+  return isPilotTenant(item?.empresa_id) &&
+    item?.source_type === "meeting_confirmation" &&
+    item?.metadata?.viver_controlled_class_acceptance === true &&
+    item?.metadata?.operation === "viver_group_class_acceptance_remediation" &&
+    typeof item?.metadata?.meeting_id === "string" &&
+    typeof item?.metadata?.consent_message_id === "string";
+}
+
 export function pilotStaticBlockReason(item: any): string | null {
   if (!isPilotTenant(item?.empresa_id)) return null;
   if (isControlledCanary(item)) return null;
@@ -112,6 +123,7 @@ export function pilotStaticBlockReason(item: any): string | null {
   }
   if (isControlledViverFollowup(item)) return null;
   if (isControlledViverMeetingReminder(item)) return null;
+  if (isControlledViverClassAcceptance(item)) return null;
   if (item?.source_type !== "ai_reply") return PILOT_SOURCE_BLOCKED;
   const inboundId = item?.metadata?.inbound_message_id;
   if (typeof inboundId !== "string" || !inboundId.trim()) {
@@ -398,6 +410,52 @@ export async function pilotInboundBlockReason(
         String(meeting.conversa_id) !== String(item.conversa_id))
     ) {
       return PILOT_MEETING_EVIDENCE_REQUIRED;
+    }
+    return null;
+  }
+
+  if (isControlledViverClassAcceptance(item)) {
+    const meetingId = String(item.metadata.meeting_id);
+    const consentId = String(item.metadata.consent_message_id);
+    if (!item.prospect_id || !item.conversa_id) {
+      return PILOT_CLASS_ACCEPTANCE_EVIDENCE_REQUIRED;
+    }
+    const [{ data: meeting, error: meetingError }, { data: consent, error: consentError }, { data: conversa }, { data: prospect }] =
+      await Promise.all([
+        supabase.from("orbit_meetings")
+          .select("id, empresa_id, prospect_id, conversa_id, scheduled_at, status, meeting_url, metadata")
+          .eq("id", meetingId).eq("empresa_id", item.empresa_id).maybeSingle(),
+        supabase.from("orbit_mensagens")
+          .select("id, empresa_id, conversa_id, direcao, timestamp")
+          .eq("id", consentId).eq("empresa_id", item.empresa_id).maybeSingle(),
+        supabase.from("orbit_conversas")
+          .select("id, empresa_id, prospect_id, human_talk, handoff_sent_at")
+          .eq("id", item.conversa_id).eq("empresa_id", item.empresa_id).maybeSingle(),
+        supabase.from("orbit_prospects")
+          .select("id, empresa_id, optout_whatsapp, deleted_at")
+          .eq("id", item.prospect_id).eq("empresa_id", item.empresa_id).maybeSingle(),
+      ]);
+    const consentAt = Date.parse(String(consent?.timestamp ?? ""));
+    const itemAt = Date.parse(String(item.created_at ?? ""));
+    const scheduledAt = Date.parse(String(meeting?.scheduled_at ?? ""));
+    if (
+      meetingError || consentError || !meeting || !consent || !conversa ||
+      !prospect || String(meeting.prospect_id) !== String(item.prospect_id) ||
+      String(meeting.conversa_id) !== String(item.conversa_id) ||
+      String(consent.conversa_id) !== String(item.conversa_id) ||
+      String(consent.direcao).toUpperCase() !== "IN" ||
+      String(conversa.prospect_id) !== String(item.prospect_id) ||
+      conversa.human_talk === true || Boolean(conversa.handoff_sent_at) ||
+      prospect.optout_whatsapp === true || Boolean(prospect.deleted_at) ||
+      !["scheduled", "rescheduled"].includes(String(meeting.status)) ||
+      meeting.metadata?.meeting_kind !== "viver_group_class" ||
+      String(meeting.metadata?.consent_message_id) !== consentId ||
+      !/^https:\/\/meet\.google\.com\/[a-z0-9-]+(?:[/?#].*)?$/i.test(String(meeting.meeting_url ?? "")) ||
+      !Number.isFinite(consentAt) || !Number.isFinite(itemAt) ||
+      !Number.isFinite(scheduledAt) || consentAt > itemAt ||
+      itemAt - consentAt > 24 * 60 * 60 * 1000 || scheduledAt <= now.getTime()
+    ) {
+      return PILOT_CLASS_ACCEPTANCE_EVIDENCE_REQUIRED;
     }
     return null;
   }

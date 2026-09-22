@@ -17,7 +17,7 @@ import {
 } from "./outbox-pilot.ts";
 
 Deno.test("controlled Viver outbox gate exposes the deploy version", () => {
-  assertEquals(VIVER_CONTROLLED_OUTBOX_GATE_VERSION, "2026-09-21-v5");
+  assertEquals(VIVER_CONTROLLED_OUTBOX_GATE_VERSION, "2026-09-21-v6");
 });
 
 Deno.test("pilot blocks every proactive source for Viver", () => {
@@ -49,6 +49,19 @@ Deno.test("pilot only admits explicitly marked controlled Viver operations to ev
       source_type: "campaign",
       metadata: { viver_controlled_reengagement: true },
       payload: { mensagem: "Olá. Posso continuar?" },
+    }),
+    null,
+  );
+  assertEquals(
+    pilotStaticBlockReason({
+      empresa_id: VIVER_SEMIJOIAS_EMPRESA_ID,
+      source_type: "meeting_confirmation",
+      metadata: {
+        viver_controlled_class_acceptance: true,
+        operation: "viver_group_class_acceptance_remediation",
+        meeting_id: "11111111-1111-4111-8111-111111111111",
+        consent_message_id: "22222222-2222-4222-8222-222222222222",
+      },
     }),
     null,
   );
