@@ -44,18 +44,92 @@ export function resolveCampaignSafety(campaign: any): CampaignSafetyFlags {
 const SYNTHETIC_EMAIL_RE = /^fbcfarias\+fabrica-|@example\.(com|org|net)$/i;
 
 export function isSyntheticProspect(p: any): boolean {
-  const nome = String(p?.nome_razao ?? p?.nome_contato ?? p?.nome_fantasia ?? "").toLowerCase();
+  const nome = String(
+    p?.nome_razao ?? p?.nome_contato ?? p?.nome_fantasia ?? "",
+  ).toLowerCase();
   const email = String(p?.email_principal ?? p?.email ?? "").toLowerCase();
   if (nome.includes("smoke")) return true;
   if (email && SYNTHETIC_EMAIL_RE.test(email)) return true;
-  const tags: string[] = Array.isArray(p?.tags) ? p.tags.map((t: any) => String(t).toLowerCase()) : [];
-  if (tags.some((t) => t.includes("smoke") || t.includes("teste") || t.includes("synthetic"))) return true;
+  const tags: string[] = Array.isArray(p?.tags)
+    ? p.tags.map((t: any) => String(t).toLowerCase())
+    : [];
+  if (
+    tags.some((t) =>
+      t.includes("smoke") || t.includes("teste") || t.includes("synthetic")
+    )
+  ) return true;
   return false;
 }
 
 export interface CampaignRecipientEligibility {
   eligible: boolean;
   motivo: string | null;
+}
+
+/**
+ * True only for a real outbound produced outside Orbit (normally Fernanda's
+ * phone). Historical callbacks may have been retained in orbit_webhook_logs
+ * while own-message ingestion was disabled, so the persisted conversation is
+ * not always sufficient evidence that a lead is untouched.
+ */
+export function isExternalHumanOutboundWebhook(payload: any): boolean {
+  if (!payload || payload.fromMe !== true || payload.fromApi === true) {
+    return false;
+  }
+  const text = typeof payload.text?.message === "string"
+    ? payload.text.message
+    : typeof payload.text === "string"
+    ? payload.text
+    : "";
+  const hasMedia = ["audio", "image", "video", "document", "sticker"]
+    .some((key) => payload[key] && typeof payload[key] === "object");
+  return text.trim().length > 0 || hasMedia;
+}
+
+async function hasExternalHumanOutboundHistory(
+  supabase: any,
+  empresaId: string,
+  prospectId: string,
+): Promise<{ found: boolean; error: boolean }> {
+  const { data: lidRows, error: lidError } = await supabase
+    .from("orbit_whatsapp_lid_map")
+    .select("lid, instance_id")
+    .eq("empresa_id", empresaId)
+    .eq("prospect_id", prospectId)
+    .limit(20);
+  if (lidError) return { found: false, error: true };
+
+  const lids = new Set(
+    (lidRows ?? []).map((row: any) => String(row?.lid ?? "")).filter(Boolean),
+  );
+  const instanceIds = [
+    ...new Set(
+      (lidRows ?? []).map((row: any) => String(row?.instance_id ?? "")).filter(
+        Boolean,
+      ),
+    ),
+  ];
+  if (!lids.size || !instanceIds.length) return { found: false, error: false };
+
+  const { data: logs, error: logsError } = await supabase
+    .from("orbit_webhook_logs")
+    .select("payload")
+    .in("instance_id", instanceIds)
+    .eq("event_type", "on-receive")
+    // Query only provider-confirmed manual outbound callbacks. Do not cap the
+    // result set: a fixed recent window can forget an older human interaction
+    // and incorrectly release that lead back to a campaign.
+    .contains("payload", { fromMe: true, fromApi: false });
+  if (logsError) return { found: false, error: true };
+
+  const found = (logs ?? []).some((row: any) => {
+    const payload = row?.payload ?? {};
+    const lid = String(
+      payload.chatLid ?? payload.senderLid ?? payload.participantLid ?? "",
+    );
+    return lids.has(lid) && isExternalHumanOutboundWebhook(payload);
+  });
+  return { found, error: false };
 }
 
 // Regras universais (fail-closed) sempre aplicadas, independente das flags.
@@ -80,12 +154,18 @@ export async function checkCampaignRecipientEligibility(
   const flags = resolveCampaignSafety(campaign);
 
   // Prospect universal checks (fail-closed)
-  if (!prospect) return { eligible: false, motivo: UNIVERSAL_MOTIVOS.prospect_missing };
-  if (prospect.deleted_at) return { eligible: false, motivo: UNIVERSAL_MOTIVOS.prospect_deleted };
-  if (prospect.empresa_id && prospect.empresa_id !== empresa_id)
+  if (!prospect) {
+    return { eligible: false, motivo: UNIVERSAL_MOTIVOS.prospect_missing };
+  }
+  if (prospect.deleted_at) {
+    return { eligible: false, motivo: UNIVERSAL_MOTIVOS.prospect_deleted };
+  }
+  if (prospect.empresa_id && prospect.empresa_id !== empresa_id) {
     return { eligible: false, motivo: UNIVERSAL_MOTIVOS.cross_tenant };
-  if (prospect.optout_whatsapp === true)
+  }
+  if (prospect.optout_whatsapp === true) {
     return { eligible: false, motivo: UNIVERSAL_MOTIVOS.opt_out };
+  }
 
   // Sintético — configurável (mas Fábrica ativa)
   if (flags.skip_if_synthetic && isSyntheticProspect(prospect)) {
@@ -103,9 +183,15 @@ export async function checkCampaignRecipientEligibility(
     let terminal = false;
     const stageIds: string[] = [];
     for (const d of list) {
-      if (d.deleted_at) { terminal = true; break; }
+      if (d.deleted_at) {
+        terminal = true;
+        break;
+      }
       const s = String(d.status ?? "").toLowerCase();
-      if (["won", "lost", "ganho", "perdido", "deleted"].includes(s)) { terminal = true; break; }
+      if (["won", "lost", "ganho", "perdido", "deleted"].includes(s)) {
+        terminal = true;
+        break;
+      }
       if (d.etapa_id) stageIds.push(d.etapa_id);
     }
     if (!terminal && stageIds.length > 0) {
@@ -113,9 +199,13 @@ export async function checkCampaignRecipientEligibility(
         .from("orbit_pipeline_stages")
         .select("id, is_won, is_lost")
         .in("id", stageIds);
-      if ((stages ?? []).some((s: any) => s.is_won === true || s.is_lost === true)) terminal = true;
+      if (
+        (stages ?? []).some((s: any) => s.is_won === true || s.is_lost === true)
+      ) terminal = true;
     }
-    if (terminal) return { eligible: false, motivo: UNIVERSAL_MOTIVOS.terminal_deal };
+    if (terminal) {
+      return { eligible: false, motivo: UNIVERSAL_MOTIVOS.terminal_deal };
+    }
   }
 
   // Meeting futura
@@ -127,11 +217,15 @@ export async function checkCampaignRecipientEligibility(
       .in("status", ["scheduled", "rescheduled"])
       .gte("scheduled_at", new Date().toISOString())
       .limit(1);
-    if (mtg && mtg.length > 0) return { eligible: false, motivo: UNIVERSAL_MOTIVOS.meeting_scheduled };
+    if (mtg && mtg.length > 0) {
+      return { eligible: false, motivo: UNIVERSAL_MOTIVOS.meeting_scheduled };
+    }
   }
 
   // Conversa: handoff, contacted, replied — resolvem por prospect_id+empresa_id
-  if (flags.skip_if_contacted || flags.skip_if_replied || flags.skip_if_handoff) {
+  if (
+    flags.skip_if_contacted || flags.skip_if_replied || flags.skip_if_handoff
+  ) {
     const { data: convs } = await supabase
       .from("orbit_conversas")
       .select("id, human_talk, human_user_id, handoff_sent_at")
@@ -139,7 +233,10 @@ export async function checkCampaignRecipientEligibility(
       .eq("empresa_id", empresa_id);
     const list = (convs ?? []) as any[];
     if (list.length > 0) {
-      if (flags.skip_if_handoff && list.some((c) => c.human_talk === true || c.human_user_id)) {
+      if (
+        flags.skip_if_handoff &&
+        list.some((c) => c.human_talk === true || c.human_user_id)
+      ) {
         return { eligible: false, motivo: "human_handoff" };
       }
       const convIds = list.map((c) => c.id);
@@ -151,7 +248,9 @@ export async function checkCampaignRecipientEligibility(
           .eq("direcao", "OUT")
           .in("status", ["enviada", "sent", "entregue", "delivered"])
           .limit(1);
-        if (outMsgs && outMsgs.length > 0) return { eligible: false, motivo: "already_contacted" };
+        if (outMsgs && outMsgs.length > 0) {
+          return { eligible: false, motivo: "already_contacted" };
+        }
       }
       if (flags.skip_if_replied) {
         const { data: inMsgs } = await supabase
@@ -160,7 +259,27 @@ export async function checkCampaignRecipientEligibility(
           .in("conversa_id", convIds)
           .eq("direcao", "IN")
           .limit(1);
-        if (inMsgs && inMsgs.length > 0) return { eligible: false, motivo: "lead_replied" };
+        if (inMsgs && inMsgs.length > 0) {
+          return { eligible: false, motivo: "lead_replied" };
+        }
+      }
+    }
+
+    // Provider-side evidence closes the historical gap from the period when
+    // notificar_enviadas_por_mim was disabled: Fernanda's phone message may
+    // exist in webhook logs even though orbit_mensagens/human_talk was never
+    // updated. This check is read-only and blocks before any provider call.
+    if (flags.skip_if_contacted || flags.skip_if_handoff) {
+      const externalHistory = await hasExternalHumanOutboundHistory(
+        supabase,
+        empresa_id,
+        prospect.id,
+      );
+      if (externalHistory.error) {
+        return { eligible: false, motivo: "human_history_check_failed" };
+      }
+      if (externalHistory.found) {
+        return { eligible: false, motivo: "human_phone_history" };
       }
     }
   }
