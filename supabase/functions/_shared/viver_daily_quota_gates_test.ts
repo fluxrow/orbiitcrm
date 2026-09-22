@@ -6,8 +6,14 @@
 // Rodar:
 //   deno test --allow-net --allow-env supabase/functions/_shared/viver_daily_quota_gates_test.ts
 
-import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { checkEligibility, type OutboxContext } from "./orbit-whatsapp-outbox.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  checkEligibility,
+  type OutboxContext,
+} from "./orbit-whatsapp-outbox.ts";
 import { checkCampaignRecipientEligibility } from "./campaign-safety.ts";
 import { VIVER_SEMIJOIAS_EMPRESA_ID } from "./viver-daily-quota-policy.ts";
 
@@ -19,6 +25,8 @@ interface Fx {
   meetings: any[];
   mensagens: any[];
   outbox?: any[];
+  lidMap?: any[];
+  webhookLogs?: any[];
 }
 
 function makeSupabase(fx: Fx) {
@@ -26,7 +34,10 @@ function makeSupabase(fx: Fx) {
     const filters: Array<[string, any]> = [];
     const inFilters: Array<[string, any[]]> = [];
     const gteFilters: Array<[string, string]> = [];
+    const containsFilters: Array<[string, Record<string, unknown>]> = [];
     let limitN = Infinity;
+    let orderBy: string | null = null;
+    let orderAscending = true;
     const api: any = {
       select: () => api,
       eq: (col: string, val: any) => {
@@ -41,8 +52,17 @@ function makeSupabase(fx: Fx) {
         gteFilters.push([col, v]);
         return api;
       },
+      contains: (col: string, value: Record<string, unknown>) => {
+        containsFilters.push([col, value]);
+        return api;
+      },
       limit: (n: number) => {
         limitN = n;
+        return api;
+      },
+      order: (col: string, options: { ascending?: boolean } = {}) => {
+        orderBy = col;
+        orderAscending = options.ascending !== false;
         return api;
       },
       maybeSingle: () =>
@@ -54,7 +74,16 @@ function makeSupabase(fx: Fx) {
       then: undefined,
     };
     api.then = (resolve: any) => {
-      resolve({ data: pickRows(table).filter(matches).slice(0, limitN), error: null });
+      {
+        let rows = pickRows(table).filter(matches);
+        if (orderBy) {
+          rows = [...rows].sort((a, b) =>
+            String(a[orderBy!] ?? "").localeCompare(String(b[orderBy!] ?? "")) *
+            (orderAscending ? 1 : -1)
+          );
+        }
+        resolve({ data: rows.slice(0, limitN), error: null });
+      }
     };
     function pickRows(t: string): any[] {
       if (t === "orbit_prospects") return fx.prospects;
@@ -64,12 +93,23 @@ function makeSupabase(fx: Fx) {
       if (t === "orbit_meetings") return fx.meetings;
       if (t === "orbit_mensagens") return fx.mensagens;
       if (t === "orbit_whatsapp_outbox") return fx.outbox ?? [];
+      if (t === "orbit_whatsapp_lid_map") return fx.lidMap ?? [];
+      if (t === "orbit_webhook_logs") return fx.webhookLogs ?? [];
       return [];
     }
     function matches(r: any): boolean {
       for (const [c, v] of filters) if (r[c] !== v) return false;
       for (const [c, vals] of inFilters) if (!vals.includes(r[c])) return false;
-      for (const [c, v] of gteFilters) if (!(String(r[c] ?? "") >= v)) return false;
+      for (const [c, v] of gteFilters) {
+        if (!(String(r[c] ?? "") >= v)) return false;
+      }
+      for (const [c, expected] of containsFilters) {
+        const actual = r[c];
+        if (!actual || typeof actual !== "object") return false;
+        for (const [key, value] of Object.entries(expected)) {
+          if (actual[key] !== value) return false;
+        }
+      }
       return true;
     }
     return api;
@@ -179,6 +219,72 @@ Deno.test("VG3b handoff humano bloqueia o destinatário de campanha", async () =
   });
   assertEquals(r.eligible, false);
   assertEquals(r.motivo, "human_handoff");
+});
+
+Deno.test("VG3c histórico do celular da Fernanda bloqueia campanha mesmo sem mensagem persistida", async () => {
+  const fx = baseFx({
+    lidMap: [{
+      empresa_id: EMP,
+      prospect_id: PRO,
+      lid: "lead-1@lid",
+      instance_id: "instance-viver",
+    }],
+    webhookLogs: [{
+      instance_id: "instance-viver",
+      event_type: "on-receive",
+      created_at: "2026-09-15T12:12:58Z",
+      payload: {
+        chatLid: "lead-1@lid",
+        fromMe: true,
+        fromApi: false,
+        text: { message: "mensagem humana" },
+      },
+    }],
+  });
+  const r = await checkCampaignRecipientEligibility(makeSupabase(fx), {
+    campaign: {
+      filtros_json: {
+        campaign_safety: { skip_if_contacted: true, skip_if_handoff: true },
+      },
+    },
+    empresa_id: EMP,
+    prospect: fx.prospects[0],
+  });
+  assertEquals(r.eligible, false);
+  assertEquals(r.motivo, "human_phone_history");
+});
+
+Deno.test("VG3d echo da API não simula atendimento humano", async () => {
+  const fx = baseFx({
+    lidMap: [{
+      empresa_id: EMP,
+      prospect_id: PRO,
+      lid: "lead-1@lid",
+      instance_id: "instance-viver",
+    }],
+    webhookLogs: [{
+      instance_id: "instance-viver",
+      event_type: "on-receive",
+      created_at: "2026-09-15T12:12:58Z",
+      payload: {
+        chatLid: "lead-1@lid",
+        fromMe: true,
+        fromApi: true,
+        text: { message: "echo do Orbit" },
+      },
+    }],
+  });
+  const r = await checkCampaignRecipientEligibility(makeSupabase(fx), {
+    campaign: {
+      filtros_json: {
+        campaign_safety: { skip_if_contacted: true, skip_if_handoff: true },
+      },
+    },
+    empresa_id: EMP,
+    prospect: fx.prospects[0],
+  });
+  assertEquals(r.eligible, true);
+  assertEquals(r.motivo, null);
 });
 
 Deno.test("VG4 reunião agendada bloqueia o primeiro contato de campanha", async () => {
