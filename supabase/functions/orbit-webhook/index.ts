@@ -23,6 +23,9 @@ import {
   readFreshClaimResetFlag,
   type DebounceConfig,
 } from "../_shared/ai-reply-debounce.ts";
+import { maybeSendViverInboundAck, pickLastNonAckOut, VIVER_INBOUND_ACK_EMPRESA_ID } from "../_shared/viver-inbound-ack.ts";
+import { enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
+import { kickOutboxDispatch } from "../_shared/immediate-outbox-dispatch.ts";
 
 /**
  * Caminho legado (tenant sem debounce): reclama lock stale, adquire lock atômico
@@ -69,15 +72,30 @@ async function consolidateInbound(
   fallbackText: string,
 ): Promise<{ text: string; batchSize: number }> {
   try {
-    const { data: lastOut } = await supabase
-      .from("orbit_mensagens")
-      .select("timestamp")
-      .eq("empresa_id", empresaId)
-      .eq("conversa_id", conversaId)
-      .eq("direcao", "OUT")
-      .order("timestamp", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    let lastOut: any = null;
+    if (empresaId === VIVER_INBOUND_ACK_EMPRESA_ID) {
+      // Confirmação inicial nunca fecha o lote: ignora a linha visual dela.
+      const { data: outs } = await supabase
+        .from("orbit_mensagens")
+        .select("timestamp, sender_type, mensagem")
+        .eq("empresa_id", empresaId)
+        .eq("conversa_id", conversaId)
+        .eq("direcao", "OUT")
+        .order("timestamp", { ascending: false })
+        .limit(10);
+      lastOut = pickLastNonAckOut(outs as any[]);
+    } else {
+      const { data } = await supabase
+        .from("orbit_mensagens")
+        .select("timestamp")
+        .eq("empresa_id", empresaId)
+        .eq("conversa_id", conversaId)
+        .eq("direcao", "OUT")
+        .order("timestamp", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      lastOut = data;
+    }
 
     let q = supabase
       .from("orbit_mensagens")
@@ -1209,6 +1227,37 @@ async function processInboundZapi(
         allowed: controlled.allowed,
         reason: controlled.reason,
       }));
+    }
+
+    // 5e. Confirmação inicial (somente Viver): enfileira pelo outbox e dispara o
+    //     worker dirigido em paralelo com a geração da resposta completa. Todos os
+    //     gates do worker continuam valendo; falha aqui nunca afeta a resposta.
+    if (empresaId === VIVER_INBOUND_ACK_EMPRESA_ID && !fromMe && prospect?.id && savedMessage?.id && conversa?.id) {
+      const inboundAtIso = inboundAt ?? new Date().toISOString();
+      const inboundMs = Date.parse(inboundAtIso);
+      const ackJob = maybeSendViverInboundAck(supabase, {
+        empresa_id: empresaId,
+        conversa,
+        prospect,
+        inbound_message_id: savedMessage.id,
+        inbound_at: inboundAtIso,
+        telefone: normalizedPhone ?? null,
+        from_me: fromMe,
+        automation_allowed: automationAllowedEffective && !conversa.human_talk,
+        conversa_quarantined: !!conversaQuarantined,
+        reply_expected: shouldProcessMedia || !((tipoMidia === "image" || tipoMidia === "audio") && !shouldProcessMedia),
+        controlled_reengagement: automationAllowedEffective && !automationAllowed,
+        received_at_ms: Number.isFinite(inboundMs) ? inboundMs : Date.now(),
+      }, {
+        enqueue: (input) => enqueueOutbox(supabase, input),
+        kick: (args) => kickOutboxDispatch(args, {
+          functionsBase: `${Deno.env.get("SUPABASE_URL")}/functions/v1`,
+          cronToken: Deno.env.get("SCHEDULER_CRON_TOKEN"),
+        }) as any,
+      }).then((tel) => console.log(JSON.stringify(tel)));
+      // @ts-ignore EdgeRuntime é global no runtime Supabase
+      if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(ackJob);
+      else await ackJob;
     }
 
     if (!fromMe && automationAllowedEffective && !conversaQuarantined && !conversa.human_talk && shouldProcessMedia && savedMessage?.id) {

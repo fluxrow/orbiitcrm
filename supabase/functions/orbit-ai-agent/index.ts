@@ -64,6 +64,12 @@ import {
   DEFAULT_AGENT_AGGREGATION_WAIT_MS,
   readAgentAggregationWaitMs,
 } from "../_shared/ai-reply-debounce.ts";
+import {
+  pickLastNonAckOut,
+  VIVER_INBOUND_ACK_EMPRESA_ID,
+  VIVER_INBOUND_ACK_SENDER_TYPE,
+  VIVER_INBOUND_ACK_TEXT,
+} from "../_shared/viver-inbound-ack.ts";
 
 import {
   isProofRequest,
@@ -1156,14 +1162,28 @@ serve(async (req) => {
     }
 
     // ── AGREGAR: buscar todas as mensagens IN pendentes desde o último OUT ──
-    const { data: lastOutMsg } = await supabase
-      .from("orbit_mensagens")
-      .select("timestamp")
-      .eq("conversa_id", conversa_id)
-      .eq("direcao", "OUT")
-      .order("timestamp", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    let lastOutMsg: any = null;
+    if (empresaId === VIVER_INBOUND_ACK_EMPRESA_ID) {
+      // Confirmação inicial da Viver não encerra o lote pendente.
+      const { data: outs } = await supabase
+        .from("orbit_mensagens")
+        .select("timestamp, sender_type, mensagem")
+        .eq("conversa_id", conversa_id)
+        .eq("direcao", "OUT")
+        .order("timestamp", { ascending: false })
+        .limit(10);
+      lastOutMsg = pickLastNonAckOut(outs as any[]);
+    } else {
+      const { data } = await supabase
+        .from("orbit_mensagens")
+        .select("timestamp")
+        .eq("conversa_id", conversa_id)
+        .eq("direcao", "OUT")
+        .order("timestamp", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      lastOutMsg = data;
+    }
 
     let pendingQuery = supabase
       .from("orbit_mensagens")
@@ -1290,7 +1310,21 @@ serve(async (req) => {
     if (outboundCountError) {
       console.error("[orbit-ai-agent] Falha ao contar mensagens OUT:", outboundCountError);
     }
-    const mensagensOUT = totalOutboundCount ?? mensagens?.filter((m) => m.direcao === "OUT").length ?? 0;
+    // Viver: a confirmação inicial não conta como saída (não suprime a persona).
+    let ackOutboundCount = 0;
+    if (empresaId === VIVER_INBOUND_ACK_EMPRESA_ID && (totalOutboundCount ?? 0) > 0) {
+      const { count: ackCount } = await supabase
+        .from("orbit_mensagens")
+        .select("id", { count: "exact", head: true })
+        .eq("conversa_id", conversa_id)
+        .eq("direcao", "OUT")
+        .eq("sender_type", VIVER_INBOUND_ACK_SENDER_TYPE)
+        .eq("mensagem", VIVER_INBOUND_ACK_TEXT);
+      ackOutboundCount = ackCount ?? 0;
+    }
+    const mensagensOUT = totalOutboundCount != null
+      ? Math.max(0, totalOutboundCount - ackOutboundCount)
+      : mensagens?.filter((m) => m.direcao === "OUT").length ?? 0;
     const aiContexto = conversa?.ai_contexto || {};
     const introAlreadySent = aiContexto.intro_already_sent === true;
     const isFromCampaign = aiContexto.origin === "outbound_campaign";
@@ -2714,15 +2748,17 @@ ${regrasBlock}`;
     if (!isDemo && empresaId) {
       try {
         // OUT imediatamente anterior da MESMA empresa+conversa, com status real.
-        const { data: lastOut } = await supabase
+        const { data: lastOuts } = await supabase
           .from("orbit_mensagens")
-          .select("mensagem, status")
+          .select("mensagem, status, sender_type")
           .eq("conversa_id", conversa_id)
           .eq("empresa_id", empresaId)
           .eq("direcao", "OUT")
           .order("timestamp", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .limit(empresaId === VIVER_INBOUND_ACK_EMPRESA_ID ? 10 : 1);
+        const lastOut = empresaId === VIVER_INBOUND_ACK_EMPRESA_ID
+          ? pickLastNonAckOut(lastOuts as any[])
+          : ((lastOuts ?? [])[0] ?? null);
 
         const proof = await maybeQueueProofMedia(supabase, {
           empresa_id: empresaId,

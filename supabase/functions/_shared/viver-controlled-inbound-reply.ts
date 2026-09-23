@@ -21,6 +21,8 @@
 //
 // Fora desse cenário o corte continua bloqueando exatamente como hoje.
 
+import { isViverInboundAckRow } from "./viver-inbound-ack.ts";
+
 export const VIVER_CONTROLLED_INBOUND_EMPRESA_ID =
   "36f26579-66ad-4ef1-9788-141e4c727232";
 
@@ -422,14 +424,15 @@ export async function evaluateViverControlledInboundReply(
     if (inboundTs) {
       const { data: laterOut, error } = await supabase
         .from("orbit_mensagens")
-        .select("id")
+        .select("id, sender_type, mensagem")
         .eq("empresa_id", empresaId)
         .eq("conversa_id", input.conversa_id)
         .eq("direcao", "OUT")
         .gt("timestamp", inboundTs)
-        .limit(1);
+        .limit(10);
       note("later_out", error);
-      laterOutCount = (laterOut ?? []).length;
+      // Confirmação inicial não é resposta: não bloqueia a resposta completa.
+      laterOutCount = ((laterOut ?? []) as any[]).filter((r) => !isViverInboundAckRow(r)).length;
     }
 
     // ai_reply já enfileirado/enviado para este inbound → idempotência.
