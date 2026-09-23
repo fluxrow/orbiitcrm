@@ -74,7 +74,7 @@ Deno.test("contrato só existe para Viver, campaign, batch autorizado e data pre
   );
 });
 
-Deno.test("dia atual segue os gates normais (30 min + 15/dia)", () => {
+Deno.test("dia atual segue os gates normais (10 min + 50/dia)", () => {
   const d = decide();
   assertEquals(d.verdict, "proceed");
   assertEquals(d.reason, "operational_date_today");

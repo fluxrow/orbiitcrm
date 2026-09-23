@@ -152,18 +152,18 @@ Deno.test("lote maior que 1: apenas a primeira campanha passa, as demais são ad
   assertEquals(accepted, [ids[0]]);
 });
 
-Deno.test("espaçamento de 30 min continua bloqueante com espera calculada", () => {
+Deno.test("espaçamento de 10 min continua bloqueante com espera calculada", () => {
   const r = evaluateViverCampaignSlot({
     empresaId: VIVER,
     sourceType: "campaign",
     itemId: B,
     inflight: [],
-    lastCampaignSentAtMs: NOW - 10 * 60_000,
+    lastCampaignSentAtMs: NOW - 5 * 60_000,
     nowMs: NOW,
   });
   assertEquals(r.acquired, false);
   assertEquals(r.reason, "min_gap");
-  assertEquals(r.wait_ms, VIVER_CAMPAIGN_MIN_GAP_MS - 10 * 60_000);
+  assertEquals(r.wait_ms, VIVER_CAMPAIGN_MIN_GAP_MS - 5 * 60_000);
   assertEquals(r.retain_reason, RETAIN_REASON_VIVER_CAMPAIGN_SPACING);
 
   const ok = evaluateViverCampaignSlot({

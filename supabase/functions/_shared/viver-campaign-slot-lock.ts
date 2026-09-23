@@ -5,7 +5,7 @@
 //     está `processing`, então A começa o HTTP de envio;
 //   • worker B reivindica DEPOIS o item Y (id menor), vê X e Y, elege Y (menor)
 //     e também envia — antes de A registrar `sent`.
-// Duas campanhas saem dentro dos 30 min. O interleaving não depende de execução
+// Duas campanhas saem dentro dos 10 min. O interleaving não depende de execução
 // "simultânea": basta a consulta de A acontecer antes do claim de B.
 //
 // Correção: a exclusão passa a ser decidida pelo banco, na MESMA transação do
@@ -45,7 +45,7 @@ export interface ViverSlotClaimRow {
 export interface ViverSlotOutcome {
   acquired: boolean;
   reason: string;
-  /** Espera sugerida (ms) quando o bloqueio é o espaçamento de 30 min. */
+  /** Espera sugerida (ms) quando o bloqueio é o espaçamento de 10 min. */
   wait_ms?: number;
   /** Motivo de retenção correspondente, quando negado. */
   retain_reason?: string;

@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Viver Semijoias — contrato de DIA OPERACIONAL das campanhas controladas.
 //
-// Problema: espaçar 30 min não impede que um item vencido atravesse a virada do
+// Problema: espaçar 10 min não impede que um item vencido atravesse a virada do
 // dia (America/Sao_Paulo) e ocupe vagas do dia seguinte como compensação.
 //
 // Contrato: só vale para o tenant Viver, source_type=campaign, campanha de um
@@ -9,7 +9,7 @@
 //   • dia SP atual  >  operational_date  →  EXPIRA (cancela/ignora, sem excluir,
 //     sem reenviar e sem repor vaga).
 //   • dia SP atual  <  operational_date  →  ESPERA (adia até 00:00 SP do dia).
-//   • dia SP atual  == operational_date  →  segue os gates normais (30 min, 15/dia).
+//   • dia SP atual  == operational_date  →  segue os gates normais (10 min, 50/dia).
 //   • operational_date inválida          →  FAIL-CLOSED (adia e audita).
 //   • item já aceito pelo provedor       →  nunca cancela nem reenvia.
 // Campanhas/tenants sem esse contrato ficam exatamente como hoje.

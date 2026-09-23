@@ -1,4 +1,4 @@
-// Gates de segurança preservados pela política de 20 vagas diárias da Viver.
+// Gates de segurança preservados pela política de 50 vagas diárias da Viver.
 // A cota diária muda apenas O QUE CONTA; nada aqui é dispensado:
 // opt-out, handoff humano, resposta do lead e reunião agendada continuam
 // bloqueando o primeiro contato de campanha.
@@ -27,6 +27,7 @@ interface Fx {
   outbox?: any[];
   lidMap?: any[];
   webhookLogs?: any[];
+  failedReadTable?: string;
 }
 
 function makeSupabase(fx: Fx) {
@@ -82,7 +83,9 @@ function makeSupabase(fx: Fx) {
             (orderAscending ? 1 : -1)
           );
         }
-        resolve({ data: rows.slice(0, limitN), error: null });
+        resolve(fx.failedReadTable === table
+          ? { data: null, error: { message: "read unavailable" } }
+          : { data: rows.slice(0, limitN), error: null });
       }
     };
     function pickRows(t: string): any[] {
@@ -200,6 +203,54 @@ Deno.test("VG3 resposta do lead bloqueia o destinatário de campanha", async () 
   });
   assertEquals(r.eligible, false);
   assertEquals(r.motivo, "lead_replied");
+});
+
+Deno.test("VG3a OUT com aceite do provedor e status READ bloqueia novo primeiro contato", async () => {
+  const fx = baseFx({
+    mensagens: [{
+      id: "m-read",
+      conversa_id: CONV,
+      direcao: "OUT",
+      status: "READ",
+      provider_message_id: "provider-accepted",
+    }],
+  });
+  const r = await checkCampaignRecipientEligibility(makeSupabase(fx), {
+    campaign: { filtros_json: { campaign_safety: { skip_if_contacted: true } } },
+    empresa_id: EMP,
+    prospect: fx.prospects[0],
+  });
+  assertEquals(r.eligible, false);
+  assertEquals(r.motivo, "already_contacted");
+});
+
+Deno.test("VG3a simulação sem aceite não conta como contato real", async () => {
+  const fx = baseFx({
+    mensagens: [{
+      id: "m-simulated",
+      conversa_id: CONV,
+      direcao: "OUT",
+      status: "simulated",
+      provider_message_id: null,
+    }],
+  });
+  const r = await checkCampaignRecipientEligibility(makeSupabase(fx), {
+    campaign: { filtros_json: { campaign_safety: { skip_if_contacted: true } } },
+    empresa_id: EMP,
+    prospect: fx.prospects[0],
+  });
+  assertEquals(r.eligible, true);
+});
+
+Deno.test("VG3a falha ao consultar histórico de OUT bloqueia campanha", async () => {
+  const fx = baseFx({ failedReadTable: "orbit_mensagens" });
+  const r = await checkCampaignRecipientEligibility(makeSupabase(fx), {
+    campaign: { filtros_json: { campaign_safety: { skip_if_contacted: true } } },
+    empresa_id: EMP,
+    prospect: fx.prospects[0],
+  });
+  assertEquals(r.eligible, false);
+  assertEquals(r.motivo, "contact_history_check_failed");
 });
 
 Deno.test("VG3b handoff humano bloqueia o destinatário de campanha", async () => {

@@ -129,7 +129,7 @@ function getEffectiveLimit(
   empresaId?: string | null,
 ): { limit: number; delayMultiplier: number } {
   const base = getEffectiveDailyLimit(config);
-  // Viver: teto duro de 20 primeiros contatos diários da lista antiga.
+  // Viver: teto duro de 50 primeiros contatos diários da lista antiga.
   if (isViverTenant(empresaId)) {
     return {
       limit: Math.min(base.limit, VIVER_DAILY_FIRST_CONTACT_LIMIT),

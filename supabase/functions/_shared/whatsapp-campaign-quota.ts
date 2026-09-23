@@ -70,7 +70,7 @@ export function canResumePausadaPorLimite(params: {
   empresaId?: string | null;
 }): { resume: boolean; effectiveLimit: number; remaining: number } {
   const base = getEffectiveDailyLimit(params.config, params.now ?? new Date());
-  // Viver: teto duro de 20 primeiros contatos diários da lista antiga.
+  // Viver: teto duro de 50 primeiros contatos diários da lista antiga.
   const limit = isViverTenant(params.empresaId)
     ? Math.min(base.limit, VIVER_DAILY_FIRST_CONTACT_LIMIT)
     : base.limit;
