@@ -9,10 +9,17 @@ import {
 } from "./viver-meeting-lifecycle.ts";
 import { isControlledDailyCapAccepted } from "./viver-daily-quota-policy.ts";
 import { proveViverControlledFollowup } from "./viver-followup-reconstitution.ts";
+import {
+  classSameDayWindowAllowed,
+  isControlledViverClassSameDayReminder,
+  VIVER_CLASS_SAME_DAY_OPERATION,
+  VIVER_CLASS_SAME_DAY_KIND,
+  VIVER_CLASS_SAME_DAY_TEMPLATE_ID,
+} from "./viver-class-same-day-reminder.ts";
 
 export const VIVER_SEMIJOIAS_EMPRESA_ID =
   "36f26579-66ad-4ef1-9788-141e4c727232";
-export const VIVER_CONTROLLED_OUTBOX_GATE_VERSION = "2026-09-21-v6";
+export const VIVER_CONTROLLED_OUTBOX_GATE_VERSION = "2026-09-23-v7";
 
 export const PILOT_SOURCE_BLOCKED = "PILOT_SOURCE_BLOCKED";
 export const PILOT_INBOUND_REQUIRED = "PILOT_INBOUND_REQUIRED";
@@ -32,6 +39,8 @@ export const PILOT_FOLLOWUP_CANCELED_AFTER_HUMAN_OUTBOUND =
 export const PILOT_FOLLOWUP_STALE_BACKLOG = "PILOT_FOLLOWUP_STALE_BACKLOG";
 export const PILOT_MEETING_EVIDENCE_REQUIRED =
   "PILOT_MEETING_EVIDENCE_REQUIRED";
+export const PILOT_CLASS_SAME_DAY_EVIDENCE_REQUIRED =
+  "PILOT_CLASS_SAME_DAY_EVIDENCE_REQUIRED";
 
 // Morning reminders require booking date and meeting kind during revalidation.
 export const VIVER_MEETING_REVALIDATION_COLUMNS =
@@ -105,6 +114,7 @@ export function isControlledViverFollowup(item: any): boolean {
 export function isControlledViverMeetingReminder(item: any): boolean {
   return isPilotTenant(item?.empresa_id) &&
     item?.source_type === "meeting_confirmation" &&
+    item?.metadata?.operation !== VIVER_CLASS_SAME_DAY_OPERATION &&
     typeof item?.metadata?.meeting_id === "string" &&
     isViverMeetingNotificationKind(item?.metadata?.reminder_kind);
 }
@@ -126,6 +136,7 @@ export function pilotStaticBlockReason(item: any): string | null {
     return controlledViverCampaignMessageBlockReason(item);
   }
   if (isControlledViverFollowup(item)) return null;
+  if (isControlledViverClassSameDayReminder(item)) return null;
   if (isControlledViverMeetingReminder(item)) return null;
   if (isControlledViverClassAcceptance(item)) return null;
   if (item?.source_type !== "ai_reply") return PILOT_SOURCE_BLOCKED;
@@ -391,6 +402,95 @@ export async function pilotInboundBlockReason(
           ))
       );
     if (humanOutbound) return PILOT_FOLLOWUP_CANCELED_AFTER_HUMAN_OUTBOUND;
+    return null;
+  }
+
+  if (isControlledViverClassSameDayReminder(item)) {
+    const meetingId = String(item.metadata.meeting_id);
+    const consentId = String(item.metadata.consent_message_id);
+    const [{ data: meeting, error: meetingError }, { data: consent, error: consentError },
+      { data: conversa, error: conversaError }, { data: prospect, error: prospectError },
+      { data: template, error: templateError }, { data: duplicate, error: duplicateError },
+      { data: collision, error: collisionError }] =
+      await Promise.all([
+        supabase.from("orbit_meetings")
+          .select(VIVER_MEETING_REVALIDATION_COLUMNS)
+          .eq("id", meetingId).eq("empresa_id", item.empresa_id).maybeSingle(),
+        supabase.from("orbit_mensagens")
+          .select("id, empresa_id, conversa_id, direcao, timestamp")
+          .eq("id", consentId).eq("empresa_id", item.empresa_id).maybeSingle(),
+        supabase.from("orbit_conversas")
+          .select("id, empresa_id, prospect_id, human_talk, human_user_id")
+          .eq("id", item.conversa_id).eq("empresa_id", item.empresa_id).maybeSingle(),
+        supabase.from("orbit_prospects")
+          .select("id, empresa_id, optout_whatsapp, deleted_at, nome_razao")
+          .eq("id", item.prospect_id).eq("empresa_id", item.empresa_id).maybeSingle(),
+        supabase.from("orbit_message_templates")
+          .select("id, empresa_id, ativo, canal, corpo_texto")
+          .eq("id", VIVER_CLASS_SAME_DAY_TEMPLATE_ID)
+          .eq("empresa_id", item.empresa_id).maybeSingle(),
+        supabase.from("orbit_whatsapp_outbox")
+          .select("id")
+          .eq("empresa_id", item.empresa_id)
+          .eq("source_type", "meeting_confirmation")
+          .eq("metadata->>meeting_id", meetingId)
+          .eq("metadata->>reminder_kind", VIVER_CLASS_SAME_DAY_KIND)
+          .neq("id", item.id).limit(1),
+        supabase.from("orbit_whatsapp_outbox")
+          .select("id")
+          .eq("empresa_id", item.empresa_id)
+          .eq("conversa_id", item.conversa_id)
+          .in("status", ["pending", "processing"])
+          .is("provider_message_id", null)
+          .neq("id", item.id).limit(1),
+      ]);
+    const firstName = String(prospect?.nome_razao ?? "").trim().split(/\s+/)[0];
+    const templateText = String(template?.corpo_texto ?? "");
+    const expectedText = templateText.replaceAll("{{nome}}", firstName);
+    if (
+      meetingError || consentError || conversaError || prospectError ||
+      templateError || duplicateError || collisionError || !meeting || !consent || !conversa ||
+      !prospect || !template || (duplicate ?? []).length > 0 ||
+      (collision ?? []).length > 0 ||
+      !item.prospect_id || !item.conversa_id ||
+      String(meeting.prospect_id) !== String(item.prospect_id) ||
+      String(meeting.conversa_id) !== String(item.conversa_id) ||
+      String(conversa.prospect_id) !== String(item.prospect_id) ||
+      String(consent.conversa_id) !== String(item.conversa_id) ||
+      String(consent.direcao).toUpperCase() !== "IN" ||
+      String(meeting.metadata?.consent_message_id) !== consentId ||
+      !["scheduled", "rescheduled"].includes(String(meeting.status)) ||
+      !/^https:\/\/meet\.google\.com\/[a-z0-9-]+(?:[/?#].*)?$/i.test(String(meeting.meeting_url ?? "")) ||
+      !classSameDayWindowAllowed(meeting, now) ||
+      conversa.human_talk === true || Boolean(conversa.human_user_id) ||
+      prospect.optout_whatsapp === true || Boolean(prospect.deleted_at) ||
+      template.ativo !== true || template.canal !== "whatsapp" ||
+      !/^[\p{L}]{2,30}$/u.test(firstName) ||
+      !templateText.includes("{{nome}}") || /\{\{/.test(expectedText) ||
+      !templateText.includes(String(meeting.meeting_url)) ||
+      /terça/i.test(templateText) ||
+      String(item.payload_type) !== "text" ||
+      String(item.payload?.template_id) !== VIVER_CLASS_SAME_DAY_TEMPLATE_ID ||
+      String(item.payload?.mensagem) !== expectedText ||
+      Boolean(item.payload?.url_midia) ||
+      !Number.isFinite(Date.parse(String(consent.timestamp ?? ""))) ||
+      !Number.isFinite(Date.parse(String(item.created_at ?? ""))) ||
+      Date.parse(String(consent.timestamp ?? "")) > Date.parse(String(item.created_at ?? ""))
+    ) return PILOT_CLASS_SAME_DAY_EVIDENCE_REQUIRED;
+
+    const { data: later, error: laterError } = await supabase
+      .from("orbit_mensagens")
+      .select("direcao, sender_type, sent_by_user_id")
+      .eq("empresa_id", item.empresa_id)
+      .eq("conversa_id", item.conversa_id)
+      .gt("timestamp", consent.timestamp);
+    if (laterError || (later ?? []).some((message: any) =>
+      String(message.direcao).toUpperCase() === "IN" ||
+      (String(message.direcao).toUpperCase() === "OUT" &&
+        (Boolean(message.sent_by_user_id) ||
+          ["human_phone", "human_orbit", "human", "user", "agent_human"]
+            .includes(String(message.sender_type ?? "").toLowerCase())))
+    )) return PILOT_CLASS_SAME_DAY_EVIDENCE_REQUIRED;
     return null;
   }
 
