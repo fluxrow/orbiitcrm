@@ -146,6 +146,8 @@ function deny(reason: string, inboundId: string | null = null): ReserveDecision 
 export function isEngagedReserveCandidate(item: OutboxItemLike): boolean {
   if (engagedReserveLimit(item.empresa_id) <= 0) return false;
   if (!ENGAGED_RESERVE_SOURCES.has(String(item.source_type ?? ""))) return false;
+  // Confirmação inicial da Viver não é resposta engajada (nem consome a reserva).
+  if ((item.metadata as any)?.viver_inbound_ack === true) return false;
   return readInboundMessageId(item) !== null;
 }
 
@@ -260,7 +262,8 @@ export async function inboundAlreadyAnswered(
   return ((data ?? []) as any[]).some(
     (r) =>
       String(r.id) !== String(item.id ?? "") &&
-      !(r.metadata ?? {})?.recovery_superseded_by,
+      !(r.metadata ?? {})?.recovery_superseded_by &&
+      (r.metadata ?? {})?.viver_inbound_ack !== true,
   );
 }
 
@@ -379,13 +382,15 @@ export async function lastEngagedReplySentAt(
 ): Promise<string | null> {
   const { data } = await supabase
     .from("orbit_whatsapp_outbox")
-    .select("sent_at")
+    .select("sent_at, metadata")
     .eq("empresa_id", empresaId)
     .eq("conversa_id", conversaId)
     .eq("source_type", "ai_reply")
     .in("status", ["sent", "simulated"])
     .not("sent_at", "is", null)
     .order("sent_at", { ascending: false })
-    .limit(1);
-  return ((data ?? [])[0] as any)?.sent_at ?? null;
+    .limit(5);
+  // A confirmação inicial da Viver não compete com a resposta completa.
+  const row = ((data ?? []) as any[]).find((r) => r?.metadata?.viver_inbound_ack !== true);
+  return row?.sent_at ?? null;
 }

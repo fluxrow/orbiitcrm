@@ -148,6 +148,8 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+import { isViverInboundAckItem, viverInboundAckSendBlockReason, VIVER_INBOUND_ACK_SENDER_TYPE } from "../_shared/viver-inbound-ack.ts";
+
 const WORKER_ID = `outbox-${crypto.randomUUID().slice(0, 8)}`;
 const URGENT_SOURCES = new Set([
   "ai_reply",
@@ -413,6 +415,9 @@ async function upsertVisualMensagem(
     url_midia: item.payload?.url_midia ?? item.payload?.url ?? null,
     storage_path: item.payload?.storage_path ?? null,
     campaign_id: item.campaign_id ?? null,
+    // Confirmação inicial da Viver: linha visual marcada como sistema para
+    // nunca ser tratada como resposta completa. Demais itens: inalterado.
+    ...(isViverInboundAckItem(item) ? { sender_type: VIVER_INBOUND_ACK_SENDER_TYPE } : {}),
   });
 }
 
@@ -940,6 +945,26 @@ async function processItem(
       .eq("id", item.id);
     await reconcilePilotCancellation(item, pilotBlock);
     return { outcome: "canceled", reason: pilotBlock };
+  }
+
+  // Confirmação inicial da Viver: revalida no instante do envio (stale, resposta
+  // já enviada, reunião futura, erro de leitura => cancela; nunca envia tarde).
+  if (isViverInboundAckItem(item)) {
+    const ackBlock = await viverInboundAckSendBlockReason(supabase, item);
+    if (ackBlock) {
+      await supabase
+        .from("orbit_whatsapp_outbox")
+        .update({
+          status: "canceled",
+          canceled_at: new Date().toISOString(),
+          canceled_reason: ackBlock,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq("id", item.id);
+      console.log(JSON.stringify({ scope: "viver_inbound_ack_canceled", outbox_id: item.id, reason: ackBlock }));
+      return { outcome: "canceled", reason: ackBlock };
+    }
   }
 
   // A autorização pontual da aula exige uma OUT aceita por vez, com pelo
