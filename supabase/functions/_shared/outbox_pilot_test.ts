@@ -13,8 +13,19 @@ import {
   PILOT_TYPEBOT_EVIDENCE_REQUIRED,
   pilotStaticBlockReason,
   VIVER_CONTROLLED_OUTBOX_GATE_VERSION,
+  VIVER_MEETING_REVALIDATION_COLUMNS,
   VIVER_SEMIJOIAS_EMPRESA_ID,
 } from "./outbox-pilot.ts";
+
+Deno.test("meeting reminder revalidation fetches morning eligibility evidence", () => {
+  const columns = new Set(VIVER_MEETING_REVALIDATION_COLUMNS.split(", "));
+  for (const required of [
+    "id", "empresa_id", "prospect_id", "conversa_id", "scheduled_at",
+    "status", "meeting_url", "created_at", "metadata",
+  ]) {
+    assertEquals(columns.has(required), true, `missing ${required}`);
+  }
+});
 
 Deno.test("controlled Viver outbox gate exposes the deploy version", () => {
   assertEquals(VIVER_CONTROLLED_OUTBOX_GATE_VERSION, "2026-09-21-v6");

@@ -116,40 +116,40 @@ Deno.test("outros tenants mantêm a política agregada existente", () => {
   assertEquals(sim.retained.length, 1);
 });
 
-Deno.test("Viver: teto diário é 15 mesmo com rampa de warm-up acima", () => {
+Deno.test("Viver: teto diário é 20 mesmo com rampa de warm-up acima", () => {
   const eff = effectiveDailyLimitFor(
     VIVER,
     { warmup_enabled: true, warmup_start_date: "2026-09-01", daily_limit: 10 },
     new Date("2026-09-20T13:00:00Z"),
   );
-  assertEquals(eff.limit, 15);
+  assertEquals(eff.limit, 20);
   assertEquals(
     effectiveDailyLimitFor(VIVER, { daily_limit: null }).limit,
-    15,
+    20,
   );
   assertEquals(effectiveDailyLimitFor(VIVER, { daily_limit: 5 }).limit, 5);
 });
 
-Deno.test("15 campanhas passam e a 16ª é retida", () => {
-  const r = simulateTenant({ empresaId: VIVER, items: items(16, "campaign") });
-  assertEquals(r.decisions.filter((d) => d.decision === "send").length, 15);
+Deno.test("20 campanhas passam e a 21ª é retida", () => {
+  const r = simulateTenant({ empresaId: VIVER, items: items(21, "campaign") });
+  assertEquals(r.decisions.filter((d) => d.decision === "send").length, 20);
   const retained = r.decisions.filter((d) => d.decision === "retain");
   assertEquals(retained.length, 1);
   assertEquals(retained[0].reason, "WARMUP_DAILY_LIMIT");
 });
 
-Deno.test("15 campanhas + follow-ups não bloqueiam os follow-ups", () => {
+Deno.test("20 campanhas + follow-ups não bloqueiam os follow-ups", () => {
   const r = simulateTenant({
     empresaId: VIVER,
-    items: [...items(15, "campaign"), ...items(6, "flow_followup")],
+    items: [...items(20, "campaign"), ...items(6, "flow_followup")],
     maxPerMinute: null,
   });
   const sent = r.decisions.filter((d) => d.decision === "send");
-  assertEquals(sent.length, 21);
-  assertEquals(r.used, 15);
+  assertEquals(sent.length, 26);
+  assertEquals(r.used, 20);
 });
 
-Deno.test("flow_initial e ai_reply não consomem as 15 vagas", () => {
+Deno.test("flow_initial e ai_reply não consomem as 20 vagas", () => {
   const r = simulateTenant({
     empresaId: VIVER,
     items: [...items(20, "flow_initial"), ...items(20, "ai_reply")],
@@ -158,11 +158,11 @@ Deno.test("flow_initial e ai_reply não consomem as 15 vagas", () => {
   assertEquals(r.used, 0);
 });
 
-Deno.test("lembretes de reunião não consomem as 15 vagas", () => {
+Deno.test("lembretes de reunião não consomem as 20 vagas", () => {
   const r = simulateTenant({
     empresaId: VIVER,
     items: items(5, "meeting_confirmation"),
-    sentToday: 15,
+    sentToday: 20,
   });
   assertEquals(r.decisions.filter((d) => d.decision === "send").length, 5);
 });
@@ -258,9 +258,9 @@ Deno.test("contador diário usa a data America/Sao_Paulo (virada 00:00 SP)", () 
   assertEquals(dailyUsageDate(new Date("2026-09-21T02:00:00Z")), "2026-09-20");
 });
 
-Deno.test("controlled pilot aceita daily_cap 15 só na Viver", () => {
-  assert(isControlledDailyCapAccepted(VIVER, 15));
-  assertFalse(isControlledDailyCapAccepted(VIVER, 16));
+Deno.test("controlled pilot aceita daily_cap 20 só na Viver", () => {
+  assert(isControlledDailyCapAccepted(VIVER, 20));
+  assertFalse(isControlledDailyCapAccepted(VIVER, 21));
   assertFalse(isControlledDailyCapAccepted(VIVER, 0));
   assert(isControlledDailyCapAccepted(OUTRO, 10));
   assertFalse(isControlledDailyCapAccepted(OUTRO, 11));

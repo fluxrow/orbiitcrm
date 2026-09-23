@@ -178,7 +178,7 @@ async function getSendingConfig(
 async function getDailyUsage(empresa_id: string): Promise<number> {
   // A rampa protege exclusivamente a prospecção iniciada pelo sistema.
   // Respostas reativas e mensagens operacionais nunca entram nesta contagem.
-  // Viver: somente `campaign` (primeiro contato da lista antiga) consome as 15 vagas.
+  // Viver: somente `campaign` (primeiro contato da lista antiga) consome as 20 vagas.
   const { count, error } = await supabase
     .from("orbit_whatsapp_outbox")
     .select("id", { count: "exact", head: true })
