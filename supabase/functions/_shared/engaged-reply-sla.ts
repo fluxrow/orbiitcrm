@@ -1,3 +1,5 @@
+import { isViverInboundAckRow } from "./viver-inbound-ack.ts";
+
 // SLO operacional da RESPOSTA ATIVA (lead escreveu -> agente responde).
 //
 // SLO: início do processamento <= 30s após a persistência do IN;
@@ -88,7 +90,7 @@ export async function auditEngagedReplySla(
     if (conversaIds.length > 0) {
       const { data: outRows } = await supabase
         .from("orbit_mensagens")
-        .select("conversa_id, timestamp")
+        .select("conversa_id, timestamp, sender_type, mensagem")
         .eq("empresa_id", empresaId)
         .eq("direcao", "OUT")
         .in("conversa_id", conversaIds)
@@ -96,6 +98,8 @@ export async function auditEngagedReplySla(
         .order("timestamp", { ascending: false })
         .limit(500);
       for (const r of (outRows ?? []) as any[]) {
+        // Confirmação inicial (Viver) não conta como resposta para o SLO.
+        if (isViverInboundAckRow(r)) continue;
         const key = String(r.conversa_id);
         const prev = lastOutByConversa[key];
         if (!prev || Date.parse(String(r.timestamp)) > Date.parse(String(prev))) {
