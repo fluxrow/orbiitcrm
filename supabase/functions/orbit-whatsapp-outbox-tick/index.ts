@@ -184,7 +184,7 @@ async function getSendingConfig(
 async function getDailyUsage(empresa_id: string): Promise<number> {
   // A rampa protege exclusivamente a prospecção iniciada pelo sistema.
   // Respostas reativas e mensagens operacionais nunca entram nesta contagem.
-  // Viver: somente `campaign` (primeiro contato da lista antiga) consome as 20 vagas.
+  // Viver: somente `campaign` (primeiro contato da lista antiga) consome as 50 vagas.
   const { count, error } = await supabase
     .from("orbit_whatsapp_outbox")
     .select("id", { count: "exact", head: true })
@@ -1055,7 +1055,7 @@ async function processItem(
       .maybeSingle();
     // Contrato de DIA OPERACIONAL (somente Viver + batches autorizados):
     // item vencido não atravessa a virada do dia SP para ocupar vaga do dia
-    // seguinte; dia futuro espera; dia atual segue 30 min + 15/dia.
+    // seguinte; dia futuro espera; dia atual segue 10 min + 50/dia.
     // FAIL-CLOSED: erro de leitura da campanha adia o item da Viver.
     if (campError && isViverOperationalTenant(item.empresa_id)) {
       await auditViverSpacingFailClosed(
@@ -1323,7 +1323,7 @@ async function processItem(
 
   // ── Espaçamento mínimo entre primeiros contatos da lista (somente Viver) ──
   // Medido pelo ÚLTIMO ENVIO REAL de campanha. Hold legítimo: reagenda para
-  // último_envio + 30min, sem acúmulo compensatório e sem rajada de backlog.
+  // último_envio + 10min, sem acúmulo compensatório e sem rajada de backlog.
   // A consulta só acontece para Viver + `campaign`; qualquer erro de leitura
   // ADIA o item (fail-closed) e é auditado, nunca libera envio.
   if (needsViverCampaignSpacingCheck(item.empresa_id, item.source_type)) {
@@ -1345,7 +1345,7 @@ async function processItem(
       return { outcome: "deferred", reason: retainReason };
     }
 
-    // Defesa em profundidade: o espaçamento real de 30 min continua verificado
+    // Defesa em profundidade: o espaçamento real de 10 min continua verificado
     // pelo último envio aceito. Erro de leitura adia (fail-closed).
     const last = await lastCampaignSentAtMs(item.empresa_id);
     if (!last.ok) {

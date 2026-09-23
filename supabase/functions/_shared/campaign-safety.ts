@@ -174,11 +174,12 @@ export async function checkCampaignRecipientEligibility(
 
   // Terminal deal (universal semanticamente, mas gated por flag pra reengajamento)
   if (flags.skip_if_terminal) {
-    const { data: deals } = await supabase
+    const { data: deals, error: dealsError } = await supabase
       .from("orbit_deals")
       .select("id, status, deleted_at, etapa_id")
       .eq("empresa_id", empresa_id)
       .eq("prospect_id", prospect.id);
+    if (dealsError) return { eligible: false, motivo: "deal_check_failed" };
     const list = (deals ?? []) as any[];
     let terminal = false;
     const stageIds: string[] = [];
@@ -195,10 +196,11 @@ export async function checkCampaignRecipientEligibility(
       if (d.etapa_id) stageIds.push(d.etapa_id);
     }
     if (!terminal && stageIds.length > 0) {
-      const { data: stages } = await supabase
+      const { data: stages, error: stagesError } = await supabase
         .from("orbit_pipeline_stages")
         .select("id, is_won, is_lost")
         .in("id", stageIds);
+      if (stagesError) return { eligible: false, motivo: "stage_check_failed" };
       if (
         (stages ?? []).some((s: any) => s.is_won === true || s.is_lost === true)
       ) terminal = true;
@@ -210,13 +212,14 @@ export async function checkCampaignRecipientEligibility(
 
   // Meeting futura
   if (flags.skip_if_future_meeting) {
-    const { data: mtg } = await supabase
+    const { data: mtg, error: mtgError } = await supabase
       .from("orbit_meetings")
       .select("id, status, scheduled_at")
       .eq("prospect_id", prospect.id)
       .in("status", ["scheduled", "rescheduled"])
       .gte("scheduled_at", new Date().toISOString())
       .limit(1);
+    if (mtgError) return { eligible: false, motivo: "meeting_check_failed" };
     if (mtg && mtg.length > 0) {
       return { eligible: false, motivo: UNIVERSAL_MOTIVOS.meeting_scheduled };
     }
@@ -226,11 +229,12 @@ export async function checkCampaignRecipientEligibility(
   if (
     flags.skip_if_contacted || flags.skip_if_replied || flags.skip_if_handoff
   ) {
-    const { data: convs } = await supabase
+    const { data: convs, error: convsError } = await supabase
       .from("orbit_conversas")
       .select("id, human_talk, human_user_id, handoff_sent_at")
       .eq("prospect_id", prospect.id)
       .eq("empresa_id", empresa_id);
+    if (convsError) return { eligible: false, motivo: "conversation_check_failed" };
     const list = (convs ?? []) as any[];
     if (list.length > 0) {
       if (
@@ -241,24 +245,38 @@ export async function checkCampaignRecipientEligibility(
       }
       const convIds = list.map((c) => c.id);
       if (flags.skip_if_contacted) {
-        const { data: outMsgs } = await supabase
+        const { data: outMsgs, error: outError } = await supabase
           .from("orbit_mensagens")
-          .select("id")
+          .select("id, status, provider_message_id")
           .in("conversa_id", convIds)
-          .eq("direcao", "OUT")
-          .in("status", ["enviada", "sent", "entregue", "delivered"])
-          .limit(1);
-        if (outMsgs && outMsgs.length > 0) {
+          .eq("direcao", "OUT");
+        // A leitura falha fechada: não se presume que um lead nunca foi
+        // contatado quando o histórico não pôde ser consultado.
+        if (outError) {
+          return { eligible: false, motivo: "contact_history_check_failed" };
+        }
+        // Callbacks do provedor promovem status para READ/RECEIVED/PLAYED.
+        // Um provider_message_id é prova de aceite mesmo após essa promoção;
+        // mensagens simuladas/falhas sem ID não contam como contato real.
+        const acceptedStatuses = new Set([
+          "enviada", "enviado", "sent", "entregue", "entregada",
+          "delivered", "received", "read", "lida", "lido", "played",
+        ]);
+        if ((outMsgs ?? []).some((m: any) =>
+          m.provider_message_id ||
+          acceptedStatuses.has(String(m.status ?? "").toLowerCase())
+        )) {
           return { eligible: false, motivo: "already_contacted" };
         }
       }
       if (flags.skip_if_replied) {
-        const { data: inMsgs } = await supabase
+        const { data: inMsgs, error: inError } = await supabase
           .from("orbit_mensagens")
           .select("id")
           .in("conversa_id", convIds)
           .eq("direcao", "IN")
           .limit(1);
+        if (inError) return { eligible: false, motivo: "reply_check_failed" };
         if (inMsgs && inMsgs.length > 0) {
           return { eligible: false, motivo: "lead_replied" };
         }
