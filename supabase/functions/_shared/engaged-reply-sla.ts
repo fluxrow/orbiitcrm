@@ -118,6 +118,7 @@ export async function auditEngagedReplySla(
       .limit(500);
     const queuedInboundIds = new Set<string>();
     for (const r of (queueRows ?? []) as any[]) {
+      if ((r.metadata ?? {})?.viver_inbound_ack === true) continue;
       const raw = (r.metadata ?? {})?.inbound_message_id;
       if (typeof raw === "string") {
         const m = raw.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
