@@ -28,7 +28,7 @@ Deno.test("meeting reminder revalidation fetches morning eligibility evidence", 
 });
 
 Deno.test("controlled Viver outbox gate exposes the deploy version", () => {
-  assertEquals(VIVER_CONTROLLED_OUTBOX_GATE_VERSION, "2026-09-21-v6");
+  assertEquals(VIVER_CONTROLLED_OUTBOX_GATE_VERSION, "2026-09-23-v7");
 });
 
 Deno.test("pilot blocks every proactive source for Viver", () => {

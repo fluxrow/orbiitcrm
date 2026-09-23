@@ -63,6 +63,12 @@ import {
   type OrbitMetaWhatsAppRuntimeConfig,
 } from "../_shared/meta-whatsapp.ts";
 import {
+  isControlledViverClassSameDayReminder,
+  classReminderPredecessorWaitMs,
+  VIVER_CLASS_SAME_DAY_OPERATION,
+  VIVER_CLASS_SAME_DAY_BATCH,
+} from "../_shared/viver-class-same-day-reminder.ts";
+import {
   pilotInboundBlockReason,
   VIVER_CONTROLLED_OUTBOX_GATE_VERSION,
 } from "../_shared/outbox-pilot.ts";
@@ -936,6 +942,35 @@ async function processItem(
     return { outcome: "canceled", reason: pilotBlock };
   }
 
+  // A autorização pontual da aula exige uma OUT aceita por vez, com pelo
+  // menos um minuto entre aceites. Se a anterior ainda não saiu, não há
+  // envio compensatório em rajada: a linha volta a pending sem gastar attempt.
+  if (isControlledViverClassSameDayReminder(item)) {
+    const sequence = Number(item.metadata.sequence);
+    if (sequence > 1) {
+      const { data: prior, error: priorError } = await supabase
+        .from("orbit_whatsapp_outbox")
+        .select("status, provider_message_id, sent_at")
+        .eq("empresa_id", item.empresa_id)
+        .eq("source_type", "meeting_confirmation")
+        .contains("metadata", {
+          operation: VIVER_CLASS_SAME_DAY_OPERATION,
+          batch_id: VIVER_CLASS_SAME_DAY_BATCH,
+          sequence: sequence - 1,
+        }).maybeSingle();
+      const waitMs = priorError ? 60_000 :
+        classReminderPredecessorWaitMs(sequence, prior);
+      if (waitMs > 0) {
+        await releaseHeldItem(
+          item,
+          "class_reminder_sequence_wait",
+          new Date(Date.now() + waitMs + 1_000).toISOString(),
+        );
+        return { outcome: "deferred", reason: "class_reminder_sequence_wait" };
+      }
+    }
+  }
+
   // Kill switch por tenant + horário comercial para não-urgentes
   if (!URGENT_SOURCES.has(item.source_type) && !isOutboxBusinessWindow()) {
     if (usesEssentialFlowDeliveryRepair(item.empresa_id)) {
@@ -1415,6 +1450,23 @@ async function processItem(
       outcome: "deferred",
       reason: holdFinal.reason ?? RECOVERY_SPACING_REASON,
     };
+  }
+
+  // Fecha a janela entre o primeiro guard e a chamada ao provedor: uma
+  // resposta/posse humana que chegou durante o processamento cancela a ação.
+  if (isControlledViverClassSameDayReminder(item)) {
+    const classFinalBlock = await pilotInboundBlockReason(supabase, item);
+    if (classFinalBlock) {
+      await supabase.from("orbit_whatsapp_outbox").update({
+        status: "canceled",
+        canceled_at: new Date().toISOString(),
+        canceled_reason: classFinalBlock,
+        locked_at: null,
+        locked_by: null,
+      }).eq("id", item.id).eq("empresa_id", item.empresa_id)
+        .is("provider_message_id", null);
+      return { outcome: "canceled", reason: classFinalBlock };
+    }
   }
 
   // Modo simulated para testes: metadata.simulate=true força simulação sem tocar Z-API
