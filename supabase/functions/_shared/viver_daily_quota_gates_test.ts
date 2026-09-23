@@ -1,4 +1,4 @@
-// Gates de segurança preservados pela política de 15 vagas diárias da Viver.
+// Gates de segurança preservados pela política de 20 vagas diárias da Viver.
 // A cota diária muda apenas O QUE CONTA; nada aqui é dispensado:
 // opt-out, handoff humano, resposta do lead e reunião agendada continuam
 // bloqueando o primeiro contato de campanha.

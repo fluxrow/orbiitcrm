@@ -32,6 +32,10 @@ export const PILOT_FOLLOWUP_CANCELED_AFTER_HUMAN_OUTBOUND =
 export const PILOT_FOLLOWUP_STALE_BACKLOG = "PILOT_FOLLOWUP_STALE_BACKLOG";
 export const PILOT_MEETING_EVIDENCE_REQUIRED =
   "PILOT_MEETING_EVIDENCE_REQUIRED";
+
+// Morning reminders require booking date and meeting kind during revalidation.
+export const VIVER_MEETING_REVALIDATION_COLUMNS =
+  "id, empresa_id, prospect_id, conversa_id, scheduled_at, duration_minutes, status, meeting_url, created_at, metadata";
 export const PILOT_CLASS_ACCEPTANCE_EVIDENCE_REQUIRED =
   "PILOT_CLASS_ACCEPTANCE_EVIDENCE_REQUIRED";
 
@@ -393,9 +397,7 @@ export async function pilotInboundBlockReason(
   if (isControlledViverMeetingReminder(item)) {
     const meetingId = String(item.metadata.meeting_id);
     const { data: meeting, error } = await supabase.from("orbit_meetings")
-      .select(
-        "id, empresa_id, prospect_id, conversa_id, scheduled_at, duration_minutes, status, meeting_url",
-      )
+      .select(VIVER_MEETING_REVALIDATION_COLUMNS)
       .eq("id", meetingId).eq("empresa_id", item.empresa_id).maybeSingle();
     const decision = evaluateViverMeetingReminder({
       reminderKind: item.metadata.reminder_kind,

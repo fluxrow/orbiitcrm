@@ -1,14 +1,14 @@
 // Política tenant-scoped de cota diária de PRIMEIROS CONTATOS da lista antiga.
 //
 // Contexto (aprovado explicitamente pelo cliente Viver Semijoias):
-//   • 15 primeiros contatos diários da lista antiga, bem espaçados.
-//   • Follow-ups, respostas de IA e lembretes ficam FORA dessas 15 vagas.
+//   • 20 primeiros contatos diários da lista antiga, bem espaçados.
+//   • Follow-ups, respostas de IA e lembretes ficam FORA dessas 20 vagas.
 //   • Novos leads de formulário (typebot / flow_initial) NÃO são lista antiga.
 //
 // Decisão de contagem: os primeiros contatos da lista antiga chegam ao outbox
 // exclusivamente como `source_type='campaign'` (campanhas controladas de
 // reengajamento). Logo, para Viver, SOMENTE `campaign` consome a cota diária de
-// 15. Nada é relabelado e nenhum contador é zerado.
+// 20. Nada é relabelado e nenhum contador é zerado.
 //
 // Outros tenants continuam com a política existente (campaign + flow_initial +
 // flow_followup agregados na rampa de warm-up).
@@ -29,7 +29,7 @@ export const VIVER_SEMIJOIAS_EMPRESA_ID =
   "36f26579-66ad-4ef1-9788-141e4c727232";
 
 /** Vagas diárias de primeiro contato da lista antiga aprovadas para Viver. */
-export const VIVER_DAILY_FIRST_CONTACT_LIMIT = 15;
+export const VIVER_DAILY_FIRST_CONTACT_LIMIT = 20;
 
 /** Teto máximo aceito em `controlled_reengagement.daily_cap` (somente Viver). */
 export const VIVER_CONTROLLED_DAILY_CAP_MAX = VIVER_DAILY_FIRST_CONTACT_LIMIT;
@@ -37,7 +37,7 @@ export const VIVER_CONTROLLED_DAILY_CAP_MAX = VIVER_DAILY_FIRST_CONTACT_LIMIT;
 /** Espaçamento mínimo entre envios reais de campanha da lista (30 min). */
 export const VIVER_CAMPAIGN_MIN_GAP_MS = 30 * 60_000;
 
-/** Fontes que consomem a cota diária de 15 vagas da Viver. */
+/** Fontes que consomem a cota diária de 20 vagas da Viver. */
 export const VIVER_DAILY_QUOTA_SOURCES = ["campaign"] as const;
 
 export const RETAIN_REASON_VIVER_CAMPAIGN_SPACING =
@@ -73,8 +73,8 @@ export function consumesDailyQuotaFor(
 
 /**
  * Limite diário efetivo do tenant.
- * Viver: teto duro de 15, independente da rampa de warm-up (que poderia
- * ultrapassar 15). Outros tenants: comportamento existente inalterado.
+ * Viver: teto duro de 20, independente da rampa de warm-up (que poderia
+ * ultrapassar 20). Outros tenants: comportamento existente inalterado.
  */
 export function effectiveDailyLimitFor(
   empresaId: unknown,
@@ -108,7 +108,7 @@ export function legacyDailyUsageDate(now: Date = new Date()): string {
 
 /**
  * Data do contador diário por tenant: Viver usa America/Sao_Paulo (política
- * aprovada das 15 vagas); os demais tenants preservam a data legada em UTC.
+ * aprovada das 20 vagas); os demais tenants preservam a data legada em UTC.
  */
 export function dailyUsageDateFor(
   empresaId: unknown,
@@ -120,7 +120,7 @@ export function dailyUsageDateFor(
 }
 
 
-/** Teto aceito para o piloto controlado (15 apenas Viver, 10 nos demais). */
+/** Teto aceito para o piloto controlado (20 apenas Viver, 10 nos demais). */
 export function maxControlledDailyCap(empresaId: unknown): number {
   return isViverTenant(empresaId) ? VIVER_CONTROLLED_DAILY_CAP_MAX : 10;
 }
