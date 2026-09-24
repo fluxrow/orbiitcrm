@@ -1982,6 +1982,7 @@ Deno.serve(async (req) => {
 
   const tickId = crypto.randomUUID();
   const t0 = Date.now();
+  const tPerf0 = performance.now();
 
   try {
     let body: any = {};
@@ -2077,7 +2078,7 @@ Deno.serve(async (req) => {
           { status: 200, headers: corsHeaders },
         );
       }
-      const ackRequestStart = isViverInboundAckItem(locked) ? performance.now() - (Date.now() - t0) : undefined;
+      const ackRequestStart = isViverInboundAckItem(locked) ? tPerf0 : undefined;
       markAck(locked, "claim_done");
       const cfg = await getSendingConfig((locked as any).empresa_id);
       const r = await processItem(locked, cfg);
