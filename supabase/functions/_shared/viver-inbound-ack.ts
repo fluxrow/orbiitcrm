@@ -206,6 +206,8 @@ export interface MaybeSendAckDeps {
   enqueue: (input: any) => Promise<{ enqueued: boolean; outbox_id?: string; reason?: string; status?: string }>;
   kick: (args: { outboxId: string; empresaId: string }) => Promise<Record<string, unknown>>;
   now?: () => number;
+  /** Relógio monotônico só para telemetria de latência (não afeta decisão). */
+  perf?: () => number;
 }
 
 export interface AckTelemetry {
@@ -222,6 +224,8 @@ export interface AckTelemetry {
   kick?: Record<string, unknown> | null;
   target_ms: number;
   within_target_at_kick_return?: boolean | null;
+  /** Marcas performance.now() por fase (somente observabilidade). */
+  marks?: { ack_start?: number; precheck_done?: number; decision_done?: number; enqueue_done?: number; kick_done?: number };
 }
 
 /**
@@ -234,6 +238,8 @@ export async function maybeSendViverInboundAck(
   deps: MaybeSendAckDeps,
 ): Promise<AckTelemetry> {
   const now = deps.now ?? Date.now;
+  const perf = deps.perf ?? (() => performance.now());
+  const marks: NonNullable<AckTelemetry["marks"]> = {};
   const tel: AckTelemetry = {
     event: "viver_inbound_ack",
     version: VIVER_INBOUND_ACK_VERSION,
@@ -241,12 +247,14 @@ export async function maybeSendViverInboundAck(
     conversa_id: input.conversa?.id ?? null,
     decision: "not_evaluated",
     target_ms: VIVER_INBOUND_ACK_TARGET_MS,
+    marks,
   };
   if (input.empresa_id !== VIVER_INBOUND_ACK_EMPRESA_ID) {
     tel.decision = "not_viver_tenant";
     return tel;
   }
   try {
+    marks.ack_start = perf();
     const errors: string[] = [];
     const note = (e: string | null) => { if (e) errors.push(e); };
 
@@ -307,6 +315,7 @@ export async function maybeSendViverInboundAck(
       anchor = (pickLastNonAckOut(outs as any[]) as any)?.id ?? null;
     }
 
+    marks.precheck_done = perf();
     const decision = decideViverInboundAck({
       empresa_id: input.empresa_id,
       ack_enabled: readInboundAckEnabled(aiConfig as any),
@@ -324,6 +333,7 @@ export async function maybeSendViverInboundAck(
       human_message_count: humanMsgs,
       query_error: errors.length ? errors.join(",") : null,
     });
+    marks.decision_done = perf();
     tel.decision = decision.reason;
     if (!decision.send) return tel;
 
@@ -347,6 +357,7 @@ export async function maybeSendViverInboundAck(
         ack_version: VIVER_INBOUND_ACK_VERSION,
       },
     });
+    marks.enqueue_done = perf();
     tel.enqueued = routed.enqueued === true;
     tel.enqueue_reason = routed.reason ?? null;
     tel.outbox_id = routed.outbox_id ?? null;
@@ -354,6 +365,7 @@ export async function maybeSendViverInboundAck(
     if (!routed.enqueued || !routed.outbox_id) return tel;
 
     const kick = await deps.kick({ outboxId: routed.outbox_id, empresaId: input.empresa_id });
+    marks.kick_done = perf();
     tel.kick = kick ?? null;
     tel.kick_ms = now() - input.received_at_ms;
     const sentOutcome = (kick as any)?.outcome === "sent";

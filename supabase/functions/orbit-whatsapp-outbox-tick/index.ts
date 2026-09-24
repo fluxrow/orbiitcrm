@@ -148,6 +148,7 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+import { buildWorkerLatencyLog, logAckLatency, markAck } from "../_shared/viver-inbound-ack-timing.ts";
 import { isViverInboundAckItem, viverInboundAckSendBlockReason, VIVER_INBOUND_ACK_SENDER_TYPE } from "../_shared/viver-inbound-ack.ts";
 
 const WORKER_ID = `outbox-${crypto.randomUUID().slice(0, 8)}`;
@@ -913,6 +914,7 @@ async function processItem(
   cfg: SendingConfig | null,
   quota?: QuotaState,
 ): Promise<ProcessResult> {
+  markAck(item, "process_start");
   // ── GATE 1 (pós-claim, anti-corrida): hold explícito e cadência por recovery.
   // Roda ANTES de horário comercial, elegibilidade, cota e qualquer fetch externo.
   const holdVerdict = await evaluateItemHold(item);
@@ -1711,7 +1713,9 @@ async function processItem(
   }
 
   // Envio
+  markAck(item, "provider_start");
   const result = await sendViaZapi(item, telefone, zcfg);
+  markAck(item, "provider_done");
   if (result.ok) {
     const sentAt = new Date().toISOString();
     await supabase
@@ -1932,6 +1936,10 @@ async function processTenant(
   for (const item of sortClaimed((claimed ?? []) as any[])) {
     stats.claimed++;
     const r = await processItem(item, cfg, quota);
+    if (isViverInboundAckItem(item)) {
+      markAck(item, "process_done");
+      logAckLatency(buildWorkerLatencyLog({ item, mode: "batch", outcome: r.outcome, reason: r.reason }));
+    }
     stats[r.outcome as keyof typeof stats]++;
   }
 
@@ -1974,6 +1982,7 @@ Deno.serve(async (req) => {
 
   const tickId = crypto.randomUUID();
   const t0 = Date.now();
+  const tPerf0 = performance.now();
 
   try {
     let body: any = {};
@@ -2069,8 +2078,17 @@ Deno.serve(async (req) => {
           { status: 200, headers: corsHeaders },
         );
       }
+      const ackRequestStart = isViverInboundAckItem(locked) ? tPerf0 : undefined;
+      markAck(locked, "claim_done");
       const cfg = await getSendingConfig((locked as any).empresa_id);
       const r = await processItem(locked, cfg);
+      if (isViverInboundAckItem(locked)) {
+        markAck(locked, "process_done");
+        logAckLatency(buildWorkerLatencyLog({
+          item: locked, mode: "directed", outcome: r.outcome, reason: r.reason,
+          extra: { request_start: ackRequestStart },
+        }));
+      }
       return new Response(
         JSON.stringify({
           ok: true,

@@ -23,6 +23,7 @@ import {
   readFreshClaimResetFlag,
   type DebounceConfig,
 } from "../_shared/ai-reply-debounce.ts";
+import { buildProducerLatencyLog, logAckLatency } from "../_shared/viver-inbound-ack-timing.ts";
 import { maybeSendViverInboundAck, pickLastNonAckOut, VIVER_INBOUND_ACK_EMPRESA_ID } from "../_shared/viver-inbound-ack.ts";
 import { enqueueOutbox } from "../_shared/orbit-whatsapp-outbox.ts";
 import { kickOutboxDispatch } from "../_shared/immediate-outbox-dispatch.ts";
@@ -301,6 +302,7 @@ function generatePhoneVariants(normalizedPhone: string): string[] {
 }
 
 serve(async (req) => {
+  const webhookReceivedPerf = performance.now();
   const corsHeaders = getCorsHeaders(req);
 
   if (req.method === "OPTIONS") {
@@ -370,7 +372,7 @@ serve(async (req) => {
   // 3) Dispara processamento pesado em background e ACK em <1s.
   //    EdgeRuntime.waitUntil mantém o worker vivo até o processInboundZapi resolver,
   //    sem bloquear a resposta para o provedor (Z-API).
-  const processor = processInboundZapi(payload, eventType, corsHeaders, internalProvider).catch((e) => {
+  const processor = processInboundZapi(payload, eventType, corsHeaders, internalProvider, webhookReceivedPerf).catch((e) => {
     console.error("[orbit-webhook] background error:", e instanceof Error ? e.message : String(e));
   });
   // @ts-ignore — EdgeRuntime é um global do runtime do Supabase Edge
@@ -396,6 +398,7 @@ async function processInboundZapi(
   eventType: string,
   corsHeaders: Record<string, string>,
   internalProvider: string | null = null,
+  webhookReceivedPerf: number | null = null,
 ): Promise<Response> {
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -1254,7 +1257,18 @@ async function processInboundZapi(
           functionsBase: `${Deno.env.get("SUPABASE_URL")}/functions/v1`,
           cronToken: Deno.env.get("SCHEDULER_CRON_TOKEN"),
         }) as any,
-      }).then((tel) => console.log(JSON.stringify(tel)));
+      }).then((tel) => logAckLatency(buildProducerLatencyLog({
+        webhook_received_perf: webhookReceivedPerf,
+        marks: tel.marks ?? {},
+        decision: tel.decision,
+        enqueued: tel.enqueued,
+        enqueue_reason: tel.enqueue_reason,
+        outbox_id: tel.outbox_id,
+        inbound_message_id: savedMessage.id,
+        kick_outcome: (tel.kick as any)?.outcome ?? ((tel.kick as any)?.deferred ? "deferred" : null),
+        kick_reason: (tel.kick as any)?.reason ?? null,
+        target_ms: tel.target_ms,
+      })));
       // @ts-ignore EdgeRuntime é global no runtime Supabase
       if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(ackJob);
       else await ackJob;
