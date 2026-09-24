@@ -372,7 +372,7 @@ serve(async (req) => {
   // 3) Dispara processamento pesado em background e ACK em <1s.
   //    EdgeRuntime.waitUntil mantém o worker vivo até o processInboundZapi resolver,
   //    sem bloquear a resposta para o provedor (Z-API).
-  const processor = processInboundZapi(payload, eventType, corsHeaders, internalProvider).catch((e) => {
+  const processor = processInboundZapi(payload, eventType, corsHeaders, internalProvider, webhookReceivedPerf).catch((e) => {
     console.error("[orbit-webhook] background error:", e instanceof Error ? e.message : String(e));
   });
   // @ts-ignore — EdgeRuntime é um global do runtime do Supabase Edge
@@ -398,6 +398,7 @@ async function processInboundZapi(
   eventType: string,
   corsHeaders: Record<string, string>,
   internalProvider: string | null = null,
+  webhookReceivedPerf: number | null = null,
 ): Promise<Response> {
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
